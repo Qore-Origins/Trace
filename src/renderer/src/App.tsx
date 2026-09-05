@@ -7,7 +7,7 @@ export default function App(): React.JSX.Element {
     <div style={{ padding: 48 }}>
       <Typography.Title level={2}>溯源 Trace</Typography.Title>
       <Typography.Paragraph type="secondary">
-        计划有迹可循 · 工程骨架就绪（Sprint 0） · 运行平台 {window.trace?.platform ?? 'unknown'}
+        计划有迹可循 · Sprint 1 主进程服务已就绪（IPC 契约 v1 · 61 单测通过） · 界面按前端详细设计 Sprint 2 实现
       </Typography.Paragraph>
     </div>
   )

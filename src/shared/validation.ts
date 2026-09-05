@@ -1,0 +1,35 @@
+// 共享校验规则（功能规格 §6.3 / LLD §7）
+import { ERR, TraceError } from './errors'
+
+// Windows 文件系统非法字符 + 保留名
+const ILLEGAL_CHARS = /[/\\:*?"<>|]/
+const RESERVED_NAMES = new Set(['.', '..', 'con', 'prn', 'aux', 'nul', 'com1', 'lpt1'])
+const MAX_NAME_LEN = 255
+const MAX_TEXT_LEN = 20000
+const MAX_TITLE_LEN = 200
+
+export function validatePlanName(name: string): void {
+  if (!name || name.trim().length === 0) throw new TraceError(ERR.VALIDATION, '名称不能为空')
+  if (name.length > MAX_NAME_LEN) throw new TraceError(ERR.VALIDATION, '名称超长（上限 255 字符）')
+  if (ILLEGAL_CHARS.test(name)) throw new TraceError(ERR.VALIDATION, '名称含非法字符 / \\ : * ? " < > |')
+  if (RESERVED_NAMES.has(name.toLowerCase())) throw new TraceError(ERR.VALIDATION, '名称为系统保留字')
+  if (name.endsWith(' ') || name.endsWith('.')) throw new TraceError(ERR.VALIDATION, '名称不能以空格或点结尾')
+}
+
+export function validateTitle(title: string, field = '标题'): void {
+  if (!title || title.trim().length === 0) throw new TraceError(ERR.VALIDATION, `${field}不能为空`)
+  if (title.length > MAX_TITLE_LEN) throw new TraceError(ERR.VALIDATION, `${field}超长（上限 ${MAX_TITLE_LEN} 字符）`)
+}
+
+export function validateNoteText(text: string, field = '文本'): void {
+  if (text.length > MAX_TEXT_LEN) throw new TraceError(ERR.VALIDATION, `${field}超长（上限 ${MAX_TEXT_LEN} 字符）`)
+}
+
+// uuid32（无连字符 32 hex）
+export function isUuid32(s: string): boolean {
+  return /^[0-9a-f]{32}$/.test(s)
+}
+
+export function uuid32(): string {
+  return crypto.randomUUID().replace(/-/g, '')
+}

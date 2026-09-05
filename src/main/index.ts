@@ -1,5 +1,12 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
+import { PlanRepository } from './services/plan-repository'
+import { ConfigService } from './services/config-service'
+import { StorageService } from './services/storage-service'
+import { AppService } from './services/app-service'
+import { WatchService } from './services/watch-service'
+import { registerIpc } from './ipc/register'
+import { bus } from './services/event-bus'
 
 // 安全基线（接口设计文档 §2.3）：contextIsolation/sandbox/webSecurity 显式声明
 const SECURITY_BASE = {
@@ -9,10 +16,21 @@ const SECURITY_BASE = {
   webSecurity: true
 } as const
 
-function createWindow(): void {
-  const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+// ---------- 服务装配 ----------
+const repo = new PlanRepository({
+  onInternalWrite: (abs) => watch.markInternalWrite(abs)
+})
+const config = new ConfigService(app.getPath('userData'), repo)
+const storage = new StorageService(repo)
+const watch = new WatchService(storage.treeCache)
+const appService = new AppService(config, repo, storage, (rootAbs) => watch.start(rootAbs))
+
+let mainWindow: BrowserWindow | null = null
+
+function createWindow(bounds?: { width: number; height: number }): void {
+  mainWindow = new BrowserWindow({
+    width: bounds?.width ?? 1200,
+    height: bounds?.height ?? 800,
     minWidth: 720,
     minHeight: 480,
     show: false,
@@ -27,17 +45,31 @@ function createWindow(): void {
   })
 
   // 界面就绪后再显示（避免白屏闪烁）
-  mainWindow.on('ready-to-show', () => mainWindow.show())
+  mainWindow.on('ready-to-show', () => mainWindow?.show())
 
   // 拒绝任何窗口内新窗口/外部导航（v1.0 无外部链接语义）
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    // 仅允许开发服务器自身导航，其余一律拦截
     if (process.env['ELECTRON_RENDERER_URL'] && url.startsWith(process.env['ELECTRON_RENDERER_URL'])) return
     event.preventDefault()
   })
 
-  // TODO(SPRINT-1): ConfigService 接入，持久化窗口位置/尺寸（config.json window.state，见 LLD §5.3）
+  mainWindow.on('close', () => {
+    // 窗口状态持久化（LLD §5.3）
+    const bounds = mainWindow?.getBounds()
+    if (bounds) {
+      void config.saveWindowState({
+        width: bounds.width,
+        height: bounds.height,
+        maximized: mainWindow?.isMaximized() ?? false
+      })
+    }
+  })
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+
   if (process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -50,21 +82,42 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    // TODO(SPRINT-1): 激活既有窗口
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
   })
 
   app.setAppUserModelId('com.qore.trace')
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     console.log('[trace] main ready')
-    createWindow()
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    // 配置加载 + 已配置根目录激活（含 chokidar 启动）
+    await config.load()
+    await appService.activateConfiguredRoot()
+
+    // IPC 注册（事件转发到既有窗口）
+    registerIpc({
+      app: appService,
+      storage,
+      config,
+      getWindow: () => mainWindow,
+      log: (channel, code, detail) => {
+        // 日志脱敏：仅通道/错误码/消息，不含计划正文（LLD §7.2）
+        if (code !== 0) console.log(`[ipc] ${channel} code=${code} ${detail ?? ''}`)
+      }
     })
+
+    // 窗口状态恢复
+    const winState = await config.getWindowState()
+    createWindow({ width: winState.width, height: winState.height })
+    if (mainWindow && winState.maximized) mainWindow.maximize()
+    void bus // 事件转发已在 registerIpc 内建立
   })
 
   app.on('window-all-closed', () => {
+    watch.stop()
     if (process.platform !== 'darwin') app.quit()
   })
 }

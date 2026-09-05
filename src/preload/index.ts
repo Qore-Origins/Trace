@@ -1,13 +1,36 @@
-import { contextBridge } from 'electron'
+// preload：contextBridge 白名单暴露（接口设计文档 §2.3）
+// 仅暴露 invoke(白名单通道) 与 on(事件)；不暴露任何 fs/ipcRenderer 原始能力
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { ChannelName, Channels, EventName, TraceBridge, TraceResult } from '../shared/ipc-contract'
+import type { TraceEventsContract } from '../shared/event-types'
 
-// TODO(SPRINT-1): 按 src/shared/ipc-contract（LLD §3.1）暴露白名单 API：
-//   window.trace = { app: {...}, storage: {...}, search: {...}, config: {...} }
-//   当前仅占位（contextBridge 最小暴露，为渲染器提供类型锚点）。
-const api = {
-  platform: process.platform,
-  appVersion: undefined as string | undefined
-}
+const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:']
+const EVENT_CHANNELS = new Set<string>([
+  'trace:plan-changed',
+  'trace:save-status',
+  'trace:fs-external-change',
+  'trace:index-status'
+])
 
-contextBridge.exposeInMainWorld('trace', api)
+const bridge = {
+  invoke: async <K extends ChannelName>(
+    channel: K,
+    ...args: Channels[K]['req'] extends void ? [] : [Channels[K]['req']]
+  ): Promise<TraceResult<Channels[K]['res']>> => {
+    if (!ALLOWED_PREFIXES.some((p) => channel.startsWith(p))) {
+      return { ok: false, code: 50, message: '通道未开放', data: null }
+    }
+    return ipcRenderer.invoke(channel, args[0])
+  },
+  on: <K extends EventName>(event: K, cb: (payload: TraceEventsContract[K]) => void): (() => void) => {
+    if (!EVENT_CHANNELS.has(event)) return () => {}
+    const handler = (_e: IpcRendererEvent, payload: TraceEventsContract[K]): void => cb(payload)
+    // ipcRenderer 监听器签名为 (...args: any[])，此处按契约收窄后桥接
+    ipcRenderer.on(event, handler as unknown as (e: IpcRendererEvent, ...args: unknown[]) => void)
+    return () => ipcRenderer.removeListener(event, handler as never)
+  }
+} as TraceBridge
 
-export type TraceBridge = typeof api
+contextBridge.exposeInMainWorld('trace', bridge)
+
+export type { TraceBridge }

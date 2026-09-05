@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>溯源 Trace · 高保真原型（迹 · Trace Mark）</title>
+<style>
+/* ============ 主题「迹」设计 token（对应 UI 规范 §2） ============ */
+:root{
+  --trace-500:#1677FF; --trace-700:#0958D9; --trace-bg:#E6F4FF; --trace-bg-hover:#BAE0FF;
+  --origin:#1D39C4;            /* 源头圆点（logo 同源） */
+  --success:#52C41A; --warning:#FAAD14; --error:#FF4D4F;
+  --text-1:#262626; --text-2:#595959; --text-3:#8C8C8C; --text-4:#BFBFBF;
+  --border:#D9D9D9; --split:#F0F0F0; --paper:#FFFFFF; --paper-dim:#FAFAFA; --fill:#F5F5F5;
+  --r-card:8px; --shadow-card:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.05);
+  --shadow-float:0 4px 16px rgba(0,0,0,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:var(--text-1);background:var(--paper-dim);font-size:14px;line-height:1.5}
+button{font-family:inherit;border:none;background:none;cursor:pointer;color:inherit}
+input{font-family:inherit}
+.hint{position:fixed;top:8px;right:12px;z-index:99;font-size:12px;color:var(--text-3);background:#fff;border:1px solid var(--split);border-radius:6px;padding:4px 10px;box-shadow:var(--shadow-card)}
+
+/* ============ 视图切换 ============ */
+.view{display:none}
+.view.active{display:block}
+#view-workspace.active{display:flex;flex-direction:column;height:100vh}
+
+/* ============ 引导页（§3.7 空即是信任） ============ */
+#view-onboarding{height:100vh;display:none;align-items:center;justify-content:center;background:linear-gradient(160deg,#FFFFFF 0%,#F5F9FF 100%)}
+#view-onboarding.active{display:flex}
+.onboard{width:520px;text-align:center}
+.onboard .logo-dot{width:20px;height:20px;border-radius:50%;background:var(--origin);margin:0 auto 16px}
+.onboard h1{font-size:24px;font-weight:600;margin-bottom:6px}
+.onboard h1 em{font-style:normal;color:var(--trace-500)}
+.onboard .slogan{color:var(--text-2);margin-bottom:28px}
+.onboard .desc{font-size:13px;color:var(--text-2);background:#fff;border:1px solid var(--split);border-radius:var(--r-card);padding:16px 20px;margin-bottom:20px;text-align:left}
+.onboard .desc b{color:var(--text-1)}
+.btn-primary{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--trace-500),var(--trace-700));color:#fff;border-radius:6px;padding:8px 24px;font-size:14px;font-weight:500}
+.btn-primary:hover{filter:brightness(1.08)}
+.onboard .chosen{margin-top:16px;font-size:13px;color:var(--text-2)}
+.onboard .chosen .ok{color:var(--success)}
+
+/* ============ 工作台 ============ */
+.topbar{height:48px;background:var(--paper);border-bottom:1px solid var(--split);display:flex;align-items:center;padding:0 16px;gap:16px;flex:none}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px}
+.brand .dot{width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#3B5BDB,var(--origin))}
+.searchbox{flex:1;max-width:480px;position:relative}
+.searchbox input{width:100%;height:32px;border:1px solid var(--border);border-radius:6px;padding:0 12px 0 32px;font-size:13px;background:var(--paper-dim);outline:none}
+.searchbox input:focus{border-color:var(--trace-500);background:#fff;box-shadow:0 0 0 2px var(--trace-bg)}
+.searchbox .icon{position:absolute;left:10px;top:8px;color:var(--text-3)}
+.topbar .spacer{flex:1}
+.btn-new{background:linear-gradient(135deg,var(--trace-500),var(--trace-700));color:#fff;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:500}
+.btn-new:hover{filter:brightness(1.08)}
+
+.main{flex:1;display:flex;min-height:0}
+/* ---- 计划树（§3.1 连接线 = 迹的骨架） ---- */
+.tree{width:280px;flex:none;background:var(--paper);border-right:1px solid var(--split);padding:12px 8px;overflow:auto}
+.node{display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;border-radius:6px;cursor:pointer;position:relative;color:var(--text-1)}
+.node:hover{background:var(--paper-dim)}
+.node.selected{background:var(--trace-bg)}
+.node.selected::before{content:'';position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:2px;background:linear-gradient(180deg,var(--trace-500),var(--trace-700))}
+.node .folder{color:var(--text-3);width:16px;text-align:center}
+.node.selected .folder{color:var(--trace-500)}
+.node .arrow{width:14px;color:var(--text-4);font-size:10px;transition:transform .15s}
+.node.expanded .arrow{transform:rotate(90deg)}
+.node .name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .quick{display:none;gap:2px}
+.node:hover .quick{display:flex}
+.node .quick button{font-size:12px;color:var(--text-3);padding:2px 4px;border-radius:4px}
+.node .quick button:hover{background:var(--trace-bg);color:var(--trace-500)}
+.tree .root-node .folder{color:var(--origin)}
+.tree-line{margin-left:22px;border-left:1px solid var(--split);padding-left:4px}
+.tree-add{margin:8px 4px;font-size:13px;color:var(--text-3);padding:6px 8px;border-radius:6px;width:calc(100% - 8px);text-align:left}
+.tree-add:hover{background:var(--paper-dim);color:var(--trace-500)}
+
+/* ---- 内容区（§2.3 纸感） ---- */
+.content{flex:1;overflow:auto;padding:16px 24px}
+.crumbs{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2);margin-bottom:14px}
+.crumbs .origin-dot{width:8px;height:8px;border-radius:50%;background:var(--origin)}
+.crumbs .sep{color:var(--text-4)}
+.crumbs .here{color:var(--text-1);font-weight:500}
+.card{background:var(--paper);border-radius:var(--r-card);box-shadow:var(--shadow-card);padding:12px 16px;margin-bottom:12px}
+.card .kind{font-size:12px;color:var(--text-4);margin-bottom:4px}
+.card.pulse{animation:pulse 2s ease-out}
+@keyframes pulse{0%{box-shadow:0 0 0 3px rgba(22,119,255,.55),var(--shadow-card)}70%{box-shadow:0 0 0 3px rgba(22,119,255,.15),var(--shadow-card)}100%{box-shadow:var(--shadow-card)}}
+.card h3{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+
+/* 单选计划（§3.3 有重量的卡） */
+.single .title-row{display:flex;align-items:center;gap:10px}
+.single .ring{width:18px;height:18px}
+.single input.t{border:none;outline:none;font-size:16px;font-weight:600;flex:1;color:var(--text-1)}
+.single .summary{font-size:13px;color:var(--text-2);margin-top:6px;padding-left:28px}
+.single.done .title-row input.t{text-decoration:line-through;color:var(--text-3)}
+.single.done .summary{opacity:.45}
+
+/* 任务三态（§3.2 足迹语义） */
+.task-row{display:flex;align-items:center;gap:10px;padding:6px 4px;border-radius:6px}
+.task-row:hover{background:var(--paper-dim)}
+.state-ring{width:16px;height:16px;flex:none;border-radius:50%;border:2px solid var(--text-4);cursor:pointer;position:relative;transition:all .15s}
+.task-row.doing .state-ring{border-color:var(--trace-500);background:var(--trace-500);box-shadow:0 0 0 3px var(--trace-bg)}
+.task-row.doing .t-title{color:var(--trace-500)}
+.task-row.done .state-ring{border-color:var(--text-4);background:var(--fill)}
+.task-row.done .state-ring::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-3)}
+.task-row.done .t-title{text-decoration:line-through;color:var(--text-3)}
+.task-row.done{opacity:.55}
+.t-title{flex:1;border:none;outline:none;font-size:14px;background:transparent;color:var(--text-1)}
+.t-date{font-size:12px;color:var(--text-3);border:1px solid transparent;border-radius:4px;padding:2px 4px}
+.t-date:hover{border-color:var(--border);background:#fff}
+.tag-overdue{font-size:11px;color:#D48806;background:#FFFBE6;border-radius:4px;padding:1px 6px}
+.task-list .list-head{display:flex;align-items:center;margin-bottom:2px}
+.task-list .count{margin-left:auto;font-size:12px;color:var(--text-3)}
+
+/* 注释旁批（§3.5） */
+.note{background:var(--paper-dim);border-left:4px solid var(--split);border-radius:0 var(--r-card) var(--r-card) 0}
+.note .n-text{font-size:13px;color:var(--text-2)}
+.note .n-time{font-size:12px;color:var(--text-4);margin-top:6px}
+
+.card-actions{display:none;gap:8px;margin-top:8px}
+.card:hover .card-actions{display:flex}
+.card-actions button{font-size:12px;color:var(--text-3)}
+.card-actions button:hover{color:var(--error)}
+
+/* ---- 状态栏（§3.8 脉搏） ---- */
+.statusbar{height:28px;flex:none;background:var(--paper);border-top:1px solid var(--split);display:flex;align-items:center;gap:20px;padding:0 16px;font-size:12px;color:var(--text-3)}
+.statusbar .dot-ok{width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block;margin-right:4px}
+.statusbar .saved{color:var(--text-2)}
+.statusbar .spacer{flex:1}
+
+/* ============ 溯源浮层（§3.6） ============ */
+.overlay-mask{position:fixed;inset:0;background:rgba(0,0,0,.08);display:none;z-index:10}
+.overlay{position:fixed;top:60px;left:50%;transform:translateX(-50%);width:560px;background:var(--paper);border-radius:var(--r-card);box-shadow:var(--shadow-float);display:none;z-index:11;overflow:hidden}
+.overlay-mask.active,.overlay.active{display:block}
+.overlay .o-input{width:100%;height:44px;border:none;border-bottom:1px solid var(--split);outline:none;padding:0 16px;font-size:14px}
+.overlay .o-body{max-height:380px;overflow:auto;padding:8px}
+.o-section{font-size:12px;color:var(--text-4);padding:8px 8px 4px}
+.o-item{padding:8px;border-radius:6px;cursor:pointer}
+.o-item:hover{background:var(--paper-dim)}
+.o-item .o-title{font-size:13px;color:var(--text-1)}
+.o-item .o-title .hl{background:var(--trace-bg);color:var(--trace-700);border-radius:2px;padding:0 1px}
+.o-item .o-path{font-size:12px;color:var(--text-3);margin-top:2px}
+.o-empty{padding:32px;text-align:center;color:var(--text-3);font-size:13px}
+.badge{display:inline-block;font-size:11px;border-radius:4px;padding:0 6px;margin-right:6px;vertical-align:1px}
+.badge.task{background:var(--trace-bg);color:var(--trace-700)}
+.badge.note{background:var(--fill);color:var(--text-2)}
+.badge.plan{background:#FFF7E6;color:#D48806}
+</style>
+</head>
+<body>
+<div class="hint">原型：点任务圆环切三态 · 顶栏搜索"周报"试回溯 · Ctrl+F 聚焦搜索</div>
+
+<!-- ================= 视图 1：首启引导（§3.7） ================= -->
+<div class="view active" id="view-onboarding">
+  <div class="onboard">
+    <div class="logo-dot"></div>
+    <h1>溯源 <em>Trace</em></h1>
+    <div class="slogan">计划有迹可循</div>
+    <div class="desc">
+      你的计划将以<b>普通文件夹</b>保存在你选择的位置——任何时刻可整体拷贝备份、迁移到新电脑，数据<b>不出你的设备</b>。
+    </div>
+    <button class="btn-primary" onclick="enterWorkspace()">选择计划库目录</button>
+    <div class="chosen" id="chosen" style="display:none"><span class="ok">✓</span> 可读可写：<span id="chosen-path">D:\Plans\Trace</span></div>
+  </div>
+</div>
+
+<!-- ================= 视图 2：工作台 ================= -->
+<div class="view" id="view-workspace">
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>溯源 Trace</div>
+    <div class="searchbox">
+      <span class="icon">⌕</span>
+      <input id="search-input" placeholder="搜索：沿迹回望计划 / 任务 / 注释…" onfocus="openSearch()" oninput="searchInput()">
+    </div>
+    <div class="spacer"></div>
+    <button class="btn-new">+ 新建计划</button>
+  </div>
+
+  <div class="main">
+    <!-- 计划树：连接线可见，根=源头圆点 -->
+    <div class="tree" id="tree">
+      <div class="node root-node selected" data-path="">
+        <span class="arrow">▸</span><span class="folder">●</span><span class="name">计划库（源头）</span>
+      </div>
+      <div class="tree-line" id="tree-children">
+        <div class="node expanded" data-path="2026-A 学期" onclick="toggleNode(this)" title="点击展开/收起">
+          <span class="arrow">▸</span><span class="folder">▸</span><span class="name">2026-A 学期</span>
+          <span class="quick"><button onclick="event.stopPropagation()">+ 子</button><button onclick="event.stopPropagation()">…</button></span>
+        </div>
+        <div class="tree-line" data-children-of="2026-A 学期">
+          <div class="node" data-path="2026-A 学期/Web 全栈实训">
+            <span class="arrow">▸</span><span class="folder">▸</span><span class="name">Web 全栈实训</span>
+            <span class="quick"><button>+ 子</button><button>…</button></span>
+          </div>
+          <div class="node" data-path="2026-A 学期/技能大赛备赛">
+            <span class="arrow">▸</span><span class="folder">▸</span><span class="name">技能大赛备赛</span>
+            <span class="quick"><button>+ 子</button><button>…</button></span>
+          </div>
+        </div>
+        <div class="node expanded" data-path="Trace 开发计划">
+          <span class="arrow">▸</span><span class="folder">▸</span><span class="name">Trace 开发计划</span>
+          <span class="quick"><button>+ 子</button><button>…</button></span>
+        </div>
+        <div class="tree-line" data-children-of="Trace 开发计划">
+          <div class="node" data-path="Trace 开发计划/周计划">
+            <span class="arrow">▸</span><span class="folder">▸</span><span class="name">周计划</span>
+            <span class="quick"><button>+ 子</button><button>…</button></span>
+          </div>
+        </div>
+        <div class="node" data-path="生活计划">
+          <span class="arrow">▸</span><span class="folder">▸</span><span class="name">生活计划</span>
+          <span class="quick"><button>+ 子</button><button>…</button></span>
+        </div>
+      </div>
+      <button class="tree-add">+ 新建顶层计划</button>
+    </div>
+
+    <!-- 内容区：纸感组件序列 -->
+    <div class="content" id="content">
+      <div class="crumbs">
+        <span class="origin-dot"></span><span>源头</span><span class="sep">›</span>
+        <span>Trace 开发计划</span><span class="sep">›</span><span class="here">周计划</span>
+      </div>
+
+      <!-- 单选计划：本期唯一主线（有重量的卡） -->
+      <div class="card single" id="card-single">
+        <div class="kind">单选计划</div>
+        <div class="title-row">
+          <svg class="ring" viewBox="0 0 20 20" onclick="toggleSingle(this)"><circle cx="10" cy="10" r="8" fill="none" stroke="var(--trace-500)" stroke-width="2"/><path id="single-check" d="M6 10.5l2.5 2.5L14 7.5" fill="none" stroke="var(--trace-500)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"/></svg>
+          <input class="t" value="完成 Alpha 版三模块联调" onfocus="editing(true)" onblur="editing(false)">
+        </div>
+        <div class="summary">存储 / 渲染 / 溯源查询 全链路可演示，数据可备份迁移</div>
+      </div>
+
+      <!-- 多选计划：岔路口 -->
+      <div class="card" id="card-multi">
+        <div class="kind">多选计划</div>
+        <h3 style="font-size:14px">Sprint 2 前置（可并行）<span class="count" id="multi-count" style="margin-left:auto;font-size:12px;color:var(--text-3);font-weight:400">已选 1/3</span></h3>
+        <div style="margin-top:6px">
+          <label class="task-row"><input type="checkbox" checked onchange="multiCount()" style="accent-color:var(--trace-500)"><span class="t-title" contenteditable>检索退化方案接口抽检</span></label>
+          <label class="task-row"><input type="checkbox" onchange="multiCount()" style="accent-color:var(--trace-500)"><span class="t-title" contenteditable>图标小尺寸走查（16/24px）</span></label>
+          <label class="task-row"><input type="checkbox" onchange="multiCount()" style="accent-color:var(--trace-500)"><span class="t-title" contenteditable>NSIS 安装包铺开自测</span></label>
+        </div>
+      </div>
+
+      <!-- 任务列表：足迹三态（点圆环切换） -->
+      <div class="card task-list" id="card-tasks">
+        <div class="kind">任务列表</div>
+        <div class="list-head"><h3 style="font-size:14px">本周任务</h3><span class="count" id="task-count">1/4 已抵达</span></div>
+        <div class="task-row done">
+          <span class="state-ring" onclick="cycle(this)"></span>
+          <input class="t-title" value="功能规格评审" readonly>
+          <span class="t-date">09-02</span>
+        </div>
+        <div class="task-row doing">
+          <span class="state-ring" onclick="cycle(this)"></span>
+          <input class="t-title" value="Sprint 1 主进程服务" readonly>
+          <span class="t-date">09-06</span>
+        </div>
+        <div class="task-row">
+          <span class="state-ring" onclick="cycle(this)"></span>
+          <input class="t-title" value="渲染器骨架 + 树组件" readonly>
+          <span class="t-date">09-09</span>
+          <span class="tag-overdue">逾期</span>
+        </div>
+        <div class="task-row">
+          <span class="state-ring" onclick="cycle(this)"></span>
+          <input class="t-title" value="周复盘：写一篇本周迹线总结" readonly>
+          <span class="t-date">09-10</span>
+        </div>
+        <div class="card-actions"><button>＋ 任务</button><button>删除组件</button></div>
+      </div>
+
+      <!-- 注释旁批 -->
+      <div class="card note" id="card-note">
+        <div class="kind">注释（旁批）</div>
+        <div class="n-text" contenteditable>评审前置，返工减半——设计阶段多花的一周，在 Sprint 1 全部赚回来了。</div>
+        <div class="n-time">2026-09-05</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span><span class="dot-ok"></span>索引就绪</span>
+    <span class="saved" id="save-state">✓ 已保存 23:41</span>
+    <span class="spacer"></span>
+    <span>根目录 D:\Plans\Trace</span>
+  </div>
+</div>
+
+<!-- ================= 溯源浮层（§3.6） ================= -->
+<div class="overlay-mask" id="mask" onclick="closeSearch()"></div>
+<div class="overlay" id="overlay">
+  <input class="o-input" id="overlay-input" placeholder="输入关键词，沿迹回望…（多词 AND）" oninput="searchInput()">
+  <div class="o-body" id="o-body">
+    <div class="o-empty">输入关键词开始溯源；命中后点击即回到源头</div>
+  </div>
+</div>
+
+<script>
+/* ====== 演示数据（真数据 Sprint 2 经 IPC 接入） ====== */
+const INDEX = [
+  {scope:'plan', title:'周计划', path:'Trace 开发计划 › 周计划', kw:'周计划'},
+  {scope:'plan', title:'2026-A 学期', path:'2026-A 学期', kw:'学期'},
+  {scope:'task', title:'写周报：本周迹线总结', path:'Trace 开发计划 › 周计划 · 任务列表', kw:'周'},
+  {scope:'task', title:'渲染器骨架 + 树组件', path:'Trace 开发计划 › 周计划 · 任务列表', kw:'树'},
+  {scope:'note', title:'评审前置，返工减半——设计阶段多花的一周…', path:'Trace 开发计划 › 周计划 · 注释', kw:'评审'}
+]
+
+/* ====== 视图切换 ====== */
+function enterWorkspace(){
+  document.getElementById('chosen').style.display='block'
+  setTimeout(()=>{
+    show('view-workspace')
+    const c=document.getElementById('card-single'); c.classList.remove('pulse'); void c.offsetWidth; c.classList.add('pulse')
+  },500)
+}
+function show(id){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'))
+  document.getElementById(id).classList.add('active')
+}
+
+/* ====== 任务三态（足迹语义：未出发→在途→抵达→回退在途） ====== */
+function cycle(ring){
+  const row=ring.parentElement
+  const st=row.classList.contains('done')?'done':row.classList.contains('doing')?'doing':'todo'
+  row.classList.remove('done','doing')
+  if(st==='todo') row.classList.add('doing')       // 未出发→在途
+  else if(st==='doing'){row.classList.add('done')} // 在途→抵达
+  // 抵达→在途（回退），由移除 done 实现
+  taskCount()
+}
+function taskCount(){
+  const rows=document.querySelectorAll('#card-tasks .task-row')
+  const done=[...rows].filter(r=>r.classList.contains('done')).length
+  document.getElementById('task-count').textContent=`${done}/${rows.length} 已抵达`
+}
+taskCount()
+
+/* ====== 单选计划勾选 ====== */
+function toggleSingle(svg){
+  const card=document.getElementById('card-single')
+  const check=document.getElementById('single-check')
+  card.classList.toggle('done')
+  check.style.display=card.classList.contains('done')?'block':'none'
+}
+
+/* ====== 多选计数常显 ====== */
+function multiCount(){
+  const boxes=document.querySelectorAll('#card-multi input[type=checkbox]')
+  const n=[...boxes].filter(b=>b.checked).length
+  document.getElementById('multi-count').textContent=`已选 ${n}/${boxes.length}`
+}
+
+/* ====== 溯源浮层 ====== */
+function openSearch(){
+  document.getElementById('mask').classList.add('active')
+  document.getElementById('overlay').classList.add('active')
+  setTimeout(()=>document.getElementById('overlay-input').focus(),30)
+}
+function closeSearch(){
+  document.getElementById('mask').classList.remove('active')
+  document.getElementById('overlay').classList.remove('active')
+  document.getElementById('search-input').blur()
+}
+function esc(e){ if(e.key==='Escape') closeSearch(); if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){e.preventDefault();document.getElementById('search-input').focus();openSearch()} }
+document.addEventListener('keydown',esc)
+
+function searchInput(){
+  const kw=document.getElementById('search-input').value.trim()||document.getElementById('overlay-input').value.trim()
+  document.getElementById('search-input').value=kw
+  document.getElementById('overlay-input').value=kw
+  const body=document.getElementById('o-body')
+  if(!kw){body.innerHTML='<div class="o-empty">输入关键词开始溯源；命中后点击即回到源头</div>';return}
+  const kws=kw.split(/\s+/)
+  const hits=INDEX.filter(it=>kws.every(k=>it.title.includes(k)||it.path.includes(k)))
+  if(!hits.length){body.innerHTML='<div class="o-empty">未命中——试试更短的关键词</div>';return}
+  const by={plan:[],task:[],note:[]}
+  hits.forEach(h=>by[h.scope].push(h))
+  const label={plan:'计划',task:'任务',note:'注释'}
+  body.innerHTML=Object.keys(by).filter(s=>by[s].length).map(s=>
+    `<div class="o-section">${label[s]}（${by[s].length}）</div>`+
+    by[s].map(h=>`<div class="o-item" onclick="locate('${h.title.replace(/'/g,'')}')">
+      <div class="o-title"><span class="badge ${s}">${label[s]}</span>${hl(h.title,kws)}</div>
+      <div class="o-path">${h.path}</div></div>`).join('')
+  ).join('')
+}
+function hl(text,kws){
+  let out=text
+  kws.forEach(k=>{out=out.split(k).join(`<span class="hl">${k}</span>`)})
+  return out
+}
+
+/* ====== 回溯：浮层收起 → 面包屑/树选中更新 → 命中卡脉冲点亮 2s ====== */
+function locate(title){
+  closeSearch()
+  document.querySelectorAll('.node').forEach(n=>n.classList.remove('selected'))
+  document.querySelector('.node[data-path="Trace 开发计划/周计划"]')?.classList.add('selected')
+  document.getElementById('card-single').scrollIntoView({behavior:'smooth',block:'center'})
+  const target = title.includes('周报')||title.includes('周计划') ? document.getElementById('card-tasks')
+               : title.includes('评审') ? document.getElementById('card-note')
+               : document.getElementById('card-single')
+  setTimeout(()=>{
+    target.scrollIntoView({behavior:'smooth',block:'center'})
+    target.classList.remove('pulse'); void target.offsetWidth; target.classList.add('pulse')
+    const s=document.getElementById('save-state'); s.textContent='✓ 已回到源头'; setTimeout(()=>s.textContent='✓ 已保存 23:41',2000)
+  },120)
+}
+
+/* ====== 树交互（原型级） ====== */
+function toggleNode(node){
+  const p=node.dataset.path
+  const children=document.querySelector(`[data-children-of="${p}"]`)
+  if(children) children.style.display=children.style.display==='none'?'block':'none'
+  node.classList.toggle('expanded')
+  if(!children){ // 叶子：选中并滚到内容顶
+    document.querySelectorAll('.node').forEach(n=>n.classList.remove('selected'))
+    node.classList.add('selected')
+  }
+}
+
+/* ====== 编辑态状态栏反馈（渲染即编辑的脉搏） ====== */
+let t=null
+function editing(){
+  const s=document.getElementById('save-state'); s.textContent='编辑中…'
+  clearTimeout(t); t=setTimeout(()=>{s.textContent='✓ 已保存 '+new Date().toTimeString().slice(0,5)},600)
+}
+document.querySelectorAll('input.t,.n-text,.t-title[contenteditable]').forEach(el=>{
+  el.addEventListener('input',()=>editing())
+  el.removeAttribute('readonly')
+})
+</script>
+</body>
+</html>
