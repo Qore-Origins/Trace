@@ -65,7 +65,7 @@
 数据：  计划库根目录（用户指定）明文件文件夹；配置/索引/日志在用户数据目录
 边界：  Renderer(UI) <——contextBridge 白名单 API——> Main(存储/检索/配置/监视)
 平台：  v1.0 承诺 Windows 10/11 x64；macOS/Linux 同代码可发（不承诺）；移动端远期原生
-仓库：  git init → GitHub qore/trace（CI: GitHub Actions，包 Windows 安装包）
+仓库：  git init → GitHub Qore-Origins/Trace（CI: GitHub Actions，包 Windows 安装包；已完成推送）
 ```
 
 ---
@@ -439,7 +439,7 @@ Trace/
 | 序号 ID | 事项 Item | 说明 Description | 时间 Time |
 |--------|----------|----------------|---------|
 | EB-01 | 仓库初始化 | `git init`（目录 `D:\Code\Project\Qore\Trace`），提交 00/01/02 文档基线 | 立即 |
-| EB-02 | 远端仓库 | GitHub 创建 `qore/trace`（公共或私有待定-默认公共，走组织约定），首次推送 | 立即（与 EB-01 同批） |
+| EB-02 | 远端仓库 | GitHub 仓库 `Qore-Origins/Trace`（仅本人与组织可见性待定，走组织约定），首次推送 | 已完成（2026-09-05） |
 | EB-03 | 02 其余文档 | 要件：存储格式契约（数据库设计说明书）、接口设计文档（IPC 白名单）、概要/详细设计说明书、UI 设计规范 | M3（2026-10-10）前 |
 | EB-04 | 订单/排期联动 | 组件语义评审（01 验收项）→ 设计冻结 | 2026-09-19 前（M2） |
 | EB-05 | Spike 验证 | electron-vite 脚手架 + 最小窗口 + 文件树读写 + FlexSearch 中文分词 PoC | 开发首周（M4 开始时） |

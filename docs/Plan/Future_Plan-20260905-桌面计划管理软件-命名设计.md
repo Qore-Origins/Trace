@@ -36,7 +36,7 @@
 |---|---|
 | Android applicationId / 包名 | `com.qore.trace` |
 | npm scope | `@qore/trace` |
-| GitHub 仓库 | `qore/trace` |
+| GitHub 仓库 | `Qore-Origins/Trace` |
 | 版权署名 | `Copyright (c) 2026 Qore` |
 
 ---

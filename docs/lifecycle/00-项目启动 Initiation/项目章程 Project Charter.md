@@ -376,7 +376,7 @@
 | 即时沟通 IM | 无（单人） |
 | 文档协作 Docs | `docs\lifecycle\`（本仓库文档集） |
 | 任务管理 Task Management | Git 提交 + 里程碑清单 |
-| 代码管理 Code | Git（仓库 `qore/trace`，沿用组织命名约定） |
+| 代码管理 Code | Git（仓库 `Qore-Origins/Trace`，组织命名空间 = 全称，简称已占用） |
 | 视频会议 Video Meeting | 无 |
 
 ---

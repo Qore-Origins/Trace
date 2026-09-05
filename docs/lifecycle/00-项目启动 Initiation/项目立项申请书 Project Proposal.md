@@ -172,7 +172,7 @@
 | 服务器 Servers | 无（本地应用，无需服务器） | 0 |
 | 开发工具 Tools | 开发机（现有 Windows PC）、编辑器/IDE（GitHub Copilot 类、CC 等 AI 代理） | 1 套（既有） |
 | 第三方服务 3rd Party Services | 无（本地优先，不依赖网络服务） | 0 |
-| 域名/证书 Domains/Certificates | 无（本地应用；若远期发布 GitHub 仓库 `qore/trace` + 开源，无额外费用） | 0 |
+| 域名/证书 Domains/Certificates | 无（本地应用；若远期发布 GitHub 仓库 `Qore-Origins/Trace` + 开源，无额外费用） | 0 |
 
 ### 5.3 预算估算 Budget Estimate
 

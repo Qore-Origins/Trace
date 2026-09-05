@@ -297,11 +297,11 @@
 
 | 对比项 Comparison | GitHub Actions | GitLab CI | 本地脚本 |
 |-----------------|---------|-----------|---------|
-| 触发场景 | 代码托管 `qore/trace` + PR 检查 + 打包 Windows 安装包 | 需自建 GitLab | 手动 |
+| 触发场景 | 代码托管 `Qore-Origins/Trace` + PR 检查 + 打包 Windows 安装包 | 需自建 GitLab | 手动 |
 | Windows 构建支持 | 原生 runner（windows-latest） | 部分自托管 | 本机 |
 | 成本 | 公共仓库免费额度 | 自建/免费额度 | - |
 
-**选择结果 Decision:** **GitHub Actions（`qore/trace`）** —— 主用 CI：TypeScript 检查 + 单测 + electron-builder 打包（Windows）；发布阶段 M6 使用。仓库创建与远端推送列为本期工程事项（见架构设计文档 §9）。
+**选择结果 Decision:** **GitHub Actions（`Qore-Origins/Trace`）** —— 主用 CI：TypeScript 检查 + 单测 + electron-builder 打包（Windows）；发布阶段 M6 使用。仓库创建与远端推送列为本期工程事项（见架构设计文档 §9）。
 
 ### 6.4 监控方案选择 Monitoring
 

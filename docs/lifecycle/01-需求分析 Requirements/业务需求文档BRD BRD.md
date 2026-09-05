@@ -102,7 +102,7 @@ This document defines the business requirements of the project, clarifying busin
 **自用效率闭环 + Qore 作品线：**
 
 1. **用户机会**：一个"计划语义"的单一入口工具——计划=文件夹、内容=五类组件、历史=可溯源；
-2. **组织机会**：Qore 个人工具线首作（`qore/trace`，可开源），与组织口号「叩问本心，不忘初心」产品立意呼应（溯源=回到起点）；
+2. **组织机会**：Qore 个人工具线首作（`Qore-Origins/Trace`，可开源），与组织口号「叩问本心，不忘初心」产品立意呼应（溯源=回到起点）；
 3. **工具链机会**：零现金成本（本地、开源工具链、无服务器），个人时间投入为唯一成本。
 
 ---
@@ -192,7 +192,7 @@ This document defines the business requirements of the project, clarifying busin
 | BR-003 | 任务闭环：任务与计划关联、状态可追踪 | P0 | 高（痛 P-003） |
 | BR-004 | 溯源查询：检索 + 来源回溯（对计划/任务/注释） | P0 | 高（命理 P-004，应用名之依据） |
 | BR-005 | 数据本地化可迁移：明文件存储、整库可备份、格式版本化 | P0 | 高（数据资产条款） |
-| BR-006 | 后续可公开：v1.0 后可评估开源（`qore/trace`） | P2 | 中（组织品牌） |
+| BR-006 | 后续可公开：v1.0 后可评估开源（`Qore-Origins/Trace`） | P2 | 中（组织品牌） |
 
 ### 5.2 需求分类 Requirements Categorization
 
