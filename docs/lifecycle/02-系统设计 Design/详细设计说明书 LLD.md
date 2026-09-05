@@ -161,7 +161,7 @@ END
 BEGIN
   INPUT: path, target_parent_path, order_index
   ├─ 1. isDescendant(target, path): 目标 ∈ 自身/子孙 → code 13
-  ├─ 2. 物理 move（同盘 rename；跨盘 [SPIKE-3: 移动策略，默认拒绝+提示]）
+  ├─ 2. 物理 move（同盘 rename；跨盘 rename 抛 EXDEV（SPIKE-3 实证）→ fallback: copy 到目标 + rm 源（失败回滚 rm 不执行））
   ├─ 3. 更新 父/新父 children_order
   ├─ 4. cache/index 增量 + 事件
   └─ 5. 返回 ok
@@ -515,14 +515,13 @@ END
 （done: completed_at = now UTC → 回退时清空 completed_at）
 ```
 
-### 6.4 检索实现 [SPIKE-1]
+### 6.4 检索实现（SPIKE-1 已定案：方案 B 内存扫包含）
 
-| 项 Item | 计划 A：FlexSearch | 计划 B：退化方案（内存扫包含匹配） |
+| 项 Item | 方案 A：FlexSearch（已否决） | 方案 B：内存扫包含（**采用**） |
 |--------|-------------------|--------------------------------|
-| 原理 | 自定义 tokenizer（中文按字/词 [SPIKE-1 定]） | 预提取字段 → `includes()`（小写化） |
-| 复杂度 | O(索引) | O(全字段扫描)，万级文档毫秒级 |
-| 判定基准 | 中文示例集检索命中率 100%（TC-01/TC-04 用例） | 同上 |
-| 决策点 | **Spike 首日（开发周 D1-D2）**；接口 `SearchPort` 已隔离，换实现不动服务层 | 同 |
+| 原理 | 自定义 tokenizer 分词索引 | 预提取字段 → `includes()`（小写化），AND 多词 |
+| 实测（12011 docs） | 中文子串漏检 487 条，命中率 18/19 不达标 | avg 1.65ms / max 5.46ms，漏检=0（构造性） |
+| 决策 | 否决（flexsearch 依赖已移除） | 采纳；`SearchPort` 接口保留（未来如需升级再评估，实现可替换） |
 
 ### 6.5 防抖保存 Debounced Save
 
@@ -632,14 +631,14 @@ IPC 入口统一包装（wrapHandler）
 | Renderer 组件 | 关键路径（树/渲染/编辑） | vitest + RTL（可选） |
 | IPC 集成 | 通道冒烟（electron 启动后 invoke 各通道） | M5 手工/脚本 |
 
-### 附录C：Spike 验证清单（开发首周）
+### 附录C：Spike 验证清单（结论已回填，2026-09-05 提前执行）
 
-| ID ID | 验证项 Item | 判定 Criteria | 影响 Impact |
-|-------|-----------|--------------|-----------|
-| SPIKE-1 | 检索实现：FlexSearch 中文分词 vs 内存扫包含 | 中文检索命中率 100%（快照样例）；≤1s | 锁定 SearchPort 实现 |
-| SPIKE-2 | 树拖拽：antd Tree 内建 vs dnd-kit 自建 | 跨层移动+插入线+循环红显 完整可用 | 锁定 M-003 树组件实现 |
-| SPIKE-3 | 跨盘移动/超长路径策略 | Windows 实测（<260 限制与长路径开关） | 移动语义细化 |
-| SPIKE-4 | 本地搜索高亮/IO 性能基准 | 万级任务场景冷启动/检索实测 | 校准 §1.1 性能承诺 |
+| ID ID | 验证项 Item | 判定 Criteria | 结论 Conclusion |
+|-------|-----------|--------------|----------------|
+| SPIKE-1 | 检索实现：FlexSearch 中文分词 vs 内存扫包含 | 中文检索命中率 100%；≤1s | **方案 B 内存扫包含胜出**。实测（12011 docs / 19 查询）：B avg 1.65ms / max 5.46ms / 漏检=0（构造性）；FlexSearch reverse/full 均漏检 487 条（命中率 18/19 不达标）。flexsearch 依赖已移除；`SearchPort` 实现=内存扫包含（脚本 `scripts/spike/spike1-search.mjs` 存档） |
+| SPIKE-2 | 树拖拽：antd Tree 内建 vs dnd-kit 自建 | 跨层移动+插入线+循环校验 API 完整 | **antd Tree 内建拖拽**（`src/renderer/src/spikes/TreeDndPoc.tsx`：draggable/onDrop/dropToGap/allowDrop API 面经 typecheck 验证）。交互手感（插入线视觉/悬停展开）Sprint 2 dev 首验 |
+| SPIKE-3 | 跨盘移动/超长路径 | Windows 实测 | **跨盘 rename 抛 EXDEV（实证）→ movePlan 需 copy+rm fallback**（同盘仍走 rename）；**长路径 325 字符创建成功**（本机 LongPaths 生效），契约不变、仅在路径长度校验按实测放宽 |
+| SPIKE-4 | 万级规模性能基准 | build/query ≤1s | 与 SPIKE-1 同脚本：12000 docs 索引/全量扫描均在 ms 级（max 5.46ms），**远优于 ≤1s 承诺**；M5 复测冷启动与真实 UI 场景 |
 
 ---
 

@@ -129,7 +129,7 @@
 | 状态管理 State | Zustand | 4.x（LLD 锁定） | 轻量，桌面本地状态足够 |
 | 打包分发 Packaging | electron-builder | 当前稳定版（LLD 锁定） | NSIS 安装包（Windows）、将来可扩展 MSI |
 | 拖拽 Drag & Drop | dnd-kit（或 antd Tree 内建拖拽） | 当前稳定版（LLD 锁定） | 树节点拖放/排序 |
-| 本地索引 Search | FlexSearch（候选） | 当前稳定版（LLD 锁定） | 纯 JS 无服务端；中文分词 LLD 期验证，不达标则退化为"内存扫包含匹配"（数据规模下毫秒级） |
+| 本地索引 Search | 内存扫包含匹配（自研，SPIKE-1 定案） | - | 万级 docs 实测 avg 1.65ms/max 5.46ms、零漏检；FlexSearch 中文子串漏检 487 条被否决（2026-09-05 Spike，脚本存档 `scripts/spike/`） |
 | 文件监视 File Watch | chokidar | 4.x（LLD 锁定） | 计划库外部变更检测 |
 
 ### 3.3 移动端技术选型 Mobile Selection

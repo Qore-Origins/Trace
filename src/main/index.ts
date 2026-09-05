@@ -54,6 +54,7 @@ if (!app.requestSingleInstanceLock()) {
   app.setAppUserModelId('com.qore.trace')
 
   app.whenReady().then(() => {
+    console.log('[trace] main ready')
     createWindow()
 
     app.on('activate', () => {

@@ -135,7 +135,7 @@
 | 数据库 Database | 无（明文件 JSON） | 契约 v1 | 计划库根目录 |
 | 缓存 Cache | 进程内缓存 | - | 树/内容/索引对象 |
 | 消息队列 Message Queue | 无（进程内事件） | - | 异步=事件+定时 |
-| 搜索引擎 Search Engine | FlexSearch（候选）+ 退化方案 | LLD 锁定 | 内存索引 + index.json 缓存 |
+| 搜索引擎 Search Engine | 内存扫包含（SPIKE-1 定案；FlexSearch 已否决） | - | 内存索引 + index.json 缓存 |
 | 文件监视 | chokidar | 4.x | 外部变更检测 |
 | 打包 Packaging | electron-builder（NSIS） | 当前稳定 | Windows 安装包 |
 | 容器化 Container | 无 | - | 无服务端 |
