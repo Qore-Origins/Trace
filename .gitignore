@@ -15,6 +15,10 @@ logs/
 .DS_Store
 Thumbs.db
 
+# 图标源稿（未采用的多轮生成稿与 PSD，体积大不入库；采用的源图 Resource/ico/Trace_logo.png 保留）
+Resource/ico/*.psd
+Resource/ico/Wan_*.png
+
 # IDE
 .idea/
 .vscode/

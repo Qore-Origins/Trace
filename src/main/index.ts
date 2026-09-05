@@ -18,6 +18,8 @@ function createWindow(): void {
     show: false,
     title: '溯源 Trace',
     autoHideMenuBar: true,
+    // 打包后窗口图标取自 exe 资源；开发态显式指定（否则任务栏显示默认 Electron 图标）
+    icon: app.isPackaged ? undefined : join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       ...SECURITY_BASE

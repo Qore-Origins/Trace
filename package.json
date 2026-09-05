@@ -13,7 +13,8 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "build:win": "electron-vite build && electron-builder --win --x64"
+    "build:win": "electron-vite build && electron-builder --win --x64",
+    "icon": "node scripts/make-ico.mjs"
   },
   "dependencies": {
     "antd": "^5.0.0",
@@ -30,6 +31,7 @@
     "electron": "^44.0.0",
     "electron-builder": "^26.0.0",
     "electron-vite": "^5.0.0",
+    "png2icons": "^2.0.1",
     "typescript": "^5.0.0",
     "vite": "^7.0.0"
   }
