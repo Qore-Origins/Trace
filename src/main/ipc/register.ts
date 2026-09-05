@@ -1,5 +1,5 @@
 // IPC 注册层：白名单通道 → 主进程 handler；统一校验包装（异常 → TraceResult + 脱敏日志）
-import { ipcMain, type BrowserWindow } from 'electron'
+import { ipcMain, dialog, type BrowserWindow } from 'electron'
 import { toTraceResultError, ERR } from '../../shared/errors'
 import type { TraceEvents } from '../services/event-bus'
 import { fail, ok, type ChannelName, type Channels, type TraceResult } from '../../shared/ipc-contract'
@@ -44,6 +44,12 @@ export function registerIpc(deps: Deps): void {
   reg('app:getAppInfo', () => app.getAppInfo())
   reg('app:bootstrap', () => app.bootstrap())
   reg('app:setRootDir', (p) => app.setRootDir(p.dirPath, p.confirmed))
+  reg('app:chooseDirectory', async () => {
+    const r = await dialog.showOpenDialog(getWindow() ?? ({} as BrowserWindow), {
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return { dirPath: r.canceled ? null : (r.filePaths[0] ?? null) }
+  })
   reg('app:reportError', (p) => {
     log(`renderer:${p.context}`, ERR.INTERNAL, p.message) // 渲染器上报：仅上下文与消息
     return Promise.resolve(null)

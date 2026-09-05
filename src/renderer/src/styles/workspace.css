@@ -1,0 +1,121 @@
+/* 主题「迹 · Trace Mark」（前端详细设计 §1/§2；token 同 UI 规范 §2） */
+:root {
+  --trace-500: #1677ff;
+  --trace-700: #0958d9;
+  --trace-bg: #e6f4ff;
+  --origin: #1d39c4;
+  --success: #52c41a;
+  --warning: #faad14;
+  --text-1: #262626;
+  --text-2: #595959;
+  --text-3: #8c8c8c;
+  --text-4: #bfbfbf;
+  --split: #f0f0f0;
+  --paper: #ffffff;
+  --paper-dim: #fafafa;
+  --r-card: 8px;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+html, body, #root { height: 100%; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text-1); }
+
+/* ---------- 布局骨架（§2.2） ---------- */
+.ws { display: flex; flex-direction: column; height: 100%; background: var(--paper-dim); }
+.ws-main { flex: 1; display: flex; min-height: 0; }
+.ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); overflow: auto; padding: 8px 6px; }
+.ws-content { flex: 1; overflow: auto; padding: 14px 24px 32px; }
+.ws-status { height: 28px; flex: none; background: var(--paper); border-top: 1px solid var(--split); display: flex; align-items: center; gap: 20px; padding: 0 14px; font-size: 12px; color: var(--text-3); }
+
+@media (max-width: 959px) {
+  .ws-tree { display: none; }
+}
+
+/* 顶栏 */
+.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 16px; padding: 0 16px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+.brand-dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #3b5bdb, var(--origin)); }
+.ws-top .search { flex: 0 1 420px; }
+.ws-top .spacer { flex: 1; }
+
+/* ---------- 计划树（§3.1 连接线=迹的骨架；源头圆点） ---------- */
+.tree-root-label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-weight: 500; color: var(--text-1); }
+.tree-root-label .origin-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--origin); }
+.tree-node-title { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.tree-node-title .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-quick { display: none; gap: 2px; }
+.ant-tree-node-content-wrapper:hover .tree-quick { display: flex; }
+.tree-quick button { font-size: 12px; color: var(--text-3); padding: 0 4px; }
+.tree-quick button:hover { color: var(--trace-500); }
+.tree-node-title.selected-bar { position: relative; }
+
+/* ---------- 内容区（§2.3 纸感） ---------- */
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+.crumbs .origin-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--origin); }
+.crumbs .here { color: var(--text-1); font-weight: 500; }
+
+.card { background: var(--paper); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 12px 16px; margin-bottom: 12px; }
+.card .kind { font-size: 12px; color: var(--text-4); margin-bottom: 4px; user-select: none; }
+.card .head { display: flex; align-items: center; gap: 8px; }
+.card .head h3 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
+.card .actions { display: none; gap: 4px; }
+.card:hover .actions { display: flex; }
+.card .actions button { font-size: 12px; color: var(--text-3); padding: 2px 6px; border-radius: 4px; }
+.card .actions button:hover { background: var(--paper-dim); color: var(--trace-500); }
+.card .actions button.danger:hover { color: var(--warning); }
+
+.card.pulse { animation: card-pulse 2s ease-out; }
+@keyframes card-pulse {
+  0% { box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.55), var(--shadow-card); }
+  70% { box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.15), var(--shadow-card); }
+  100% { box-shadow: var(--shadow-card); }
+}
+
+/* 单选计划（§3.3 有重量的卡） */
+.single-title { border: none; outline: none; font-size: 16px; font-weight: 600; flex: 1; color: var(--text-1); background: transparent; }
+.card.single-done .single-title { text-decoration: line-through; color: var(--text-3); }
+.single-summary { margin-top: 6px; margin-left: 28px; }
+.card.single-done .single-summary textarea { color: var(--text-3); }
+
+/* 任务行（§3.2 足迹三态） */
+.task-row { display: flex; align-items: center; gap: 10px; padding: 5px 4px; border-radius: 6px; }
+.task-row:hover { background: var(--paper-dim); }
+.task-row .state-ring { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--text-4); cursor: pointer; position: relative; transition: all 0.15s; background: transparent; padding: 0; }
+.task-row.doing .state-ring { border-color: var(--trace-500); background: var(--trace-500); box-shadow: 0 0 0 3px var(--trace-bg); }
+.task-row.doing .task-title input { color: var(--trace-500); }
+.task-row.done .state-ring { border-color: var(--text-4); background: var(--fill); }
+.task-row.done .state-ring::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-3); }
+.task-row.done .task-title input { text-decoration: line-through; color: var(--text-3); }
+.task-row.done { opacity: 0.55; }
+.task-title { flex: 1; }
+.task-title input { border: none; outline: none; width: 100%; font-size: 14px; background: transparent; color: var(--text-1); }
+.task-date { font-size: 12px; color: var(--text-3); border: 1px solid transparent; border-radius: 4px; padding: 2px; background: transparent; }
+.task-date:hover { border-color: var(--border-color, #d9d9d9); background: #fff; }
+.tag-overdue { font-size: 11px; color: #d48806; background: #fffbe6; border-radius: 4px; padding: 1px 6px; }
+.task-del { display: none; font-size: 12px; color: var(--text-4); }
+.task-row:hover .task-del { display: block; }
+.task-del:hover { color: var(--warning); }
+
+/* 注释旁批（§3.5） */
+.card.note { background: var(--paper-dim); border-left: 4px solid var(--split); border-radius: 0 var(--r-card) var(--r-card) 0; }
+.card.note textarea { font-size: 13px; color: var(--text-2); }
+.note-time { font-size: 12px; color: var(--text-4); margin-top: 4px; }
+
+/* 状态栏（§3.8） */
+.dot-ok { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 4px; }
+.dot-building { background: var(--trace-500); }
+.dot-error { background: var(--warning); }
+.status-saved { color: var(--text-2); }
+
+/* ---------- 引导页（§3.7 空即是信任） ---------- */
+.onboard { height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #ffffff 0%, #f5f9ff 100%); }
+.onboard-inner { width: 520px; text-align: center; }
+.onboard-inner .logo-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--origin); margin: 0 auto 16px; }
+.onboard-inner h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
+.onboard-inner h1 em { font-style: normal; color: var(--trace-500); }
+.onboard-inner .slogan { color: var(--text-2); margin-bottom: 28px; }
+.onboard-inner .desc { font-size: 13px; color: var(--text-2); background: #fff; border: 1px solid var(--split); border-radius: var(--r-card); padding: 16px 20px; margin-bottom: 20px; text-align: left; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card.pulse { animation-duration: 0.05s; }
+}

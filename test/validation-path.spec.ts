@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { validatePlanName, validateTitle, uuid32, isUuid32 } from '../src/shared/validation'
 import { TraceError, ERR } from '../src/shared/errors'
-import { normalizeRel, resolveWithin, isSelfOrDescendant, parentRel } from '../src/main/services/path-safety'
+import { normalizeRel, resolveWithin, isSelfOrDescendant, parentRel, normalizeRelSafe } from '../src/main/services/path-safety'
 
 describe('validatePlanName', () => {
   it.each(['学期计划', '2026-A', 'a b.c', '中文名-255以内'])('合法名称 %s 通过', (n) => {
@@ -36,8 +36,8 @@ describe('normalizeRel', () => {
     expect(normalizeRel('/a/b/')).toBe('a/b')
     expect(normalizeRel('a\\b')).toBe('a/b')
   })
-  it('.. 拒绝', () => {
-    expect(() => normalizeRel('a/../b')).toThrow(TraceError)
+  it('.. 在安全规范化时拒绝（主进程入口防线）', () => {
+    expect(() => normalizeRelSafe('a/../b')).toThrow(TraceError)
   })
 })
 

@@ -1,14 +1,36 @@
-import { Typography } from 'antd'
+// App：阶段推导视图（无路由，前端详细设计 §2.1）；全局事件订阅随生命周期挂载/释放
+import { useEffect } from 'react'
+import { Spin } from 'antd'
+import OnboardingView from './views/OnboardingView'
+import WorkspaceView from './views/WorkspaceView'
+import { useAppStore, subscribeAppEvents } from './stores/app-store'
+import { subscribeTreeEvents } from './stores/tree-store'
+import { subscribePlanEvents } from './stores/plan-store'
 
-// Sprint 0 占位壳：验证 渲染器(React+antd) ↔ preload bridge 通路
-// TODO(SPRINT-2): 替换为 主界面（计划树/内容区/顶栏/状态栏，见 UI 规范 §7.2 与原型 P-001）
 export default function App(): React.JSX.Element {
-  return (
-    <div style={{ padding: 48 }}>
-      <Typography.Title level={2}>溯源 Trace</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        计划有迹可循 · Sprint 1 主进程服务已就绪（IPC 契约 v1 · 61 单测通过） · 界面按前端详细设计 Sprint 2 实现
-      </Typography.Paragraph>
-    </div>
-  )
+  const phase = useAppStore((s) => s.phase)
+  const bootstrap = useAppStore((s) => s.bootstrap)
+
+  useEffect(() => {
+    const offApp = subscribeAppEvents()
+    const offTree = subscribeTreeEvents()
+    const offPlan = subscribePlanEvents()
+    void bootstrap()
+    return () => {
+      offApp()
+      offTree()
+      offPlan()
+    }
+  }, [bootstrap])
+
+  if (phase === 'checking') {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin tip="正在打开计划库…">
+          <div style={{ minHeight: 60 }} />
+        </Spin>
+      </div>
+    )
+  }
+  return phase === 'onboarding' ? <OnboardingView /> : <WorkspaceView />
 }

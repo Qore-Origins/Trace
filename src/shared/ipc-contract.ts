@@ -44,6 +44,7 @@ export interface Channels {
   'app:bootstrap': { req: void; res: BootstrapInfo }
   'app:setRootDir': { req: { dirPath: string; confirmed: boolean }; res: { rootDir: string } }
   'app:reportError': { req: { context: string; message: string; stack?: string }; res: null }
+  'app:chooseDirectory': { req: void; res: { dirPath: string | null } }
   // storage
   'storage:treeGetChildren': { req: { parent_path: string }; res: PlanTreeNode[] }
   'storage:createPlan': { req: { parent_path: string; name: string }; res: PlanTreeNode }
