@@ -1,0 +1,27 @@
+appId: com.qore.trace
+productName: 溯源 Trace
+copyright: Copyright (c) 2026 Qore
+
+directories:
+  buildResources: resources
+  output: release
+
+files:
+  - out/**/*
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup.${ext}
+  shortcutName: 溯源 Trace
+
+publish: null
+
+# TODO(M4 前): 应用图标 resources/icon.ico（当前 electron-builder 默认图标可用，含构建警告）
