@@ -13,6 +13,19 @@ const PLAN_FILE = 'plan.json'
 
 type RenameFn = (from: string, to: string) => Promise<void>
 
+// fs 底层错误 → 业务错误码（Windows 常见：EPERM/EACCES/EBUSY=占用；ENOENT=消失；EEXIST=重名）
+function fsErrorToTrace(e: unknown): Error {
+  const err = e as NodeJS.ErrnoException
+  if (err?.code) {
+    if (err.code === 'ENOENT') return new TraceError(ERR.PATH_NOT_FOUND, '目标位置不存在（可能已被移动或删除）')
+    if (err.code === 'EPERM' || err.code === 'EACCES' || err.code === 'EBUSY') {
+      return new TraceError(ERR.SAVE_FAILED, '文件被占用或无权限——请关闭正在使用该文件夹的程序（如资源管理器预览/编辑器）后重试')
+    }
+    if (err.code === 'EEXIST' || err.code === 'ENOTEMPTY') return new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+  }
+  return e instanceof Error ? e : new Error(String(e))
+}
+
 export interface RepoDeps {
   /** 外部写入通知（供 WatchService 抑制自身写入回声）；可选 */
   onInternalWrite?: (absPath: string) => void
@@ -170,7 +183,11 @@ export class PlanRepository {
   async mkdirPlan(rootAbs: string, parentRelPath: string, name: string): Promise<string> {
     const parentAbs = parentRelPath === '' ? rootAbs : join(rootAbs, parentRelPath)
     const dirAbs = join(parentAbs, name)
-    await fs.mkdir(dirAbs) // 已存在则抛 EEXIST → 上层转 NAME_CONFLICT
+    try {
+      await fs.mkdir(dirAbs) // 已存在则抛 EEXIST → 转 NAME_CONFLICT
+    } catch (e) {
+      throw fsErrorToTrace(e)
+    }
     return dirAbs
   }
 
@@ -200,7 +217,11 @@ export class PlanRepository {
   }
 
   async rmRecursive(rootAbs: string, rel: string): Promise<void> {
-    await fs.rm(join(rootAbs, rel), { recursive: true, force: false })
+    try {
+      await fs.rm(join(rootAbs, rel), { recursive: true, force: false })
+    } catch (e) {
+      throw fsErrorToTrace(e)
+    }
   }
 
   // 跨盘安全移动：同盘 rename；EXDEV → copy 目录 + rm 源（SPIKE-3 定案）
@@ -208,9 +229,13 @@ export class PlanRepository {
     try {
       await this.rename(fromAbs, toAbs)
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e
-      await this.copyDirRecursive(fromAbs, toAbs)
-      await fs.rm(fromAbs, { recursive: true, force: true })
+      if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw fsErrorToTrace(e)
+      try {
+        await this.copyDirRecursive(fromAbs, toAbs)
+        await fs.rm(fromAbs, { recursive: true, force: true })
+      } catch (e2) {
+        throw fsErrorToTrace(e2)
+      }
     }
   }
 

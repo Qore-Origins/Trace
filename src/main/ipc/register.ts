@@ -23,6 +23,7 @@ interface Deps {
 type Handler<K extends ChannelName> = (payload: Channels[K]['req']) => Promise<Channels[K]['res']>
 
 // wrapHandler：TraceError/未知异常 → { ok:false, code, message }；日志只含通道+错误码+消息（不含计划正文）
+// 未知异常（INTERNAL）额外打完整栈到主进程控制台——否则真实原因被笼统消息吞掉无法定位
 function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['log']) {
   return async (event: unknown, payload: Channels[K]['req']): Promise<TraceResult<Channels[K]['res']>> => {
     try {
@@ -33,6 +34,7 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
     } catch (e) {
       const { code, message } = toTraceResultError(e)
       log(name, code, message)
+      if (code === ERR.INTERNAL) console.error(`[ipc] ${name} internal:`, e)
       return fail(code, message)
     }
   }
