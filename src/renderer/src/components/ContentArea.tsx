@@ -4,6 +4,7 @@ import { Alert, Button, Dropdown, Empty, message } from 'antd'
 import { FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
 import { useTreeStore } from '../stores/tree-store'
+import { useUiStore } from '../stores/ui-store'
 import { ComponentRenderer } from './cards'
 import { uuid32 } from '@shared/validation'
 import type { Component, ComponentType } from '@shared/plan-types'
@@ -36,7 +37,7 @@ const INSERT_ITEMS: Array<{ key: ComponentType; label: string }> = [
 export default function ContentArea(): React.JSX.Element {
   const { currentPath, document: doc, externalAlert, open } = usePlanStore()
   const { appendComponent } = usePlanMutations()
-  const { selectedKind, childrenMap, loadChildren } = useTreeStore()
+  const { selectedKind, childrenMap, loaded, loadChildren } = useTreeStore()
   const today = useMemo(() => new Date(), [doc?.updated_at])
 
   // 文件夹容器视图：列出子项，点击进入
@@ -45,9 +46,20 @@ export default function ContentArea(): React.JSX.Element {
   }, [currentPath, selectedKind, loadChildren])
 
   if (!currentPath) {
+    // 空库/未选中：给出可执行的下一步（空库时引导建计划或迁入 Markdown，而非沉默）
+    const treeEmpty = (childrenMap[''] ?? []).length === 0 && loaded[''] === true
     return (
       <div className="ws-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Empty description="从左侧选择一个计划，开始你的迹线" />
+        <Empty description={treeEmpty ? '此计划库为空——从零开始，或把旧计划迁进来' : '从左侧选择一个计划，开始你的迹线'}>
+          {treeEmpty && (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <Button type="primary" onClick={() => useUiStore.getState().openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })}>
+                新建第一个计划
+              </Button>
+              <Button onClick={() => void useTreeStore.getState().importMarkdown('')}>迁入 Markdown 计划</Button>
+            </div>
+          )}
+        </Empty>
       </div>
     )
   }
