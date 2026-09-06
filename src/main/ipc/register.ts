@@ -89,6 +89,24 @@ export function registerIpc(deps: Deps): void {
   reg('storage:moveComponent', (p) => storage.moveComponent(p.path, p.component_id, p.target_index).then(() => null))
   reg('storage:updateTask', (p) => storage.updateTask(p.path, p.component_id, p.task_id, p.patch).then(() => null))
 
+  // ---------- window（无边框自绘控制） ----------
+  reg('window:minimize', () => {
+    getWindow()?.minimize()
+    return Promise.resolve(null)
+  })
+  reg('window:toggleMaximize', () => {
+    const win = getWindow()
+    if (!win) return Promise.resolve({ maximized: false })
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+    return Promise.resolve({ maximized: win.isMaximized() })
+  })
+  reg('window:close', () => {
+    getWindow()?.close()
+    return Promise.resolve(null)
+  })
+  reg('window:getMaximized', () => Promise.resolve({ maximized: getWindow()?.isMaximized() ?? false }))
+
   // ---------- config ----------
   reg('config:getWindow', () => config.getWindowState())
   reg('config:setWindow', (p) => config.saveWindowState(p).then(() => null))

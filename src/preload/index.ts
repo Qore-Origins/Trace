@@ -4,12 +4,13 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { ChannelName, Channels, EventName, TraceBridge, TraceResult } from '../shared/ipc-contract'
 import type { TraceEventsContract } from '../shared/event-types'
 
-const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:']
+const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:', 'transfer:', 'window:']
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',
   'trace:fs-external-change',
-  'trace:index-status'
+  'trace:index-status',
+  'trace:window-state'
 ])
 
 const bridge = {

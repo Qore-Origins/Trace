@@ -4,6 +4,7 @@ import { Alert, Button, Typography, message } from 'antd'
 import { FolderOpenOutlined } from '@ant-design/icons'
 import { useAppStore } from '../stores/app-store'
 import { invoke, ClientError } from '../ipc-client'
+import WindowControls from '../components/WindowControls'
 
 export default function OnboardingView(): React.JSX.Element {
   const { setRootDir, rootDir: prevRoot, rootInvalid } = useAppStore()
@@ -30,6 +31,14 @@ export default function OnboardingView(): React.JSX.Element {
 
   return (
     <div className="onboard">
+      {/* 无边框：引导页也需要拖拽区与窗口控制 */}
+      <div className="onboard-titlebar">
+        <span className="brand">
+          <span className="brand-dot" />
+          溯源 Trace
+        </span>
+        <WindowControls />
+      </div>
       <div className="onboard-inner">
         <div className="logo-dot" />
         <Typography.Title level={3} style={{ marginBottom: 4 }}>

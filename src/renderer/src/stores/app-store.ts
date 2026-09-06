@@ -11,6 +11,7 @@ interface AppState {
   rootDir: string | null
   rootInvalid: boolean
   indexState: IndexState
+  winMaximized: boolean // 无边框自绘控制用
   // 溯源浮层开合（Sprint 3 接 SearchService；先做壳）
   searchOpen: boolean
   bootstrap: () => Promise<void>
@@ -23,6 +24,7 @@ export const useAppStore = create<AppState>()((set) => ({
   rootDir: null,
   rootInvalid: false,
   indexState: 'ready',
+  winMaximized: false,
   searchOpen: false,
 
   bootstrap: async () => {
@@ -47,8 +49,12 @@ export const useAppStore = create<AppState>()((set) => ({
   setSearchOpen: (open) => set({ searchOpen: open })
 }))
 
-// 全局事件订阅（app 级：索引状态；随组件生命周期挂载/释放）
+// 全局事件订阅（app 级：索引状态 / 窗口最大化状态；随组件生命周期挂载/释放）
 export function subscribeAppEvents(): () => void {
   const offIndex = onEvent('trace:index-status', (p) => useAppStore.setState({ indexState: p.state }))
-  return offIndex
+  const offWin = onEvent('trace:window-state', (p) => useAppStore.setState({ winMaximized: p.maximized }))
+  return () => {
+    offIndex()
+    offWin()
+  }
 }

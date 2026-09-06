@@ -69,6 +69,11 @@ export interface Channels {
   // config
   'config:getWindow': { req: void; res: { width: number; height: number; maximized: boolean } }
   'config:setWindow': { req: { width: number; height: number; maximized: boolean }; res: null }
+  // window（无边框自绘窗口控制）
+  'window:minimize': { req: void; res: null }
+  'window:toggleMaximize': { req: void; res: { maximized: boolean } }
+  'window:close': { req: void; res: null }
+  'window:getMaximized': { req: void; res: { maximized: boolean } }
   // transfer（.plan 导入导出 + Markdown 迁入）
   'transfer:exportPlan': { req: { path: string; saveTo: string }; res: { savedTo: string; plans: number; components: number; tasks: number } }
   'transfer:importPlan': {

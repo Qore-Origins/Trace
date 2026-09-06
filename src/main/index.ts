@@ -41,6 +41,9 @@ function createWindow(bounds?: { width: number; height: number }): void {
     minHeight: 480,
     show: false,
     title: '溯源 Trace',
+    // 无边框自绘窗口控制（保留 Windows 原生窗口行为：阴影/圆角/Win+方向贴靠/动画）
+    // 取舍：自绘按钮无 Win11 Snap Layouts 悬停气泡（那是系统按钮专属）
+    titleBarStyle: 'hidden',
     autoHideMenuBar: true,
     // 打包后窗口图标取自 exe 资源；开发态显式指定（否则任务栏显示默认 Electron 图标）
     icon: app.isPackaged ? undefined : join(__dirname, '../../resources/icon.ico'),
@@ -49,6 +52,10 @@ function createWindow(bounds?: { width: number; height: number }): void {
       ...SECURITY_BASE
     }
   })
+
+  // 最大化状态推送（自绘按钮图标切换）
+  mainWindow.on('maximize', () => bus.emit('trace:window-state', { maximized: true }))
+  mainWindow.on('unmaximize', () => bus.emit('trace:window-state', { maximized: false }))
 
   // 界面就绪后再显示（避免白屏闪烁）
   mainWindow.on('ready-to-show', () => mainWindow?.show())

@@ -31,12 +31,21 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
   .ws-tree { display: none; }
 }
 
-/* 顶栏 */
-.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 16px; padding: 0 16px; }
+/* 顶栏：无边框标题栏——整体为拖拽区，交互控件 no-drag（双击空白=最大化/还原 系统行为） */
+.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 16px; padding: 0 0 0 16px; -webkit-app-region: drag; user-select: none; }
+.ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input { -webkit-app-region: no-drag; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #3b5bdb, var(--origin)); }
 .ws-top .search { flex: 0 1 420px; }
 .ws-top .spacer { flex: 1; }
+
+/* 自绘窗口控制（Windows 11 惯例：方形热区/悬停浅灰/关闭悬停红） */
+.win-controls { display: flex; align-self: stretch; margin-left: 8px; }
+.win-btn { width: 46px; align-self: stretch; display: flex; align-items: center; justify-content: center; color: var(--text-1); border-radius: 0; }
+.win-btn:hover { background: rgba(0, 0, 0, 0.06); }
+.win-btn:active { background: rgba(0, 0, 0, 0.1); }
+.win-btn.win-close:hover { background: #c42b1c; color: #fff; }
+.win-btn.win-close:active { background: #b3271a; color: #fff; }
 
 /* ---------- 计划树（§3.1 连接线=迹的骨架；源头圆点） ---------- */
 .tree-root-label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-weight: 500; color: var(--text-1); }
@@ -108,7 +117,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .status-saved { color: var(--text-2); }
 
 /* ---------- 引导页（§3.7 空即是信任） ---------- */
-.onboard { height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #ffffff 0%, #f5f9ff 100%); }
+.onboard { height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #ffffff 0%, #f5f9ff 100%); position: relative; }
+.onboard-titlebar { position: fixed; top: 0; left: 0; right: 0; height: 40px; display: flex; align-items: center; padding-left: 16px; -webkit-app-region: drag; user-select: none; }
+.onboard-titlebar .win-controls { margin-left: auto; }
 .onboard-inner { width: 520px; text-align: center; }
 .onboard-inner .logo-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--origin); margin: 0 auto 16px; }
 .onboard-inner h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }

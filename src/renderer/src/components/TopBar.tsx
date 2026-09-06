@@ -1,9 +1,11 @@
-// TopBar（§2.2）：品牌 / 全局搜索（Sprint 3 解锁）/ 导入导出 / 新建计划
-import { useState } from 'react'
+// TopBar（§2.2）：无边框标题栏——品牌 / 全局搜索（Sprint 3）/ 导入导出 / 新建计划 / 自绘窗口控制
+// 拖拽区 = 标题栏整体（-webkit-app-region: drag），交互控件 no-drag
+import { useEffect, useState } from 'react'
 import { Button, Dropdown, Input, Modal, Tooltip, message } from 'antd'
 import { PlusOutlined, SwapOutlined } from '@ant-design/icons'
 import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
+import WindowControls from './WindowControls'
 import { ClientError } from '../ipc-client'
 
 export default function TopBar(): React.JSX.Element {
@@ -38,6 +40,7 @@ export default function TopBar(): React.JSX.Element {
       <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
         新建计划
       </Button>
+      <WindowControls />
       <Modal
         title="新建顶层计划"
         open={open}
@@ -59,7 +62,7 @@ export default function TopBar(): React.JSX.Element {
   )
 }
 
-// 导入/导出菜单（.plan 互通 + Markdown 旧计划迁入）
+// ---------- 导入/导出菜单（.plan 互通 + Markdown 旧计划迁入） ----------
 function TransferMenu(): React.JSX.Element {
   const { exportPlan, importPlan, importMarkdown, selectedPath } = useTreeStore()
   const run = async (action: () => Promise<string | null>): Promise<void> => {
