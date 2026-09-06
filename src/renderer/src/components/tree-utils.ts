@@ -6,7 +6,15 @@ import type { TreeDataNode } from 'antd'
 
 // childrenMap → antd 树数据（懒加载：未加载层 children=undefined 触发 loadData）
 export function buildTreeData(map: Record<string, PlanTreeNode[]>, loaded: Record<string, boolean>): TreeDataNode[] {
-  const root: TreeDataNode = { key: '', title: '计划库（源头）', children: buildLevel('', map, loaded) }
+  // 根节点同样数据驱动 isLeaf（2026-09-06：根节点缺 isLeaf 是空库 +号不恢复的死角——
+  // 空库展开后 children=[] 被判叶子；新建后必须由 childrenMap 重新驱动非叶）
+  const rootChildren = buildLevel('', map, loaded)
+  const root: TreeDataNode = {
+    key: '',
+    title: '计划库（源头）',
+    isLeaf: rootChildren !== undefined && rootChildren.length === 0,
+    children: rootChildren
+  }
   return [root]
 }
 

@@ -13,14 +13,18 @@ export interface NameDialog {
 
 interface UiState {
   nameDialog: NameDialog | null
+  settingsOpen: boolean
   openNameDialog: (d: NameDialog) => void
   closeNameDialog: () => void
+  setSettingsOpen: (open: boolean) => void
 }
 
 export const useUiStore = create<UiState>()((set) => ({
   nameDialog: null,
+  settingsOpen: false,
   openNameDialog: (d) => set({ nameDialog: d }),
-  closeNameDialog: () => set({ nameDialog: null })
+  closeNameDialog: () => set({ nameDialog: null }),
+  setSettingsOpen: (open) => set({ settingsOpen: open })
 }))
 
 // 删除确认（树节点：计划/文件夹共用；BR-007 二次确认）

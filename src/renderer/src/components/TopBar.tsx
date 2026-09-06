@@ -11,6 +11,7 @@ import { invoke, ClientError } from '../ipc-client'
 
 export default function TopBar(): React.JSX.Element {
   const setSearchOpen = useSearchStore((s) => s.setOpen)
+  const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
 
   return (
     <div className="ws-top">
@@ -34,9 +35,10 @@ export default function TopBar(): React.JSX.Element {
 
 // ---------- VS Code 式菜单栏（极简：无底色，悬停变色） ----------
 function MenuBar(): React.JSX.Element {
-  const { selectedPath, selectedKind, exportPlan, importPlan, importMarkdown, refreshAll } = useTreeStore()
+  const { selectedPath, exportPlan, importPlan, importMarkdown, refreshAll } = useTreeStore()
   const switchRootDir = useAppStore((s) => s.switchRootDir)
   const openNameDialog = useUiStore((s) => s.openNameDialog)
+  const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
 
   const run = async (action: () => Promise<string | null>): Promise<void> => {
     try {
@@ -67,6 +69,7 @@ function MenuBar(): React.JSX.Element {
     },
     { type: 'divider' },
     { key: 'switch-root', label: '切换计划库目录…', onClick: () => void switchRootDir() },
+    { key: 'settings', label: '设置…', extra: 'Ctrl+,', onClick: () => setSettingsOpen(true) },
     { type: 'divider' },
     { key: 'quit', label: '退出', onClick: () => void invoke('window:close').catch(() => undefined) }
   ]
@@ -86,7 +89,7 @@ function MenuBar(): React.JSX.Element {
       label: '删除选中',
       extra: 'Del',
       disabled: !selectedPath,
-      onClick: () => selectedPath && import('../stores/ui-store').then((m) => m.confirmRemoveTree(selectedPath, selectedKind ?? 'plan'))
+      onClick: () => selectedPath && import('../stores/ui-store').then((m) => m.confirmRemoveTree(selectedPath, useTreeStore.getState().selectedKind ?? 'plan'))
     }
   ]
 

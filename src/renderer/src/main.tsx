@@ -13,3 +13,10 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     </ConfigProvider>
   </React.StrictMode>
 )
+
+// DEV 诊断探针：把 store 挂到 window 供主进程 executeJavaScript 做用户旅程级验证（不进生产包路径判断）
+if (import.meta.env.DEV) {
+  void import('./stores/tree-store').then((m) => {
+    ;(window as unknown as Record<string, unknown>).__tree = m.useTreeStore
+  })
+}
