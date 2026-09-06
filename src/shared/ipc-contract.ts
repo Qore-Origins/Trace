@@ -45,6 +45,8 @@ export interface Channels {
   'app:setRootDir': { req: { dirPath: string; confirmed: boolean }; res: { rootDir: string } }
   'app:reportError': { req: { context: string; message: string; stack?: string }; res: null }
   'app:chooseDirectory': { req: void; res: { dirPath: string | null } }
+  'app:pickSavePath': { req: { defaultName: string; extensions: string[] }; res: { filePath: string | null } }
+  'app:pickFiles': { req: { extensions: string[] }; res: { files: Array<{ path: string; name: string }> } }
   // storage
   'storage:treeGetChildren': { req: { parent_path: string }; res: PlanTreeNode[] }
   'storage:createPlan': { req: { parent_path: string; name: string }; res: PlanTreeNode }
@@ -67,6 +69,16 @@ export interface Channels {
   // config
   'config:getWindow': { req: void; res: { width: number; height: number; maximized: boolean } }
   'config:setWindow': { req: { width: number; height: number; maximized: boolean }; res: null }
+  // transfer（.plan 导入导出 + Markdown 迁入）
+  'transfer:exportPlan': { req: { path: string; saveTo: string }; res: { savedTo: string; plans: number; components: number; tasks: number } }
+  'transfer:importPlan': {
+    req: { target_parent_path: string; filePath: string }
+    res: { imported: Array<{ path: string; renamedFrom?: string }>; plans: number; components: number; tasks: number; notes: number; skipped: string[] }
+  }
+  'transfer:importMarkdown': {
+    req: { target_parent_path: string; paths: string[] }
+    res: { imported: Array<{ path: string; renamedFrom?: string }>; plans: number; components: number; tasks: number; notes: number; skipped: string[] }
+  }
 }
 
 export type ChannelName = keyof Channels

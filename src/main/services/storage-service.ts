@@ -28,6 +28,11 @@ export class StorageService {
     return this.rootAbs
   }
 
+  // 根目录读取（未初始化返回 null；供 TransferService 等旁路服务使用）
+  getRootAbs(): string | null {
+    return this.rootAbs
+  }
+
   private safe(rel: string): string {
     return resolveWithin(this.root(), rel).rel
   }

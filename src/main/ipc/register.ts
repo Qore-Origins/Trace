@@ -1,17 +1,21 @@
 // IPC 注册层：白名单通道 → 主进程 handler；统一校验包装（异常 → TraceResult + 脱敏日志）
 import { ipcMain, dialog, type BrowserWindow } from 'electron'
+import { promises as fs } from 'node:fs'
+import { basename } from 'node:path'
 import { toTraceResultError, ERR } from '../../shared/errors'
 import type { TraceEvents } from '../services/event-bus'
 import { fail, ok, type ChannelName, type Channels, type TraceResult } from '../../shared/ipc-contract'
 import { AppService } from '../services/app-service'
 import { StorageService } from '../services/storage-service'
 import { ConfigService } from '../services/config-service'
+import { TransferService } from '../services/transfer-service'
 import { bus } from '../services/event-bus'
 
 interface Deps {
   app: AppService
   storage: StorageService
   config: ConfigService
+  transfer: TransferService
   getWindow: () => BrowserWindow | null
   log: (channel: string, code: number, detail?: string) => void
 }
@@ -35,7 +39,7 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
 }
 
 export function registerIpc(deps: Deps): void {
-  const { app, storage, config, getWindow, log } = deps
+  const { app, storage, config, transfer, getWindow, log } = deps
   const reg = <K extends ChannelName>(name: K, handler: Handler<K>) => {
     ipcMain.handle(name, wrap(name, handler, log))
   }
@@ -50,6 +54,22 @@ export function registerIpc(deps: Deps): void {
     })
     return { dirPath: r.canceled ? null : (r.filePaths[0] ?? null) }
   })
+  reg('app:pickSavePath', (p) =>
+    dialog
+      .showSaveDialog(getWindow() ?? ({} as BrowserWindow), {
+        defaultPath: p.defaultName,
+        filters: [{ name: 'Trace 计划包', extensions: p.extensions }]
+      })
+      .then((r) => ({ filePath: r.canceled ? null : (r.filePath ?? null) }))
+  )
+  reg('app:pickFiles', (p) =>
+    dialog
+      .showOpenDialog(getWindow() ?? ({} as BrowserWindow), {
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: '文件', extensions: p.extensions }]
+      })
+      .then((r) => ({ files: r.canceled ? [] : r.filePaths.map((path) => ({ path, name: basename(path) })) }))
+  )
   reg('app:reportError', (p) => {
     log(`renderer:${p.context}`, ERR.INTERNAL, p.message) // 渲染器上报：仅上下文与消息
     return Promise.resolve(null)
@@ -72,6 +92,17 @@ export function registerIpc(deps: Deps): void {
   // ---------- config ----------
   reg('config:getWindow', () => config.getWindowState())
   reg('config:setWindow', (p) => config.saveWindowState(p).then(() => null))
+
+  // ---------- transfer ----------
+  reg('transfer:exportPlan', (p) => transfer.exportPlan(p.path, p.saveTo))
+  reg('transfer:importPlan', (p) => transfer.importPlan(p.target_parent_path, p.filePath))
+  reg('transfer:importMarkdown', async (p) => {
+    // 文件读取在主进程（渲染器无 fs 权限）
+    const files = await Promise.all(
+      p.paths.map(async (path) => ({ name: basename(path), content: await fs.readFile(path, 'utf8') }))
+    )
+    return transfer.importMarkdown(p.target_parent_path, files)
+  })
 
   // ---------- 事件转发：bus → 渲染器 ----------
   const forward = <K extends keyof TraceEvents>(event: K): void => {

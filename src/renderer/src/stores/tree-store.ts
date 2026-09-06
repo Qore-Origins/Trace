@@ -19,6 +19,33 @@ interface TreeState {
   removePlan: (path: string) => Promise<void>
   movePlan: (dragPath: string, targetParent: string, orderIndex: number) => Promise<void>
   refreshAll: () => Promise<void>
+  exportPlan: (path: string) => Promise<string | null>
+  importPlan: (targetParent: string) => Promise<string | null>
+  importMarkdown: (targetParent: string) => Promise<string | null>
+}
+
+interface TransferReport {
+  imported: Array<{ path: string; renamedFrom?: string }>
+  plans: number
+  components: number
+  tasks: number
+  notes: number
+  skipped: string[]
+}
+
+function todayYmd(): string {
+  return new Date().toISOString().slice(0, 10).replace(/-/g, '')
+}
+
+function reportText(kind: string, r: TransferReport): string {
+  const renamed = r.imported.filter((i) => i.renamedFrom).map((i) => `${i.renamedFrom} → ${i.path}`)
+  return [
+    `${kind}完成：${r.plans} 个计划 / ${r.tasks} 个任务 / ${r.notes} 条注释`,
+    renamed.length ? `同名自动改名：${renamed.join('；')}` : '',
+    r.skipped.length ? `跳过 ${r.skipped.length} 个无法识别的文件` : ''
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 async function refreshInto(
@@ -97,6 +124,43 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   refreshAll: async () => {
     set({ childrenMap: {}, loaded: {} })
     await refreshInto(set, get, '')
+  },
+
+  exportPlan: async (path) => {
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    const picked = await invoke('app:pickSavePath', { defaultName: `${name}-${todayYmd()}.plan`, extensions: ['plan'] })
+    if (!picked.filePath) return null
+    const r = await invoke('transfer:exportPlan', { path, saveTo: picked.filePath })
+    return `已导出 ${r.plans} 个计划 / ${r.components} 个组件 → ${r.savedTo}`
+  },
+
+  importPlan: async (targetParent) => {
+    const picked = await invoke('app:pickFiles', { extensions: ['plan'] })
+    if (picked.files.length === 0) return null
+    const reports: TransferReport[] = []
+    for (const f of picked.files) {
+      reports.push(await invoke('transfer:importPlan', { target_parent_path: targetParent, filePath: f.path }))
+    }
+    await refreshInto(set, get, targetParent)
+    return reportText('导入', reports.reduce((a, b) => ({
+      imported: [...a.imported, ...b.imported],
+      plans: a.plans + b.plans,
+      components: a.components + b.components,
+      tasks: a.tasks + b.tasks,
+      notes: a.notes + b.notes,
+      skipped: [...a.skipped, ...b.skipped]
+    })))
+  },
+
+  importMarkdown: async (targetParent) => {
+    const picked = await invoke('app:pickFiles', { extensions: ['md'] })
+    if (picked.files.length === 0) return null
+    const r = await invoke('transfer:importMarkdown', {
+      target_parent_path: targetParent,
+      paths: picked.files.map((f) => f.path)
+    })
+    await refreshInto(set, get, targetParent)
+    return reportText('迁入', r)
   }
 }))
 

@@ -1,8 +1,10 @@
-// TopBar（§2.2）：品牌 / 全局搜索（Sprint 3 解锁）/ 新建计划
+// TopBar（§2.2）：品牌 / 全局搜索（Sprint 3 解锁）/ 导入导出 / 新建计划
 import { useState } from 'react'
-import { Button, Input, Modal, Tooltip, message } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { Button, Dropdown, Input, Modal, Tooltip, message } from 'antd'
+import { PlusOutlined, SwapOutlined } from '@ant-design/icons'
 import { useTreeStore } from '../stores/tree-store'
+import { usePlanStore } from '../stores/plan-store'
+import { ClientError } from '../ipc-client'
 
 export default function TopBar(): React.JSX.Element {
   const createPlan = useTreeStore((s) => s.createPlan)
@@ -32,6 +34,7 @@ export default function TopBar(): React.JSX.Element {
         </Tooltip>
       </div>
       <div className="spacer" />
+      <TransferMenu />
       <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
         新建计划
       </Button>
@@ -53,5 +56,38 @@ export default function TopBar(): React.JSX.Element {
         />
       </Modal>
     </div>
+  )
+}
+
+// 导入/导出菜单（.plan 互通 + Markdown 旧计划迁入）
+function TransferMenu(): React.JSX.Element {
+  const { exportPlan, importPlan, importMarkdown, selectedPath } = useTreeStore()
+  const run = async (action: () => Promise<string | null>): Promise<void> => {
+    try {
+      const msg = await action()
+      if (msg) message.success(msg, 5)
+    } catch (e) {
+      message.error(e instanceof ClientError ? e.message : '操作失败', 5)
+    }
+  }
+
+  return (
+    <Dropdown
+      menu={{
+        items: [
+          {
+            key: 'export',
+            label: '导出当前计划 (.plan)',
+            disabled: !selectedPath,
+            onClick: () => selectedPath && void run(() => exportPlan(selectedPath))
+          },
+          { type: 'divider' },
+          { key: 'import-plan', label: '导入 .plan（到选中计划/顶层）', onClick: () => void run(() => importPlan(selectedPath ?? '')) },
+          { key: 'import-md', label: '迁入 Markdown 计划…', onClick: () => void run(() => importMarkdown(selectedPath ?? '')) }
+        ]
+      }}
+    >
+      <Button icon={<SwapOutlined />}>导入 / 导出</Button>
+    </Dropdown>
   )
 }

@@ -5,6 +5,7 @@ import { ConfigService } from './services/config-service'
 import { StorageService } from './services/storage-service'
 import { AppService } from './services/app-service'
 import { WatchService } from './services/watch-service'
+import { TransferService } from './services/transfer-service'
 import { registerIpc } from './ipc/register'
 import { bus } from './services/event-bus'
 
@@ -23,6 +24,11 @@ const repo = new PlanRepository({
 const config = new ConfigService(app.getPath('userData'), repo)
 const storage = new StorageService(repo)
 const watch = new WatchService(storage.treeCache)
+const transfer = new TransferService(repo, storage.treeCache, () => {
+  const r = storage.getRootAbs()
+  if (!r) throw new Error('计划库根目录未初始化')
+  return r
+})
 const appService = new AppService(config, repo, storage, (rootAbs) => watch.start(rootAbs))
 
 let mainWindow: BrowserWindow | null = null
@@ -102,6 +108,7 @@ if (!app.requestSingleInstanceLock()) {
       app: appService,
       storage,
       config,
+      transfer,
       getWindow: () => mainWindow,
       log: (channel, code, detail) => {
         // 日志脱敏：仅通道/错误码/消息，不含计划正文（LLD §7.2）
