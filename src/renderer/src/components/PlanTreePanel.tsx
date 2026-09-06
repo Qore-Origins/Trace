@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Tree, Dropdown, Input, Modal, type TreeDataNode } from 'antd'
 import type { TreeProps } from 'antd'
-import { FolderAddOutlined, FolderOutlined, FolderOpenOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons'
+import { FolderAddOutlined, FolderOutlined, MoreOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
 import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
@@ -189,7 +189,7 @@ export default function PlanTreePanel(): React.JSX.Element {
         {kind === 'folder' ? (
           <FolderOutlined style={{ color: 'var(--text-4)', flex: 'none' }} aria-label="文件夹" />
         ) : (
-          <FolderOpenOutlined style={{ color: 'var(--text-3)', flex: 'none' }} aria-label="计划" />
+          <ReadOutlined style={{ color: 'var(--trace-500)', opacity: 0.75, flex: 'none' }} aria-label="计划" />
         )}
         <span
           className="name"

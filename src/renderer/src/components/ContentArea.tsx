@@ -1,7 +1,7 @@
 // ContentArea（§2.2）：面包屑 + 组件序列 + 空态 + 外部变更提示 + 插入组件；文件夹=容器视图
 import { useEffect, useMemo } from 'react'
 import { Alert, Button, Dropdown, Empty, message } from 'antd'
-import { FolderOutlined, PlusOutlined } from '@ant-design/icons'
+import { FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
 import { useTreeStore } from '../stores/tree-store'
 import { ComponentRenderer } from './cards'
@@ -87,7 +87,11 @@ export default function ContentArea(): React.JSX.Element {
                 }
               }}
             >
-              {c.kind === 'folder' ? <FolderOutlined style={{ color: 'var(--text-4)' }} /> : <FolderOutlined style={{ color: 'var(--trace-500)' }} />}
+              {c.kind === 'folder' ? (
+                <FolderOutlined style={{ color: 'var(--text-4)' }} />
+              ) : (
+                <ReadOutlined style={{ color: 'var(--trace-500)', opacity: 0.75 }} />
+              )}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-4)', flex: 'none' }}>
                 {c.kind === 'folder' ? '文件夹' : '计划'}
