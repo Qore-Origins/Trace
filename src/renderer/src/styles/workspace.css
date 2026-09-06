@@ -26,13 +26,14 @@ html, body, #root { height: 100%; overflow: hidden; }
 body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text-1); font-size: 14px; line-height: 1.5; background: var(--paper-dim); }
 
 /* ---------- 布局骨架（§2.2） ---------- */
-.ws { display: flex; flex-direction: column; height: 100%; background: var(--paper-dim); }
+.ws { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }
 .ws-main { flex: 1; display: flex; min-height: 0; }
 .ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); display: flex; flex-direction: column; min-height: 0; }
 .ws-tree .tree-scroll { flex: 1; overflow: auto; padding: 8px 6px 4px; }
 .ws-tree .tree-footer { flex: none; display: flex; gap: 6px; padding: 8px 6px 10px; border-top: 1px solid var(--split); }
 .ws-content { flex: 1; overflow: auto; padding: 14px 24px 32px; }
-.ws-status { height: 28px; flex: none; background: var(--paper); border-top: 1px solid var(--split); display: flex; align-items: center; gap: 20px; padding: 0 14px; font-size: 12px; color: var(--text-3); }
+/* 状态栏：弹性高度（min-height + 垂直 padding），固定 28px 在 DPI 缩放下会切字（2026-09-06 用户截图实证） */
+.ws-status { flex: none; min-height: 28px; background: var(--paper); border-top: 1px solid var(--split); display: flex; align-items: center; gap: 20px; padding: 5px 14px; font-size: 12px; line-height: 1.4; color: var(--text-3); box-sizing: border-box; }
 
 @media (max-width: 959px) {
   .ws-tree { display: none; }
