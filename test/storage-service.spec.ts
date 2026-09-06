@@ -56,6 +56,24 @@ describe('createPlan / treeGetChildren', () => {
   })
 })
 
+describe('文件夹容器（folder，无 plan.json）', () => {
+  it('createFolder 只建目录不写 plan.json，树 kind=folder', async () => {
+    await service.createFolder('', '归档')
+    await expect(fs.access(join(root, '归档', 'plan.json'))).rejects.toThrow()
+    const nodes = await service.treeGetChildren('')
+    const folder = nodes.find((n) => n.name === '归档')
+    expect(folder?.kind).toBe('folder')
+    // 同层计划 kind=plan
+    await service.createPlan('', 'A')
+    expect((await service.treeGetChildren('')).find((n) => n.name === 'A')?.kind).toBe('plan')
+  })
+  it('同名冲突 → NAME_CONFLICT(12)', async () => {
+    await service.createFolder('', 'X')
+    await expect(service.createFolder('', 'X')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
+    await expect(service.createPlan('', 'X')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
+  })
+})
+
 describe('renamePlan / deletePlan', () => {
   it('重命名同步磁盘与父排序', async () => {
     await service.createPlan('', '旧名')
@@ -87,6 +105,15 @@ describe('movePlan', () => {
 
     await expect(service.movePlan('B/A', 'B/A', 0)).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
     await expect(service.movePlan('B', 'B/A', 0)).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
+  })
+
+  it('计划可拖入纯文件夹（容器）', async () => {
+    await service.createPlan('', 'A')
+    await service.createFolder('', '归档')
+    await service.movePlan('A', '归档', 0)
+    const kids = await service.treeGetChildren('归档')
+    expect(kids.map((n) => n.name)).toEqual(['A'])
+    expect(kids[0].kind).toBe('plan')
   })
   it('目标重名拒绝', async () => {
     await service.createPlan('', 'A')

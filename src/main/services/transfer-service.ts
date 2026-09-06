@@ -53,13 +53,16 @@ export class TransferService {
     const enc = new TextEncoder()
 
     const walk = async (relPath: string, zipPrefix: string): Promise<void> => {
-      const doc = await this.repo.readPlan(root, relPath)
-      files[joinZip(zipPrefix, 'plan.json')] = enc.encode(JSON.stringify(doc, null, 2))
-      plans++
-      components += doc.components.length
-      for (const c of doc.components) {
-        if (c.type === 'task_list') tasks += (c.payload as { items: unknown[] }).items.length
-        if (c.type === 'task_detail') tasks += 1
+      // 纯容器文件夹（无 plan.json）：仅保留目录结构，不计入计划统计
+      if (await this.repo.hasPlanFile(root, relPath)) {
+        const doc = await this.repo.readPlan(root, relPath)
+        files[joinZip(zipPrefix, 'plan.json')] = enc.encode(JSON.stringify(doc, null, 2))
+        plans++
+        components += doc.components.length
+        for (const c of doc.components) {
+          if (c.type === 'task_list') tasks += (c.payload as { items: unknown[] }).items.length
+          if (c.type === 'task_detail') tasks += 1
+        }
       }
       const children = await this.repo.listPlanDirs(root, relPath)
       for (const child of children) {

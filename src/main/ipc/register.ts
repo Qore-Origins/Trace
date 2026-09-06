@@ -78,6 +78,7 @@ export function registerIpc(deps: Deps): void {
   // ---------- storage ----------
   reg('storage:treeGetChildren', (p) => storage.treeGetChildren(p.parent_path))
   reg('storage:createPlan', (p) => storage.createPlan(p.parent_path, p.name))
+  reg('storage:createFolder', (p) => storage.createFolder(p.parent_path, p.name))
   reg('storage:renamePlan', (p) => storage.renamePlan(p.path, p.new_name))
   reg('storage:deletePlan', (p) => storage.deletePlan(p.path, p.confirmed).then(() => null))
   reg('storage:movePlan', (p) => storage.movePlan(p.path, p.target_parent_path, p.order_index).then(() => null))

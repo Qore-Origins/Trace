@@ -11,10 +11,12 @@ interface TreeState {
   loaded: Record<string, boolean>
   expandedKeys: string[]
   selectedPath: string | null
+  selectedKind: 'plan' | 'folder' | null
   loadChildren: (parentPath: string) => Promise<void>
-  select: (path: string | null) => void
+  select: (path: string | null, kind?: 'plan' | 'folder' | null) => void
   setExpanded: (keys: string[]) => void
   createPlan: (parentPath: string, name: string) => Promise<void>
+  createFolder: (parentPath: string, name: string) => Promise<void>
   renamePlan: (path: string, newName: string) => Promise<void>
   removePlan: (path: string) => Promise<void>
   movePlan: (dragPath: string, targetParent: string, orderIndex: number) => Promise<void>
@@ -71,17 +73,26 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   loaded: {},
   expandedKeys: [],
   selectedPath: null,
+  selectedKind: null,
 
   loadChildren: async (parentPath) => {
     await refreshInto(set, get, parentPath)
   },
 
-  select: (path) => set({ selectedPath: path }),
+  select: (path, kind = null) => set({ selectedPath: path, selectedKind: path ? (kind ?? 'plan') : null }),
 
   setExpanded: (keys) => set({ expandedKeys: keys }),
 
   createPlan: async (parentPath, name) => {
     await invoke('storage:createPlan', { parent_path: parentPath, name })
+    if (parentPath !== '' && !get().expandedKeys.includes(parentPath)) {
+      set({ expandedKeys: [...get().expandedKeys, parentPath] })
+    }
+    await refreshInto(set, get, parentPath)
+  },
+
+  createFolder: async (parentPath, name) => {
+    await invoke('storage:createFolder', { parent_path: parentPath, name })
     if (parentPath !== '' && !get().expandedKeys.includes(parentPath)) {
       set({ expandedKeys: [...get().expandedKeys, parentPath] })
     }

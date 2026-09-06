@@ -183,6 +183,16 @@ export class PlanRepository {
     }
   }
 
+  // 目录是否为"计划"（含 plan.json）；无 → 纯容器文件夹
+  async hasPlanFile(rootAbs: string, rel: string): Promise<boolean> {
+    try {
+      await fs.access(join(rootAbs, rel, PLAN_FILE))
+      return true
+    } catch {
+      return false
+    }
+  }
+
   async renamePlanDir(rootAbs: string, rel: string, newName: string): Promise<void> {
     const from = join(rootAbs, rel)
     const to = join(dirname(from), newName)

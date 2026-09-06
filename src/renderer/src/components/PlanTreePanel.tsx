@@ -2,7 +2,7 @@
 import { useEffect, useMemo } from 'react'
 import { Tree, Dropdown, type TreeDataNode } from 'antd'
 import type { TreeProps } from 'antd'
-import { MoreOutlined, PlusOutlined } from '@ant-design/icons'
+import { FolderOutlined, FolderOpenOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons'
 import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
 import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
@@ -22,6 +22,14 @@ function buildLevel(parent: string, map: Record<string, PlanTreeNode[]>, loaded:
     title: n.name,
     children: buildLevel(n.path, map, loaded)
   }))
+}
+
+// 节点 kind 查询（folder=纯容器；默认 plan）
+function kindOf(map: Record<string, PlanTreeNode[]>, path: string): 'plan' | 'folder' {
+  const parent = parentRel(path)
+  const name = path.slice(path.lastIndexOf('/') + 1)
+  const hit = (map[parent] ?? []).find((n) => n.path === path || n.name === name)
+  return hit?.kind ?? 'plan'
 }
 
 function renderRootTitle(): React.JSX.Element {
@@ -56,9 +64,10 @@ export function computeDrop(info: Parameters<NonNullable<TreeProps['onDrop']>>[0
 }
 
 export default function PlanTreePanel(): React.JSX.Element {
-  const { childrenMap, loaded, expandedKeys, selectedPath, loadChildren, select, setExpanded, createPlan, renamePlan, removePlan, movePlan } =
+  const { childrenMap, loaded, expandedKeys, selectedPath, loadChildren, select, setExpanded, createPlan, createFolder, renamePlan, removePlan, movePlan } =
     useTreeStore()
   const openPlan = usePlanStore((s) => s.open)
+  const closePlan = usePlanStore((s) => s.close)
 
   useEffect(() => {
     void loadChildren('')
@@ -116,16 +125,28 @@ export default function PlanTreePanel(): React.JSX.Element {
     const path = String(node.key)
     if (path === '') return renderRootTitle()
     const selected = selectedPath === path
+    const kind = kindOf(childrenMap, path)
     return (
       <span
         className="tree-node-title"
         style={selected ? { fontWeight: 500 } : undefined}
         onClick={() => {
-          select(path)
-          void openPlan(path)
+          if (kind === 'folder') {
+            // 文件夹=容器：选中但不打开内容区
+            select(path, 'folder')
+            closePlan()
+          } else {
+            select(path, 'plan')
+            void openPlan(path)
+          }
         }}
       >
-        <span className="name" style={selected ? { color: 'var(--trace-500)' } : undefined}>
+        {kind === 'folder' ? (
+          <FolderOutlined style={{ color: 'var(--text-4)', marginRight: 4 }} aria-label="文件夹" />
+        ) : (
+          <FolderOpenOutlined style={{ color: 'var(--text-3)', marginRight: 4 }} aria-label="计划" />
+        )}
+        <span className="name" style={selected ? { color: 'var(--trace-500)' } : kind === 'folder' ? { color: 'var(--text-2)' } : undefined}>
           {node.title as string}
         </span>
         <span className="tree-quick">
@@ -140,6 +161,17 @@ export default function PlanTreePanel(): React.JSX.Element {
           >
             <PlusOutlined />
           </button>
+          <button
+            type="button"
+            aria-label="新建子文件夹"
+            onClick={(e) => {
+              e.stopPropagation()
+              const name = window.prompt('子文件夹名称')
+              if (name) void createFolder(path, name).catch(() => undefined)
+            }}
+          >
+            <FolderOutlined />
+          </button>
           {menuFor(path)}
         </span>
       </span>
@@ -147,21 +179,47 @@ export default function PlanTreePanel(): React.JSX.Element {
   }
 
   return (
-    <Tree
-      treeData={treeData}
-      showLine
-      blockNode
-      defaultExpandedKeys={['']}
-      expandedKeys={expandedKeys}
-      onExpand={(keys) => setExpanded(keys as string[])}
-      loadData={async (node) => {
-        if (node.key !== '') await loadChildren(String(node.key))
-      }}
-      titleRender={titleRender}
-      draggable={(node) => String(node.key) !== ''}
-      allowDrop={({ dropNode }) => true}
-      onDrop={onDrop}
-      selectedKeys={selectedPath ? [selectedPath] : []}
-    />
+    <>
+      <Tree
+        treeData={treeData}
+        showLine
+        blockNode
+        defaultExpandedKeys={['']}
+        expandedKeys={expandedKeys}
+        onExpand={(keys) => setExpanded(keys as string[])}
+        loadData={async (node) => {
+          if (node.key !== '') await loadChildren(String(node.key))
+        }}
+        titleRender={titleRender}
+        draggable={(node) => String(node.key) !== ''}
+        allowDrop={({ dropNode }) => true}
+        onDrop={onDrop}
+        selectedKeys={selectedPath ? [selectedPath] : []}
+      />
+      <div style={{ display: 'flex', gap: 4, padding: '4px 4px 8px' }}>
+        <button
+          type="button"
+          className="tree-add"
+          style={{ flex: 1 }}
+          onClick={() => {
+            const name = window.prompt('计划名称')
+            if (name) void createPlan('', name).catch(() => undefined)
+          }}
+        >
+          + 计划
+        </button>
+        <button
+          type="button"
+          className="tree-add"
+          style={{ flex: 1 }}
+          onClick={() => {
+            const name = window.prompt('文件夹名称')
+            if (name) void createFolder('', name).catch(() => undefined)
+          }}
+        >
+          + 文件夹
+        </button>
+      </div>
+    </>
   )
 }

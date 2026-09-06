@@ -1,8 +1,9 @@
-// ContentArea（§2.2）：面包屑 + 组件序列 + 空态 + 外部变更提示 + 插入组件
-import { useMemo } from 'react'
+// ContentArea（§2.2）：面包屑 + 组件序列 + 空态 + 外部变更提示 + 插入组件；文件夹=容器视图
+import { useEffect, useMemo } from 'react'
 import { Alert, Button, Dropdown, Empty, message } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { FolderOutlined, PlusOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
+import { useTreeStore } from '../stores/tree-store'
 import { ComponentRenderer } from './cards'
 import { uuid32 } from '@shared/validation'
 import type { Component, ComponentType } from '@shared/plan-types'
@@ -35,7 +36,13 @@ const INSERT_ITEMS: Array<{ key: ComponentType; label: string }> = [
 export default function ContentArea(): React.JSX.Element {
   const { currentPath, document: doc, externalAlert, open } = usePlanStore()
   const { appendComponent } = usePlanMutations()
+  const { selectedKind, childrenMap, loadChildren } = useTreeStore()
   const today = useMemo(() => new Date(), [doc?.updated_at])
+
+  // 文件夹容器视图：列出子项，点击进入
+  useEffect(() => {
+    if (currentPath && selectedKind === 'folder') void loadChildren(currentPath).catch(() => undefined)
+  }, [currentPath, selectedKind, loadChildren])
 
   if (!currentPath) {
     return (
@@ -46,6 +53,50 @@ export default function ContentArea(): React.JSX.Element {
   }
 
   const segments = currentPath.split('/')
+
+  if (selectedKind === 'folder') {
+    // 纯容器文件夹：内容区显示子项列表
+    const children = childrenMap[currentPath] ?? []
+    return (
+      <div className="ws-content">
+        <div className="crumbs">
+          <span className="origin-dot" />
+          <span>源头</span>
+          {segments.map((seg, i) => (
+            <span key={i} style={{ display: 'flex', gap: 6 }}>
+              <span style={{ color: 'var(--text-4)' }}>›</span>
+              {i === segments.length - 1 ? <span className="here">{seg}</span> : <span>{seg}</span>}
+            </span>
+          ))}
+        </div>
+        <Empty
+          image={<FolderOutlined style={{ fontSize: 42, color: 'var(--text-4)' }} />}
+          description={children.length ? '此文件夹为容器（拖拽计划进来归类）' : '空文件夹——把计划拖进来归类'}
+        />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+          {children.map((c) => (
+            <div
+              key={c.path}
+              className="card"
+              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 0 }}
+              onClick={() => {
+                if (c.kind === 'plan') {
+                  useTreeStore.getState().select(c.path, 'plan')
+                  void open(c.path)
+                } else {
+                  useTreeStore.getState().select(c.path, 'folder')
+                }
+              }}
+            >
+              {c.kind === 'folder' ? <FolderOutlined style={{ color: 'var(--text-4)' }} /> : <FolderOutlined style={{ color: 'var(--trace-500)' }} />}
+              <span>{c.name}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-4)' }}>{c.kind === 'folder' ? '文件夹' : '计划'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="ws-content">
       <div className="crumbs">

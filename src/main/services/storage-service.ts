@@ -69,12 +69,41 @@ export class StorageService {
       return a.localeCompare(b, 'zh-CN')
     })
 
-    return sorted.map((name) => ({
-      path: parent === '' ? name : `${parent}/${name}`,
-      name,
-      has_children: false, // 由渲染器懒加载判定，不预读；此处恒 false（Sprint 2 前端按需展开）
-      order: rank(name) === Number.MAX_SAFE_INTEGER ? sorted.indexOf(name) : rank(name)
-    }))
+    const nodes: Awaited<ReturnType<StorageService['treeGetChildren']>> = []
+    for (const name of sorted) {
+      const path = parent === '' ? name : `${parent}/${name}`
+      // kind：含 plan.json=计划；否则纯容器文件夹
+      const kind = (await this.repo.hasPlanFile(root, path)) ? ('plan' as const) : ('folder' as const)
+      nodes.push({
+        path,
+        name,
+        has_children: false, // 由渲染器懒加载判定，不预读
+        order: rank(name) === Number.MAX_SAFE_INTEGER ? nodes.length : rank(name),
+        kind
+      })
+    }
+    return nodes
+  }
+
+  // 新建纯容器文件夹（无 plan.json）：仅 mkdir，计划可拖入
+  async createFolder(parentPathRel: string, name: string): Promise<PlanTreeNode> {
+    validatePlanName(name)
+    const parent = this.safe(parentPathRel)
+    const root = this.root()
+    const siblings = await this.repo.listPlanDirs(root, parent)
+    if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+    try {
+      await this.repo.mkdirPlan(root, parent, name)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+      }
+      throw e
+    }
+    this.treeCache.invalidatePrefix(parent)
+    const path = parent === '' ? name : `${parent}/${name}`
+    bus.emit('trace:plan-changed', { path })
+    return { path, name, has_children: false, order: Number.MAX_SAFE_INTEGER, kind: 'folder' }
   }
 
   // ---------- 计划 CRUD ----------
@@ -104,7 +133,7 @@ export class StorageService {
     this.treeCache.invalidatePrefix(parent)
     const path = parent === '' ? name : `${parent}/${name}`
     bus.emit('trace:plan-changed', { path })
-    return { path, name, has_children: false, order: Number.MAX_SAFE_INTEGER }
+    return { path, name, has_children: false, order: Number.MAX_SAFE_INTEGER, kind: 'plan' }
   }
 
   async renamePlan(pathRel: string, newName: string): Promise<{ path: string }> {
@@ -271,6 +300,12 @@ export class StorageService {
   }
 
   // ---------- 内部：children_order 维护 ----------
+  // 注意：父级为纯容器文件夹（无 plan.json）时无 order 载体 → 子项按名称排序，维护操作跳过
+
+  private async parentIsFolder(parent: string): Promise<boolean> {
+    if (parent === '') return false
+    return !(await this.repo.hasPlanFile(this.root(), parent))
+  }
 
   private async orderHolder(parent: string): Promise<PlanDocument | PlanLibraryMeta> {
     const root = this.root()
@@ -284,6 +319,7 @@ export class StorageService {
   }
 
   private async updateOrderAfterRename(parent: string, oldName: string, newName: string): Promise<void> {
+    if (await this.parentIsFolder(parent)) return
     const holder = await this.orderHolder(parent)
     const list = holder.children_order
     if (list) {
@@ -294,6 +330,7 @@ export class StorageService {
   }
 
   private async removeOrderEntry(parent: string, name: string): Promise<void> {
+    if (await this.parentIsFolder(parent)) return
     const holder = await this.orderHolder(parent)
     const list = holder.children_order
     if (list) {
@@ -306,6 +343,7 @@ export class StorageService {
   }
 
   private async insertOrderEntry(parent: string, name: string, orderIndex: number): Promise<void> {
+    if (await this.parentIsFolder(parent)) return
     const holder = await this.orderHolder(parent)
     if (!holder.children_order) holder.children_order = []
     const list = holder.children_order
