@@ -16,7 +16,9 @@ function buildLevel(parent: string, map: Record<string, PlanTreeNode[]>, loaded:
   return nodes.map((n) => ({
     key: n.path,
     title: n.name,
-    children: buildLevel(n.path, map, loaded)
+    // 叶子/箭头由数据驱动：has_children=false → 叶子（无箭头）；true → 箭头（children 未加载时交给 loadData）
+    isLeaf: !n.has_children,
+    children: n.has_children ? buildLevel(n.path, map, loaded) : []
   }))
 }
 

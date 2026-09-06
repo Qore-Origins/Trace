@@ -167,17 +167,26 @@ export class PlanRepository {
 
   // 列出子计划目录名（排除 .trace 与隐藏目录/文件）
   async listPlanDirs(rootAbs: string, rel: string): Promise<string[]> {
+    const entries = await this.readDirEntries(rootAbs, rel)
+    return entries.filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name).sort()
+  }
+
+  // 是否存在子计划目录（树展开箭头真值；数据驱动，不依赖渲染器猜）
+  async hasChildDirs(rootAbs: string, rel: string): Promise<boolean> {
+    const entries = await this.readDirEntries(rootAbs, rel)
+    return entries.some((d) => d.isDirectory() && !d.name.startsWith('.'))
+  }
+
+  private async readDirEntries(rootAbs: string, rel: string): Promise<Dirent[]> {
     const abs = rel === '' ? rootAbs : join(rootAbs, rel)
-    let entries: Dirent[]
     try {
-      entries = await fs.readdir(abs, { withFileTypes: true })
+      return await fs.readdir(abs, { withFileTypes: true })
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new TraceError(ERR.PATH_NOT_FOUND, '目标位置不存在（可能已被移动或删除）')
       }
       throw e
     }
-    return entries.filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name).sort()
   }
 
   async mkdirPlan(rootAbs: string, parentRelPath: string, name: string): Promise<string> {

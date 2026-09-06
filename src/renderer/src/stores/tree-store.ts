@@ -2,7 +2,7 @@
 import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
 import { message } from 'antd'
-import { isSelfOrDescendant } from '@shared/path-utils'
+import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
 import { usePlanStore } from './plan-store'
 
@@ -68,6 +68,15 @@ async function refreshInto(
   }
 }
 
+// 结构变更后的完整刷新：刷新 P 的子列表 + P 自身所在层（父层）
+// ——节点自身的 has_children/kind 存在于父层列表里，只刷子列表箭头不会出现（2026-09-06 用户反馈根因）
+async function refreshAround(set: (partial: Partial<TreeState>) => void, get: () => TreeState, path: string): Promise<void> {
+  const parent = parentRel(path)
+  await refreshInto(set, get, parent)
+  const grandparent = parentRel(parent)
+  if (grandparent !== parent) await refreshInto(set, get, grandparent)
+}
+
 export const useTreeStore = create<TreeState>()((set, get) => ({
   childrenMap: {},
   loaded: {},
@@ -84,37 +93,39 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   setExpanded: (keys) => set({ expandedKeys: keys }),
 
   createPlan: async (parentPath, name) => {
-    await invoke('storage:createPlan', { parent_path: parentPath, name })
+    const node = await invoke('storage:createPlan', { parent_path: parentPath, name })
     if (parentPath !== '' && !get().expandedKeys.includes(parentPath)) {
       set({ expandedKeys: [...get().expandedKeys, parentPath] })
     }
-    await refreshInto(set, get, parentPath)
+    await refreshAround(set, get, node.path)
   },
 
   createFolder: async (parentPath, name) => {
-    await invoke('storage:createFolder', { parent_path: parentPath, name })
+    const node = await invoke('storage:createFolder', { parent_path: parentPath, name })
     if (parentPath !== '' && !get().expandedKeys.includes(parentPath)) {
       set({ expandedKeys: [...get().expandedKeys, parentPath] })
     }
-    await refreshInto(set, get, parentPath)
+    await refreshAround(set, get, node.path)
   },
 
   renamePlan: async (path, newName) => {
     const r = await invoke('storage:renamePlan', { path, new_name: newName })
-    const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-    await refreshInto(set, get, parent)
+    await refreshAround(set, get, r.path)
     // 选中/展开键迁移到新路径
-    const renameKey = (keys: string[]) => keys.map((k) => (k === path ? r.path : k))
+    const renameKey = (keys: string[]) => keys.map((k) => (k === path || k.startsWith(path + '/') ? r.path + k.slice(path.length) : k))
     set({
       expandedKeys: renameKey(get().expandedKeys),
       selectedPath: get().selectedPath === path ? r.path : get().selectedPath
     })
+    // 当前打开的计划路径同步迁移并重开（否则后续保存指向旧路径 404）
+    if (usePlanStore.getState().currentPath === path) {
+      await usePlanStore.getState().open(r.path)
+    }
   },
 
   removePlan: async (path) => {
     await invoke('storage:deletePlan', { path, confirmed: true })
-    const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-    await refreshInto(set, get, parent)
+    await refreshAround(set, get, path)
     if (get().selectedPath === path || get().selectedPath?.startsWith(path + '/')) {
       get().select(null)
       usePlanStore.getState().close()
@@ -126,10 +137,17 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       message.warning('不能移动到自身或子计划中')
       return
     }
+    const name = dragPath.slice(dragPath.lastIndexOf('/') + 1)
     await invoke('storage:movePlan', { path: dragPath, target_parent_path: targetParent, order_index: orderIndex })
-    const dragParent = dragPath.includes('/') ? dragPath.slice(0, dragPath.lastIndexOf('/')) : ''
-    await refreshInto(set, get, dragParent)
-    if (targetParent !== dragParent) await refreshInto(set, get, targetParent)
+    const newPath = targetParent === '' ? name : `${targetParent}/${name}`
+    await refreshAround(set, get, newPath)
+    await refreshAround(set, get, dragPath)
+    // 选中/展开键迁移
+    const migrate = (keys: string[]) => keys.map((k) => (k === dragPath || k.startsWith(dragPath + '/') ? newPath + k.slice(dragPath.length) : k))
+    set({ expandedKeys: migrate(get().expandedKeys), selectedPath: migrate([get().selectedPath ?? ''])[0] || null })
+    if (usePlanStore.getState().currentPath === dragPath) {
+      await usePlanStore.getState().open(newPath)
+    }
   },
 
   refreshAll: async () => {
@@ -152,7 +170,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     for (const f of picked.files) {
       reports.push(await invoke('transfer:importPlan', { target_parent_path: targetParent, filePath: f.path }))
     }
-    await refreshInto(set, get, targetParent)
+    await refreshAround(set, get, targetParent === '' ? reports[0]?.imported[0]?.path ?? '' : targetParent)
     return reportText('导入', reports.reduce((a, b) => ({
       imported: [...a.imported, ...b.imported],
       plans: a.plans + b.plans,
@@ -170,16 +188,17 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       target_parent_path: targetParent,
       paths: picked.files.map((f) => f.path)
     })
-    await refreshInto(set, get, targetParent)
+    await refreshAround(set, get, r.imported[0]?.path ?? targetParent)
     return reportText('迁入', r)
   }
 }))
 
-// 事件订阅：结构变化与外部变更 → 刷新相关层
+// 事件订阅：结构变化与外部变更 → 刷新相关层（含祖父层，更新节点自身 has_children/kind 条目）
 export function subscribeTreeEvents(): () => void {
   const off1 = onEvent('trace:plan-changed', (p) => {
-    const parent = p.path.includes('/') ? p.path.slice(0, p.path.lastIndexOf('/')) : ''
-    void useTreeStore.getState().loadChildren(parent).catch(() => {})
+    void useTreeStore.getState().loadChildren(parentRel(p.path)).catch(() => {})
+    const gp = parentRel(parentRel(p.path))
+    if (gp !== parentRel(p.path)) void useTreeStore.getState().loadChildren(gp).catch(() => {})
   })
   const off2 = onEvent('trace:fs-external-change', () => {
     void useTreeStore.getState().refreshAll().catch(() => {})

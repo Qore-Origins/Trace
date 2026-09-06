@@ -71,12 +71,12 @@ export class StorageService {
     const nodes: Awaited<ReturnType<StorageService['treeGetChildren']>> = []
     for (const name of sorted) {
       const path = parent === '' ? name : `${parent}/${name}`
-      // kind：含 plan.json=计划；否则纯容器文件夹
+      // kind：含 plan.json=计划；否则纯容器文件夹；has_children=子目录真值（箭头数据驱动）
       const kind = (await this.repo.hasPlanFile(root, path)) ? ('plan' as const) : ('folder' as const)
       nodes.push({
         path,
         name,
-        has_children: false, // 由渲染器懒加载判定，不预读
+        has_children: await this.repo.hasChildDirs(root, path),
         order: rank(name) === Number.MAX_SAFE_INTEGER ? nodes.length : rank(name),
         kind
       })
