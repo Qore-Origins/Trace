@@ -24,7 +24,7 @@ export default function WindowControls(): React.JSX.Element {
     <div className="win-controls">
       {btn(<LineOutlined style={{ fontSize: 12 }} />, () => void invoke('window:minimize').catch(() => undefined), '最小化')}
       {btn(
-        <BorderOutlined style={{ fontSize: 11 }} />,
+        <BorderOutlined style={{ fontSize: 12 }} />,
         () => void invoke('window:toggleMaximize').catch(() => undefined),
         maximized ? '还原' : '最大化'
       )}
