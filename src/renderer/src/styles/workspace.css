@@ -62,9 +62,10 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 }
 .dashed-btn:hover { color: var(--trace-500); border-color: var(--trace-500); background: var(--trace-bg); }
 
-/* 顶栏：无边框标题栏——整体为拖拽区，交互控件 no-drag（双击空白=最大化/还原 系统行为） */
+/* 顶栏：无边框标题栏——整体为拖拽区，交互控件 no-drag（双击空白=最大化/还原 系统行为）
+   注意：新增顶栏交互元素必须加进 no-drag 白名单，否则点击被拖拽区吞掉（menu-title 2026-09-06 实证） */
 .ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; -webkit-app-region: drag; user-select: none; }
-.ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input { -webkit-app-region: no-drag; }
+.ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input, .ws-top .menu-title, .ws-top .menubar { -webkit-app-region: no-drag; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #3b5bdb, var(--origin)); }
 .ws-top .search { flex: 0 1 400px; }
