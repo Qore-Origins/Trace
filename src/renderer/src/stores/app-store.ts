@@ -1,7 +1,7 @@
 // appStore：应用阶段/根目录/索引状态（前端详细设计 §4.1）
 import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
-import { message } from 'antd'
+import { message, Modal } from 'antd'
 
 export type AppPhase = 'checking' | 'onboarding' | 'ready'
 export type IndexState = 'building' | 'ready' | 'error'
@@ -16,6 +16,7 @@ interface AppState {
   searchOpen: boolean
   bootstrap: () => Promise<void>
   setRootDir: (dirPath: string, confirmed: boolean) => Promise<void>
+  switchRootDir: () => Promise<void>
   setSearchOpen: (open: boolean) => void
 }
 
@@ -44,6 +45,30 @@ export const useAppStore = create<AppState>()((set) => ({
   setRootDir: async (dirPath, confirmed) => {
     const r = await invoke('app:setRootDir', { dirPath, confirmed })
     set({ phase: 'ready', rootDir: r.rootDir })
+  },
+
+  // 切换计划库目录（菜单入口）：选目录 → 确认切换（主进程语义：有效根切走需 confirmed）→ 重置应用状态
+  switchRootDir: async () => {
+    const picked = await invoke('app:chooseDirectory')
+    if (!picked.dirPath) return
+    const { useTreeStore } = await import('./tree-store')
+    const { usePlanStore } = await import('./plan-store')
+    Modal.confirm({
+      title: '切换计划库目录？',
+      content: `当前库数据不会迁移或删除，仅指向新位置。新位置：${picked.dirPath}`,
+      okText: '切换',
+      cancelText: '取消',
+      onOk: async () => {
+        await invoke('app:setRootDir', { dirPath: picked.dirPath as string, confirmed: true })
+        usePlanStore.getState().close()
+        await useTreeStore.getState().refreshAll()
+        const info = await invoke('app:bootstrap')
+        set({
+          phase: info.rootConfigured && !info.rootInvalid ? 'ready' : 'onboarding',
+          rootDir: info.rootDir
+        })
+      }
+    })
   },
 
   setSearchOpen: (open) => set({ searchOpen: open })

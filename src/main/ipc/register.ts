@@ -109,6 +109,10 @@ export function registerIpc(deps: Deps): void {
     return Promise.resolve(null)
   })
   reg('window:getMaximized', () => Promise.resolve({ maximized: getWindow()?.isMaximized() ?? false }))
+  reg('window:toggleDevtools', () => {
+    getWindow()?.webContents.toggleDevTools()
+    return Promise.resolve(null)
+  })
 
   // ---------- config ----------
   reg('config:getWindow', () => config.getWindowState())

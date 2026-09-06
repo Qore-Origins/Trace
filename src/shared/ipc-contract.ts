@@ -76,6 +76,7 @@ export interface Channels {
   'window:toggleMaximize': { req: void; res: { maximized: boolean } }
   'window:close': { req: void; res: null }
   'window:getMaximized': { req: void; res: { maximized: boolean } }
+  'window:toggleDevtools': { req: void; res: null }
   // transfer（.plan 导入导出 + Markdown 迁入）
   'transfer:exportPlan': { req: { path: string; saveTo: string }; res: { savedTo: string; plans: number; components: number; tasks: number } }
   'transfer:importPlan': {

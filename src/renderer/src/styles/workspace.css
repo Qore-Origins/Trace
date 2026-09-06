@@ -70,6 +70,12 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .ws-top .search { flex: 0 1 400px; }
 .ws-top .spacer { flex: 1; }
 
+/* VS Code 式菜单栏：极简文字，无底色，悬停变色（与窗口控制同语言） */
+.menubar { display: flex; align-items: center; gap: 2px; }
+.menu-title { padding: 4px 10px; font-size: 13px; color: var(--text-2); cursor: pointer; border-radius: 6px; user-select: none; }
+.menu-title:hover { color: var(--text-1); background: transparent; }
+.menu-title:focus-visible { outline: 2px solid var(--trace-bg); }
+
 /* 自绘窗口控制：极简裸图标——无底色无边框无圆角视觉，悬停仅图标变色（2026-09-06 三次定稿） */
 .win-controls { display: flex; align-items: center; gap: 2px; margin-left: 4px; margin-right: 8px; }
 .win-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); background: transparent; border: none; transition: color 0.15s; }
