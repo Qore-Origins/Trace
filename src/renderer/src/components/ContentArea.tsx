@@ -71,14 +71,13 @@ export default function ContentArea(): React.JSX.Element {
         </div>
         <Empty
           image={<FolderOutlined style={{ fontSize: 42, color: 'var(--text-4)' }} />}
-          description={children.length ? '此文件夹为容器（拖拽计划进来归类）' : '空文件夹——把计划拖进来归类'}
+          description={children.length ? '此文件夹为容器——点击子项进入' : '空文件夹——把计划拖进来归类'}
         />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+        <div className="folder-grid">
           {children.map((c) => (
             <div
               key={c.path}
-              className="card"
-              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 0 }}
+              className="card folder-item"
               onClick={() => {
                 if (c.kind === 'plan') {
                   useTreeStore.getState().select(c.path, 'plan')
@@ -89,8 +88,10 @@ export default function ContentArea(): React.JSX.Element {
               }}
             >
               {c.kind === 'folder' ? <FolderOutlined style={{ color: 'var(--text-4)' }} /> : <FolderOutlined style={{ color: 'var(--trace-500)' }} />}
-              <span>{c.name}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-4)' }}>{c.kind === 'folder' ? '文件夹' : '计划'}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-4)', flex: 'none' }}>
+                {c.kind === 'folder' ? '文件夹' : '计划'}
+              </span>
             </div>
           ))}
         </div>

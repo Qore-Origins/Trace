@@ -1,8 +1,9 @@
 // PlanTreePanel（§3.1）：连接线可见、源头圆点、懒加载、拖拽改道、悬停快捷操作
-import { useEffect, useMemo } from 'react'
-import { Tree, Dropdown, type TreeDataNode } from 'antd'
+// UI 整顿（2026-09-06）：创建入口收敛至此（树底虚线按钮）；弹窗一律 antd（禁原生 prompt/confirm）
+import { useEffect, useMemo, useState } from 'react'
+import { Tree, Dropdown, Input, Modal, type TreeDataNode } from 'antd'
 import type { TreeProps } from 'antd'
-import { FolderOutlined, FolderOpenOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons'
+import { FolderAddOutlined, FolderOutlined, FolderOpenOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons'
 import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
 import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
@@ -58,9 +59,20 @@ export function computeDrop(info: Parameters<NonNullable<TreeProps['onDrop']>>[0
   }
   // 落入间隙：与目标同级；relative -1=目标前，1=目标后
   const targetParent = parentRel(dropKey)
-  const siblings = String(info.node.key).split('/')
-  void siblings
   return { dragPath, targetParent, orderIndex: dropRelative === -1 ? 0 : 1 }
+}
+
+// 命名对话框（新建计划/文件夹/重命名 共用一个受控 Modal）
+interface NameDialog {
+  mode: 'create-plan' | 'create-folder' | 'rename'
+  targetPath: string // 新建=父路径；重命名=节点路径
+  initialName: string
+}
+
+const DIALOG_TITLE: Record<NameDialog['mode'], string> = {
+  'create-plan': '新建计划',
+  'create-folder': '新建文件夹',
+  rename: '重命名'
 }
 
 export default function PlanTreePanel(): React.JSX.Element {
@@ -68,6 +80,8 @@ export default function PlanTreePanel(): React.JSX.Element {
     useTreeStore()
   const openPlan = usePlanStore((s) => s.open)
   const closePlan = usePlanStore((s) => s.close)
+  const [dialog, setDialog] = useState<NameDialog | null>(null)
+  const [inputValue, setInputValue] = useState('')
 
   useEffect(() => {
     void loadChildren('')
@@ -79,8 +93,7 @@ export default function PlanTreePanel(): React.JSX.Element {
     const d = computeDrop(info)
     if (!d) return
     if (isSelfOrDescendant(d.dragPath, d.targetParent)) {
-      // 循环嵌套：客户端先行拦截（视觉红显由 antd 插入线 + 此提示）
-      void movePlan(d.dragPath, d.targetParent, d.orderIndex) // store 内再拦并提示
+      void movePlan(d.dragPath, d.targetParent, d.orderIndex) // store 内拦并提示
       return
     }
     void movePlan(d.dragPath, d.targetParent, d.orderIndex).then(() => {
@@ -88,34 +101,68 @@ export default function PlanTreePanel(): React.JSX.Element {
     })
   }
 
-  const menuFor = (path: string): React.JSX.Element => (
+  const openDialog = (mode: NameDialog['mode'], targetPath: string, initialName = ''): void => {
+    setDialog({ mode, targetPath, initialName })
+    setInputValue(initialName)
+  }
+
+  const submitDialog = async (): Promise<void> => {
+    if (!dialog || !inputValue.trim()) return
+    const name = inputValue.trim()
+    try {
+      if (dialog.mode === 'create-plan') await createPlan(dialog.targetPath, name)
+      else if (dialog.mode === 'create-folder') await createFolder(dialog.targetPath, name)
+      else if (dialog.mode === 'rename') {
+        if (name !== dialog.initialName) await renamePlan(dialog.targetPath, name)
+      }
+      setDialog(null)
+    } catch {
+      // 错误提示由 store/IPC 层弹出（重名等）；保持对话框开启供修改
+    }
+  }
+
+  const confirmRemove = (path: string, kind: 'plan' | 'folder'): void => {
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    Modal.confirm({
+      title: `删除${kind === 'folder' ? '文件夹' : '计划'}「${name}」？`,
+      content: kind === 'folder' ? '其全部子计划与内容将被删除，且不可恢复。' : '该计划及其全部内容、子计划将被删除，且不可恢复。',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => removePlan(path).catch(() => undefined)
+    })
+  }
+
+  const menuFor = (path: string, kind: 'plan' | 'folder'): React.JSX.Element => (
     <Dropdown
       menu={{
         items: [
           {
+            key: 'create-plan',
+            label: '新建子计划',
+            onClick: () => openDialog('create-plan', path)
+          },
+          {
+            key: 'create-folder',
+            label: '新建子文件夹',
+            onClick: () => openDialog('create-folder', path)
+          },
+          { type: 'divider' },
+          {
             key: 'rename',
             label: '重命名',
-            onClick: () => {
-              const cur = path.slice(path.lastIndexOf('/') + 1)
-              const name = window.prompt('重命名计划', cur)
-              if (name && name !== cur) void renamePlan(path, name).catch(() => undefined)
-            }
+            onClick: () => openDialog('rename', path, path.slice(path.lastIndexOf('/') + 1))
           },
           {
             key: 'delete',
             label: '删除',
             danger: true,
-            onClick: () => {
-              // 删除确认（BR-007：二次确认 + 不可恢复提示）
-              // eslint-disable-next-line no-alert
-              const ok = window.confirm(`删除「${path.slice(path.lastIndexOf('/') + 1)}」？\n其全部子计划与内容将被删除，且不可恢复。`)
-              if (ok) void removePlan(path).catch(() => undefined)
-            }
+            onClick: () => confirmRemove(path, kind)
           }
         ]
       }}
     >
-      <button type="button" aria-label="更多操作">
+      <button type="button" className="lite-btn" aria-label="更多操作" onClick={(e) => e.stopPropagation()}>
         <MoreOutlined />
       </button>
     </Dropdown>
@@ -129,10 +176,8 @@ export default function PlanTreePanel(): React.JSX.Element {
     return (
       <span
         className="tree-node-title"
-        style={selected ? { fontWeight: 500 } : undefined}
         onClick={() => {
           if (kind === 'folder') {
-            // 文件夹=容器：选中但不打开内容区
             select(path, 'folder')
             closePlan()
           } else {
@@ -142,37 +187,42 @@ export default function PlanTreePanel(): React.JSX.Element {
         }}
       >
         {kind === 'folder' ? (
-          <FolderOutlined style={{ color: 'var(--text-4)', marginRight: 4 }} aria-label="文件夹" />
+          <FolderOutlined style={{ color: 'var(--text-4)', flex: 'none' }} aria-label="文件夹" />
         ) : (
-          <FolderOpenOutlined style={{ color: 'var(--text-3)', marginRight: 4 }} aria-label="计划" />
+          <FolderOpenOutlined style={{ color: 'var(--text-3)', flex: 'none' }} aria-label="计划" />
         )}
-        <span className="name" style={selected ? { color: 'var(--trace-500)' } : kind === 'folder' ? { color: 'var(--text-2)' } : undefined}>
+        <span
+          className="name"
+          style={{
+            ...(selected ? { color: 'var(--trace-500)', fontWeight: 500 } : kind === 'folder' ? { color: 'var(--text-2)' } : undefined)
+          }}
+        >
           {node.title as string}
         </span>
         <span className="tree-quick">
           <button
             type="button"
+            className="lite-btn"
             aria-label="新建子计划"
             onClick={(e) => {
               e.stopPropagation()
-              const name = window.prompt('子计划名称')
-              if (name) void createPlan(path, name).catch(() => undefined)
+              openDialog('create-plan', path)
             }}
           >
             <PlusOutlined />
           </button>
           <button
             type="button"
+            className="lite-btn"
             aria-label="新建子文件夹"
             onClick={(e) => {
               e.stopPropagation()
-              const name = window.prompt('子文件夹名称')
-              if (name) void createFolder(path, name).catch(() => undefined)
+              openDialog('create-folder', path)
             }}
           >
-            <FolderOutlined />
+            <FolderAddOutlined />
           </button>
-          {menuFor(path)}
+          {menuFor(path, kind)}
         </span>
       </span>
     )
@@ -180,46 +230,58 @@ export default function PlanTreePanel(): React.JSX.Element {
 
   return (
     <>
-      <Tree
-        treeData={treeData}
-        showLine
-        blockNode
-        defaultExpandedKeys={['']}
-        expandedKeys={expandedKeys}
-        onExpand={(keys) => setExpanded(keys as string[])}
-        loadData={async (node) => {
-          if (node.key !== '') await loadChildren(String(node.key))
-        }}
-        titleRender={titleRender}
-        draggable={(node) => String(node.key) !== ''}
-        allowDrop={({ dropNode }) => true}
-        onDrop={onDrop}
-        selectedKeys={selectedPath ? [selectedPath] : []}
-      />
-      <div style={{ display: 'flex', gap: 4, padding: '4px 4px 8px' }}>
+      <div className="tree-scroll">
+        <Tree
+          treeData={treeData}
+          showLine
+          blockNode
+          defaultExpandedKeys={['']}
+          expandedKeys={expandedKeys}
+          onExpand={(keys) => setExpanded(keys as string[])}
+          loadData={async (node) => {
+            if (node.key !== '') await loadChildren(String(node.key))
+          }}
+          titleRender={titleRender}
+          draggable={(node) => String(node.key) !== ''}
+          allowDrop={({ dropNode }) => true}
+          onDrop={onDrop}
+          selectedKeys={selectedPath ? [selectedPath] : []}
+        />
+      </div>
+      <div className="tree-footer">
         <button
           type="button"
-          className="tree-add"
-          style={{ flex: 1 }}
-          onClick={() => {
-            const name = window.prompt('计划名称')
-            if (name) void createPlan('', name).catch(() => undefined)
-          }}
+          className="dashed-btn"
+          onClick={() => openDialog('create-plan', '')}
         >
-          + 计划
+          <PlusOutlined /> 计划
         </button>
         <button
           type="button"
-          className="tree-add"
-          style={{ flex: 1 }}
-          onClick={() => {
-            const name = window.prompt('文件夹名称')
-            if (name) void createFolder('', name).catch(() => undefined)
-          }}
+          className="dashed-btn"
+          onClick={() => openDialog('create-folder', '')}
         >
-          + 文件夹
+          <FolderAddOutlined /> 文件夹
         </button>
       </div>
+
+      <Modal
+        title={dialog ? DIALOG_TITLE[dialog.mode] : ''}
+        open={dialog !== null}
+        onOk={() => void submitDialog()}
+        onCancel={() => setDialog(null)}
+        okText={dialog?.mode === 'rename' ? '重命名' : '创建'}
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Input
+          placeholder={dialog?.mode === 'create-folder' ? '文件夹名称' : '计划名称'}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onPressEnter={() => void submitDialog()}
+          autoFocus
+        />
+      </Modal>
     </>
   )
 }

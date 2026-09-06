@@ -1,4 +1,5 @@
-/* 主题「迹 · Trace Mark」（前端详细设计 §1/§2；token 同 UI 规范 §2） */
+/* 主题「迹 · Trace Mark」（前端详细设计 §1/§2；token 同 UI 规范 §2）
+   UI 整顿基线（2026-09-06）：禁止页面级滚动；控件风格三源合一（antd / 统一样式类，禁裸 button） */
 :root {
   --trace-500: #1677ff;
   --trace-700: #0958d9;
@@ -6,24 +7,30 @@
   --origin: #1d39c4;
   --success: #52c41a;
   --warning: #faad14;
+  --danger: #ff4d4f;
   --text-1: #262626;
   --text-2: #595959;
   --text-3: #8c8c8c;
   --text-4: #bfbfbf;
   --split: #f0f0f0;
+  --border: #d9d9d9;
   --paper: #ffffff;
   --paper-dim: #fafafa;
+  --fill: #f5f5f5;
   --r-card: 8px;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-html, body, #root { height: 100%; }
-body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text-1); }
+/* 桌面应用：锁死页面级滚动，只有内容区可滚 */
+html, body, #root { height: 100%; overflow: hidden; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text-1); font-size: 14px; line-height: 1.5; background: var(--paper-dim); }
 
 /* ---------- 布局骨架（§2.2） ---------- */
 .ws { display: flex; flex-direction: column; height: 100%; background: var(--paper-dim); }
 .ws-main { flex: 1; display: flex; min-height: 0; }
-.ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); overflow: auto; padding: 8px 6px; }
+.ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); display: flex; flex-direction: column; min-height: 0; }
+.ws-tree .tree-scroll { flex: 1; overflow: auto; padding: 8px 6px 4px; }
+.ws-tree .tree-footer { flex: none; display: flex; gap: 6px; padding: 8px 6px 10px; border-top: 1px solid var(--split); }
 .ws-content { flex: 1; overflow: auto; padding: 14px 24px 32px; }
 .ws-status { height: 28px; flex: none; background: var(--paper); border-top: 1px solid var(--split); display: flex; align-items: center; gap: 20px; padding: 0 14px; font-size: 12px; color: var(--text-3); }
 
@@ -31,16 +38,38 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
   .ws-tree { display: none; }
 }
 
+/* ---------- 统一轻量按钮（树/卡片内联操作；与 antd 同气质） ---------- */
+.lite-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-3); font-size: 12px; padding: 3px 8px; border-radius: 6px;
+  transition: all 0.15s;
+}
+.lite-btn:hover { background: var(--trace-bg); color: var(--trace-500); }
+.lite-btn:active { background: #bae0ff; }
+.lite-btn.danger:hover { background: #fff2f0; color: var(--danger); }
+.lite-btn:disabled { opacity: 0.35; cursor: default; }
+.lite-btn:disabled:hover { background: transparent; color: var(--text-3); }
+
+/* 虚线创建按钮（树底/插入组件） */
+.dashed-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+  border: 1px dashed var(--border); background: transparent; cursor: pointer;
+  color: var(--text-3); font-size: 12px; padding: 5px 8px; border-radius: 6px;
+  transition: all 0.15s;
+}
+.dashed-btn:hover { color: var(--trace-500); border-color: var(--trace-500); background: var(--trace-bg); }
+
 /* 顶栏：无边框标题栏——整体为拖拽区，交互控件 no-drag（双击空白=最大化/还原 系统行为） */
-.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 16px; padding: 0 0 0 16px; -webkit-app-region: drag; user-select: none; }
+.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; -webkit-app-region: drag; user-select: none; }
 .ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input { -webkit-app-region: no-drag; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #3b5bdb, var(--origin)); }
-.ws-top .search { flex: 0 1 420px; }
+.ws-top .search { flex: 0 1 400px; }
 .ws-top .spacer { flex: 1; }
 
 /* 自绘窗口控制（Windows 11 惯例：方形热区/悬停浅灰/关闭悬停红） */
-.win-controls { display: flex; align-self: stretch; margin-left: 8px; }
+.win-controls { display: flex; align-self: stretch; margin-left: 4px; }
 .win-btn { width: 46px; align-self: stretch; display: flex; align-items: center; justify-content: center; color: var(--text-1); border-radius: 0; }
 .win-btn:hover { background: rgba(0, 0, 0, 0.06); }
 .win-btn:active { background: rgba(0, 0, 0, 0.1); }
@@ -48,30 +77,27 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .win-btn.win-close:active { background: #b3271a; color: #fff; }
 
 /* ---------- 计划树（§3.1 连接线=迹的骨架；源头圆点） ---------- */
-.tree-root-label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-weight: 500; color: var(--text-1); }
+.tree-root-label { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-weight: 500; }
 .tree-root-label .origin-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--origin); }
-.tree-node-title { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.tree-node-title { display: flex; align-items: center; gap: 4px; overflow: hidden; flex: 1; min-width: 0; }
 .tree-node-title .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-quick { display: none; gap: 2px; }
+.tree-quick { display: none; gap: 0; flex: none; }
 .ant-tree-node-content-wrapper:hover .tree-quick { display: flex; }
-.tree-quick button { font-size: 12px; color: var(--text-3); padding: 0 4px; }
-.tree-quick button:hover { color: var(--trace-500); }
-.tree-node-title.selected-bar { position: relative; }
+.tree-quick .lite-btn { padding: 2px 5px; }
+.ant-tree .ant-tree-node-content-wrapper { border-radius: 6px; }
 
 /* ---------- 内容区（§2.3 纸感） ---------- */
-.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin-bottom: 12px; flex-wrap: wrap; }
 .crumbs .origin-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--origin); }
 .crumbs .here { color: var(--text-1); font-weight: 500; }
 
-.card { background: var(--paper); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 12px 16px; margin-bottom: 12px; }
+.card { background: var(--paper); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 12px 16px; margin-bottom: 12px; position: relative; }
 .card .kind { font-size: 12px; color: var(--text-4); margin-bottom: 4px; user-select: none; }
 .card .head { display: flex; align-items: center; gap: 8px; }
-.card .head h3 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
-.card .actions { display: none; gap: 4px; }
+.card .head h3 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.card .actions { display: none; gap: 0; position: absolute; top: 6px; right: 8px; background: var(--paper); border-radius: 6px; }
 .card:hover .actions { display: flex; }
-.card .actions button { font-size: 12px; color: var(--text-3); padding: 2px 6px; border-radius: 4px; }
-.card .actions button:hover { background: var(--paper-dim); color: var(--trace-500); }
-.card .actions button.danger:hover { color: var(--warning); }
+.card .actions .lite-btn { padding: 2px 6px; }
 
 .card.pulse { animation: card-pulse 2s ease-out; }
 @keyframes card-pulse {
@@ -81,7 +107,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 }
 
 /* 单选计划（§3.3 有重量的卡） */
-.single-title { border: none; outline: none; font-size: 16px; font-weight: 600; flex: 1; color: var(--text-1); background: transparent; }
+.single-title { border: none; outline: none; font-size: 16px; font-weight: 600; flex: 1; min-width: 0; color: var(--text-1); background: transparent; }
 .card.single-done .single-title { text-decoration: line-through; color: var(--text-3); }
 .single-summary { margin-top: 6px; margin-left: 28px; }
 .card.single-done .single-summary textarea { color: var(--text-3); }
@@ -96,19 +122,23 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .task-row.done .state-ring::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-3); }
 .task-row.done .task-title input { text-decoration: line-through; color: var(--text-3); }
 .task-row.done { opacity: 0.55; }
-.task-title { flex: 1; }
+.task-title { flex: 1; min-width: 0; }
 .task-title input { border: none; outline: none; width: 100%; font-size: 14px; background: transparent; color: var(--text-1); }
 .task-date { font-size: 12px; color: var(--text-3); border: 1px solid transparent; border-radius: 4px; padding: 2px; background: transparent; }
-.task-date:hover { border-color: var(--border-color, #d9d9d9); background: #fff; }
-.tag-overdue { font-size: 11px; color: #d48806; background: #fffbe6; border-radius: 4px; padding: 1px 6px; }
-.task-del { display: none; font-size: 12px; color: var(--text-4); }
-.task-row:hover .task-del { display: block; }
-.task-del:hover { color: var(--warning); }
+.task-date:hover { border-color: var(--border); background: #fff; }
+.tag-overdue { font-size: 11px; color: #d48806; background: #fffbe6; border-radius: 4px; padding: 1px 6px; flex: none; }
+.task-del { display: none; }
+.task-row:hover .task-del { display: inline-flex; }
 
 /* 注释旁批（§3.5） */
 .card.note { background: var(--paper-dim); border-left: 4px solid var(--split); border-radius: 0 var(--r-card) var(--r-card) 0; }
 .card.note textarea { font-size: 13px; color: var(--text-2); }
 .note-time { font-size: 12px; color: var(--text-4); margin-top: 4px; }
+
+/* 文件夹容器视图 */
+.folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.folder-item { display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; }
+.folder-item:hover { border-color: var(--trace-500); }
 
 /* 状态栏（§3.8） */
 .dot-ok { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 4px; }

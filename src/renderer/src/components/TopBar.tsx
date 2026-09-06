@@ -1,29 +1,12 @@
-// TopBar（§2.2）：无边框标题栏——品牌 / 全局搜索（Sprint 3）/ 导入导出 / 新建计划 / 自绘窗口控制
-// 拖拽区 = 标题栏整体（-webkit-app-region: drag），交互控件 no-drag
-import { useEffect, useState } from 'react'
-import { Button, Dropdown, Input, Modal, Tooltip, message } from 'antd'
-import { PlusOutlined, SwapOutlined } from '@ant-design/icons'
+// TopBar（§2.2）：无边框标题栏——品牌 / 全局搜索（Sprint 3）/ 导入导出 / 自绘窗口控制
+// 入口收敛（2026-09-06）：创建类操作只保留树底部，TopBar 只放全局动作
+import { Dropdown, Input, Tooltip, message } from 'antd'
+import { SwapOutlined } from '@ant-design/icons'
 import { useTreeStore } from '../stores/tree-store'
-import { usePlanStore } from '../stores/plan-store'
 import WindowControls from './WindowControls'
 import { ClientError } from '../ipc-client'
 
 export default function TopBar(): React.JSX.Element {
-  const createPlan = useTreeStore((s) => s.createPlan)
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-
-  const submit = async (): Promise<void> => {
-    if (!name.trim()) return
-    try {
-      await createPlan('', name.trim())
-      setOpen(false)
-      setName('')
-    } catch {
-      message.error('创建失败（同名/非法字符?）')
-    }
-  }
-
   return (
     <div className="ws-top">
       <div className="brand">
@@ -37,27 +20,7 @@ export default function TopBar(): React.JSX.Element {
       </div>
       <div className="spacer" />
       <TransferMenu />
-      <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-        新建计划
-      </Button>
       <WindowControls />
-      <Modal
-        title="新建顶层计划"
-        open={open}
-        onOk={() => void submit()}
-        onCancel={() => setOpen(false)}
-        okText="创建"
-        cancelText="取消"
-        destroyOnClose
-      >
-        <Input
-          placeholder="计划名称"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onPressEnter={() => void submit()}
-          autoFocus
-        />
-      </Modal>
     </div>
   )
 }
@@ -90,7 +53,9 @@ function TransferMenu(): React.JSX.Element {
         ]
       }}
     >
-      <Button icon={<SwapOutlined />}>导入 / 导出</Button>
+      <button type="button" className="ant-btn ant-btn-default" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <SwapOutlined /> 导入 / 导出
+      </button>
     </Dropdown>
   )
 }

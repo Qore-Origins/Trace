@@ -29,9 +29,10 @@ function CardShell(props: {
       <div className="kind">{KIND_LABEL[props.kind] ?? props.kind}</div>
       {props.head}
       {props.children}
-      <div className="actions" style={{ display: undefined }}>
+      <div className="actions">
         <button
           type="button"
+          className="lite-btn"
           aria-label="上移"
           onClick={() => moveComponent(props.componentId, props.index - 1)}
           style={{ visibility: props.index > 0 ? 'visible' : 'hidden' }}
@@ -40,13 +41,14 @@ function CardShell(props: {
         </button>
         <button
           type="button"
+          className="lite-btn"
           aria-label="下移"
           onClick={() => moveComponent(props.componentId, props.index + 1)}
           style={{ visibility: props.index < props.total - 1 ? 'visible' : 'hidden' }}
         >
           <ArrowDownOutlined />
         </button>
-        <button type="button" className="danger" aria-label="删除组件" onClick={() => removeComponent(props.componentId)}>
+        <button type="button" className="lite-btn danger" aria-label="删除组件" onClick={() => removeComponent(props.componentId)}>
           <DeleteOutlined />
         </button>
       </div>
@@ -158,7 +160,7 @@ function MultiPlanCard({ comp, index, total }: { comp: Component; index: number;
             </div>
             <button
               type="button"
-              className="task-del"
+              className="task-del lite-btn danger"
               onClick={() =>
                 patchComponent(comp.id, (payload) => {
                   const mp = payload as MultiPlanPayload
@@ -172,7 +174,7 @@ function MultiPlanCard({ comp, index, total }: { comp: Component; index: number;
         ))}
         <button
           type="button"
-          style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}
+          className="lite-btn" style={{ marginTop: 4 }}
           onClick={() =>
             patchComponent(comp.id, (payload) => {
               ;(payload as MultiPlanPayload).options.push({ id: uuid32(), text: '', checked: false })
@@ -249,7 +251,7 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
             {isOverdue(item.status, item.planned_at, today) && <span className="tag-overdue">逾期</span>}
             <button
               type="button"
-              className="task-del"
+              className="task-del lite-btn danger"
               onClick={() =>
                 patchComponent(comp.id, (payload) => {
                   const tl = payload as TaskListPayload
