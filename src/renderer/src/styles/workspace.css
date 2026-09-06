@@ -68,14 +68,11 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .ws-top .search { flex: 0 1 400px; }
 .ws-top .spacer { flex: 1; }
 
-/* 自绘窗口控制：与应用轻量按钮同家族（32px 紧凑热区/6px 圆角/浅色 hover/关闭浅红）
-   2026-09-06 二次修正：放弃 Windows 原生直角大热区形态，统一优先 */
-.win-controls { display: flex; align-items: center; gap: 4px; margin-left: 4px; margin-right: 8px; }
-.win-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); border-radius: 6px; transition: all 0.15s; }
-.win-btn:hover { background: rgba(0, 0, 0, 0.045); color: var(--text-1); }
-.win-btn:active { background: rgba(0, 0, 0, 0.08); }
-.win-btn.win-close:hover { background: #fff2f0; color: var(--danger); }
-.win-btn.win-close:active { background: #ffccc7; }
+/* 自绘窗口控制：极简裸图标——无底色无边框无圆角视觉，悬停仅图标变色（2026-09-06 三次定稿） */
+.win-controls { display: flex; align-items: center; gap: 2px; margin-left: 4px; margin-right: 8px; }
+.win-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); background: transparent; border: none; transition: color 0.15s; }
+.win-btn:hover, .win-btn:active { background: transparent; color: var(--text-1); }
+.win-btn.win-close:hover, .win-btn.win-close:active { background: transparent; color: var(--danger); }
 
 /* ---------- 计划树（§3.1 连接线=迹的骨架；源头圆点） ---------- */
 .tree-root-label { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-weight: 500; }
