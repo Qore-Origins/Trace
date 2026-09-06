@@ -232,7 +232,9 @@ export class TransferService {
     try {
       await this.repo.mkdirPlan(root, parent, level)
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
+      // 已存在即达成目的（mkdirPlan 将 EEXIST 映射为 NAME_CONFLICT，此处两种形态都视为已存在）
+      const already = (e as NodeJS.ErrnoException).code === 'EEXIST' || (e instanceof TraceError && e.code === ERR.NAME_CONFLICT)
+      if (!already) throw e
     }
     this.treeCache.invalidatePrefix(parent)
     return levelPath
