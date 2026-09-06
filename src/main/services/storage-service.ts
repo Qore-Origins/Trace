@@ -43,13 +43,12 @@ export class StorageService {
     const parent = this.safe(parentPathRel)
     const root = this.root()
 
-    // 顶层顺序存库元数据（契约实现期补充）；子层顺序存父 plan.json children_order
+    // 顶层顺序存库元数据；计划层存父 plan.json children_order；容器文件夹无载体 → 按名排序
     let ordered: string[] | undefined
     if (parent === '') {
       ordered = (await this.repo.readLibraryMeta(root)).children_order
-    } else {
-      const doc = await this.repo.readPlan(root, parent)
-      ordered = doc.children_order
+    } else if (await this.repo.hasPlanFile(root, parent)) {
+      ordered = (await this.repo.readPlan(root, parent)).children_order
     }
 
     let names = this.treeCache.get(parent)
