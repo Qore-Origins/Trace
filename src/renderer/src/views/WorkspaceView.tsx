@@ -7,8 +7,10 @@ import PlanTreePanel from '../components/PlanTreePanel'
 import ContentArea from '../components/ContentArea'
 import StatusBar from '../components/StatusBar'
 import NameDialogModal from '../components/NameDialogModal'
+import SearchOverlay from '../components/SearchOverlay'
 import { useTreeStore } from '../stores/tree-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
+import { useSearchStore } from '../stores/search-store'
 import { invoke } from '../ipc-client'
 
 function useNarrow(): boolean {
@@ -29,9 +31,15 @@ export default function WorkspaceView(): React.JSX.Element {
 
   const { selectedPath, selectedKind, refreshAll } = useTreeStore()
   const openNameDialog = useUiStore((s) => s.openNameDialog)
+  const setSearchOpen = useSearchStore((s) => s.setOpen)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault() // 搜索快捷键优先于输入焦点判断（输入框内 Ctrl+F 也应打开溯源）
+        setSearchOpen(true)
+        return
+      }
       if (isTypingTarget(e)) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault()
@@ -60,7 +68,7 @@ export default function WorkspaceView(): React.JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedPath, selectedKind, refreshAll, openNameDialog])
+  }, [selectedPath, selectedKind, refreshAll, openNameDialog, setSearchOpen])
 
   const tree = <PlanTreePanel />
 
@@ -93,6 +101,7 @@ export default function WorkspaceView(): React.JSX.Element {
       )}
       <StatusBar />
       <NameDialogModal />
+      <SearchOverlay />
     </div>
   )
 }

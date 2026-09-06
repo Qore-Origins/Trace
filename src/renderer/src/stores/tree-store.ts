@@ -20,6 +20,7 @@ interface TreeState {
   renamePlan: (path: string, newName: string) => Promise<void>
   removePlan: (path: string) => Promise<void>
   movePlan: (dragPath: string, targetParent: string, orderIndex: number) => Promise<void>
+  expandTo: (path: string) => Promise<void>
   refreshAll: () => Promise<void>
   exportPlan: (path: string) => Promise<string | null>
   importPlan: (targetParent: string) => Promise<string | null>
@@ -153,6 +154,21 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   refreshAll: async () => {
     set({ childrenMap: {}, loaded: {} })
     await refreshInto(set, get, '')
+  },
+
+  // 展开到指定路径（回溯定位用）：逐层加载各祖先的子列表，并入展开键
+  expandTo: async (path) => {
+    const segs = path.split('/').filter(Boolean)
+    const layers: string[] = [''] // 每层父路径：'' → 'a' → 'a/b' ...
+    let cur = ''
+    for (const seg of segs) {
+      cur = cur === '' ? seg : `${cur}/${seg}`
+      layers.push(cur)
+    }
+    for (const parent of layers.slice(0, -1)) {
+      if (!get().loaded[parent]) await refreshInto(set, get, parent)
+    }
+    set({ expandedKeys: [...new Set([...get().expandedKeys, ...layers.slice(0, -1)])] })
   },
 
   exportPlan: async (path) => {

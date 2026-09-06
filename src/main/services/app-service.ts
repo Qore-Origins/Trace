@@ -14,7 +14,8 @@ export class AppService {
     private config: ConfigService,
     private repo: PlanRepository,
     private storage: StorageService,
-    private onRootChanged: (rootAbs: string) => void
+    private onRootChanged: (rootAbs: string) => void,
+    private getIndexState: () => 'building' | 'ready' | 'error' = () => 'ready'
   ) {}
 
   async getAppInfo(): Promise<AppInfo> {
@@ -34,7 +35,7 @@ export class AppService {
       rootDir,
       rootConfigured,
       rootInvalid,
-      indexState: 'ready' // Sprint 3 接入 SearchService 后由索引状态驱动
+      indexState: this.getIndexState()
     }
   }
 

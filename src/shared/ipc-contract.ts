@@ -18,6 +18,14 @@ export function fail(code: number, message: string): TraceResult<null> {
 
 // ---------- DTO ----------
 
+export interface SearchHit {
+  scope: 'plan' | 'task' | 'note'
+  path: string
+  component_id?: string
+  snippet: string
+  matched_field: string
+}
+
 export interface PlanTreeNode {
   path: string // 相对根目录，'/' 分隔
   name: string
@@ -68,6 +76,9 @@ export interface Channels {
     req: { path: string; component_id: string; task_id: string; patch: Partial<Pick<TaskItem, 'status' | 'title' | 'planned_at' | 'note'>> }
     res: null
   }
+  // search（溯源检索）
+  'search:query': { req: { keywords: string[] }; res: SearchHit[] }
+  'search:getStatus': { req: void; res: { state: 'building' | 'ready' | 'error'; indexed: number } }
   // config
   'config:getWindow': { req: void; res: { width: number; height: number; maximized: boolean } }
   'config:setWindow': { req: { width: number; height: number; maximized: boolean }; res: null }

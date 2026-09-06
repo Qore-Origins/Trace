@@ -1,14 +1,17 @@
 // TopBar（§2.2）：无边框标题栏——品牌 / 菜单栏（VS Code 式）/ 全局搜索（Sprint 3）/ 自绘窗口控制
 // 2026-09-06：导入导出收进「文件」菜单（不再有独立按钮）；创建入口在树底与「文件」菜单
-import { Dropdown, Input, Modal, Tooltip, message } from 'antd'
+import { Dropdown, Input, Modal, message } from 'antd'
 import type { MenuProps } from 'antd'
 import WindowControls from './WindowControls'
 import { useTreeStore } from '../stores/tree-store'
 import { useAppStore } from '../stores/app-store'
 import { useUiStore } from '../stores/ui-store'
+import { useSearchStore } from '../stores/search-store'
 import { invoke, ClientError } from '../ipc-client'
 
 export default function TopBar(): React.JSX.Element {
+  const setSearchOpen = useSearchStore((s) => s.setOpen)
+
   return (
     <div className="ws-top">
       <div className="brand">
@@ -17,9 +20,11 @@ export default function TopBar(): React.JSX.Element {
       </div>
       <MenuBar />
       <div className="search">
-        <Tooltip title="溯源检索将在 Sprint 3 接入索引服务">
-          <Input placeholder="搜索：沿迹回望计划 / 任务 / 注释…" readOnly />
-        </Tooltip>
+        <Input
+          placeholder="搜索：沿迹回望计划 / 任务 / 注释…（Ctrl+F）"
+          readOnly
+          onFocus={() => setSearchOpen(true)}
+        />
       </div>
       <div className="spacer" />
       <WindowControls />

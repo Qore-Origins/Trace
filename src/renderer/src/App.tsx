@@ -6,6 +6,7 @@ import WorkspaceView from './views/WorkspaceView'
 import { useAppStore, subscribeAppEvents } from './stores/app-store'
 import { subscribeTreeEvents } from './stores/tree-store'
 import { subscribePlanEvents } from './stores/plan-store'
+import { subscribeSearchEvents } from './stores/search-store'
 
 export default function App(): React.JSX.Element {
   const phase = useAppStore((s) => s.phase)
@@ -15,11 +16,13 @@ export default function App(): React.JSX.Element {
     const offApp = subscribeAppEvents()
     const offTree = subscribeTreeEvents()
     const offPlan = subscribePlanEvents()
+    const offSearch = subscribeSearchEvents()
     void bootstrap()
     return () => {
       offApp()
       offTree()
       offPlan()
+      offSearch()
     }
   }, [bootstrap])
 

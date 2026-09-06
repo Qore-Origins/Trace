@@ -147,6 +147,19 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .folder-item { display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; }
 .folder-item:hover { border-color: var(--trace-500); }
 
+/* ---------- 溯源浮层（§3.6） ---------- */
+.search-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.08); z-index: 30; }
+.search-overlay { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); width: 560px; max-width: calc(100vw - 48px); background: var(--paper); border-radius: var(--r-card); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); z-index: 31; overflow: hidden; display: flex; flex-direction: column; }
+.search-overlay .o-input { width: 100%; height: 44px; border: none; border-bottom: 1px solid var(--split); outline: none; padding: 0 16px; font-size: 14px; font-family: inherit; }
+.search-overlay .o-body { max-height: 380px; overflow: auto; padding: 6px; }
+.o-section { font-size: 12px; color: var(--text-4); padding: 8px 8px 4px; }
+.o-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.o-item:hover { background: var(--paper-dim); }
+.o-item .o-title { font-size: 13px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-item .o-path { font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-empty { padding: 32px; text-align: center; color: var(--text-3); font-size: 13px; }
+.o-building { padding: 6px 10px; font-size: 12px; color: var(--text-3); }
+
 /* 状态栏（§3.8） */
 .dot-ok { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 4px; }
 .dot-building { background: var(--trace-500); }

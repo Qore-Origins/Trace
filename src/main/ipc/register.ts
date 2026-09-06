@@ -9,6 +9,7 @@ import { AppService } from '../services/app-service'
 import { StorageService } from '../services/storage-service'
 import { ConfigService } from '../services/config-service'
 import { TransferService } from '../services/transfer-service'
+import { SearchService } from '../services/search-service'
 import { bus } from '../services/event-bus'
 
 interface Deps {
@@ -16,6 +17,7 @@ interface Deps {
   storage: StorageService
   config: ConfigService
   transfer: TransferService
+  search: SearchService
   getWindow: () => BrowserWindow | null
   log: (channel: string, code: number, detail?: string) => void
 }
@@ -41,7 +43,7 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
 }
 
 export function registerIpc(deps: Deps): void {
-  const { app, storage, config, transfer, getWindow, log } = deps
+  const { app, storage, config, transfer, search, getWindow, log } = deps
   const reg = <K extends ChannelName>(name: K, handler: Handler<K>) => {
     ipcMain.handle(name, wrap(name, handler, log))
   }
@@ -117,6 +119,10 @@ export function registerIpc(deps: Deps): void {
   // ---------- config ----------
   reg('config:getWindow', () => config.getWindowState())
   reg('config:setWindow', (p) => config.saveWindowState(p).then(() => null))
+
+  // ---------- search ----------
+  reg('search:query', (p) => Promise.resolve(search.query(p.keywords)))
+  reg('search:getStatus', () => Promise.resolve({ state: search.getState(), indexed: search.indexedCount }))
 
   // ---------- transfer ----------
   reg('transfer:exportPlan', (p) => transfer.exportPlan(p.path, p.saveTo))
