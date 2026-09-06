@@ -1,12 +1,12 @@
 // 首启引导（§3.7）：品牌陈述=数据承诺；无注册无网络
 import { useState } from 'react'
-import { Button, Typography } from 'antd'
+import { Alert, Button, Typography, message } from 'antd'
 import { FolderOpenOutlined } from '@ant-design/icons'
 import { useAppStore } from '../stores/app-store'
-import { invoke } from '../ipc-client'
+import { invoke, ClientError } from '../ipc-client'
 
 export default function OnboardingView(): React.JSX.Element {
-  const setRootDir = useAppStore((s) => s.setRootDir)
+  const { setRootDir, rootDir: prevRoot, rootInvalid } = useAppStore()
   const [chosen, setChosen] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -19,8 +19,10 @@ export default function OnboardingView(): React.JSX.Element {
     if (!chosen) return
     setBusy(true)
     try {
-      // 首次配置 confirmed=false 即可（仅切换已有根目录时需要确认）
+      // 引导页只在「未配置」或「旧根目录失效」时出现——两者均无需切换确认（主进程同语义）
       await setRootDir(chosen, false)
+    } catch (e) {
+      message.error(e instanceof ClientError ? e.message : '设置失败，请重试')
     } finally {
       setBusy(false)
     }
@@ -34,6 +36,15 @@ export default function OnboardingView(): React.JSX.Element {
           溯源 <em style={{ fontStyle: 'normal', color: 'var(--trace-500)' }}>Trace</em>
         </Typography.Title>
         <div className="slogan">计划有迹可循</div>
+        {rootInvalid && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16, textAlign: 'left' }}
+            message="原计划库位置不可用"
+            description={`之前配置的目录（${prevRoot ?? '-'}）已无法访问。重新选择一个位置即可；原数据不会被动删除。`}
+          />
+        )}
         <div className="desc">
           你的计划将以<b>普通文件夹</b>保存在你选择的位置——任何时刻可整体拷贝备份、迁移到新电脑，数据
           <b>不出你的设备</b>。

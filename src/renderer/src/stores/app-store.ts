@@ -9,6 +9,7 @@ export type IndexState = 'building' | 'ready' | 'error'
 interface AppState {
   phase: AppPhase
   rootDir: string | null
+  rootInvalid: boolean
   indexState: IndexState
   // 溯源浮层开合（Sprint 3 接 SearchService；先做壳）
   searchOpen: boolean
@@ -20,6 +21,7 @@ interface AppState {
 export const useAppStore = create<AppState>()((set) => ({
   phase: 'checking',
   rootDir: null,
+  rootInvalid: false,
   indexState: 'ready',
   searchOpen: false,
 
@@ -27,9 +29,9 @@ export const useAppStore = create<AppState>()((set) => ({
     try {
       const info = await invoke('app:bootstrap')
       if (info.rootConfigured && !info.rootInvalid) {
-        set({ phase: 'ready', rootDir: info.rootDir, indexState: info.indexState })
+        set({ phase: 'ready', rootDir: info.rootDir, rootInvalid: false, indexState: info.indexState })
       } else {
-        set({ phase: 'onboarding', rootDir: info.rootDir })
+        set({ phase: 'onboarding', rootDir: info.rootDir, rootInvalid: info.rootConfigured && info.rootInvalid })
       }
     } catch (e) {
       message.error(e instanceof ClientError ? e.message : '启动失败')
