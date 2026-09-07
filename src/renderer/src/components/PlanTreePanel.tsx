@@ -32,7 +32,6 @@ import { CSS } from '@dnd-kit/utilities'
 import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
-import { isSelfOrDescendant } from '@shared/path-utils'
 import { applyHysteresis, computeTreeMove, flattenTree, intentOf, type DropIntent, type FlatNode } from './tree-utils'
 
 // 行内容（根/子行共享）：缩进连接线 + 手柄位 + 箭头 + 标题/快捷操作
@@ -288,12 +287,11 @@ export default function PlanTreePanel(): React.JSX.Element {
     if (!target) return
     const d = computeTreeMove(dragPath, target, intent ?? 'after', childrenMap)
     if (!d) return
-    if (isSelfOrDescendant(d.dragPath, d.targetParent)) {
-      void movePlan(d.dragPath, d.targetParent, d.orderIndex) // store 内拦并提示
-      return
-    }
-    void movePlan(d.dragPath, d.targetParent, d.orderIndex).then(() => {
-      if (d.targetParent && !expandedKeys.includes(d.targetParent)) setExpanded([...expandedKeys, d.targetParent])
+    // movePlan 乐观更新（松手即落定）+ 失败回滚提示；成功后确保目标父层展开（读最新键，防闭包过期）
+    void movePlan(d.dragPath, d.targetParent, d.orderIndex).then((ok) => {
+      if (!ok || !d.targetParent) return
+      const cur = useTreeStore.getState().expandedKeys
+      if (!cur.includes(d.targetParent)) setExpanded([...cur, d.targetParent])
     })
   }
 

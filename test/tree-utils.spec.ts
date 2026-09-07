@@ -1,7 +1,7 @@
 // 树纯逻辑测试：箭头数据驱动语义（2026-09-06 U1 修复的行为锚点，2026-09-07 迁移 flattenTree）
 // + dnd-kit 三分区落点换算（intentOf / computeTreeMove）
 import { describe, it, expect } from 'vitest'
-import { flattenTree, intentOf, computeTreeMove, applyHysteresis, kindOf, type FlatNode } from '../src/renderer/src/components/tree-utils'
+import { flattenTree, intentOf, computeTreeMove, applyHysteresis, optimisticMove, kindOf, type FlatNode } from '../src/renderer/src/components/tree-utils'
 import type { PlanTreeNode } from '../src/shared/ipc-contract'
 
 const n = (path: string, name: string, has_children: boolean, kind: 'plan' | 'folder' = 'plan'): PlanTreeNode => ({
@@ -131,5 +131,60 @@ describe('computeTreeMove（精确索引换算）', () => {
     expect(computeTreeMove('A', row('Z', 'Z', 'plan'), 'before', map)).toEqual({
       dragPath: 'A', targetParent: '', orderIndex: 2
     })
+  })
+})
+
+describe('optimisticMove（乐观换位，消除松手弹回）', () => {
+  it('同父重排（顶层=顺序载体）→ 按精确索引换位', () => {
+    const map = { '': [n('A', 'A', false), n('B', 'B', false), n('C', 'C', false)] }
+    const r = optimisticMove(map, { '': true }, 'A', '', 2)
+    expect(r?.childrenMap[''].map((x) => x.name)).toEqual(['B', 'C', 'A'])
+  })
+  it('跨父移入已加载计划 → 插到 orderIndex 位，节点 path 迁移', () => {
+    const map = { '': [n('A', 'A', false), n('P', 'P', true)], P: [n('P/x', 'x', false), n('P/y', 'y', false)] }
+    const r = optimisticMove(map, { '': true, P: true }, 'A', 'P', Number.MAX_SAFE_INTEGER)
+    expect(r?.childrenMap[''].map((x) => x.name)).toEqual(['P'])
+    expect(r?.childrenMap.P.map((x) => x.path)).toEqual(['P/x', 'P/y', 'P/A'])
+  })
+  it('跨父移入已加载文件夹 → 按 name-sort 插入（无顺序载体，对齐权威刷新位）', () => {
+    const map = {
+      '': [n('c', 'c', false), n('F', 'F', true, 'folder')],
+      F: [n('F/b', 'b', false), n('F/d', 'd', false)]
+    }
+    const r = optimisticMove(map, { '': true, F: true }, 'c', 'F', 0)
+    expect(r?.childrenMap.F.map((x) => x.name)).toEqual(['b', 'c', 'd'])
+  })
+  it('同父重排（文件夹父级=无载体）→ name-sort 原位（诚实呈现：顺序不持久化）', () => {
+    const map = { '': [n('F', 'F', true, 'folder')], F: [n('F/a', 'a', false), n('F/b', 'b', false), n('F/c', 'c', false)] }
+    const r = optimisticMove(map, { '': true, F: true }, 'F/c', 'F', 0)
+    expect(r?.childrenMap.F.map((x) => x.name)).toEqual(['a', 'b', 'c'])
+  })
+  it('目标层未加载 → 旧位移除、目标层不预插（折叠中不可见）', () => {
+    const map = { '': [n('A', 'A', false), n('F', 'F', true, 'folder')] } // F 从未展开
+    const r = optimisticMove(map, { '': true }, 'A', 'F', Number.MAX_SAFE_INTEGER)
+    expect(r?.childrenMap[''].map((x) => x.name)).toEqual(['F'])
+    expect(r?.childrenMap.F).toBeUndefined()
+  })
+  it('已加载子树随迁：键前缀与后代节点 path 一并迁移，旧键清除', () => {
+    const map = {
+      '': [n('G', 'G', true), n('T', 'T', false)],
+      G: [n('G/k', 'k', true)],
+      'G/k': [n('G/k/leaf', 'leaf', false)]
+    }
+    const r = optimisticMove(map, { '': true, G: true, 'G/k': true }, 'G', 'T', Number.MAX_SAFE_INTEGER)
+    expect(r?.childrenMap[''].map((x) => x.name)).toEqual(['T'])
+    expect(r?.childrenMap['T/G']?.[0]?.path).toBe('T/G/k')
+    expect(r?.childrenMap['T/G/k']?.[0]?.path).toBe('T/G/k/leaf')
+    expect(r?.childrenMap.G).toBeUndefined()
+    expect(r?.loaded['T/G']).toBe(true)
+  })
+  it('跨父移入空文件夹（has_children=false）→ 目标行置真（flattenTree 才下钻渲染）', () => {
+    const map = { '': [n('A', 'A', false), n('F', 'F', false, 'folder')], F: [] }
+    const r = optimisticMove(map, { '': true, F: true }, 'A', 'F', Number.MAX_SAFE_INTEGER)
+    expect(r?.childrenMap.F.map((x) => x.path)).toEqual(['F/A'])
+    expect(r?.childrenMap[''].find((x) => x.name === 'F')?.has_children).toBe(true)
+  })
+  it('节点不在已加载视图 → null（不可乐观，交由 IPC 后权威刷新）', () => {
+    expect(optimisticMove({}, {}, 'X', '', 0)).toBeNull()
   })
 })

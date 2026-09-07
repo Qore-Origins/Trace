@@ -4,6 +4,7 @@ import { invoke, onEvent, ClientError } from '../ipc-client'
 import { message } from 'antd'
 import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
+import { optimisticMove } from '../components/tree-utils'
 import { usePlanStore } from './plan-store'
 
 interface TreeState {
@@ -19,7 +20,7 @@ interface TreeState {
   createFolder: (parentPath: string, name: string) => Promise<void>
   renamePlan: (path: string, newName: string) => Promise<void>
   removePlan: (path: string) => Promise<void>
-  movePlan: (dragPath: string, targetParent: string, orderIndex: number) => Promise<void>
+  movePlan: (dragPath: string, targetParent: string, orderIndex: number) => Promise<boolean>
   expandTo: (path: string) => Promise<void>
   refreshAll: () => Promise<void>
   exportPlan: (path: string) => Promise<string | null>
@@ -136,19 +137,47 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   movePlan: async (dragPath, targetParent, orderIndex) => {
     if (isSelfOrDescendant(dragPath, targetParent)) {
       message.warning('不能移动到自身或子计划中')
-      return
+      return false
     }
     const name = dragPath.slice(dragPath.lastIndexOf('/') + 1)
-    await invoke('storage:movePlan', { path: dragPath, target_parent_path: targetParent, order_index: orderIndex })
     const newPath = targetParent === '' ? name : `${targetParent}/${name}`
+
+    // 乐观更新（2026-09-07：松手弹回原位修复）：IPC 往返期间 dnd-kit 已复位 transform，
+    // 本地先行换位（含子树键/选中/展开迁移）保证松手即落定；失败整体回滚
+    const snap = {
+      childrenMap: get().childrenMap,
+      loaded: get().loaded,
+      expandedKeys: get().expandedKeys,
+      selectedPath: get().selectedPath
+    }
+    const opt = optimisticMove(snap.childrenMap, snap.loaded, dragPath, targetParent, orderIndex)
+    if (opt) {
+      const migrateKey = (k: string): string => (k === dragPath || k.startsWith(dragPath + '/') ? newPath + k.slice(dragPath.length) : k)
+      set({
+        childrenMap: opt.childrenMap,
+        loaded: opt.loaded,
+        expandedKeys: [...new Set([...snap.expandedKeys.map(migrateKey), targetParent])],
+        selectedPath: snap.selectedPath ? migrateKey(snap.selectedPath) : null
+      })
+    }
+    try {
+      await invoke('storage:movePlan', { path: dragPath, target_parent_path: targetParent, order_index: orderIndex })
+    } catch (e) {
+      if (opt) {
+        set({ childrenMap: snap.childrenMap, loaded: snap.loaded, expandedKeys: snap.expandedKeys, selectedPath: snap.selectedPath })
+      }
+      message.error(e instanceof ClientError ? e.message : '移动失败，已还原')
+      return false
+    }
     await refreshAround(set, get, newPath)
     await refreshAround(set, get, dragPath)
-    // 选中/展开键迁移
+    // 选中/展开键迁移（乐观已迁移时为幂等空转；覆盖不可乐观的分支）
     const migrate = (keys: string[]) => keys.map((k) => (k === dragPath || k.startsWith(dragPath + '/') ? newPath + k.slice(dragPath.length) : k))
     set({ expandedKeys: migrate(get().expandedKeys), selectedPath: migrate([get().selectedPath ?? ''])[0] || null })
     if (usePlanStore.getState().currentPath === dragPath) {
       await usePlanStore.getState().open(newPath)
     }
+    return true
   },
 
   refreshAll: async () => {
