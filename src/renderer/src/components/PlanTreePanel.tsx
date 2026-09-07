@@ -1,8 +1,8 @@
-// PlanTreePanel（§3.1）：连接线可见、源头圆点、懒加载、拖拽改道、悬停快捷操作
-// 2026-09-07：antd Tree → dnd-kit 自渲染扁平树（同款 AI Resource Hub）：手柄拖拽、
-// 让位动画、被拖行浮起、三分区落点（上/下 1/3=前/后插，中 1/3=入内部高亮）
+// PlanTreePanel（§3.1）：连接线可见、源头圆点、懒加载、悬停快捷操作
+// 2026-09-08 拖拽语义定稿：树不做排序——拖到文件夹行=移入，拖到「计划库」根行=移到顶层；
+// dnd-kit 浮起跟随（同款卡片手感），松手乐观落位（tree-store optimisticMove）
 // 纯逻辑在 tree-utils.ts（组件文件只导出组件，保证 Fast Refresh）；命名对话框挂载在 Workspace
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Dropdown } from 'antd'
 import {
   DownOutlined,
@@ -17,9 +17,9 @@ import {
 } from '@ant-design/icons'
 import {
   DndContext,
-  KeyboardSensor,
   PointerSensor,
-  closestCenter,
+  pointerWithin,
+  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
@@ -27,12 +27,12 @@ import {
   type DragEndEvent,
   type DraggableAttributes
 } from '@dnd-kit/core'
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
 import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
-import { applyHysteresis, computeTreeMove, flattenTree, intentOf, type DropIntent, type FlatNode } from './tree-utils'
+import { flattenTree, type FlatNode } from './tree-utils'
 
 // 行内容（根/子行共享）：缩进连接线 + 手柄位 + 箭头 + 标题/快捷操作
 function RowContent(props: {
@@ -73,7 +73,7 @@ function RowContent(props: {
         ))}
       </span>
       {props.handle && (
-        <span className="drag-handle" aria-label="拖拽移动" title="拖动移动计划/文件夹" {...props.handle.attributes} {...props.handle.listeners}>
+        <span className="drag-handle" aria-label="拖拽移动" title="拖动移入/移出文件夹" {...props.handle.attributes} {...props.handle.listeners}>
           <HolderOutlined />
         </span>
       )}
@@ -142,20 +142,21 @@ function RowContent(props: {
   )
 }
 
-// 子行：sortable（手柄发起拖拽；行身=放置目标）
-function SortableTreeRow(props: {
+interface RowProps {
   node: FlatNode
   selected: boolean
-  dropInto: boolean
   onToggle: (node: FlatNode) => void
   onOpen: (node: FlatNode) => void
-}): React.JSX.Element {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.node.path })
+}
+
+// 计划行：仅可拖（不接收放置——树不做排序，容器语义归文件夹/根）
+function PlanRow(props: RowProps): React.JSX.Element {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: props.node.path })
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`tree-row${isDragging ? ' dragging' : ''}${props.dropInto ? ' drop-into' : ''}`}
+      style={{ transform: CSS.Transform.toString(transform) }}
+      className={`tree-row${isDragging ? ' dragging' : ''}`}
       data-path={props.node.path}
     >
       <RowContent node={props.node} selected={props.selected} handle={{ attributes, listeners }} onToggle={props.onToggle} onOpen={props.onOpen} />
@@ -163,11 +164,30 @@ function SortableTreeRow(props: {
   )
 }
 
-// 根行：不可拖，仅放置目标（接收「移到顶层末尾」）
-function RootTreeRow(props: { node: FlatNode; dropInto: boolean; onToggle: (node: FlatNode) => void }): React.JSX.Element {
-  const { setNodeRef } = useDroppable({ id: '' })
+// 文件夹行：可拖 + 落点（移入）；无效目标（被拖项自身/子孙/现父）不高亮
+function FolderRow(props: RowProps & { canReceive: boolean }): React.JSX.Element {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: props.node.path })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: props.node.path })
   return (
-    <div ref={setNodeRef} className={`tree-row root${props.dropInto ? ' drop-into' : ''}`} data-path="">
+    <div
+      ref={(el) => {
+        setNodeRef(el)
+        setDropRef(el)
+      }}
+      style={{ transform: CSS.Transform.toString(transform) }}
+      className={`tree-row${isDragging ? ' dragging' : ''}${isOver && props.canReceive ? ' drop-into' : ''}`}
+      data-path={props.node.path}
+    >
+      <RowContent node={props.node} selected={props.selected} handle={{ attributes, listeners }} onToggle={props.onToggle} onOpen={props.onOpen} />
+    </div>
+  )
+}
+
+// 根行：不可拖，仅落点（接收「移到顶层」）
+function RootTreeRow(props: { node: FlatNode; canReceive: boolean; onToggle: (node: FlatNode) => void }): React.JSX.Element {
+  const { setNodeRef, isOver } = useDroppable({ id: '' })
+  return (
+    <div ref={setNodeRef} className={`tree-row root${isOver && props.canReceive ? ' drop-into' : ''}`} data-path="">
       <RowContent node={props.node} selected={false} handle={null} onToggle={props.onToggle} onOpen={props.onToggle} />
     </div>
   )
@@ -185,20 +205,12 @@ export default function PlanTreePanel(): React.JSX.Element {
 
   const rows = useMemo(() => flattenTree(childrenMap, loaded, expandedKeys), [childrenMap, loaded, expandedKeys])
 
-  // 碰撞检测产出（ref 外置，onDragMove/onDragEnd 读取）
-  const intentRef = useRef<DropIntent | null>(null)
-  const intoIdRef = useRef<string | null>(null)
-  // 滞回状态：同目标行内维持当前意图直到指针深入新分区（HYST_PX），消除分区边界抖动
-  const hystRef = useRef<{ id: string; intent: DropIntent } | null>(null)
-  const [dropInto, setDropInto] = useState<string | null>(null)
-  const [dragActive, setDragActive] = useState(false)
+  // 被拖行 path（null=非拖拽中）：驱动根/文件夹行的「可接收」高亮判定
+  const [activeId, setActiveId] = useState<string | null>(null)
 
-  const clearDragState = (): void => {
-    intentRef.current = null
-    intoIdRef.current = null
-    hystRef.current = null
-    setDropInto(null)
-  }
+  // 目标可接收判定：非被拖项自身/子孙（防循环嵌套）、非现父（已在其中=无意义移动）
+  const canReceive = (dragPath: string, target: string): boolean =>
+    dragPath !== target && !isSelfOrDescendant(dragPath, target) && parentRel(dragPath) !== target
 
   const onToggle = (node: FlatNode): void => {
     if (!node.hasChildren) return
@@ -217,110 +229,55 @@ export default function PlanTreePanel(): React.JSX.Element {
     }
   }
 
-  // 自定义碰撞：指针 y 命中行 → 按目标行 kind 分区（计划两分区禁入内部/文件夹三分区）+ 滞回防抖；
-  // 「入内部」不返回 over（无让位——避免「插到这里」的误导），改由 dropInto 高亮目标行；
-  // 键盘传感器退化为 closestCenter
-  const treeCollision: CollisionDetection = (args) => {
-    const y = args.pointerCoordinates?.y
-    if (y === undefined) {
-      intentRef.current = 'after'
-      intoIdRef.current = null
-      return closestCenter(args)
-    }
-    for (const container of args.droppableContainers) {
-      const rect = args.droppableRects.get(container.id)
-      if (!rect || y < rect.top || y > rect.bottom) continue
-      const id = String(container.id)
-      if (id === '') {
-        // 根行整行=入内部（移到顶层末尾），无分区
-        intentRef.current = 'into'
-        intoIdRef.current = ''
-        hystRef.current = null
-        return [{ id }] // 根=droppable（非 sortable）→ 无让位，仅高亮
-      }
-      const off = y - rect.top
-      // 计划行两分区（禁入内部，容器语义归文件夹）；文件夹行三分区
-      const allowInto = rows.find((r) => r.path === id)?.kind === 'folder'
-      const intent = applyHysteresis(hystRef.current, id, intentOf(off, rect.height, allowInto), off, rect.height, allowInto)
-      hystRef.current = { id, intent }
-      intentRef.current = intent
-      if (intent === 'into') {
-        intoIdRef.current = id
-        return []
-      }
-      intoIdRef.current = null
-      return [{ id }]
-    }
-    intentRef.current = null
-    intoIdRef.current = null
-    return []
-  }
-
-  // 入内部高亮同步：onDragOver（over 变化即时）+ onDragMove（每次移动兜底）双挂点——
-  // over null→null 不触发 onDragOver，纯 into 区间跳转时防高亮滞留
-  const syncDropInto = (activeId: string): void => {
-    const want = intentRef.current === 'into' && intoIdRef.current !== activeId ? intoIdRef.current : null
-    setDropInto((cur) => (cur === want ? cur : want))
-  }
-
-  const onDragStart = (): void => {
-    setDragActive(true)
-    clearDragState()
-  }
-
-  const onDragCancel = (): void => {
-    setDragActive(false)
-    clearDragState()
-  }
+  // 碰撞：指针所在行命中；剔除被拖项自身（文件夹行自身也是落点，须排除）
+  const treeCollision: CollisionDetection = (args) =>
+    pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter((c) => c.id !== args.active.id) })
 
   const onDragEnd = ({ active, over }: DragEndEvent): void => {
-    setDragActive(false)
     const dragPath = String(active.id)
-    const intent = intentRef.current
-    const intoId = intoIdRef.current
-    clearDragState()
-
-    // 入内部 → intoIdRef；前/后插 → over
-    const targetPath = intent === 'into' ? intoId : over ? String(over.id) : null
-    if (!targetPath) return
-    const target = rows.find((r) => r.path === targetPath)
-    if (!target) return
-    const d = computeTreeMove(dragPath, target, intent ?? 'after', childrenMap)
-    if (!d) return
-    // movePlan 乐观更新（松手即落定）+ 失败回滚提示；成功后确保目标父层展开（读最新键，防闭包过期）
-    void movePlan(d.dragPath, d.targetParent, d.orderIndex).then((ok) => {
-      if (!ok || !d.targetParent) return
+    setActiveId(null)
+    if (!over) return
+    const target = String(over.id) // ''=根（移到顶层末尾）
+    // 与高亮判定一致：无效目标静默忽略；store 内 guard 兜底提示
+    if (!canReceive(dragPath, target)) return
+    // movePlan 乐观更新（松手即落定）+ 失败回滚提示；成功后确保目标文件夹展开（读最新键，防闭包过期）
+    void movePlan(dragPath, target, Number.MAX_SAFE_INTEGER).then((ok) => {
+      if (!ok || target === '') return
       const cur = useTreeStore.getState().expandedKeys
-      if (!cur.includes(d.targetParent)) setExpanded([...cur, d.targetParent])
+      if (!cur.includes(target)) setExpanded([...cur, target])
     })
   }
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const root = rows.find((r) => r.path === '')
   return (
     <>
-      <div className={`tree-scroll${dragActive ? ' is-dragging' : ''}`}>
+      <div className={`tree-scroll${activeId ? ' is-dragging' : ''}`}>
         <DndContext
           sensors={sensors}
           collisionDetection={treeCollision}
-          onDragStart={onDragStart}
-          onDragOver={({ active }) => syncDropInto(String(active.id))}
-          onDragMove={({ active }) => syncDropInto(String(active.id))}
+          onDragStart={({ active }) => setActiveId(String(active.id))}
           onDragEnd={onDragEnd}
-          onDragCancel={onDragCancel}
+          onDragCancel={() => setActiveId(null)}
         >
-          <SortableContext items={rows.filter((r) => r.path !== '').map((r) => r.path)} strategy={verticalListSortingStrategy}>
-            {root && <RootTreeRow node={root} dropInto={dropInto === ''} onToggle={onToggle} />}
-            {rows
-              .filter((r) => r.path !== '')
-              .map((r) => (
-                <SortableTreeRow key={r.path} node={r} selected={selectedPath === r.path} dropInto={dropInto === r.path} onToggle={onToggle} onOpen={onOpen} />
-              ))}
-          </SortableContext>
+          {root && <RootTreeRow node={root} canReceive={activeId != null && canReceive(activeId, '')} onToggle={onToggle} />}
+          {rows
+            .filter((r) => r.path !== '')
+            .map((r) =>
+              r.kind === 'folder' ? (
+                <FolderRow
+                  key={r.path}
+                  node={r}
+                  selected={selectedPath === r.path}
+                  canReceive={activeId != null && canReceive(activeId, r.path)}
+                  onToggle={onToggle}
+                  onOpen={onOpen}
+                />
+              ) : (
+                <PlanRow key={r.path} node={r} selected={selectedPath === r.path} onToggle={onToggle} onOpen={onOpen} />
+              )
+            )}
         </DndContext>
       </div>
       <div className="tree-footer">
