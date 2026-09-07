@@ -99,6 +99,7 @@ export class StorageService {
       }
       throw e
     }
+    await this.insertOrderEntry(parent, name, Number.MAX_SAFE_INTEGER)
     this.treeCache.invalidatePrefix(parent)
     const path = parent === '' ? name : `${parent}/${name}`
     bus.emit('trace:plan-changed', { path })
@@ -128,6 +129,7 @@ export class StorageService {
     const now = new Date().toISOString()
     const doc: PlanDocument = { format_version: '1', created_at: now, updated_at: now, components: [] }
     await this.repo.writePlanAtomic(root, parent === '' ? name : `${parent}/${name}`, doc)
+    await this.insertOrderEntry(parent, name, Number.MAX_SAFE_INTEGER)
 
     this.treeCache.invalidatePrefix(parent)
     const path = parent === '' ? name : `${parent}/${name}`
@@ -343,11 +345,19 @@ export class StorageService {
 
   private async insertOrderEntry(parent: string, name: string, orderIndex: number): Promise<void> {
     if (await this.parentIsFolder(parent)) return
+    const root = this.root()
     const holder = await this.orderHolder(parent)
-    if (!holder.children_order) holder.children_order = []
-    const list = holder.children_order
+    // 自愈重建（2026-09-08 拖拽弹回根治）：历史 createPlan/createFolder 不写 children_order，
+    // 列表系统性残缺 → 未登记项 rank=MAX 被权威刷新排尾，乐观更新被顶回（用户实测「松手弹回」）。
+    // 与真实兄弟列表合并：已登记项保持既有顺序，缺失项按名称序补尾，再插入被拖项——
+    // 任何一次 move 即把该父级的顺序载体修复为全量
+    const actual = await this.repo.listPlanDirs(root, parent)
+    const kept = (holder.children_order ?? []).filter((n) => n !== name && actual.includes(n))
+    const missing = actual.filter((n) => n !== name && !kept.includes(n))
+    const list = [...kept, ...missing]
     const clamped = Math.max(0, Math.min(orderIndex, list.length))
     list.splice(clamped, 0, name)
+    holder.children_order = list
     await this.saveOrderHolder(parent, holder)
   }
 }

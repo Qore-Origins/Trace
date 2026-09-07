@@ -122,6 +122,31 @@ describe('movePlan', () => {
     await service.createPlan('A', 'X')
     await expect(service.movePlan('A/X', 'B', 0)).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
   })
+
+  it('children_order 残缺时 move 自愈重建（2026-09-08 拖拽弹回根治）', async () => {
+    // 复刻用户库现场：历史 createPlan/createFolder 不登记 → meta 只含部分名字
+    await service.createFolder('', '132')
+    await service.createPlan('', '465545')
+    const metaFile = join(root, '.trace', 'plan-library.json')
+    const meta = JSON.parse(await fs.readFile(metaFile, 'utf8')) as { children_order: string[] }
+    meta.children_order = ['465545'] // 手工制造残缺（132 未登记）
+    await fs.writeFile(metaFile, JSON.stringify(meta))
+
+    // 拖到 132 后面：自愈重建应把 132 纳入载体，权威刷新与落点一致（不再弹回）
+    await service.movePlan('465545', '', 1)
+    expect((await service.treeGetChildren('')).map((n) => n.name)).toEqual(['132', '465545'])
+    const healed = JSON.parse(await fs.readFile(metaFile, 'utf8')) as { children_order: string[] }
+    expect(healed.children_order).toEqual(['132', '465545'])
+  })
+
+  it('createPlan/createFolder 出生即登记 children_order（杜绝新残缺）', async () => {
+    await service.createPlan('', 'A')
+    await service.createFolder('', 'F')
+    await service.createPlan('', 'B')
+    const meta = JSON.parse(await fs.readFile(join(root, '.trace', 'plan-library.json'), 'utf8')) as { children_order: string[] }
+    expect(meta.children_order).toEqual(['A', 'F', 'B'])
+    expect((await service.treeGetChildren('')).map((n) => n.name)).toEqual(['A', 'F', 'B'])
+  })
 })
 
 describe('savePlan CAS', () => {
