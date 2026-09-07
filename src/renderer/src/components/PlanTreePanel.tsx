@@ -17,6 +17,7 @@ import {
 } from '@ant-design/icons'
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
@@ -25,6 +26,7 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragStartEvent,
   type DraggableAttributes
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -143,6 +145,8 @@ function RowContent(props: {
 }
 
 // 子行：sortable（手柄发起拖拽；行身=放置目标）
+// DragOverlay 模式：源行拖拽中不加 transform（原地半透明），浮层跟指针——
+// 松手时无「transform 复位动画」，配合乐观换位结构性消除弹回原位
 function SortableTreeRow(props: {
   node: FlatNode
   selected: boolean
@@ -154,8 +158,8 @@ function SortableTreeRow(props: {
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`tree-row${isDragging ? ' dragging' : ''}${props.dropInto ? ' drop-into' : ''}`}
+      style={{ transform: isDragging ? undefined : CSS.Transform.toString(transform), transition: isDragging ? undefined : transition }}
+      className={`tree-row${isDragging ? ' dragging-src' : ''}${props.dropInto ? ' drop-into' : ''}`}
       data-path={props.node.path}
     >
       <RowContent node={props.node} selected={props.selected} handle={{ attributes, listeners }} onToggle={props.onToggle} onOpen={props.onOpen} />
@@ -192,12 +196,15 @@ export default function PlanTreePanel(): React.JSX.Element {
   const hystRef = useRef<{ id: string; intent: DropIntent } | null>(null)
   const [dropInto, setDropInto] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  // 浮层内容源（DragOverlay 跟指针的行）；null=无拖拽
+  const [activeNode, setActiveNode] = useState<FlatNode | null>(null)
 
   const clearDragState = (): void => {
     intentRef.current = null
     intoIdRef.current = null
     hystRef.current = null
     setDropInto(null)
+    setActiveNode(null)
   }
 
   const onToggle = (node: FlatNode): void => {
@@ -263,9 +270,10 @@ export default function PlanTreePanel(): React.JSX.Element {
     setDropInto((cur) => (cur === want ? cur : want))
   }
 
-  const onDragStart = (): void => {
+  const onDragStart = ({ active }: DragStartEvent): void => {
     setDragActive(true)
     clearDragState()
+    setActiveNode(rows.find((r) => r.path === String(active.id)) ?? null)
   }
 
   const onDragCancel = (): void => {
@@ -321,6 +329,20 @@ export default function PlanTreePanel(): React.JSX.Element {
                 <SortableTreeRow key={r.path} node={r} selected={selectedPath === r.path} dropInto={dropInto === r.path} onToggle={onToggle} onOpen={onOpen} />
               ))}
           </SortableContext>
+          {/* 浮层：跟指针的行影（源行原地半透明）；dropAnimation=null——松手即消失，
+              落位交给乐观换位，杜绝 transform 复位动画的弹回窗口 */}
+          <DragOverlay dropAnimation={null}>
+            {activeNode && (
+              <div className="tree-row overlay">
+                {activeNode.kind === 'folder' ? (
+                  <FolderOutlined style={{ color: 'var(--text-4)', flex: 'none' }} aria-label="文件夹" />
+                ) : (
+                  <ReadOutlined style={{ color: 'var(--trace-500)', opacity: 0.75, flex: 'none' }} aria-label="计划" />
+                )}
+                <span className="name">{activeNode.name}</span>
+              </div>
+            )}
+          </DragOverlay>
         </DndContext>
       </div>
       <div className="tree-footer">
