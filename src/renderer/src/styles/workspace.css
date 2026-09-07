@@ -103,6 +103,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .tree-switcher:hover { color: var(--text-1); background: var(--fill); }
 .tree-switcher.placeholder { visibility: hidden; }
 .tree-row .drag-handle { margin-right: -2px; }
+/* 拖拽进行中：抑制行 hover 底色与快捷按钮浮现（与让位/入内高亮反馈叠加会闪烁） */
+.tree-scroll.is-dragging .tree-row:hover { background: transparent; }
+.tree-scroll.is-dragging .tree-row:hover .tree-quick { display: none; }
 
 /* ---------- 内容区（§2.3 纸感） ---------- */
 .crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin-bottom: 12px; flex-wrap: wrap; }

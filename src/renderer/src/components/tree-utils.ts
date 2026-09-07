@@ -15,8 +15,6 @@ export interface FlatNode {
   loaded: boolean
 }
 
-export const TREE_INDENT = 18 // 每级缩进 px（与 .tree-guides .guide 宽度一致）
-
 // childrenMap/loaded/expandedKeys → 可见行（DFS 只走展开层）
 // 箭头数据驱动：has_children=true → 箭头（未加载时展开即触发懒加载）；false → 无箭头占位
 export function flattenTree(
@@ -64,15 +62,46 @@ export function kindOf(map: Record<string, PlanTreeNode[]>, path: string): 'plan
   return hit?.kind ?? 'plan'
 }
 
-// 拖拽意图（三分区：命中行上 1/3=前插，中 1/3=入内部，下 1/3=后插）
+// 拖拽意图（前插/入内部/后插）
 export type DropIntent = 'before' | 'into' | 'after'
 
 // 命中行内纵向偏移 → 意图
-export function intentOf(offsetY: number, height: number): DropIntent {
+// [allowInto]=目标行是否接收「入内部」：文件夹/根=是（三分区）；计划=否（两分区——
+// 计划不可被拖入内部，容器语义归文件夹，2026-09-07 用户反馈定稿）
+export function intentOf(offsetY: number, height: number, allowInto: boolean): DropIntent {
+  if (!allowInto) return offsetY < height / 2 ? 'before' : 'after'
   const third = height / 3
   if (offsetY < third) return 'before'
   if (offsetY > height - third) return 'after'
   return 'into'
+}
+
+// 意图滞回死区（px）：同目标行内，指针须深入新分区此距离才切换意图——
+// 消除分区边界上的高频翻转（让位动画与入内高亮来回对切=视觉抽搐，2026-09-07 用户反馈）
+export const HYST_PX = 4
+
+// 滞回防抖：prev=同行的上一意图；指针未深入新分区 HYST_PX 则维持 prev
+export function applyHysteresis(
+  prev: { id: string; intent: DropIntent } | null,
+  id: string,
+  raw: DropIntent,
+  offsetY: number,
+  height: number,
+  allowInto: boolean
+): DropIntent {
+  if (!prev || prev.id !== id || prev.intent === raw) return raw
+  if (!allowInto) {
+    const mid = height / 2
+    if (prev.intent === 'before' && offsetY < mid + HYST_PX) return 'before'
+    if (prev.intent === 'after' && offsetY > mid - HYST_PX) return 'after'
+    return raw
+  }
+  const t1 = height / 3
+  const t2 = height - t1
+  if (prev.intent === 'before' && offsetY < t1 + HYST_PX) return 'before'
+  if (prev.intent === 'after' && offsetY > t2 - HYST_PX) return 'after'
+  if (prev.intent === 'into' && offsetY > t1 - HYST_PX && offsetY < t2 + HYST_PX) return 'into'
+  return raw
 }
 
 // 意图 → movePlan 参数（dragPath, targetParent, orderIndex）
@@ -89,7 +118,11 @@ export function computeTreeMove(
   if (target.kind === 'root') {
     return intent === 'into' ? { dragPath, targetParent: '', orderIndex: Number.MAX_SAFE_INTEGER } : null
   }
-  if (intent === 'into') return { dragPath, targetParent: target.path, orderIndex: Number.MAX_SAFE_INTEGER }
+  if (intent === 'into') {
+    // 容器语义归文件夹：计划行不接收入内部（与 intentOf 两分区互为双保险）
+    if (target.kind !== 'folder') return null
+    return { dragPath, targetParent: target.path, orderIndex: Number.MAX_SAFE_INTEGER }
+  }
   const parent = parentRel(target.path)
   const dragName = dragPath.slice(dragPath.lastIndexOf('/') + 1)
   const siblings = (map[parent] ?? []).map((n) => n.name).filter((nm) => nm !== dragName)

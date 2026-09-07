@@ -25,7 +25,6 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
-  type DragOverEvent,
   type DraggableAttributes
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -34,7 +33,7 @@ import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
 import { isSelfOrDescendant } from '@shared/path-utils'
-import { TREE_INDENT, computeTreeMove, flattenTree, intentOf, type DropIntent, type FlatNode } from './tree-utils'
+import { applyHysteresis, computeTreeMove, flattenTree, intentOf, type DropIntent, type FlatNode } from './tree-utils'
 
 // 行内容（根/子行共享）：缩进连接线 + 手柄位 + 箭头 + 标题/快捷操作
 function RowContent(props: {
@@ -187,10 +186,20 @@ export default function PlanTreePanel(): React.JSX.Element {
 
   const rows = useMemo(() => flattenTree(childrenMap, loaded, expandedKeys), [childrenMap, loaded, expandedKeys])
 
-  // 碰撞检测产出（ref 外置，onDragOver/onDragEnd 读取）
+  // 碰撞检测产出（ref 外置，onDragMove/onDragEnd 读取）
   const intentRef = useRef<DropIntent | null>(null)
   const intoIdRef = useRef<string | null>(null)
+  // 滞回状态：同目标行内维持当前意图直到指针深入新分区（HYST_PX），消除分区边界抖动
+  const hystRef = useRef<{ id: string; intent: DropIntent } | null>(null)
   const [dropInto, setDropInto] = useState<string | null>(null)
+  const [dragActive, setDragActive] = useState(false)
+
+  const clearDragState = (): void => {
+    intentRef.current = null
+    intoIdRef.current = null
+    hystRef.current = null
+    setDropInto(null)
+  }
 
   const onToggle = (node: FlatNode): void => {
     if (!node.hasChildren) return
@@ -209,8 +218,9 @@ export default function PlanTreePanel(): React.JSX.Element {
     }
   }
 
-  // 自定义碰撞：指针 y 命中行 → 三分区定意图；「入内部」不返回 over（无让位——避免
-  // 「插到这里」的误导），改由 dropInto 高亮目标行；键盘传感器退化为 closestCenter
+  // 自定义碰撞：指针 y 命中行 → 按目标行 kind 分区（计划两分区禁入内部/文件夹三分区）+ 滞回防抖；
+  // 「入内部」不返回 over（无让位——避免「插到这里」的误导），改由 dropInto 高亮目标行；
+  // 键盘传感器退化为 closestCenter
   const treeCollision: CollisionDetection = (args) => {
     const y = args.pointerCoordinates?.y
     if (y === undefined) {
@@ -223,11 +233,17 @@ export default function PlanTreePanel(): React.JSX.Element {
       if (!rect || y < rect.top || y > rect.bottom) continue
       const id = String(container.id)
       if (id === '') {
+        // 根行整行=入内部（移到顶层末尾），无分区
         intentRef.current = 'into'
         intoIdRef.current = ''
+        hystRef.current = null
         return [{ id }] // 根=droppable（非 sortable）→ 无让位，仅高亮
       }
-      const intent = intentOf(y - rect.top, rect.height)
+      const off = y - rect.top
+      // 计划行两分区（禁入内部，容器语义归文件夹）；文件夹行三分区
+      const allowInto = rows.find((r) => r.path === id)?.kind === 'folder'
+      const intent = applyHysteresis(hystRef.current, id, intentOf(off, rect.height, allowInto), off, rect.height, allowInto)
+      hystRef.current = { id, intent }
       intentRef.current = intent
       if (intent === 'into') {
         intoIdRef.current = id
@@ -241,19 +257,29 @@ export default function PlanTreePanel(): React.JSX.Element {
     return []
   }
 
-  const onDragOver = ({ active }: DragOverEvent): void => {
-    // 入内部意图 → 高亮目标行（根/子行通用）；变化才 setState 防抖
-    const want = intentRef.current === 'into' && intoIdRef.current !== String(active.id) ? intoIdRef.current : null
+  // 入内部高亮同步：onDragOver（over 变化即时）+ onDragMove（每次移动兜底）双挂点——
+  // over null→null 不触发 onDragOver，纯 into 区间跳转时防高亮滞留
+  const syncDropInto = (activeId: string): void => {
+    const want = intentRef.current === 'into' && intoIdRef.current !== activeId ? intoIdRef.current : null
     setDropInto((cur) => (cur === want ? cur : want))
   }
 
+  const onDragStart = (): void => {
+    setDragActive(true)
+    clearDragState()
+  }
+
+  const onDragCancel = (): void => {
+    setDragActive(false)
+    clearDragState()
+  }
+
   const onDragEnd = ({ active, over }: DragEndEvent): void => {
+    setDragActive(false)
     const dragPath = String(active.id)
     const intent = intentRef.current
     const intoId = intoIdRef.current
-    intentRef.current = null
-    intoIdRef.current = null
-    setDropInto(null)
+    clearDragState()
 
     // 入内部 → intoIdRef；前/后插 → over
     const targetPath = intent === 'into' ? intoId : over ? String(over.id) : null
@@ -279,8 +305,16 @@ export default function PlanTreePanel(): React.JSX.Element {
   const root = rows.find((r) => r.path === '')
   return (
     <>
-      <div className="tree-scroll">
-        <DndContext sensors={sensors} collisionDetection={treeCollision} onDragOver={onDragOver} onDragEnd={onDragEnd}>
+      <div className={`tree-scroll${dragActive ? ' is-dragging' : ''}`}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={treeCollision}
+          onDragStart={onDragStart}
+          onDragOver={({ active }) => syncDropInto(String(active.id))}
+          onDragMove={({ active }) => syncDropInto(String(active.id))}
+          onDragEnd={onDragEnd}
+          onDragCancel={onDragCancel}
+        >
           <SortableContext items={rows.filter((r) => r.path !== '').map((r) => r.path)} strategy={verticalListSortingStrategy}>
             {root && <RootTreeRow node={root} dropInto={dropInto === ''} onToggle={onToggle} />}
             {rows
