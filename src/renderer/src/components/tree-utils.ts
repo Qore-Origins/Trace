@@ -1,33 +1,59 @@
-// 计划树纯逻辑（从 PlanTreePanel 拆出：组件文件只导出组件，保证 React Fast Refresh 生效）
-import type { TreeProps } from 'antd'
+// 计划树纯逻辑（组件文件只导出组件，保证 React Fast Refresh 生效）
+// 2026-09-07 antd Tree → dnd-kit 自渲染树：buildTreeData/computeDrop（antd 专用）退役，
+// 改为 flattenTree（可见扁平行）+ 三分区落点换算；箭头数据驱动语义保持（U1 行为锚点）
 import { parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
-import type { TreeDataNode } from 'antd'
 
-// childrenMap → antd 树数据（懒加载：未加载层 children=undefined 触发 loadData）
-export function buildTreeData(map: Record<string, PlanTreeNode[]>, loaded: Record<string, boolean>): TreeDataNode[] {
-  // 根节点同样数据驱动 isLeaf（2026-09-06：根节点缺 isLeaf 是空库 +号不恢复的死角——
-  // 空库展开后 children=[] 被判叶子；新建后必须由 childrenMap 重新驱动非叶）
-  const rootChildren = buildLevel('', map, loaded)
-  const root: TreeDataNode = {
-    key: '',
-    title: '计划库（源头）',
-    isLeaf: rootChildren !== undefined && rootChildren.length === 0,
-    children: rootChildren
-  }
-  return [root]
+// 可见扁平行（渲染单位；path='' 为根）
+export interface FlatNode {
+  path: string
+  name: string
+  kind: 'plan' | 'folder' | 'root'
+  hasChildren: boolean
+  depth: number // 根=0；顶层=1；缩进=depth×TREE_INDENT
+  expanded: boolean
+  loaded: boolean
 }
 
-function buildLevel(parent: string, map: Record<string, PlanTreeNode[]>, loaded: Record<string, boolean>): TreeDataNode[] | undefined {
-  if (loaded[parent] === undefined) return undefined // 未加载 → loadData 接管
-  const nodes = map[parent] ?? []
-  return nodes.map((n) => ({
-    key: n.path,
-    title: n.name,
-    // 叶子/箭头由数据驱动：has_children=false → 叶子（无箭头）；true → 箭头（children 未加载时交给 loadData）
-    isLeaf: !n.has_children,
-    children: n.has_children ? buildLevel(n.path, map, loaded) : []
-  }))
+export const TREE_INDENT = 18 // 每级缩进 px（与 .tree-guides .guide 宽度一致）
+
+// childrenMap/loaded/expandedKeys → 可见行（DFS 只走展开层）
+// 箭头数据驱动：has_children=true → 箭头（未加载时展开即触发懒加载）；false → 无箭头占位
+export function flattenTree(
+  map: Record<string, PlanTreeNode[]>,
+  loaded: Record<string, boolean>,
+  expandedKeys: string[]
+): FlatNode[] {
+  const expanded = new Set(expandedKeys)
+  const rows: FlatNode[] = []
+  const rootChildren = map[''] ?? []
+  rows.push({
+    path: '',
+    name: '计划库（源头）',
+    kind: 'root',
+    // 根箭头同样数据驱动：已加载且空 → 无箭头；未加载 → 保守显示
+    hasChildren: loaded[''] === true ? rootChildren.length > 0 : true,
+    depth: 0,
+    expanded: expanded.has(''),
+    loaded: loaded[''] === true
+  })
+  const walk = (parent: string, depth: number): void => {
+    for (const nd of map[parent] ?? []) {
+      const isOpen = expanded.has(nd.path)
+      rows.push({
+        path: nd.path,
+        name: nd.name,
+        kind: nd.kind,
+        hasChildren: nd.has_children,
+        depth,
+        expanded: isOpen,
+        loaded: loaded[nd.path] === true
+      })
+      if (isOpen && nd.has_children) walk(nd.path, depth + 1)
+    }
+  }
+  walk('', 1)
+  return rows
 }
 
 // 节点 kind 查询（folder=纯容器；默认 plan）
@@ -38,22 +64,36 @@ export function kindOf(map: Record<string, PlanTreeNode[]>, path: string): 'plan
   return hit?.kind ?? 'plan'
 }
 
-// antd onDrop → (dragPath, targetParent, orderIndex)
-export function computeDrop(info: Parameters<NonNullable<TreeProps['onDrop']>>[0]): {
-  dragPath: string
-  targetParent: string
-  orderIndex: number
-} | null {
-  const dragPath = String(info.dragNode.key)
-  const dropKey = String(info.node.key)
-  const dropPosArr = info.node.pos.split('-')
-  const dropRelative = info.dropPosition - Number(dropPosArr[dropPosArr.length - 1])
+// 拖拽意图（三分区：命中行上 1/3=前插，中 1/3=入内部，下 1/3=后插）
+export type DropIntent = 'before' | 'into' | 'after'
 
-  if (!info.dropToGap) {
-    // 落入目标内部：target=该节点，插到其子级末尾
-    return { dragPath, targetParent: dropKey, orderIndex: Number.MAX_SAFE_INTEGER }
+// 命中行内纵向偏移 → 意图
+export function intentOf(offsetY: number, height: number): DropIntent {
+  const third = height / 3
+  if (offsetY < third) return 'before'
+  if (offsetY > height - third) return 'after'
+  return 'into'
+}
+
+// 意图 → movePlan 参数（dragPath, targetParent, orderIndex）
+// 修正旧 computeDrop 的 0/1 简化：精确按目标在兄弟中的索引换算；兄弟列表先剔除源自身——
+// 主进程 removeOrderEntry 在 insertOrderEntry 之前执行，索引须按移除后列表计
+export function computeTreeMove(
+  dragPath: string,
+  target: FlatNode,
+  intent: DropIntent,
+  map: Record<string, PlanTreeNode[]>
+): { dragPath: string; targetParent: string; orderIndex: number } | null {
+  if (dragPath === '' || dragPath === target.path) return null
+  // 根不是普通行：只接收「入内部」（= 移到顶层末尾）
+  if (target.kind === 'root') {
+    return intent === 'into' ? { dragPath, targetParent: '', orderIndex: Number.MAX_SAFE_INTEGER } : null
   }
-  // 落入间隙：与目标同级；relative -1=目标前，1=目标后
-  const targetParent = parentRel(dropKey)
-  return { dragPath, targetParent, orderIndex: dropRelative === -1 ? 0 : 1 }
+  if (intent === 'into') return { dragPath, targetParent: target.path, orderIndex: Number.MAX_SAFE_INTEGER }
+  const parent = parentRel(target.path)
+  const dragName = dragPath.slice(dragPath.lastIndexOf('/') + 1)
+  const siblings = (map[parent] ?? []).map((n) => n.name).filter((nm) => nm !== dragName)
+  const idx = siblings.indexOf(target.name)
+  if (idx === -1) return { dragPath, targetParent: parent, orderIndex: siblings.length }
+  return { dragPath, targetParent: parent, orderIndex: intent === 'before' ? idx : idx + 1 }
 }
