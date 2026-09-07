@@ -18,6 +18,9 @@
     "icon": "node scripts/make-ico.mjs"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "antd": "^5.0.0",
     "chokidar": "^5.0.0",
     "fflate": "^0.8.3",

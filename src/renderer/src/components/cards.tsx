@@ -1,8 +1,11 @@
 // 计划单片组件卡（前端详细设计 §3.3-3.5 / LLD §2.3）：渲染即编辑；payload 直改 + 防抖保存
-// 组件卡拖拽排序（2026-09-07）：手柄发起拖拽（避免与卡内输入框文本选择冲突），插入线指示落点
-import { createContext, useContext, useState } from 'react'
+// 组件卡拖拽排序（2026-09-07，@dnd-kit 同款 AI Resource Hub）：手柄发起（distance 8 防误触），
+// 拖动中被拖卡放大投影置顶、其余卡 transform 实时让位，落点 arrayMove 语义换序
 import { Input, Checkbox } from 'antd'
 import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, HolderOutlined } from '@ant-design/icons'
+import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { Component, MultiPlanPayload, NotePayload, SinglePlanPayload, TaskDetailPayload, TaskItem, TaskListPayload } from '@shared/plan-types'
 import { uuid32, validateNoteText } from '@shared/validation'
 import { isOverdue } from '@shared/task-state'
@@ -16,18 +19,6 @@ const KIND_LABEL: Record<string, string> = {
   note: '注释（旁批）'
 }
 
-// 拖拽排序上下文：ComponentRenderer 持有状态与换算逻辑，CardShell 只转发事件（组件卡保持哑渲染）
-interface CardDrag {
-  dragId: string | null
-  hint: { id: string; where: 'above' | 'below' } | null
-  onHandleDragStart: (e: React.DragEvent<HTMLSpanElement>, id: string) => void
-  onHandleDragEnd: () => void
-  onCardDragOver: (e: React.DragEvent<HTMLDivElement>, id: string) => void
-  onCardDragLeave: (e: React.DragEvent<HTMLDivElement>, id: string) => void
-  onCardDrop: (e: React.DragEvent<HTMLDivElement>, id: string) => void
-}
-const CardDragCtx = createContext<CardDrag | null>(null)
-
 function CardShell(props: {
   kind: string
   componentId: string
@@ -38,30 +29,18 @@ function CardShell(props: {
   children: React.ReactNode
 }): React.JSX.Element {
   const { moveComponent, removeComponent } = usePlanMutations()
-  const drag = useContext(CardDragCtx)
-  const hintCls = drag?.hint?.id === props.componentId ? ` drop-${drag.hint.where}` : ''
-  const draggingCls = drag?.dragId === props.componentId ? ' dragging' : ''
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.componentId })
   return (
     <div
-      className={`card ${props.extraClass ?? ''}${hintCls}${draggingCls}`}
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`card ${props.extraClass ?? ''}${isDragging ? ' dragging' : ''}`}
       data-component-id={props.componentId}
-      onDragOver={drag ? (e) => drag.onCardDragOver(e, props.componentId) : undefined}
-      onDragLeave={drag ? (e) => drag.onCardDragLeave(e, props.componentId) : undefined}
-      onDrop={drag ? (e) => drag.onCardDrop(e, props.componentId) : undefined}
     >
       <div className="kind">
-        {drag && (
-          <span
-            className="drag-handle"
-            draggable
-            aria-label="拖拽排序"
-            title="拖动调整组件顺序"
-            onDragStart={(e) => drag.onHandleDragStart(e, props.componentId)}
-            onDragEnd={() => drag.onHandleDragEnd()}
-          >
-            <HolderOutlined />
-          </span>
-        )}
+        <span className="drag-handle" aria-label="拖拽排序" title="拖动调整组件顺序" {...attributes} {...listeners}>
+          <HolderOutlined />
+        </span>
         {KIND_LABEL[props.kind] ?? props.kind}
       </div>
       {props.head}
@@ -396,76 +375,40 @@ function FallbackBlock({ comp, index, total }: { comp: Component; index: number;
 
 export function ComponentRenderer({ components, today }: { components: Component[]; today: Date }): React.JSX.Element {
   const { moveComponent } = usePlanMutations()
-  // 拖拽排序状态：dragId=源卡；hint=插入指示（目标卡 + 上/下半区）
-  const [dragId, setDragId] = useState<string | null>(null)
-  const [hint, setHint] = useState<{ id: string; where: 'above' | 'below' } | null>(null)
-
-  const clear = (): void => {
-    setDragId(null)
-    setHint(null)
-  }
-  // 光标在目标卡上/下半区 → 插入到其上/下方
-  const whereOf = (e: React.DragEvent<HTMLDivElement>): 'above' | 'below' => {
-    const r = e.currentTarget.getBoundingClientRect()
-    return e.clientY < r.top + r.height / 2 ? 'above' : 'below'
-  }
-  const drag: CardDrag = {
-    dragId,
-    hint,
-    onHandleDragStart: (e, id) => {
-      setDragId(id)
-      e.dataTransfer.effectAllowed = 'move'
-      e.dataTransfer.setData('text/plain', id) // 无数据时部分引擎不发起拖拽
-      // 拖拽影像=整卡（默认仅手柄），与文件树拖拽手感一致
-      const card = e.currentTarget.closest('.card')
-      if (card) e.dataTransfer.setDragImage(card, 16, 16)
-    },
-    onHandleDragEnd: clear,
-    onCardDragOver: (e, id) => {
-      if (!dragId || id === dragId) return
-      e.preventDefault() // 允许放置
-      e.dataTransfer.dropEffect = 'move'
-      const where = whereOf(e)
-      setHint((h) => (h?.id === id && h.where === where ? h : { id, where }))
-    },
-    onCardDragLeave: (e, id) => {
-      // 仅当真正离开卡身（而非在子元素间移动）才清除指示
-      if (e.currentTarget.contains(e.relatedTarget as Node)) return
-      setHint((h) => (h?.id === id ? null : h))
-    },
-    onCardDrop: (e, id) => {
-      e.preventDefault()
-      const source = dragId
-      const where = whereOf(e)
-      clear()
-      if (!source || source === id) return
-      const s = components.findIndex((c) => c.id === source)
-      const t = components.findIndex((c) => c.id === id)
-      if (s === -1 || t === -1) return
-      // moveComponent 语义=先移除源再插入缩减数组：向下拖时目标索引已移位，按方向换算
-      const idx = where === 'above' ? (s < t ? t - 1 : t) : s < t ? t : t + 1
-      moveComponent(source, idx)
-    }
+  // 同款 AI Resource Hub：指针 8px 位移才激活（防误触，手柄上的单击不触发拖拽）
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+  const onDragEnd = ({ active, over }: DragEndEvent): void => {
+    if (!over || active.id === over.id) return
+    const from = components.findIndex((c) => c.id === active.id)
+    const to = components.findIndex((c) => c.id === over.id)
+    if (from === -1 || to === -1) return
+    // moveComponent 语义=先移除源再插入目标位，与 arrayMove 等价
+    moveComponent(String(active.id), to)
   }
 
   return (
-    <CardDragCtx.Provider value={drag}>
-      {components.map((c, i) => {
-        switch (c.type) {
-          case 'single_plan':
-            return <SinglePlanCard key={c.id} comp={c} index={i} total={components.length} />
-          case 'multi_plan':
-            return <MultiPlanCard key={c.id} comp={c} index={i} total={components.length} />
-          case 'task_list':
-            return <TaskListCard key={c.id} comp={c} index={i} total={components.length} today={today} />
-          case 'task_detail':
-            return <TaskDetailCard key={c.id} comp={c} index={i} total={components.length} today={today} />
-          case 'note':
-            return <NoteCard key={c.id} comp={c} index={i} total={components.length} />
-          default:
-            return <FallbackBlock key={c.id} comp={c} index={i} total={components.length} />
-        }
-      })}
-    </CardDragCtx.Provider>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={components.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+        {components.map((c, i) => {
+          switch (c.type) {
+            case 'single_plan':
+              return <SinglePlanCard key={c.id} comp={c} index={i} total={components.length} />
+            case 'multi_plan':
+              return <MultiPlanCard key={c.id} comp={c} index={i} total={components.length} />
+            case 'task_list':
+              return <TaskListCard key={c.id} comp={c} index={i} total={components.length} today={today} />
+            case 'task_detail':
+              return <TaskDetailCard key={c.id} comp={c} index={i} total={components.length} today={today} />
+            case 'note':
+              return <NoteCard key={c.id} comp={c} index={i} total={components.length} />
+            default:
+              return <FallbackBlock key={c.id} comp={c} index={i} total={components.length} />
+          }
+        })}
+      </SortableContext>
+    </DndContext>
   )
 }
