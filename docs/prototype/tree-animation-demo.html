@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>计划树动效 Demo · 迹 Trace</title>
+<!--
+  计划树散开/收拢动效 Demo（卡牌摞隐喻）
+  设计方案编号 D1–D8 见右侧面板；本文件为独立原型，无构建依赖，直接浏览器打开。
+  移植要点：CSS 全量复用（token 与 workspace.css 一致）；
+  JS 的 buildGroup/toggle 逻辑对应 React 版 TreeGroup + useTreeAnim 包裹 setExpanded。
+-->
+<style>
+/* ---------- token（同 workspace.css） ---------- */
+:root {
+  --trace-500: #1677ff;
+  --trace-700: #0958d9;
+  --trace-bg: #e6f4ff;
+  --origin: #1d39c4;
+  --text-1: #262626;
+  --text-2: #595959;
+  --text-3: #8c8c8c;
+  --text-4: #bfbfbf;
+  --split: #f0f0f0;
+  --border: #d9d9d9;
+  --paper: #ffffff;
+  --paper-dim: #fafafa;
+  --fill: #f5f5f5;
+
+  /* 动效时序 token（控制台实时调） */
+  --stagger: 32ms;   /* 交错间隔 */
+  --t-deal: 320ms;   /* D2 发牌时长 */
+  --t-gather: 260ms; /* D3 收牌时长 */
+  --t-slot: 220ms;   /* D1 槽位开合 */
+  --ease-spring: cubic-bezier(.3, 1.46, .4, 1); /* 回弹 */
+  --ease-out: cubic-bezier(.2, .7, .3, 1);
+  --ease-in: cubic-bezier(.55, .04, .7, .3);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text-1); font-size: 14px; background: var(--paper-dim); }
+
+.demo-wrap { display: flex; height: 100vh; }
+
+/* ---------- 左：树面板（复刻 ws-tree 280px） ---------- */
+.ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); display: flex; flex-direction: column; }
+.tree-scroll { flex: 1; overflow: auto; padding: 8px 6px 4px; }
+.tree-footer { flex: none; display: flex; gap: 6px; padding: 8px 6px 10px; border-top: 1px solid var(--split); }
+.dashed-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px dashed var(--border); background: transparent; cursor: pointer; color: var(--text-3); font-size: 12px; padding: 5px 8px; border-radius: 6px; transition: all .15s; }
+.dashed-btn:hover { color: var(--trace-500); border-color: var(--trace-500); background: var(--trace-bg); }
+
+/* ---------- 根行 ---------- */
+.tree-root-label { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-weight: 500; cursor: default; }
+.origin-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--origin); }
+
+/* ---------- D1 行槽：grid 0fr↔1fr，错峰开合 ---------- */
+.slot { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--t-slot) var(--ease-out); transition-delay: var(--enter-delay, 0ms); }
+@starting-style { .slot { grid-template-rows: 0fr; } }
+.slot > .slot-inner { overflow: hidden; min-height: 0; }
+/* D3 收拢：槽位 zipper 合拢（比收牌略快，跟随波次） */
+.slot.closing { grid-template-rows: 0fr; transition: grid-template-rows calc(var(--t-gather) * .72) var(--ease-in); transition-delay: var(--exit-delay, 0ms); }
+
+/* ---------- 树行（卡牌） ---------- */
+.tree-row { position: relative; display: flex; align-items: center; min-height: 28px; border-radius: 6px; padding: 0 4px 0 2px; user-select: none; cursor: pointer; }
+.tree-row:hover { background: var(--paper-dim); }
+.tree-row.selected { background: var(--trace-bg); }
+.tree-row.selected .name { color: var(--trace-500); font-weight: 500; }
+
+/* D2 发牌：从父行方向（上·左）抽出落位，spring 回弹 */
+.slot .tree-row { animation: deal-in var(--t-deal) var(--ease-spring) both; animation-delay: var(--enter-delay, 0ms); }
+@keyframes deal-in {
+  from { opacity: 0; transform: translate(-7px, -9px) scale(.94); }
+  55% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+/* D3 收牌：原路吸回父行，ease-in 加速 */
+.slot.closing .tree-row { animation: gather-out var(--t-gather) var(--ease-in) both; animation-delay: var(--exit-delay, 0ms); }
+@keyframes gather-out {
+  to { opacity: 0; transform: translate(-7px, -9px) scale(.94); }
+}
+/* 回弹开关：关闭后落位无过冲 */
+body.no-overshoot { --ease-spring: cubic-bezier(.2, .7, .3, 1); }
+
+/* D6 连接线生长：缩进竖线段 scaleY 锚顶、随行错峰画出（收拢时被槽位裁切=自然回缩） */
+.slot .guide { animation: guide-draw var(--t-slot) var(--ease-out) both; animation-delay: var(--enter-delay, 0ms); transform-origin: top; }
+@keyframes guide-draw { from { transform: scaleY(0); } }
+body.no-guide .guide { animation: none; }
+
+/* ---------- 行内元素 ---------- */
+.tree-guides { display: flex; flex: none; align-self: stretch; }
+.tree-guides .guide { width: 18px; flex: none; border-left: 1px solid var(--split); }
+
+/* D4 折叠箭头：单箭头 90° 弹簧旋转 + 按压反馈 */
+.tree-switcher { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-4); cursor: pointer; padding: 0; border-radius: 4px; }
+.tree-switcher:hover { color: var(--text-1); background: var(--fill); }
+.tree-switcher:active { transform: scale(.78); }
+.tree-switcher svg { transition: transform .28s var(--ease-spring); }
+.tree-switcher.open svg { transform: rotate(90deg); }
+.tree-switcher.placeholder { visibility: hidden; cursor: default; }
+
+.node-icon { flex: none; display: inline-flex; color: var(--text-4); margin-right: 4px; }
+.node-icon.plan { color: var(--trace-500); opacity: .75; }
+.tree-node-title { display: flex; align-items: center; gap: 4px; overflow: hidden; flex: 1; min-width: 0; }
+.tree-node-title .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.folder-row .tree-node-title .name { color: var(--text-2); }
+
+/* D7 持牌暗示：折叠文件夹 hover 露出两道卡牌边缘 */
+.tree-row.has-deck::after {
+  content: ''; position: absolute; right: 10px; top: 50%;
+  width: 13px; height: 2px; border-radius: 1px;
+  background: var(--trace-500); box-shadow: 0 3px 0 -0.5px var(--trace-500);
+  opacity: 0; transform: translate(0, -50%);
+  transition: opacity .18s var(--ease-out), transform .22s var(--ease-spring);
+}
+.tree-row.has-deck:hover::after { opacity: .38; transform: translate(4px, -50%); }
+
+/* D5 父行脉冲：展开一闪 + 图标 pop；收拢 squish */
+.tree-row.dealt { animation: parent-pulse .5s var(--ease-out); }
+@keyframes parent-pulse { 30% { background: var(--trace-bg); } }
+.tree-row.dealt .node-icon { animation: icon-pop .45s var(--ease-spring); }
+@keyframes icon-pop { 40% { transform: scale(1.18); } }
+.tree-row.gathered .node-icon { animation: icon-squish .4s var(--ease-spring); }
+@keyframes icon-squish { 40% { transform: scale(.86); } }
+
+/* 已落位钉住：取消收拢回弹时禁止重播发牌动画（animation 名切换会重启） */
+.slot.settled:not(.closing) .tree-row,
+.slot.settled:not(.closing) .guide { animation: none; }
+
+/* 动效总开关 + 无障碍 */
+body.fx-off *, body.fx-off *::before, body.fx-off *::after { animation: none !important; transition: none !important; }
+body.fx-off .slot { grid-template-rows: 1fr !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .slot { grid-template-rows: 1fr !important; }
+}
+
+/* ---------- 右：说明 + 控制台 ---------- */
+.demo-main { flex: 1; overflow: auto; padding: 26px 34px 60px; background: var(--paper-dim); }
+.demo-main h1 { font-size: 19px; margin-bottom: 4px; }
+.demo-main .sub { color: var(--text-3); font-size: 13px; margin-bottom: 20px; }
+.panel { background: var(--paper); border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 2px 8px rgba(0,0,0,.05); padding: 18px 20px; margin-bottom: 16px; max-width: 720px; }
+.panel h2 { font-size: 14px; margin-bottom: 12px; color: var(--text-1); }
+.ctl-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 13px; }
+.ctl-row label { width: 92px; flex: none; color: var(--text-2); }
+.ctl-row output { width: 64px; flex: none; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ctl-row input[type=range] { flex: 1; accent-color: var(--trace-500); }
+.chk-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 12px 0 4px; font-size: 13px; color: var(--text-2); }
+.chk-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.chk-row input { accent-color: var(--trace-500); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg button { border: none; background: transparent; padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--text-2); }
+.seg button.on { background: var(--trace-500); color: #fff; }
+.btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.act-btn { border: 1px solid var(--border); background: var(--paper); border-radius: 6px; padding: 5px 14px; font-size: 12px; cursor: pointer; color: var(--text-2); transition: all .15s; }
+.act-btn:hover { color: var(--trace-500); border-color: var(--trace-500); background: var(--trace-bg); }
+
+.d-list { font-size: 13px; color: var(--text-2); line-height: 1.9; }
+.d-list b { color: var(--trace-500); font-weight: 600; margin-right: 6px; }
+.d-list code { background: var(--fill); border-radius: 4px; padding: 1px 6px; font-size: 12px; color: var(--text-3); }
+.timeline { margin-top: 14px; }
+.tl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; color: var(--text-3); }
+.tl-row .tl-name { width: 74px; flex: none; text-align: right; }
+.tl-track { flex: 1; height: 12px; border-radius: 3px; background: var(--fill); position: relative; overflow: hidden; }
+.tl-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; background: var(--trace-500); opacity: .85; }
+.tl-bar.alt { background: var(--origin); }
+.tl-bar.soft { background: var(--border); }
+.tl-note { font-size: 11px; color: var(--text-4); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+  <aside class="ws-tree">
+    <div class="tree-scroll" id="treeScroll"></div>
+    <div class="tree-footer">
+      <button class="dashed-btn" type="button">＋ 计划</button>
+      <button class="dashed-btn" type="button">＋ 文件夹</button>
+    </div>
+  </aside>
+
+  <main class="demo-main">
+    <h1>计划树 · 散开 / 收拢动效 Demo</h1>
+    <div class="sub">卡牌摞隐喻：展开自上至下发牌，收拢自下至上收牌（点折叠箭头体验；收拢途中再点可取消回弹）</div>
+
+    <div class="panel">
+      <h2>时序控制台（实时生效）</h2>
+      <div class="ctl-row"><label>交错间隔 stagger</label><input type="range" id="stagger" min="8" max="72" step="2" value="32"><output id="staggerOut">32ms</output></div>
+      <div class="ctl-row"><label>发牌时长 t-deal</label><input type="range" id="tdeal" min="180" max="460" step="10" value="320"><output id="tdealOut">320ms</output></div>
+      <div class="ctl-row"><label>收牌时长 t-gather</label><input type="range" id="tgather" min="140" max="380" step="10" value="260"><output id="tgatherOut">260ms</output></div>
+      <div class="ctl-row"><label>槽位开合 t-slot</label><input type="range" id="tslot" min="120" max="320" step="10" value="220"><output id="tslotOut">220ms</output></div>
+      <div class="chk-row">
+        <label><input type="checkbox" id="overshoot" checked> D2 回弹落位</label>
+        <label><input type="checkbox" id="guide" checked> D6 连接线生长</label>
+        <label><input type="checkbox" id="fx" checked> 动效总开关</label>
+      </div>
+      <div class="ctl-row" style="margin-top:12px">
+        <label>发牌顺序</label>
+        <div class="seg" id="dealSeg">
+          <button type="button" data-dir="top" class="on">首张先发（自上至下）</button>
+          <button type="button" data-dir="bottom">末张先发（自下至上）</button>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="act-btn" type="button" id="expandAll">全部展开（级联）</button>
+        <button class="act-btn" type="button" id="collapseAll">全部收拢</button>
+        <button class="act-btn" type="button" id="resetSel">清除选中</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>动效分解</h2>
+      <div class="d-list">
+        <div><b>D1</b>行槽开合：每行 <code>grid-template-rows: 0fr↔1fr</code> 槽位错峰开合，下方内容平滑推走/合拢，零布局跳动</div>
+        <div><b>D2</b>发牌入场：卡牌从父行方向（上·左）抽出，<code>--i</code> 错峰 + spring 回弹落位</div>
+        <div><b>D3</b>收牌出场：末张先走、波次向上汇聚进父行，ease-in 加速吸入，槽位 zipper 合拢</div>
+        <div><b>D4</b>折叠箭头：单箭头 90° 弹簧旋转 + 按压缩放反馈</div>
+        <div><b>D5</b>父行脉冲：展开瞬间迹色一闪 + 图标 pop；收拢完成图标 squish</div>
+        <div><b>D6</b>连接线生长：缩进竖线段锚顶 scaleY 随行画出——「迹」向下生长；收拢被槽位裁切自然回缩</div>
+        <div><b>D7</b>持牌暗示：折叠文件夹 hover 露出两道卡牌边缘（这里有一摞牌）</div>
+        <div><b>D8</b>节奏压缩：子项 &gt;10 时交错间隔自动压缩，总时长封顶约 600ms</div>
+      </div>
+      <div class="timeline">
+        <div class="tl-row"><span class="tl-name">卡1（首张）</span><div class="tl-track"><div class="tl-bar" style="left:0%;width:42%"></div></div></div>
+        <div class="tl-row"><span class="tl-name">卡2</span><div class="tl-track"><div class="tl-bar" style="left:8%;width:42%"></div></div></div>
+        <div class="tl-row"><span class="tl-name">卡3</span><div class="tl-track"><div class="tl-bar" style="left:16%;width:42%"></div></div></div>
+        <div class="tl-row"><span class="tl-name">卡4</span><div class="tl-track"><div class="tl-bar" style="left:24%;width:42%"></div></div></div>
+        <div class="tl-row"><span class="tl-name">卡5（末张）</span><div class="tl-track"><div class="tl-bar" style="left:32%;width:42%"></div></div></div>
+        <div class="tl-row"><span class="tl-name">槽位开合</span><div class="tl-track"><div class="tl-bar soft" style="left:0%;width:58%"></div></div></div>
+        <div class="tl-row"><span class="tl-name">箭头旋转</span><div class="tl-track"><div class="tl-bar alt" style="left:0%;width:30%"></div></div></div>
+        <div class="tl-note">示意：展开波次自上至下（收拢镜像反向）；槽位与箭头随点击即时启动</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>交互约定</h2>
+      <div class="d-list">
+        <div>· 点 <b>箭头</b> 展开/收拢；点行选中（迹色高亮）</div>
+        <div>· 收拢途中再点箭头 = 取消，槽位原路弹回（动画中断续接）</div>
+        <div>· 「日常」文件夹 12 个子项，验证 D8 节奏压缩</div>
+        <div>· 嵌套收拢：「2026 冲刺」整摞子树一起收回</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ---------- 数据（folder=纯容器；其余=计划；均可持牌） ----------
+const TREE = {
+  name: '计划库（源头）', root: true, children: [
+    { name: '2026 冲刺', folder: true, children: [
+      { name: 'Q3 路线图', children: [ { name: '里程碑拆解' }, { name: '风险清单' } ] },
+      { name: '发布清单' },
+      { name: '调研', folder: true, children: [ { name: 'AI 方案调研' }, { name: '竞品分析' }, { name: '技术选型笔记' } ] }
+    ]},
+    { name: '日常', folder: true, children: [
+      '晨间规划', '周报草稿', '健身打卡', '阅读 30 分钟', '账单记录', '购物清单',
+      '复盘日志', '灵感收集', '技能练习', '家庭事务', '健康记录', '杂项收纳'
+    ].map((n) => ({ name: n })) },
+    { name: '归档', folder: true, children: [ { name: '旧版原型' }, { name: '会议记录' }, { name: '废弃想法' } ] },
+    { name: '产品概念' },
+    { name: '灵感速记' },
+    { name: '阅读列表' }
+  ]
+}
+
+// 为每个节点分配稳定路径（同名加序号避免歧义，仅 demo 用）
+const byPath = new Map()
+;(function assign(node, parentPath) {
+  node.path = parentPath === '' ? node.name : parentPath + '/' + node.name
+  byPath.set(node.path, node)
+  ;(node.children ?? []).forEach((c) => assign(c, node.path))
+})(TREE, '')
+
+// ---------- 状态 ----------
+const expanded = new Set()          // 已展开路径（状态树权威）
+const collapsing = new Map()        // 收拢中：path -> { groupEl, timer }（DOM 保留播完再卸）
+const pathToGroupEl = new Map()     // 已挂载组：path -> groupEl
+let selected = null
+let dealDir = 'top'                 // 'top' 首张先发 | 'bottom' 末张先发
+
+const scroll = document.getElementById('treeScroll')
+
+// ---------- D8 交错压缩：N>10 时压间隔，总波次封顶 ~320ms ----------
+function effStagger(n) {
+  const base = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--stagger'))
+  return n > 10 ? Math.max(6, Math.min(base, 320 / n)) : base
+}
+
+// 组内揭示行（含已展开后代，DFS doc order）
+function revealedRows(node) {
+  const out = []
+  const walk = (nd) => { (nd.children ?? []).forEach((c) => { out.push(c); if (expanded.has(c.path)) walk(c) }) }
+  walk(node)
+  return out
+}
+
+// ---------- 图标 ----------
+const ICON = {
+  chevron: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1.5 L7 5 L3 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  folder: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1.5 3.5c0-.55.45-1 1-1h3.2l1.4 1.6h7.4c.55 0 1 .45 1 1v7.4c0 .55-.45 1-1 1h-12c-.55 0-1-.45-1-1z" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.08"/></svg>',
+  plan: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3.5 3.5v9.5h-9.5z" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.06"/><path d="M9.5 1.5V5H13" stroke="currentColor" stroke-width="1.2"/></svg>'
+}
+
+// ---------- 行构建（不含 slot：根行由 buildRoot 挂） ----------
+function buildRow(node, depth) {
+  const row = document.createElement('div')
+  const hasDeck = (node.children?.length ?? 0) > 0
+  row.className = 'tree-row' + (node.folder ? ' folder-row' : '') + (hasDeck && !expanded.has(node.path) ? ' has-deck' : '') + (selected === node.path ? ' selected' : '')
+  row.dataset.path = node.path
+
+  let guides = ''
+  for (let i = 0; i < depth; i++) guides += '<span class="guide"></span>'
+  row.innerHTML =
+    `<span class="tree-guides" aria-hidden="true">${guides}</span>` +
+    (hasDeck
+      ? `<button type="button" class="tree-switcher${expanded.has(node.path) ? ' open' : ''}" aria-label="展开/收拢">${ICON.chevron}</button>`
+      : `<span class="tree-switcher placeholder"></span>`) +
+    `<span class="node-icon${node.folder ? '' : ' plan'}">${node.folder ? ICON.folder : ICON.plan}</span>` +
+    `<span class="tree-node-title"><span class="name">${node.name}</span></span>`
+
+  if (hasDeck) row.querySelector('.tree-switcher').addEventListener('click', (e) => { e.stopPropagation(); toggle(node) })
+  row.addEventListener('click', () => selectRow(node.path))
+  return row
+}
+
+// ---------- 组构建：node 的子树（行槽嵌套；挂载即触发 @starting-style + 发牌动画） ----------
+function buildGroup(node, depth) {
+  const group = document.createElement('div')
+  group.className = 'group'
+  group.dataset.path = node.path
+  appendChildren(group, node, depth)
+  return group
+}
+
+function appendChildren(group, node, depth) {
+  const rows = revealedRows(node) // doc order，含展开后代
+  const s = effStagger(rows.length)
+  rows.forEach((child, i) => {
+    // --enter-delay 由发牌方向决定（D2/D3 波次）
+    const idx = dealDir === 'top' ? i : rows.length - 1 - i
+    const slot = document.createElement('div')
+    slot.className = 'slot'
+    slot.style.setProperty('--enter-delay', Math.round(idx * s) + 'ms')
+    slot.dataset.path = child.path
+    const inner = document.createElement('div')
+    inner.className = 'slot-inner'
+    inner.appendChild(buildRow(child, depth + 1))
+    if ((child.children?.length ?? 0) > 0 && expanded.has(child.path)) {
+      inner.appendChild(buildGroup(child, depth + 1))
+    }
+    slot.appendChild(inner)
+    group.appendChild(slot)
+  })
+}
+
+// ---------- 根行（不参与发牌动画） ----------
+function buildRoot() {
+  const row = document.createElement('div')
+  row.className = 'tree-row'
+  row.innerHTML =
+    (TREE.children.length > 0
+      ? `<button type="button" class="tree-switcher${expanded.has('') ? ' open' : ''}" aria-label="展开/收拢">${ICON.chevron}</button>`
+      : '<span class="tree-switcher placeholder"></span>') +
+    `<span class="tree-root-label"><span class="origin-dot"></span>${TREE.name}</span>`
+  row.querySelector('.tree-switcher')?.addEventListener('click', () => toggle(TREE))
+  scroll.appendChild(row)
+  const g = buildGroup(TREE, 0)
+  scroll.appendChild(g)
+  pathToGroupEl.set('', g)
+}
+
+// ---------- 展开/收拢（核心：延迟卸载 + 可取消） ----------
+function toggle(node) {
+  const path = node.path
+  if (collapsing.has(path)) { cancelCollapse(path); return } // 收拢中再点 = 取消回弹
+  if (expanded.has(path)) { startCollapse(node); return }
+  expand(node)
+}
+
+function expand(node) {
+  if (expanded.has(node.path)) return
+  expanded.add(node.path)
+  const hostInner = hostOf(node) // 挂载点：自身 slot-inner（子组）或根容器
+  if (!hostInner) return
+  const group = buildGroup(node, depthOf(node))
+  hostInner.appendChild(group)
+  pathToGroupEl.set(node.path, group)
+
+  // 父行状态刷新（箭头转开 / 摘除持牌暗示）+ D5 脉冲
+  const row = rowEl(node.path)
+  if (row) {
+    row.classList.remove('has-deck')
+    row.querySelector('.tree-switcher')?.classList.add('open')
+    flash(row, 'dealt', 520)
+  }
+}
+
+function startCollapse(node) {
+  const path = node.path
+  const group = pathToGroupEl.get(path)
+  if (!group) { expanded.delete(path); return }
+  expanded.delete(path) // 状态立即翻转：箭头即时回转、后续查询一致
+
+  // 收拢揭示行 = 该组当前 DOM 内全部行槽（含嵌套组）
+  const slots = [...group.querySelectorAll(':scope .slot')]
+  const s = effStagger(slots.length)
+  const maxDelay = (slots.length - 1) * s
+  slots.forEach((slot, i) => {
+    // D3 相反波次：末张先走（若发牌方向为 bottom 则镜像）
+    const rev = dealDir === 'top' ? slots.length - 1 - i : i
+    slot.style.setProperty('--exit-delay', Math.round(rev * s) + 'ms')
+    slot.classList.add('closing')
+  })
+
+  const row = rowEl(path)
+  if (row) {
+    row.querySelector('.tree-switcher')?.classList.remove('open')
+    if (!expanded.has(path)) row.classList.add('has-deck')
+    flash(row, 'gathered', 420)
+  }
+
+  const gather = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-gather'))
+  const timer = setTimeout(() => {
+    group.remove()
+    pathToGroupEl.delete(path)
+    collapsing.delete(path)
+  }, maxDelay + gather + 60)
+  collapsing.set(path, { group, timer })
+}
+
+function cancelCollapse(path) {
+  const c = collapsing.get(path)
+  if (!c) return
+  clearTimeout(c.timer)
+  collapsing.delete(path)
+  expanded.add(path)
+  c.group.querySelectorAll('.slot.closing').forEach((slot) => slot.classList.remove('closing'))
+  const row = rowEl(path)
+  if (row) {
+    row.classList.remove('has-deck')
+    row.querySelector('.tree-switcher')?.classList.add('open')
+  }
+}
+
+// ---------- 辅助 ----------
+function depthOf(node) {
+  return node.path === '' ? 0 : node.path.split('/').length - 1
+}
+function hostOf(node) {
+  if (node.path === '') return scroll
+  // 挂载点 = 父行的 slot-inner（父必已挂载且展开）
+  const parentPath = node.path.slice(0, node.path.lastIndexOf('/'))
+  const parentNode = byPath.get(parentPath)
+  return slotInnerOf(parentNode ?? TREE)
+}
+function slotInnerOf(node) {
+  const p = node.path
+  if (p === '') return scroll
+  const slot = scroll.querySelector(`.slot[data-path="${CSS.escape(p)}"]`)
+  return slot?.querySelector('.slot-inner') ?? null
+}
+function rowEl(path) {
+  if (path === '') return scroll.querySelector('.tree-row')
+  return scroll.querySelector(`.slot[data-path="${CSS.escape(path)}"] > .slot-inner > .tree-row`)
+}
+function flash(el, cls, ms) {
+  el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls)
+  setTimeout(() => el.classList.remove(cls), ms)
+}
+function selectRow(path) {
+  selected = selected === path ? null : path
+  scroll.querySelectorAll('.tree-row.selected').forEach((r) => r.classList.remove('selected'))
+  if (selected) rowEl(selected)?.classList.add('selected')
+}
+
+// ---------- 级联全开/全收（展示多组波次接力） ----------
+function allFolders(node, acc = []) {
+  ;(node.children ?? []).forEach((c) => { if ((c.children?.length ?? 0) > 0) { acc.push(c); allFolders(c, acc) } })
+  return acc
+}
+document.getElementById('expandAll').addEventListener('click', () => {
+  allFolders(TREE).forEach((f, i) => setTimeout(() => expand(f), i * 150))
+})
+document.getElementById('collapseAll').addEventListener('click', () => {
+  const list = allFolders(TREE).reverse() // 由深到浅收
+  list.forEach((f, i) => setTimeout(() => { if (expanded.has(f.path) && !collapsing.has(f.path)) startCollapse(f) }, i * 130))
+})
+document.getElementById('resetSel').addEventListener('click', () => {
+  selected = null
+  scroll.querySelectorAll('.tree-row.selected').forEach((r) => r.classList.remove('selected'))
+})
+
+// ---------- 控制台绑定 ----------
+function bindRange(id, outId, cssVar) {
+  const el = document.getElementById(id), out = document.getElementById(outId)
+  el.addEventListener('input', () => {
+    document.documentElement.style.setProperty(cssVar, el.value + 'ms')
+    out.textContent = el.value + 'ms'
+  })
+}
+bindRange('stagger', 'staggerOut', '--stagger')
+bindRange('tdeal', 'tdealOut', '--t-deal')
+bindRange('tgather', 'tgatherOut', '--t-gather')
+bindRange('tslot', 'tslotOut', '--t-slot')
+
+document.getElementById('overshoot').addEventListener('change', (e) => document.body.classList.toggle('no-overshoot', !e.target.checked))
+document.getElementById('guide').addEventListener('change', (e) => document.body.classList.toggle('no-guide', !e.target.checked))
+document.getElementById('fx').addEventListener('change', (e) => document.body.classList.toggle('fx-off', !e.target.checked))
+
+document.querySelectorAll('#dealSeg button').forEach((b) => {
+  b.addEventListener('click', () => {
+    dealDir = b.dataset.dir
+    document.querySelectorAll('#dealSeg button').forEach((x) => x.classList.toggle('on', x === b))
+  })
+})
+
+// ---------- 初始：默认展开两层，首屏即见发牌 ----------
+expanded.add('')
+expanded.add('2026 冲刺')
+buildRoot()
+</script>
+</body>
+</html>
