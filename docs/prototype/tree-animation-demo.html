@@ -268,13 +268,11 @@ const TREE = {
   ]
 }
 
-// 为每个节点分配稳定路径（同名加序号避免歧义，仅 demo 用）
-const byPath = new Map()
-;(function assign(node, parentPath) {
-  node.path = parentPath === '' ? node.name : parentPath + '/' + node.name
-  byPath.set(node.path, node)
+// 为每个节点分配稳定路径（根固定 ''——expanded/pathToGroupEl/slotInnerOf 均以 '' 键根）
+;(function assign(node, parentPath, isRoot = false) {
+  node.path = isRoot ? '' : parentPath === '' ? node.name : parentPath + '/' + node.name
   ;(node.children ?? []).forEach((c) => assign(c, node.path))
-})(TREE, '')
+})(TREE, '', true)
 
 // ---------- 状态 ----------
 const expanded = new Set()          // 已展开路径（状态树权威）
@@ -289,14 +287,6 @@ const scroll = document.getElementById('treeScroll')
 function effStagger(n) {
   const base = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--stagger'))
   return n > 10 ? Math.max(6, Math.min(base, 320 / n)) : base
-}
-
-// 组内揭示行（含已展开后代，DFS doc order）
-function revealedRows(node) {
-  const out = []
-  const walk = (nd) => { (nd.children ?? []).forEach((c) => { out.push(c); if (expanded.has(c.path)) walk(c) }) }
-  walk(node)
-  return out
 }
 
 // ---------- 图标 ----------
@@ -339,11 +329,12 @@ function buildGroup(node, depth) {
 }
 
 function appendChildren(group, node, depth) {
-  const rows = revealedRows(node) // doc order，含展开后代
-  const s = effStagger(rows.length)
-  rows.forEach((child, i) => {
+  // 只遍历直接子项（嵌套展开的子树由各组递归渲染）；曾误用含后代的扁平列表 → 重复渲染
+  const kids = node.children ?? []
+  const s = effStagger(kids.length)
+  kids.forEach((child, i) => {
     // --enter-delay 由发牌方向决定（D2/D3 波次）
-    const idx = dealDir === 'top' ? i : rows.length - 1 - i
+    const idx = dealDir === 'top' ? i : kids.length - 1 - i
     const slot = document.createElement('div')
     slot.className = 'slot'
     slot.style.setProperty('--enter-delay', Math.round(idx * s) + 'ms')
@@ -352,7 +343,9 @@ function appendChildren(group, node, depth) {
     inner.className = 'slot-inner'
     inner.appendChild(buildRow(child, depth + 1))
     if ((child.children?.length ?? 0) > 0 && expanded.has(child.path)) {
-      inner.appendChild(buildGroup(child, depth + 1))
+      const sub = buildGroup(child, depth + 1)
+      inner.appendChild(sub)
+      pathToGroupEl.set(child.path, sub) // 初始渲染的嵌套组同样登记（否则收拢查不到组 → 静默失效）
     }
     slot.appendChild(inner)
     group.appendChild(slot)
@@ -386,7 +379,7 @@ function toggle(node) {
 function expand(node) {
   if (expanded.has(node.path)) return
   expanded.add(node.path)
-  const hostInner = hostOf(node) // 挂载点：自身 slot-inner（子组）或根容器
+  const hostInner = slotInnerOf(node) // 挂载点：自身行的 slot-inner（子组随自身槽位收拢）；根（''）→ scroll
   if (!hostInner) return
   const group = buildGroup(node, depthOf(node))
   hostInner.appendChild(group)
@@ -452,13 +445,6 @@ function cancelCollapse(path) {
 function depthOf(node) {
   return node.path === '' ? 0 : node.path.split('/').length - 1
 }
-function hostOf(node) {
-  if (node.path === '') return scroll
-  // 挂载点 = 父行的 slot-inner（父必已挂载且展开）
-  const parentPath = node.path.slice(0, node.path.lastIndexOf('/'))
-  const parentNode = byPath.get(parentPath)
-  return slotInnerOf(parentNode ?? TREE)
-}
 function slotInnerOf(node) {
   const p = node.path
   if (p === '') return scroll
@@ -485,7 +471,10 @@ function allFolders(node, acc = []) {
   return acc
 }
 document.getElementById('expandAll').addEventListener('click', () => {
-  allFolders(TREE).forEach((f, i) => setTimeout(() => expand(f), i * 150))
+  allFolders(TREE).forEach((f, i) => setTimeout(() => {
+    if (collapsing.has(f.path)) cancelCollapse(f.path) // 收拢途中先取消，避免新旧两组并存
+    expand(f)
+  }, i * 150))
 })
 document.getElementById('collapseAll').addEventListener('click', () => {
   const list = allFolders(TREE).reverse() // 由深到浅收
