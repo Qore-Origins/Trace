@@ -90,13 +90,19 @@ body.no-guide .guide { animation: none; }
 .tree-guides { display: flex; flex: none; align-self: stretch; }
 .tree-guides .guide { width: 18px; flex: none; border-left: 1px solid var(--split); }
 
-/* D4 折叠箭头：单箭头 90° 弹簧旋转 + 按压反馈 */
+/* D4 折叠按钮（方框 +/- 变号）：点击方框整体旋转 180°，旋转途中竖杠消长 —— + 与 - 在旋转中互换；
+   旋转放 .pm-box、按压缩放放 .tree-switcher（transform 分层，互不覆盖） */
 .tree-switcher { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-4); cursor: pointer; padding: 0; border-radius: 4px; }
 .tree-switcher:hover { color: var(--text-1); background: var(--fill); }
 .tree-switcher:active { transform: scale(.78); }
-.tree-switcher svg { transition: transform .28s var(--ease-spring); }
-.tree-switcher.open svg { transform: rotate(90deg); }
 .tree-switcher.placeholder { visibility: hidden; cursor: default; }
+.pm-box { width: 12px; height: 12px; flex: none; border: 1.1px solid currentColor; border-radius: 3.5px; display: grid; place-items: center; transition: transform .3s var(--ease-spring); }
+.tree-switcher.open .pm-box { transform: rotate(180deg); }
+.pm-sign { position: relative; width: 6px; height: 6px; }
+.pm-bar { position: absolute; background: currentColor; border-radius: 1px; }
+.pm-h { left: 0; right: 0; top: 50%; height: 1.4px; transform: translateY(-50%); }
+.pm-v { top: 0; bottom: 0; left: 50%; width: 1.4px; transform: translateX(-50%) scaleY(1); transition: transform .13s linear .07s; }
+.tree-switcher.open .pm-v { transform: translateX(-50%) scaleY(0); }
 
 .node-icon { flex: none; display: inline-flex; color: var(--text-4); margin-right: 4px; }
 .node-icon.plan { color: var(--trace-500); opacity: .75; }
@@ -179,7 +185,7 @@ body.fx-off .slot { grid-template-rows: 1fr !important; }
 
   <main class="demo-main">
     <h1>计划树 · 散开 / 收拢动效 Demo</h1>
-    <div class="sub">卡牌摞隐喻：展开自上至下发牌，收拢自下至上收牌（点折叠箭头体验；收拢途中再点可取消回弹）</div>
+    <div class="sub">卡牌摞隐喻：展开自上至下发牌，收拢自下至上收牌（点方框 +/- 折叠按钮体验；收拢途中再点可取消回弹）</div>
 
     <div class="panel">
       <h2>时序控制台（实时生效）</h2>
@@ -212,7 +218,7 @@ body.fx-off .slot { grid-template-rows: 1fr !important; }
         <div><b>D1</b>行槽开合：每行 <code>grid-template-rows: 0fr↔1fr</code> 槽位错峰开合，下方内容平滑推走/合拢，零布局跳动</div>
         <div><b>D2</b>发牌入场：卡牌从父行方向（上·左）抽出，<code>--i</code> 错峰 + spring 回弹落位</div>
         <div><b>D3</b>收牌出场：末张先走、波次向上汇聚进父行，ease-in 加速吸入，槽位 zipper 合拢</div>
-        <div><b>D4</b>折叠箭头：单箭头 90° 弹簧旋转 + 按压缩放反馈</div>
+        <div><b>D4</b>折叠按钮：方框 +/- 号，点击整体旋转 180°，旋转途中竖杠消长完成变号 + 按压缩放反馈</div>
         <div><b>D5</b>父行脉冲：展开瞬间迹色一闪 + 图标 pop；收拢完成图标 squish</div>
         <div><b>D6</b>连接线生长：缩进竖线段锚顶 scaleY 随行画出——「迹」向下生长；收拢被槽位裁切自然回缩</div>
         <div><b>D7</b>持牌暗示：折叠文件夹 hover 露出两道卡牌边缘（这里有一摞牌）</div>
@@ -225,16 +231,16 @@ body.fx-off .slot { grid-template-rows: 1fr !important; }
         <div class="tl-row"><span class="tl-name">卡4</span><div class="tl-track"><div class="tl-bar" style="left:24%;width:42%"></div></div></div>
         <div class="tl-row"><span class="tl-name">卡5（末张）</span><div class="tl-track"><div class="tl-bar" style="left:32%;width:42%"></div></div></div>
         <div class="tl-row"><span class="tl-name">槽位开合</span><div class="tl-track"><div class="tl-bar soft" style="left:0%;width:58%"></div></div></div>
-        <div class="tl-row"><span class="tl-name">箭头旋转</span><div class="tl-track"><div class="tl-bar alt" style="left:0%;width:30%"></div></div></div>
-        <div class="tl-note">示意：展开波次自上至下（收拢镜像反向）；槽位与箭头随点击即时启动</div>
+        <div class="tl-row"><span class="tl-name">方框变号</span><div class="tl-track"><div class="tl-bar alt" style="left:0%;width:38%"></div></div></div>
+        <div class="tl-note">示意：展开波次自上至下（收拢镜像反向）；槽位与方框变号随点击即时启动</div>
       </div>
     </div>
 
     <div class="panel">
       <h2>交互约定</h2>
       <div class="d-list">
-        <div>· 点 <b>箭头</b> 展开/收拢；点行选中（迹色高亮）</div>
-        <div>· 收拢途中再点箭头 = 取消，槽位原路弹回（动画中断续接）</div>
+        <div>· 点 <b>方框 +/-</b> 展开/收拢（+ = 可展开，− = 可收拢）；点行选中（迹色高亮）</div>
+        <div>· 收拢途中再点方框 = 取消，槽位原路弹回（动画中断续接）</div>
         <div>· 「日常」文件夹 12 个子项，验证 D8 节奏压缩</div>
         <div>· 嵌套收拢：「2026 冲刺」整摞子树一起收回</div>
       </div>
@@ -295,7 +301,8 @@ function revealedRows(node) {
 
 // ---------- 图标 ----------
 const ICON = {
-  chevron: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1.5 L7 5 L3 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  // 折叠按钮：方框 +/-（D4——点击旋转 180°，途中竖杠消长变号；样式见 .pm-* 规则）
+  toggle: '<span class="pm-box"><span class="pm-sign"><span class="pm-bar pm-h"></span><span class="pm-bar pm-v"></span></span></span>',
   folder: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1.5 3.5c0-.55.45-1 1-1h3.2l1.4 1.6h7.4c.55 0 1 .45 1 1v7.4c0 .55-.45 1-1 1h-12c-.55 0-1-.45-1-1z" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.08"/></svg>',
   plan: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3.5 3.5v9.5h-9.5z" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.06"/><path d="M9.5 1.5V5H13" stroke="currentColor" stroke-width="1.2"/></svg>'
 }
@@ -312,7 +319,7 @@ function buildRow(node, depth) {
   row.innerHTML =
     `<span class="tree-guides" aria-hidden="true">${guides}</span>` +
     (hasDeck
-      ? `<button type="button" class="tree-switcher${expanded.has(node.path) ? ' open' : ''}" aria-label="展开/收拢">${ICON.chevron}</button>`
+      ? `<button type="button" class="tree-switcher${expanded.has(node.path) ? ' open' : ''}" aria-label="展开/收拢">${ICON.toggle}</button>`
       : `<span class="tree-switcher placeholder"></span>`) +
     `<span class="node-icon${node.folder ? '' : ' plan'}">${node.folder ? ICON.folder : ICON.plan}</span>` +
     `<span class="tree-node-title"><span class="name">${node.name}</span></span>`
@@ -358,7 +365,7 @@ function buildRoot() {
   row.className = 'tree-row'
   row.innerHTML =
     (TREE.children.length > 0
-      ? `<button type="button" class="tree-switcher${expanded.has('') ? ' open' : ''}" aria-label="展开/收拢">${ICON.chevron}</button>`
+      ? `<button type="button" class="tree-switcher${expanded.has('') ? ' open' : ''}" aria-label="展开/收拢">${ICON.toggle}</button>`
       : '<span class="tree-switcher placeholder"></span>') +
     `<span class="tree-root-label"><span class="origin-dot"></span>${TREE.name}</span>`
   row.querySelector('.tree-switcher')?.addEventListener('click', () => toggle(TREE))
@@ -385,7 +392,7 @@ function expand(node) {
   hostInner.appendChild(group)
   pathToGroupEl.set(node.path, group)
 
-  // 父行状态刷新（箭头转开 / 摘除持牌暗示）+ D5 脉冲
+  // 父行状态刷新（方框变号 / 摘除持牌暗示）+ D5 脉冲
   const row = rowEl(node.path)
   if (row) {
     row.classList.remove('has-deck')
@@ -398,7 +405,7 @@ function startCollapse(node) {
   const path = node.path
   const group = pathToGroupEl.get(path)
   if (!group) { expanded.delete(path); return }
-  expanded.delete(path) // 状态立即翻转：箭头即时回转、后续查询一致
+  expanded.delete(path) // 状态立即翻转：方框即时变号、后续查询一致
 
   // 收拢揭示行 = 该组当前 DOM 内全部行槽（含嵌套组）
   const slots = [...group.querySelectorAll(':scope .slot')]
