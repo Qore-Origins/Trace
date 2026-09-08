@@ -71,21 +71,19 @@ export interface TreeSnapshot {
   loaded: Record<string, boolean>
 }
 
-// name-sort 插入位（zh-CN，对齐主进程 treeGetChildren 文件夹排序）
+// name-sort 插入位（zh-CN，对齐主进程 treeGetChildren 排序）
 function nameSortIndex(list: PlanTreeNode[], name: string): number {
   const i = list.findIndex((n) => n.name.localeCompare(name, 'zh-CN') > 0)
   return i === -1 ? list.length : i
 }
 
-// 乐观应用移动：dragPath → (targetParent, orderIndex)；返回迁移后快照，不可应用返回 null
-// 插入位按父级顺序载体现实：顶层/计划父级=children_order 精确索引；纯文件夹=按名排序
-// （乐观位与刷新后的权威位一致，避免二次跳位）
+// 乐观应用移动：dragPath → targetParent；返回迁移后快照，不可应用返回 null
+// 插入位按文件名排序（2026-09-08 定稿：树不做手动排序，乐观位与权威刷新位天然一致）
 export function optimisticMove(
   map: Record<string, PlanTreeNode[]>,
   loaded: Record<string, boolean>,
   dragPath: string,
-  targetParent: string,
-  orderIndex: number
+  targetParent: string
 ): TreeSnapshot | null {
   if (dragPath === '') return null
   const oldParent = parentRel(dragPath)
@@ -106,16 +104,16 @@ export function optimisticMove(
 
   // 从旧父层移除（迁移后节点 path 已是 newPath；同父时即剔除自身）
   const oldList = (newMap[oldParent] ?? []).filter((x) => x.path !== newPath)
-  const tracksOrder = kindOf(map, targetParent) !== 'folder'
   if (targetParent === oldParent) {
-    const idx = tracksOrder ? Math.max(0, Math.min(orderIndex, oldList.length)) : nameSortIndex(oldList, name)
+    // 同父移动（UI 已拦截，防御性保留）：name-sort 恒等回插
+    const idx = nameSortIndex(oldList, name)
     oldList.splice(idx, 0, { ...node, path: newPath })
     newMap[oldParent] = oldList
   } else {
     newMap[oldParent] = oldList
     if (newLoaded[targetParent] === true) {
       const list = [...newMap[targetParent]]
-      const idx = tracksOrder ? Math.max(0, Math.min(orderIndex, list.length)) : nameSortIndex(list, name)
+      const idx = nameSortIndex(list, name)
       list.splice(idx, 0, { ...node, path: newPath })
       newMap[targetParent] = list
       // 目标行 has_children 置真（空文件夹接收首子项：flattenTree 据此才下钻渲染，防乐观行不可见）

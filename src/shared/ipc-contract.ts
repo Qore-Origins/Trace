@@ -62,8 +62,7 @@ export interface Channels {
   'storage:createFolder': { req: { parent_path: string; name: string }; res: PlanTreeNode }
   'storage:renamePlan': { req: { path: string; new_name: string }; res: { path: string } }
   'storage:deletePlan': { req: { path: string; confirmed: boolean }; res: null }
-  'storage:movePlan': { req: { path: string; target_parent_path: string; order_index: number }; res: null }
-  'storage:resortChildren': { req: { parent_path: string; ordered_names: string[] }; res: null }
+  'storage:movePlan': { req: { path: string; target_parent_path: string }; res: null }
   'storage:readPlan': { req: { path: string }; res: PlanDocument }
   'storage:savePlan': {
     req: { path: string; document: PlanDocument; expected_updated_at: string }

@@ -240,8 +240,8 @@ export default function PlanTreePanel(): React.JSX.Element {
     const target = String(over.id) // ''=根（移到顶层末尾）
     // 与高亮判定一致：无效目标静默忽略；store 内 guard 兜底提示
     if (!canReceive(dragPath, target)) return
-    // movePlan 乐观更新（松手即落定）+ 失败回滚提示；成功后确保目标文件夹展开（读最新键，防闭包过期）
-    void movePlan(dragPath, target, Number.MAX_SAFE_INTEGER).then((ok) => {
+    // movePlan 乐观更新（松手即落位）+ 失败回滚提示；成功后确保目标文件夹展开（读最新键，防闭包过期）
+    void movePlan(dragPath, target).then((ok) => {
       if (!ok || target === '') return
       const cur = useTreeStore.getState().expandedKeys
       if (!cur.includes(target)) setExpanded([...cur, target])

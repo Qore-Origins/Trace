@@ -9,7 +9,6 @@ export interface PlanDocument {
   format_version: '1'
   created_at: string // ISO 8601 UTC
   updated_at: string // 每次原子写更新；savePlan CAS 锚点
-  children_order?: string[] // 子计划文件夹名有序列表；缺席=按名称升序
   components: Component[] // 渲染顺序 = 数组顺序
 }
 
@@ -18,8 +17,10 @@ export interface PlanLibraryMeta {
   library_id: string // uuid32，初始化分配后不变
   created_at: string
   schema_info: string[] // 预留扩展位，如 ["min", "v1"]
-  children_order?: string[] // 顶层计划顺序（实现期契约补充：根层无 plan.json，顶层顺序存库元数据）
 }
+
+// 2026-09-08 排序定稿：树统一按文件名排序（zh-CN），children_order 顺序载体退役；
+// 历史文件中的 children_order 字段读取时忽略（JSON 多余键无害，不再写入）
 
 export interface Component {
   id: string // uuid32

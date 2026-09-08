@@ -58,7 +58,7 @@ export default function TreeDndPoc(): React.JSX.Element {
     if (isDescendantKey(treeData, dragKey, dropKey) && !dropGap) {
       console.warn('[TreeDndPoc] 循环嵌套拒绝（UI 规范：红色插入线提示）')
     }
-    // TODO(SPRINT-2): 调 window.trace.storage.movePlan / resortChildren
+    // TODO(SPRINT-2): 调 window.trace.storage.movePlan
   }
 
   return (

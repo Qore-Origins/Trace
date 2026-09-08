@@ -46,13 +46,15 @@ describe('createPlan / treeGetChildren', () => {
   it('非法名 → VALIDATION(20)', async () => {
     await expect(service.createPlan('', 'a/b')).rejects.toThrow(TraceError)
   })
-  it('children_order 排序生效（Sprint 排序契约）', async () => {
-    await service.createPlan('', '甲')
+  it('按文件名排序生效（2026-09-08 排序定稿：children_order 退役）', async () => {
     await service.createPlan('', '乙')
     await service.createPlan('', '丙')
-    await service.resortChildren('', ['丙', '甲', '乙'])
+    await service.createPlan('', '甲')
     const nodes = await service.treeGetChildren('')
-    expect(nodes.map((n) => n.name)).toEqual(['丙', '甲', '乙'])
+    expect(nodes.map((n) => n.name)).toEqual([...['乙', '丙', '甲']].sort((a, b) => a.localeCompare(b, 'zh-CN')))
+    const metaFile = join(root, '.trace', 'plan-library.json')
+    const meta = JSON.parse(await fs.readFile(metaFile, 'utf8')) as { children_order?: string[] }
+    expect(meta.children_order).toBeUndefined() // 不再写顺序载体
   })
 })
 
@@ -75,9 +77,8 @@ describe('文件夹容器（folder，无 plan.json）', () => {
 })
 
 describe('renamePlan / deletePlan', () => {
-  it('重命名同步磁盘与父排序', async () => {
+  it('重命名同步磁盘', async () => {
     await service.createPlan('', '旧名')
-    await service.resortChildren('', ['旧名'])
     const r = await service.renamePlan('旧名', '新名')
     expect(r.path).toBe('新名')
     await expect(fs.access(join(root, '新名'))).resolves.toBeUndefined()
@@ -100,17 +101,17 @@ describe('movePlan', () => {
   it('移动 + 循环拒绝', async () => {
     await service.createPlan('', 'A')
     await service.createPlan('', 'B')
-    await service.movePlan('A', 'B', 0)
+    await service.movePlan('A', 'B')
     expect(await service.treeGetChildren('B').then((ns) => ns.map((n) => n.name))).toEqual(['A'])
 
-    await expect(service.movePlan('B/A', 'B/A', 0)).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
-    await expect(service.movePlan('B', 'B/A', 0)).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
+    await expect(service.movePlan('B/A', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
+    await expect(service.movePlan('B', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
   })
 
   it('计划可拖入纯文件夹（容器）', async () => {
     await service.createPlan('', 'A')
     await service.createFolder('', '归档')
-    await service.movePlan('A', '归档', 0)
+    await service.movePlan('A', '归档')
     const kids = await service.treeGetChildren('归档')
     expect(kids.map((n) => n.name)).toEqual(['A'])
     expect(kids[0].kind).toBe('plan')
@@ -120,32 +121,29 @@ describe('movePlan', () => {
     await service.createPlan('', 'B')
     await service.createPlan('B', 'X')
     await service.createPlan('A', 'X')
-    await expect(service.movePlan('A/X', 'B', 0)).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
+    await expect(service.movePlan('A/X', 'B')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
   })
 
-  it('children_order 残缺时 move 自愈重建（2026-09-08 拖拽弹回根治）', async () => {
-    // 复刻用户库现场：历史 createPlan/createFolder 不登记 → meta 只含部分名字
-    await service.createFolder('', '132')
-    await service.createPlan('', '465545')
+  it('移动后按文件名落位（目标层重排与名序一致）', async () => {
+    await service.createPlan('', 'B')
+    await service.createPlan('', 'C')
+    await service.createPlan('', 'A')
+    await service.movePlan('A', 'B')
+    // B 的子层：A 唯一；顶层剩 B、C 按名序
+    expect((await service.treeGetChildren('B')).map((n) => n.name)).toEqual(['A'])
+    expect((await service.treeGetChildren('')).map((n) => n.name)).toEqual(['B', 'C'])
+  })
+
+  it('历史 children_order 残留被忽略（读取按名排序，不迁移不报错）', async () => {
+    await service.createPlan('', '甲')
+    await service.createPlan('', '乙')
     const metaFile = join(root, '.trace', 'plan-library.json')
-    const meta = JSON.parse(await fs.readFile(metaFile, 'utf8')) as { children_order: string[] }
-    meta.children_order = ['465545'] // 手工制造残缺（132 未登记）
+    const meta = JSON.parse(await fs.readFile(metaFile, 'utf8')) as { children_order?: string[] }
+    meta.children_order = ['乙', '甲'] // 手工制造历史残留（自定义序）
     await fs.writeFile(metaFile, JSON.stringify(meta))
 
-    // 拖到 132 后面：自愈重建应把 132 纳入载体，权威刷新与落点一致（不再弹回）
-    await service.movePlan('465545', '', 1)
-    expect((await service.treeGetChildren('')).map((n) => n.name)).toEqual(['132', '465545'])
-    const healed = JSON.parse(await fs.readFile(metaFile, 'utf8')) as { children_order: string[] }
-    expect(healed.children_order).toEqual(['132', '465545'])
-  })
-
-  it('createPlan/createFolder 出生即登记 children_order（杜绝新残缺）', async () => {
-    await service.createPlan('', 'A')
-    await service.createFolder('', 'F')
-    await service.createPlan('', 'B')
-    const meta = JSON.parse(await fs.readFile(join(root, '.trace', 'plan-library.json'), 'utf8')) as { children_order: string[] }
-    expect(meta.children_order).toEqual(['A', 'F', 'B'])
-    expect((await service.treeGetChildren('')).map((n) => n.name)).toEqual(['A', 'F', 'B'])
+    const names = (await service.treeGetChildren('')).map((n) => n.name)
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))) // 名序，不受残留影响
   })
 })
 

@@ -56,34 +56,29 @@ describe('kindOf', () => {
   })
 })
 
-describe('optimisticMove（乐观换位，消除松手弹回）', () => {
-  it('同父重排（顶层=顺序载体）→ 按精确索引换位', () => {
-    const map = { '': [n('A', 'A', false), n('B', 'B', false), n('C', 'C', false)] }
-    const r = optimisticMove(map, { '': true }, 'A', '', 2)
-    expect(r?.childrenMap[''].map((x) => x.name)).toEqual(['B', 'C', 'A'])
-  })
-  it('跨父移入已加载计划 → 插到 orderIndex 位，节点 path 迁移', () => {
+describe('optimisticMove（乐观换位，消除松手弹回；2026-09-08 定稿：统一 name-sort 插入）', () => {
+  it('跨父移入已加载计划 → 按 name-sort 插入，节点 path 迁移', () => {
     const map = { '': [n('A', 'A', false), n('P', 'P', true)], P: [n('P/x', 'x', false), n('P/y', 'y', false)] }
-    const r = optimisticMove(map, { '': true, P: true }, 'A', 'P', Number.MAX_SAFE_INTEGER)
+    const r = optimisticMove(map, { '': true, P: true }, 'A', 'P')
     expect(r?.childrenMap[''].map((x) => x.name)).toEqual(['P'])
-    expect(r?.childrenMap.P.map((x) => x.path)).toEqual(['P/x', 'P/y', 'P/A'])
+    expect(r?.childrenMap.P.map((x) => x.path)).toEqual(['P/A', 'P/x', 'P/y'])
   })
-  it('跨父移入已加载文件夹 → 按 name-sort 插入（无顺序载体，对齐权威刷新位）', () => {
+  it('跨父移入已加载文件夹 → 按 name-sort 插入（对齐权威刷新位）', () => {
     const map = {
       '': [n('c', 'c', false), n('F', 'F', true, 'folder')],
       F: [n('F/b', 'b', false), n('F/d', 'd', false)]
     }
-    const r = optimisticMove(map, { '': true, F: true }, 'c', 'F', 0)
+    const r = optimisticMove(map, { '': true, F: true }, 'c', 'F')
     expect(r?.childrenMap.F.map((x) => x.name)).toEqual(['b', 'c', 'd'])
   })
-  it('同父重排（文件夹父级=无载体）→ name-sort 原位（诚实呈现：顺序不持久化）', () => {
+  it('同父移动（UI 已拦截，防御性路径）→ name-sort 原位', () => {
     const map = { '': [n('F', 'F', true, 'folder')], F: [n('F/a', 'a', false), n('F/b', 'b', false), n('F/c', 'c', false)] }
-    const r = optimisticMove(map, { '': true, F: true }, 'F/c', 'F', 0)
+    const r = optimisticMove(map, { '': true, F: true }, 'F/c', 'F')
     expect(r?.childrenMap.F.map((x) => x.name)).toEqual(['a', 'b', 'c'])
   })
   it('目标层未加载 → 旧位移除、目标层不预插（折叠中不可见）', () => {
     const map = { '': [n('A', 'A', false), n('F', 'F', true, 'folder')] } // F 从未展开
-    const r = optimisticMove(map, { '': true }, 'A', 'F', Number.MAX_SAFE_INTEGER)
+    const r = optimisticMove(map, { '': true }, 'A', 'F')
     expect(r?.childrenMap[''].map((x) => x.name)).toEqual(['F'])
     expect(r?.childrenMap.F).toBeUndefined()
   })
@@ -93,7 +88,7 @@ describe('optimisticMove（乐观换位，消除松手弹回）', () => {
       G: [n('G/k', 'k', true)],
       'G/k': [n('G/k/leaf', 'leaf', false)]
     }
-    const r = optimisticMove(map, { '': true, G: true, 'G/k': true }, 'G', 'T', Number.MAX_SAFE_INTEGER)
+    const r = optimisticMove(map, { '': true, G: true, 'G/k': true }, 'G', 'T')
     expect(r?.childrenMap[''].map((x) => x.name)).toEqual(['T'])
     expect(r?.childrenMap['T/G']?.[0]?.path).toBe('T/G/k')
     expect(r?.childrenMap['T/G/k']?.[0]?.path).toBe('T/G/k/leaf')
@@ -102,11 +97,11 @@ describe('optimisticMove（乐观换位，消除松手弹回）', () => {
   })
   it('跨父移入空文件夹（has_children=false）→ 目标行置真（flattenTree 才下钻渲染）', () => {
     const map = { '': [n('A', 'A', false), n('F', 'F', false, 'folder')], F: [] }
-    const r = optimisticMove(map, { '': true, F: true }, 'A', 'F', Number.MAX_SAFE_INTEGER)
+    const r = optimisticMove(map, { '': true, F: true }, 'A', 'F')
     expect(r?.childrenMap.F.map((x) => x.path)).toEqual(['F/A'])
     expect(r?.childrenMap[''].find((x) => x.name === 'F')?.has_children).toBe(true)
   })
   it('节点不在已加载视图 → null（不可乐观，交由 IPC 后权威刷新）', () => {
-    expect(optimisticMove({}, {}, 'X', '', 0)).toBeNull()
+    expect(optimisticMove({}, {}, 'X', '')).toBeNull()
   })
 })

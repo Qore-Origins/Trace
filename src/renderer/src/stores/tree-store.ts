@@ -20,7 +20,7 @@ interface TreeState {
   createFolder: (parentPath: string, name: string) => Promise<void>
   renamePlan: (path: string, newName: string) => Promise<void>
   removePlan: (path: string) => Promise<void>
-  movePlan: (dragPath: string, targetParent: string, orderIndex: number) => Promise<boolean>
+  movePlan: (dragPath: string, targetParent: string) => Promise<boolean>
   expandTo: (path: string) => Promise<void>
   refreshAll: () => Promise<void>
   exportPlan: (path: string) => Promise<string | null>
@@ -134,7 +134,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     }
   },
 
-  movePlan: async (dragPath, targetParent, orderIndex) => {
+  movePlan: async (dragPath, targetParent) => {
     if (isSelfOrDescendant(dragPath, targetParent)) {
       message.warning('不能移动到自身或子计划中')
       return false
@@ -144,13 +144,14 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
 
     // 乐观更新（2026-09-07：松手弹回原位修复）：IPC 往返期间 dnd-kit 已复位 transform，
     // 本地先行换位（含子树键/选中/展开迁移）保证松手即落定；失败整体回滚
+    // 插入位按文件名排序（2026-09-08 定稿），乐观位与权威刷新位一致
     const snap = {
       childrenMap: get().childrenMap,
       loaded: get().loaded,
       expandedKeys: get().expandedKeys,
       selectedPath: get().selectedPath
     }
-    const opt = optimisticMove(snap.childrenMap, snap.loaded, dragPath, targetParent, orderIndex)
+    const opt = optimisticMove(snap.childrenMap, snap.loaded, dragPath, targetParent)
     if (opt) {
       const migrateKey = (k: string): string => (k === dragPath || k.startsWith(dragPath + '/') ? newPath + k.slice(dragPath.length) : k)
       set({
@@ -161,7 +162,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       })
     }
     try {
-      await invoke('storage:movePlan', { path: dragPath, target_parent_path: targetParent, order_index: orderIndex })
+      await invoke('storage:movePlan', { path: dragPath, target_parent_path: targetParent })
     } catch (e) {
       if (opt) {
         set({ childrenMap: snap.childrenMap, loaded: snap.loaded, expandedKeys: snap.expandedKeys, selectedPath: snap.selectedPath })

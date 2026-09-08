@@ -1,7 +1,7 @@
 // StorageService：计划树业务逻辑（LLD §2.1）
 // 职责：校验（名称/路径/confirm/CAS）→ 编排 Repository + TreeCache → 事件通知
 import { join } from 'node:path'
-import type { PlanDocument, PlanLibraryMeta, Component, TaskItem } from '../../shared/plan-types'
+import type { PlanDocument, Component, TaskItem } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
 import { applyStatusChange } from '../../shared/task-state'
@@ -43,33 +43,17 @@ export class StorageService {
     const parent = this.safe(parentPathRel)
     const root = this.root()
 
-    // 顶层顺序存库元数据；计划层存父 plan.json children_order；容器文件夹无载体 → 按名排序
-    let ordered: string[] | undefined
-    if (parent === '') {
-      ordered = (await this.repo.readLibraryMeta(root)).children_order
-    } else if (await this.repo.hasPlanFile(root, parent)) {
-      ordered = (await this.repo.readPlan(root, parent)).children_order
-    }
-
     let names = this.treeCache.get(parent)
     if (!names) {
       names = await this.repo.listPlanDirs(root, parent)
       this.treeCache.set(parent, names)
     }
 
-    const rank = (name: string): number => {
-      const idx = ordered?.indexOf(name) ?? -1
-      return idx === -1 ? Number.MAX_SAFE_INTEGER : idx
-    }
-    const sorted = [...names].sort((a, b) => {
-      const ra = rank(a)
-      const rb = rank(b)
-      if (ra !== rb) return ra - rb
-      return a.localeCompare(b, 'zh-CN')
-    })
+    // 2026-09-08 排序定稿：全部按文件名排序（zh-CN），children_order 载体退役（历史字段读取时忽略）
+    const sorted = [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
 
     const nodes: Awaited<ReturnType<StorageService['treeGetChildren']>> = []
-    for (const name of sorted) {
+    for (const [i, name] of sorted.entries()) {
       const path = parent === '' ? name : `${parent}/${name}`
       // kind：含 plan.json=计划；否则纯容器文件夹；has_children=子目录真值（箭头数据驱动）
       const kind = (await this.repo.hasPlanFile(root, path)) ? ('plan' as const) : ('folder' as const)
@@ -77,7 +61,7 @@ export class StorageService {
         path,
         name,
         has_children: await this.repo.hasChildDirs(root, path),
-        order: rank(name) === Number.MAX_SAFE_INTEGER ? nodes.length : rank(name),
+        order: i,
         kind
       })
     }
@@ -99,7 +83,6 @@ export class StorageService {
       }
       throw e
     }
-    await this.insertOrderEntry(parent, name, Number.MAX_SAFE_INTEGER)
     this.treeCache.invalidatePrefix(parent)
     const path = parent === '' ? name : `${parent}/${name}`
     bus.emit('trace:plan-changed', { path })
@@ -129,7 +112,6 @@ export class StorageService {
     const now = new Date().toISOString()
     const doc: PlanDocument = { format_version: '1', created_at: now, updated_at: now, components: [] }
     await this.repo.writePlanAtomic(root, parent === '' ? name : `${parent}/${name}`, doc)
-    await this.insertOrderEntry(parent, name, Number.MAX_SAFE_INTEGER)
 
     this.treeCache.invalidatePrefix(parent)
     const path = parent === '' ? name : `${parent}/${name}`
@@ -151,7 +133,6 @@ export class StorageService {
     }
 
     await this.repo.renamePlanDir(root, rel, newName)
-    await this.updateOrderAfterRename(parent, oldName, newName)
 
     this.treeCache.invalidatePrefix(rel)
     const newPath = parent === '' ? newName : `${parent}/${newName}`
@@ -168,11 +149,10 @@ export class StorageService {
       throw new TraceError(ERR.PATH_NOT_FOUND, '目标位置不存在（可能已被移动或删除）')
     }
     await this.repo.rmRecursive(root, rel)
-    await this.removeOrderEntry(parentRel(rel), rel.slice(rel.lastIndexOf('/') + 1))
     this.treeCache.invalidatePrefix(rel)
   }
 
-  async movePlan(pathRel: string, targetParentRel: string, orderIndex: number): Promise<void> {
+  async movePlan(pathRel: string, targetParentRel: string): Promise<void> {
     const rel = this.safe(pathRel)
     const targetParent = this.safe(targetParentRel)
     if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录不可移动')
@@ -192,27 +172,9 @@ export class StorageService {
     const toAbs = targetJoin(root, targetParent === '' ? name : `${targetParent}/${name}`)
     await this.repo.moveDir(fromAbs, toAbs)
 
-    await this.removeOrderEntry(oldParent, name)
-    await this.insertOrderEntry(targetParent, name, orderIndex)
-
     this.treeCache.invalidatePrefix(rel)
     this.treeCache.invalidatePrefix(targetParent)
     bus.emit('trace:plan-changed', { path: targetParent === '' ? name : `${targetParent}/${name}` })
-  }
-
-  async resortChildren(parentPathRel: string, orderedNames: string[]): Promise<void> {
-    const parent = this.safe(parentPathRel)
-    const root = this.root()
-    if (parent === '') {
-      const meta = await this.repo.readLibraryMeta(root)
-      meta.children_order = orderedNames
-      await this.repo.writeLibraryMeta(root, meta)
-    } else {
-      const doc = await this.repo.readPlan(root, parent)
-      doc.children_order = orderedNames
-      await this.repo.writePlanAtomic(root, parent, doc)
-    }
-    this.treeCache.invalidatePrefix(parent)
   }
 
   // ---------- 计划读写（CAS） ----------
@@ -298,67 +260,6 @@ export class StorageService {
     const rel = this.safe(pathRel)
     await this.repo.writePlanAtomic(this.root(), rel, doc)
     bus.emit('trace:plan-changed', { path: rel })
-  }
-
-  // ---------- 内部：children_order 维护 ----------
-  // 注意：父级为纯容器文件夹（无 plan.json）时无 order 载体 → 子项按名称排序，维护操作跳过
-
-  private async parentIsFolder(parent: string): Promise<boolean> {
-    if (parent === '') return false
-    return !(await this.repo.hasPlanFile(this.root(), parent))
-  }
-
-  private async orderHolder(parent: string): Promise<PlanDocument | PlanLibraryMeta> {
-    const root = this.root()
-    return parent === '' ? await this.repo.readLibraryMeta(root) : await this.repo.readPlan(root, parent)
-  }
-
-  private async saveOrderHolder(parent: string, holder: PlanDocument | PlanLibraryMeta): Promise<void> {
-    const root = this.root()
-    if (parent === '') await this.repo.writeLibraryMeta(root, holder as PlanLibraryMeta)
-    else await this.repo.writePlanAtomic(root, parent, holder as PlanDocument)
-  }
-
-  private async updateOrderAfterRename(parent: string, oldName: string, newName: string): Promise<void> {
-    if (await this.parentIsFolder(parent)) return
-    const holder = await this.orderHolder(parent)
-    const list = holder.children_order
-    if (list) {
-      const idx = list.indexOf(oldName)
-      if (idx !== -1) list[idx] = newName
-      await this.saveOrderHolder(parent, holder)
-    }
-  }
-
-  private async removeOrderEntry(parent: string, name: string): Promise<void> {
-    if (await this.parentIsFolder(parent)) return
-    const holder = await this.orderHolder(parent)
-    const list = holder.children_order
-    if (list) {
-      const idx = list.indexOf(name)
-      if (idx !== -1) {
-        list.splice(idx, 1)
-        await this.saveOrderHolder(parent, holder)
-      }
-    }
-  }
-
-  private async insertOrderEntry(parent: string, name: string, orderIndex: number): Promise<void> {
-    if (await this.parentIsFolder(parent)) return
-    const root = this.root()
-    const holder = await this.orderHolder(parent)
-    // 自愈重建（2026-09-08 拖拽弹回根治）：历史 createPlan/createFolder 不写 children_order，
-    // 列表系统性残缺 → 未登记项 rank=MAX 被权威刷新排尾，乐观更新被顶回（用户实测「松手弹回」）。
-    // 与真实兄弟列表合并：已登记项保持既有顺序，缺失项按名称序补尾，再插入被拖项——
-    // 任何一次 move 即把该父级的顺序载体修复为全量
-    const actual = await this.repo.listPlanDirs(root, parent)
-    const kept = (holder.children_order ?? []).filter((n) => n !== name && actual.includes(n))
-    const missing = actual.filter((n) => n !== name && !kept.includes(n))
-    const list = [...kept, ...missing]
-    const clamped = Math.max(0, Math.min(orderIndex, list.length))
-    list.splice(clamped, 0, name)
-    holder.children_order = list
-    await this.saveOrderHolder(parent, holder)
   }
 }
 
