@@ -1,7 +1,7 @@
-// 树纯逻辑测试：箭头数据驱动语义（2026-09-06 U1 修复的行为锚点，2026-09-07 迁移 flattenTree）
-// + optimisticMove（松手即落位）；2026-09-08 拖拽语义定稿（不排序）→ 三分区落点测试随实现退役
+// 树纯逻辑测试：kindOf / effStagger（D8 节奏压缩）/ optimisticMove（松手即落位）
+// 2026-09-08 递归 TreeGroup 渲染上线 → flattenTree 测试随实现退役
 import { describe, it, expect } from 'vitest'
-import { flattenTree, optimisticMove, kindOf } from '../src/renderer/src/components/tree-utils'
+import { effStagger, optimisticMove, kindOf } from '../src/renderer/src/components/tree-utils'
 import type { PlanTreeNode } from '../src/shared/ipc-contract'
 
 const n = (path: string, name: string, has_children: boolean, kind: 'plan' | 'folder' = 'plan'): PlanTreeNode => ({
@@ -12,47 +12,25 @@ const n = (path: string, name: string, has_children: boolean, kind: 'plan' | 'fo
   kind
 })
 
-describe('flattenTree（箭头数据驱动）', () => {
-  it('has_children=true 且未加载 → hasChildren=true（箭头交懒加载），展开后子层为空但不崩', () => {
-    const rows = flattenTree({ '': [n('A', 'A', true)] }, { '': true }, [''])
-    const a = rows.find((r) => r.path === 'A')
-    expect(a?.hasChildren).toBe(true)
-    expect(a?.loaded).toBe(false)
-    expect(rows.filter((r) => r.depth === 2)).toEqual([]) // 未加载 → 无子行
-  })
-  it('has_children=false → 无箭头；展开键存在也不下钻', () => {
-    const rows = flattenTree({ '': [n('B', 'B', false)] }, { '': true }, ['', 'B'])
-    expect(rows).toHaveLength(2) // 根 + B，无子行
-    expect(rows.find((r) => r.path === 'B')?.hasChildren).toBe(false)
-  })
-  it('空文件夹新建子项后（has_children 翻 true）→ 箭头出现（U1 行为锚点）', () => {
-    const before = flattenTree({ '': [n('F', 'F', false)] }, { '': true }, [''])
-    expect(before.find((r) => r.path === 'F')?.hasChildren).toBe(false)
-    const after = flattenTree({ '': [n('F', 'F', true)], F: [n('F/P', 'P', false)] }, { '': true, F: true }, ['', 'F'])
-    const f = after.find((r) => r.path === 'F')
-    expect(f?.hasChildren).toBe(true)
-    expect(after.find((r) => r.path === 'F/P')?.depth).toBe(2)
-  })
-  it('根箭头数据驱动：空库已加载 → 无箭头；未加载 → 保守显示', () => {
-    expect(flattenTree({ '': [] }, { '': true }, []).find((r) => r.path === '')?.hasChildren).toBe(false)
-    expect(flattenTree({}, {}, []).find((r) => r.path === '')?.hasChildren).toBe(true)
-  })
-  it('折叠层不产出子行（DFS 只走展开层）', () => {
-    const rows = flattenTree(
-      { '': [n('A', 'A', true)], A: [n('A/x', 'x', false)] },
-      { '': true, A: true },
-      ['']
-    )
-    expect(rows.some((r) => r.path === 'A/x')).toBe(false)
-  })
-})
-
 describe('kindOf', () => {
   it('按路径取 kind，缺失回退 plan', () => {
     const map = { '': [n('A', 'A', false, 'folder'), n('B', 'B', false)] }
     expect(kindOf(map, 'A')).toBe('folder')
     expect(kindOf(map, 'B')).toBe('plan')
     expect(kindOf(map, 'missing')).toBe('plan')
+  })
+})
+
+describe('effStagger（D8 节奏压缩）', () => {
+  it('≤10 子项用基准间隔', () => {
+    expect(effStagger(10, 32)).toBe(32)
+    expect(effStagger(1, 32)).toBe(32)
+  })
+  it('>10 子项压缩：总波次封顶 ~320ms（调用处 round 到整毫秒）', () => {
+    expect(effStagger(12, 32)).toBeCloseTo(320 / 12, 5)
+    expect(effStagger(20, 32)).toBeCloseTo(16, 5)
+    expect(effStagger(64, 32)).toBe(6) // 下限 6ms
+    expect(effStagger(1000, 32)).toBe(6)
   })
 })
 

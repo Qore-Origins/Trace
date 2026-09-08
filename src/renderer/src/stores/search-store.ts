@@ -5,6 +5,7 @@ import { message } from 'antd'
 import type { SearchHit } from '@shared/ipc-contract'
 import { useTreeStore } from './tree-store'
 import { usePlanStore } from './plan-store'
+import { i18n } from '../i18n'
 
 const DEBOUNCE_MS = 300
 
@@ -43,7 +44,7 @@ export const useSearchStore = create<SearchState>()((set, get) => ({
         .catch((e) => {
           set({ querying: false })
           if (e instanceof ClientError && e.code === 23) return // 索引构建中：静默（状态栏有提示）
-          message.error(e instanceof ClientError ? e.message : '检索失败')
+          message.error(e instanceof ClientError ? e.message : i18n.t('errors.searchFailed'))
         })
     }, DEBOUNCE_MS)
   },

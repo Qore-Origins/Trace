@@ -10,14 +10,7 @@ import type { Component, MultiPlanPayload, NotePayload, SinglePlanPayload, TaskD
 import { uuid32, validateNoteText } from '@shared/validation'
 import { isOverdue } from '@shared/task-state'
 import { usePlanMutations } from '../stores/plan-store'
-
-const KIND_LABEL: Record<string, string> = {
-  single_plan: '单选计划',
-  multi_plan: '多选计划',
-  task_list: '任务列表',
-  task_detail: '任务详情',
-  note: '注释（旁批）'
-}
+import { useTranslation } from '../i18n'
 
 function CardShell(props: {
   kind: string
@@ -28,6 +21,17 @@ function CardShell(props: {
   head?: React.ReactNode
   children: React.ReactNode
 }): React.JSX.Element {
+  const { t } = useTranslation()
+  const kindLabel =
+    props.kind === 'single_plan'
+      ? t('cards.kindSinglePlan')
+      : props.kind === 'multi_plan'
+        ? t('cards.kindMultiPlan')
+        : props.kind === 'task_list'
+          ? t('cards.kindTaskList')
+          : props.kind === 'task_detail'
+            ? t('cards.kindTaskDetail')
+            : t('cards.kindNote')
   const { moveComponent, removeComponent } = usePlanMutations()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.componentId })
   return (
@@ -38,10 +42,10 @@ function CardShell(props: {
       data-component-id={props.componentId}
     >
       <div className="kind">
-        <span className="drag-handle" aria-label="拖拽排序" title="拖动调整组件顺序" {...attributes} {...listeners}>
+        <span className="drag-handle" aria-label={t('cards.dragSort')} title={t('cards.dragSortTitle')} {...attributes} {...listeners}>
           <HolderOutlined />
         </span>
-        {KIND_LABEL[props.kind] ?? props.kind}
+        {kindLabel}
       </div>
       {props.head}
       {props.children}
@@ -49,7 +53,7 @@ function CardShell(props: {
         <button
           type="button"
           className="lite-btn"
-          aria-label="上移"
+          aria-label={t('cards.moveUp')}
           onClick={() => moveComponent(props.componentId, props.index - 1)}
           style={{ visibility: props.index > 0 ? 'visible' : 'hidden' }}
         >
@@ -58,13 +62,13 @@ function CardShell(props: {
         <button
           type="button"
           className="lite-btn"
-          aria-label="下移"
+          aria-label={t('cards.moveDown')}
           onClick={() => moveComponent(props.componentId, props.index + 1)}
           style={{ visibility: props.index < props.total - 1 ? 'visible' : 'hidden' }}
         >
           <ArrowDownOutlined />
         </button>
-        <button type="button" className="lite-btn danger" aria-label="删除组件" onClick={() => removeComponent(props.componentId)}>
+        <button type="button" className="lite-btn danger" aria-label={t('cards.remove')} onClick={() => removeComponent(props.componentId)}>
           <DeleteOutlined />
         </button>
       </div>
@@ -74,6 +78,7 @@ function CardShell(props: {
 
 // ---------- 单选计划（§3.3 有重量的卡） ----------
 function SinglePlanCard({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
+  const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as SinglePlanPayload
   return (
@@ -94,7 +99,7 @@ function SinglePlanCard({ comp, index, total }: { comp: Component; index: number
           <input
             className="single-title"
             value={p.title}
-            placeholder="本期唯一主线…"
+            placeholder={t('cards.singlePlaceholder')}
             onChange={(e) =>
               patchComponent(comp.id, (payload) => {
                 ;(payload as SinglePlanPayload).title = e.target.value
@@ -107,7 +112,7 @@ function SinglePlanCard({ comp, index, total }: { comp: Component; index: number
       <div className="single-summary">
         <Input.TextArea
           variant="borderless"
-          placeholder="摘要（可选）"
+          placeholder={t('cards.summaryPlaceholder')}
           autoSize
           value={p.summary ?? ''}
           onChange={(e) =>
@@ -123,6 +128,7 @@ function SinglePlanCard({ comp, index, total }: { comp: Component; index: number
 
 // ---------- 多选计划（§3.4 岔路口；已选 x/n 常显） ----------
 function MultiPlanCard({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
+  const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as MultiPlanPayload
   const selected = p.options.filter((o) => o.checked).length
@@ -138,7 +144,7 @@ function MultiPlanCard({ comp, index, total }: { comp: Component; index: number;
             className="single-title"
             style={{ fontSize: 14 }}
             value={p.title}
-            placeholder="并列可选项…"
+            placeholder={t('cards.multiPlaceholder')}
             onChange={(e) =>
               patchComponent(comp.id, (payload) => {
                 ;(payload as MultiPlanPayload).title = e.target.value
@@ -146,7 +152,7 @@ function MultiPlanCard({ comp, index, total }: { comp: Component; index: number;
             }
           />
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
-            已选 {selected}/{p.options.length}
+            {t('cards.selected', { done: selected, total: p.options.length })}
           </span>
         </div>
       }
@@ -184,7 +190,7 @@ function MultiPlanCard({ comp, index, total }: { comp: Component; index: number;
                 })
               }
             >
-              删除
+              {t('cards.deleteRow')}
             </button>
           </div>
         ))}
@@ -197,7 +203,7 @@ function MultiPlanCard({ comp, index, total }: { comp: Component; index: number;
             })
           }
         >
-          ＋ 选项
+          {t('cards.addOption')}
         </button>
       </div>
     </CardShell>
@@ -213,6 +219,7 @@ function nextStatus(s: TaskItem['status']): TaskItem['status'] {
 }
 
 function TaskListCard({ comp, index, total, today }: { comp: Component; index: number; total: number; today: Date }): React.JSX.Element {
+  const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as TaskListPayload
   const doneCount = p.items.filter((t) => t.status === 'done').length
@@ -235,7 +242,7 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
             className="single-title"
             style={{ fontSize: 14 }}
             value={p.title}
-            placeholder="任务列表…"
+            placeholder={t('cards.taskListPlaceholder')}
             onChange={(e) =>
               patchComponent(comp.id, (payload) => {
                 ;(payload as TaskListPayload).title = e.target.value
@@ -243,7 +250,7 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
             }
           />
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
-            {doneCount}/{p.items.length} 已抵达
+            {t('cards.arrived', { done: doneCount, total: p.items.length })}
           </span>
         </div>
       }
@@ -264,7 +271,7 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
               value={item.planned_at ?? ''}
               onChange={(e) => patchItem(item.id, (it) => (it.planned_at = e.target.value || undefined))}
             />
-            {isOverdue(item.status, item.planned_at, today) && <span className="tag-overdue">逾期</span>}
+            {isOverdue(item.status, item.planned_at, today) && <span className="tag-overdue">{t('cards.overdue')}</span>}
             <button
               type="button"
               className="task-del lite-btn danger"
@@ -275,7 +282,7 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
                 })
               }
             >
-              删除
+              {t('cards.deleteRow')}
             </button>
           </div>
         ))}
@@ -288,7 +295,7 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
             })
           }
         >
-          ＋ 任务
+          {t('cards.addTask')}
         </button>
       </div>
     </CardShell>
@@ -297,9 +304,11 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
 
 // ---------- 任务详情（单任务完整卡） ----------
 function TaskDetailCard({ comp, index, total, today }: { comp: Component; index: number; total: number; today: Date }): React.JSX.Element {
+  const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as TaskDetailPayload
   const patch = (fn: (payload: TaskDetailPayload) => void): void => patchComponent(comp.id, (payload) => fn(payload as TaskDetailPayload))
+  const statusText = p.status === 'done' ? t('cards.statusDone') : p.status === 'in_progress' ? t('cards.statusInProgress') : t('cards.statusNotStarted')
   return (
     <CardShell
       kind="task_detail"
@@ -313,26 +322,26 @@ function TaskDetailCard({ comp, index, total, today }: { comp: Component; index:
             className="single-title"
             style={{ fontSize: 14 }}
             value={p.title}
-            placeholder="任务…"
+            placeholder={t('cards.taskPlaceholder')}
             onChange={(e) => patch((pl) => (pl.title = e.target.value))}
           />
-          {isOverdue(p.status, p.planned_at, today) && <span className="tag-overdue">逾期</span>}
+          {isOverdue(p.status, p.planned_at, today) && <span className="tag-overdue">{t('cards.overdue')}</span>}
         </div>
       }
     >
       <Input.TextArea
         variant="borderless"
-        placeholder="描述…"
+        placeholder={t('cards.descPlaceholder')}
         autoSize
         value={p.description ?? ''}
         onChange={(e) => {
-          validateNoteText(e.target.value, '描述')
+          validateNoteText(e.target.value, t('cards.descLabel'))
           patch((pl) => (pl.description = e.target.value))
         }}
       />
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
         <input type="date" className="task-date" value={p.planned_at ?? ''} onChange={(e) => patch((pl) => (pl.planned_at = e.target.value || undefined))} />
-        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>状态：{p.status === 'done' ? '已抵达' : p.status === 'in_progress' ? '在途' : '未出发'}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('cards.statusLabel', { value: statusText })}</span>
         {p.status === 'done' && p.completed_at && <span style={{ fontSize: 12, color: 'var(--text-4)' }}>{p.completed_at.slice(0, 10)}</span>}
       </div>
     </CardShell>
@@ -341,17 +350,18 @@ function TaskDetailCard({ comp, index, total, today }: { comp: Component; index:
 
 // ---------- 注释旁批（§3.5） ----------
 function NoteCard({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
+  const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as NotePayload
   return (
     <CardShell kind="note" componentId={comp.id} index={index} total={total} extraClass="note">
       <Input.TextArea
         variant="borderless"
-        placeholder="旁批：复盘、心得、补充…"
+        placeholder={t('cards.notePlaceholder')}
         autoSize
         value={p.content}
         onChange={(e) => {
-          validateNoteText(e.target.value, '注释')
+          validateNoteText(e.target.value, t('cards.noteLabel'))
           patchComponent(comp.id, (payload) => {
             ;(payload as NotePayload).content = e.target.value
           })
@@ -364,11 +374,10 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
 
 // ---------- 降级占位（契约向前兼容：未知 type 不崩不丢） ----------
 function FallbackBlock({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
+  const { t } = useTranslation()
   return (
     <CardShell kind={comp.type} componentId={comp.id} index={index} total={total} extraClass="note">
-      <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
-        ⚠ 未知组件类型「{comp.type}」——内容已原样保留，等待新版本应用读取。
-      </div>
+      <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{t('cards.unknownComponent', { type: comp.type })}</div>
     </CardShell>
   )
 }

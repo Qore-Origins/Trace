@@ -1,0 +1,211 @@
+// en-US 语料（形状约束 = typeof zhCN：键缺失/拼写错误在编译期暴露）
+import type zhCN from './zh-CN'
+
+const enUS: typeof zhCN = {
+  common: {
+    cancel: 'Cancel',
+    delete: 'Delete',
+    close: 'Close',
+    rename: 'Rename',
+    create: 'Create',
+    folder: 'Folder',
+    plan: 'Plan',
+    loading: 'Loading…',
+    minimize: 'Minimize',
+    maximize: 'Maximize',
+    restore: 'Restore'
+  },
+  brand: {
+    name: 'Trace',
+    slogan: 'Every plan leaves a trace'
+  },
+  app: {
+    openingLibrary: 'Opening your library…'
+  },
+  onboard: {
+    rootUnavailable: 'Previous library location unavailable',
+    rootUnavailableDesc:
+      'The previously configured directory ({{dir}}) is no longer accessible. Just pick a new location; existing data will not be touched.',
+    descPrefix: 'Your plans are stored as',
+    plainFolder: 'plain folders',
+    descMiddle: 'in a location you choose — copy the whole library for backup or move it to a new computer anytime. Your data',
+    notLeaveDevice: 'never leaves your device',
+    chooseDir: 'Choose library folder',
+    chosen: 'Selected: ',
+    enter: 'Enter Trace'
+  },
+  menu: {
+    main: 'Main menu',
+    file: 'File',
+    edit: 'Edit',
+    view: 'View',
+    help: 'Help',
+    newPlan: 'New Plan',
+    newChild: 'New child (at selection)',
+    newFolder: 'New Folder',
+    importPlan: 'Import .plan…',
+    importMd: 'Migrate Markdown plans…',
+    exportPlan: 'Export current plan (.plan)…',
+    switchRoot: 'Switch library folder…',
+    settings: 'Settings…',
+    quit: 'Quit',
+    renameSelected: 'Rename selection',
+    deleteSelected: 'Delete selection',
+    refreshTree: 'Refresh tree',
+    devtools: 'Developer tools',
+    about: 'About Trace'
+  },
+  about: {
+    title: 'Trace · Every plan leaves a trace',
+    version: 'Version {{version}} (storage contract {{format}})',
+    dataLocal: 'Fully local data: {{dir}}',
+    by: 'by Qore'
+  },
+  search: {
+    topPlaceholder: 'Search plans / tasks / notes… (Ctrl+F)',
+    inputPlaceholder: 'Trace back… (multi-word AND; no Enter needed)',
+    startHint: 'Type keywords to trace back; click a hit to jump to its origin',
+    noHit: 'No hits — try shorter keywords',
+    buildingHint: 'Index is building, results may be incomplete…',
+    scopePlan: 'Plans',
+    scopeTask: 'Tasks',
+    scopeNote: 'Notes'
+  },
+  tree: {
+    rootLabel: 'Library (Origin)',
+    panelTitle: 'Plan tree',
+    openTree: 'Open plan tree',
+    expand: 'Expand',
+    collapse: 'Collapse',
+    dragMove: 'Drag to move',
+    dragMoveTitle: 'Drag into / out of folders',
+    newChildPlan: 'New child plan',
+    newChildFolder: 'New child folder',
+    more: 'More actions',
+    newPlanBtn: 'Plan',
+    newFolderBtn: 'Folder',
+    cannotMoveIntoSelf: 'Cannot move into itself or its own children',
+    moveFailed: 'Move failed, restored'
+  },
+  cards: {
+    kindSinglePlan: 'Single plan',
+    kindMultiPlan: 'Multi-option plan',
+    kindTaskList: 'Task list',
+    kindTaskDetail: 'Task detail',
+    kindNote: 'Note (margin)',
+    dragSort: 'Drag to sort',
+    dragSortTitle: 'Drag to reorder components',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    remove: 'Remove component',
+    singlePlaceholder: 'The one main goal of this period…',
+    summaryPlaceholder: 'Summary (optional)',
+    multiPlaceholder: 'Parallel options…',
+    selected: '{{done}}/{{total}} selected',
+    addOption: '＋ Option',
+    deleteRow: 'Delete',
+    taskListPlaceholder: 'Task list…',
+    arrived: '{{done}}/{{total}} arrived',
+    addTask: '＋ Task',
+    taskPlaceholder: 'Task…',
+    descPlaceholder: 'Description…',
+    descLabel: 'Description',
+    noteLabel: 'Note',
+    overdue: 'Overdue',
+    toggleStatus: 'Toggle status',
+    statusLabel: 'Status: {{value}}',
+    statusDone: 'Arrived',
+    statusInProgress: 'En route',
+    statusNotStarted: 'Not started',
+    notePlaceholder: 'Margin note: review, insights, additions…',
+    unknownComponent: '⚠ Unknown component type "{{type}}" — content preserved as-is, awaiting a newer app version.'
+  },
+  content: {
+    emptyLibrary: 'This library is empty — start fresh, or migrate old plans in',
+    emptySelect: 'Pick a plan on the left to start your trace',
+    createFirst: 'Create first plan',
+    importMd: 'Migrate Markdown plans',
+    origin: 'Origin',
+    folderContainerHint: 'This folder is a container — click a child to enter',
+    emptyFolderHint: 'Empty folder — drag plans in to organize',
+    folderLabel: 'Folder',
+    planLabel: 'Plan',
+    externalChanged: 'Library changed outside the app',
+    externalChangedDesc: 'An external tool modified library files.',
+    reloadCurrent: 'Reload current plan',
+    insertComponent: 'Insert component',
+    noteShort: 'Note',
+    inserted: 'Inserted {{label}}',
+    componentFallback: 'component'
+  },
+  status: {
+    editing: 'Editing…',
+    saved: '✓ Saved',
+    saveFailed: 'Save failed: {{error}}',
+    idle: 'Ready',
+    indexBuilding: 'Building index',
+    indexError: 'Index error',
+    indexReady: 'Index ready',
+    rootDir: 'Root {{dir}}'
+  },
+  settings: {
+    title: 'Settings',
+    rootDir: 'Library root folder',
+    notConfigured: 'Not configured',
+    switchBtn: 'Switch…',
+    version: 'Version',
+    data: 'Data',
+    dataDesc: 'Plain-file storage under the library root; copy the whole library to back up anytime. Data never leaves the device',
+    shortcuts: 'Shortcuts',
+    prefs: 'Preferences',
+    language: 'Language',
+    langZh: '中文',
+    langEn: 'English',
+    dealDirection: 'Tree expand animation',
+    dealTop: 'First card first (top → bottom)',
+    dealBottom: 'Last card first (bottom → top)',
+    scSearch: 'Trace search',
+    scNewPlan: 'New plan',
+    scRename: 'Rename selection',
+    scDelete: 'Delete selection',
+    scRefresh: 'Refresh tree',
+    scSettings: 'Settings',
+    scDevtools: 'Developer tools'
+  },
+  dialog: {
+    createPlan: 'New plan',
+    createFolder: 'New folder',
+    rename: 'Rename',
+    planNamePlaceholder: 'Plan name',
+    folderNamePlaceholder: 'Folder name',
+    createBtn: 'Create',
+    renameBtn: 'Rename'
+  },
+  confirm: {
+    deletePlanTitle: 'Delete plan "{{name}}"?',
+    deleteFolderTitle: 'Delete folder "{{name}}"?',
+    deletePlanDesc: 'The plan and all its content and child plans will be deleted. This cannot be undone.',
+    deleteFolderDesc: 'All child plans and content will be deleted. This cannot be undone.',
+    switchRootTitle: 'Switch library folder?',
+    switchRootBtn: 'Switch',
+    switchRootDesc: 'Current library data is neither migrated nor deleted; only the pointer changes. New location: {{dir}}'
+  },
+  errors: {
+    opFailed: 'Operation failed',
+    startupFailed: 'Startup failed',
+    openPlanFailed: 'Failed to open plan',
+    saveFailed: 'Save failed',
+    searchFailed: 'Search failed',
+    setFailed: 'Setup failed, please retry',
+    contentRefreshed: 'Content was updated elsewhere; refreshed for you'
+  },
+  transfer: {
+    importDone: 'Imported: {{plans}} plans / {{tasks}} tasks / {{notes}} notes',
+    migrateDone: 'Migrated: {{plans}} plans / {{tasks}} tasks / {{notes}} notes',
+    renamed: 'Auto-renamed on conflict: {{list}}',
+    skipped: 'Skipped {{count}} unreadable files',
+    exported: 'Exported {{plans}} plans / {{components}} components → {{path}}'
+  }
+}
+
+export default enUS

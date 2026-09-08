@@ -4,6 +4,7 @@ import { invoke, onEvent, ClientError } from '../ipc-client'
 import { message } from 'antd'
 import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
+import { i18n } from '../i18n'
 import { optimisticMove } from '../components/tree-utils'
 import { usePlanStore } from './plan-store'
 
@@ -41,12 +42,12 @@ function todayYmd(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '')
 }
 
-function reportText(kind: string, r: TransferReport): string {
+function reportText(kind: 'import' | 'migrate', r: TransferReport): string {
   const renamed = r.imported.filter((i) => i.renamedFrom).map((i) => `${i.renamedFrom} → ${i.path}`)
   return [
-    `${kind}完成：${r.plans} 个计划 / ${r.tasks} 个任务 / ${r.notes} 条注释`,
-    renamed.length ? `同名自动改名：${renamed.join('；')}` : '',
-    r.skipped.length ? `跳过 ${r.skipped.length} 个无法识别的文件` : ''
+    i18n.t(kind === 'import' ? 'transfer.importDone' : 'transfer.migrateDone', { plans: r.plans, tasks: r.tasks, notes: r.notes }),
+    renamed.length ? i18n.t('transfer.renamed', { list: renamed.join('；') }) : '',
+    r.skipped.length ? i18n.t('transfer.skipped', { count: r.skipped.length }) : ''
   ]
     .filter(Boolean)
     .join('\n')
@@ -167,7 +168,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       if (opt) {
         set({ childrenMap: snap.childrenMap, loaded: snap.loaded, expandedKeys: snap.expandedKeys, selectedPath: snap.selectedPath })
       }
-      message.error(e instanceof ClientError ? e.message : '移动失败，已还原')
+      message.error(e instanceof ClientError ? e.message : i18n.t('tree.moveFailed'))
       return false
     }
     await refreshAround(set, get, newPath)
@@ -217,7 +218,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       reports.push(await invoke('transfer:importPlan', { target_parent_path: targetParent, filePath: f.path }))
     }
     await refreshAround(set, get, targetParent === '' ? reports[0]?.imported[0]?.path ?? '' : targetParent)
-    return reportText('导入', reports.reduce((a, b) => ({
+    return reportText('import', reports.reduce((a, b) => ({
       imported: [...a.imported, ...b.imported],
       plans: a.plans + b.plans,
       components: a.components + b.components,
@@ -235,7 +236,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       paths: picked.files.map((f) => f.path)
     })
     await refreshAround(set, get, r.imported[0]?.path ?? targetParent)
-    return reportText('迁入', r)
+    return reportText('migrate', r)
   }
 }))
 

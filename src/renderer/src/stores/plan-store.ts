@@ -4,6 +4,7 @@ import { invoke, onEvent, ClientError } from '../ipc-client'
 import { message } from 'antd'
 import type { PlanDocument, Component } from '@shared/plan-types'
 import { ERR } from '@shared/errors'
+import { i18n } from '../i18n'
 
 export type SaveState = 'idle' | 'editing' | 'saved' | 'error'
 
@@ -43,7 +44,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
       const doc = await invoke('storage:readPlan', { path })
       set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
     } catch (e) {
-      message.error(e instanceof ClientError ? e.message : '打开计划失败')
+      message.error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
       set({ currentPath: path, document: null })
     }
   },
@@ -85,9 +86,9 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         // CAS 冲突：静默重拉（提示一次）
         const fresh = await invoke('storage:readPlan', { path: currentPath })
         set({ document: fresh, serverUpdatedAt: fresh.updated_at, saveState: 'idle' })
-        message.warning('内容已在别处更新，已为你刷新')
+        message.warning(i18n.t('errors.contentRefreshed'))
       } else {
-        const msg = e instanceof ClientError ? e.message : '保存失败'
+        const msg = e instanceof ClientError ? e.message : i18n.t('errors.saveFailed')
         set({ saveState: 'error', lastError: msg })
         message.error(msg)
       }

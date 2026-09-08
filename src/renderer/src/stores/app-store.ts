@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
 import { message, Modal } from 'antd'
+import { i18n } from '../i18n'
 
 export type AppPhase = 'checking' | 'onboarding' | 'ready'
 export type IndexState = 'building' | 'ready' | 'error'
@@ -54,10 +55,10 @@ export const useAppStore = create<AppState>()((set) => ({
     const { useTreeStore } = await import('./tree-store')
     const { usePlanStore } = await import('./plan-store')
     Modal.confirm({
-      title: '切换计划库目录？',
-      content: `当前库数据不会迁移或删除，仅指向新位置。新位置：${picked.dirPath}`,
-      okText: '切换',
-      cancelText: '取消',
+      title: i18n.t('confirm.switchRootTitle'),
+      content: i18n.t('confirm.switchRootDesc', { dir: picked.dirPath }),
+      okText: i18n.t('confirm.switchRootBtn'),
+      cancelText: i18n.t('common.cancel'),
       onOk: async () => {
         await invoke('app:setRootDir', { dirPath: picked.dirPath as string, confirmed: true })
         usePlanStore.getState().close()

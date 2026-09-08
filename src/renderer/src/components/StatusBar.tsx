@@ -1,29 +1,33 @@
 // StatusBar（§3.8）：系统脉搏——索引/保存/根目录
 import { useAppStore } from '../stores/app-store'
 import { usePlanStore } from '../stores/plan-store'
-
-function saveText(state: string, lastError: string | null): string {
-  if (state === 'editing') return '编辑中…'
-  if (state === 'saved') return '✓ 已保存'
-  if (state === 'error') return `保存失败：${lastError ?? ''}`
-  return '就绪'
-}
+import { useTranslation } from '../i18n'
 
 export default function StatusBar(): React.JSX.Element {
+  const { t } = useTranslation()
   const indexState = useAppStore((s) => s.indexState)
   const rootDir = useAppStore((s) => s.rootDir)
   const saveState = usePlanStore((s) => s.saveState)
   const lastError = usePlanStore((s) => s.lastError)
 
+  const saveText =
+    saveState === 'editing'
+      ? t('status.editing')
+      : saveState === 'saved'
+        ? t('status.saved')
+        : saveState === 'error'
+          ? t('status.saveFailed', { error: lastError ?? '' })
+          : t('status.idle')
+
   return (
     <div className="ws-status">
       <span>
         <span className={`dot-ok ${indexState === 'building' ? 'dot-building' : ''} ${indexState === 'error' ? 'dot-error' : ''}`} />
-        {indexState === 'building' ? '索引构建中' : indexState === 'error' ? '索引异常' : '索引就绪'}
+        {indexState === 'building' ? t('status.indexBuilding') : indexState === 'error' ? t('status.indexError') : t('status.indexReady')}
       </span>
-      <span className={saveState === 'saved' ? 'status-saved' : ''}>{saveText(saveState, lastError)}</span>
+      <span className={saveState === 'saved' ? 'status-saved' : ''}>{saveText}</span>
       <span style={{ flex: 1 }} />
-      <span>根目录 {rootDir ?? '-'}</span>
+      <span>{t('status.rootDir', { dir: rootDir ?? '-' })}</span>
     </div>
   )
 }

@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import { Modal } from 'antd'
 import { useTreeStore } from './tree-store'
+import { i18n } from '../i18n'
 
 export type NameDialogMode = 'create-plan' | 'create-folder' | 'rename'
 
@@ -31,11 +32,11 @@ export const useUiStore = create<UiState>()((set) => ({
 export function confirmRemoveTree(path: string, kind: 'plan' | 'folder'): void {
   const name = path.slice(path.lastIndexOf('/') + 1)
   Modal.confirm({
-    title: `删除${kind === 'folder' ? '文件夹' : '计划'}「${name}」？`,
-    content: kind === 'folder' ? '其全部子计划与内容将被删除，且不可恢复。' : '该计划及其全部内容、子计划将被删除，且不可恢复。',
-    okText: '删除',
+    title: i18n.t(kind === 'folder' ? 'confirm.deleteFolderTitle' : 'confirm.deletePlanTitle', { name }),
+    content: i18n.t(kind === 'folder' ? 'confirm.deleteFolderDesc' : 'confirm.deletePlanDesc'),
+    okText: i18n.t('common.delete'),
     okButtonProps: { danger: true },
-    cancelText: '取消',
+    cancelText: i18n.t('common.cancel'),
     onOk: () => useTreeStore.getState().removePlan(path).catch(() => undefined)
   })
 }

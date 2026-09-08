@@ -7,8 +7,10 @@ import { useAppStore, subscribeAppEvents } from './stores/app-store'
 import { subscribeTreeEvents } from './stores/tree-store'
 import { subscribePlanEvents } from './stores/plan-store'
 import { subscribeSearchEvents } from './stores/search-store'
+import { useTranslation } from './i18n'
 
 export default function App(): React.JSX.Element {
+  const { t } = useTranslation()
   const phase = useAppStore((s) => s.phase)
   const bootstrap = useAppStore((s) => s.bootstrap)
 
@@ -29,7 +31,7 @@ export default function App(): React.JSX.Element {
   if (phase === 'checking') {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Spin tip="正在打开计划库…">
+        <Spin tip={t('app.openingLibrary')}>
           <div style={{ minHeight: 60 }} />
         </Spin>
       </div>

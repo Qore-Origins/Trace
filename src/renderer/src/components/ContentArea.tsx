@@ -7,6 +7,7 @@ import { useTreeStore } from '../stores/tree-store'
 import { useUiStore } from '../stores/ui-store'
 import { ComponentRenderer } from './cards'
 import { uuid32 } from '@shared/validation'
+import { useTranslation } from '../i18n'
 import type { Component, ComponentType } from '@shared/plan-types'
 
 function newComponent(type: ComponentType): Component {
@@ -26,19 +27,20 @@ function newComponent(type: ComponentType): Component {
   }
 }
 
-const INSERT_ITEMS: Array<{ key: ComponentType; label: string }> = [
-  { key: 'single_plan', label: '单选计划' },
-  { key: 'multi_plan', label: '多选计划' },
-  { key: 'task_list', label: '任务列表' },
-  { key: 'task_detail', label: '任务详情' },
-  { key: 'note', label: '注释' }
-]
-
 export default function ContentArea(): React.JSX.Element {
+  const { t } = useTranslation()
   const { currentPath, document: doc, externalAlert, open } = usePlanStore()
   const { appendComponent } = usePlanMutations()
   const { selectedKind, childrenMap, loaded, loadChildren } = useTreeStore()
   const today = useMemo(() => new Date(), [doc?.updated_at])
+
+  const insertItems: Array<{ key: ComponentType; label: string }> = [
+    { key: 'single_plan', label: t('cards.kindSinglePlan') },
+    { key: 'multi_plan', label: t('cards.kindMultiPlan') },
+    { key: 'task_list', label: t('cards.kindTaskList') },
+    { key: 'task_detail', label: t('cards.kindTaskDetail') },
+    { key: 'note', label: t('content.noteShort') }
+  ]
 
   // 文件夹容器视图：列出子项，点击进入
   useEffect(() => {
@@ -50,13 +52,13 @@ export default function ContentArea(): React.JSX.Element {
     const treeEmpty = (childrenMap[''] ?? []).length === 0 && loaded[''] === true
     return (
       <div className="ws-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Empty description={treeEmpty ? '此计划库为空——从零开始，或把旧计划迁进来' : '从左侧选择一个计划，开始你的迹线'}>
+        <Empty description={treeEmpty ? t('content.emptyLibrary') : t('content.emptySelect')}>
           {treeEmpty && (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
               <Button type="primary" onClick={() => useUiStore.getState().openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })}>
-                新建第一个计划
+                {t('content.createFirst')}
               </Button>
-              <Button onClick={() => void useTreeStore.getState().importMarkdown('')}>迁入 Markdown 计划</Button>
+              <Button onClick={() => void useTreeStore.getState().importMarkdown('')}>{t('content.importMd')}</Button>
             </div>
           )}
         </Empty>
@@ -73,7 +75,7 @@ export default function ContentArea(): React.JSX.Element {
       <div className="ws-content">
         <div className="crumbs">
           <span className="origin-dot" />
-          <span>源头</span>
+          <span>{t('content.origin')}</span>
           {segments.map((seg, i) => (
             <span key={i} style={{ display: 'flex', gap: 6 }}>
               <span style={{ color: 'var(--text-4)' }}>›</span>
@@ -83,7 +85,7 @@ export default function ContentArea(): React.JSX.Element {
         </div>
         <Empty
           image={<FolderOutlined style={{ fontSize: 42, color: 'var(--text-4)' }} />}
-          description={children.length ? '此文件夹为容器——点击子项进入' : '空文件夹——把计划拖进来归类'}
+          description={children.length ? t('content.folderContainerHint') : t('content.emptyFolderHint')}
         />
         <div className="folder-grid">
           {children.map((c) => (
@@ -106,7 +108,7 @@ export default function ContentArea(): React.JSX.Element {
               )}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-4)', flex: 'none' }}>
-                {c.kind === 'folder' ? '文件夹' : '计划'}
+                {c.kind === 'folder' ? t('content.folderLabel') : t('content.planLabel')}
               </span>
             </div>
           ))}
@@ -118,7 +120,7 @@ export default function ContentArea(): React.JSX.Element {
     <div className="ws-content">
       <div className="crumbs">
         <span className="origin-dot" />
-        <span>源头</span>
+        <span>{t('content.origin')}</span>
         {segments.map((seg, i) => (
           <span key={i} style={{ display: 'flex', gap: 6 }}>
             <span style={{ color: 'var(--text-4)' }}>›</span>
@@ -131,11 +133,11 @@ export default function ContentArea(): React.JSX.Element {
         <Alert
           type="warning"
           showIcon
-          message="计划库在应用外被修改"
-          description="检测到外部工具改动了计划库文件。"
+          message={t('content.externalChanged')}
+          description={t('content.externalChangedDesc')}
           action={
             <Button size="small" onClick={() => currentPath && void open(currentPath)}>
-              重新加载当前计划
+              {t('content.reloadCurrent')}
             </Button>
           }
           closable
@@ -148,20 +150,20 @@ export default function ContentArea(): React.JSX.Element {
           <ComponentRenderer components={doc.components} today={today} />
           <Dropdown
             menu={{
-              items: INSERT_ITEMS,
+              items: insertItems,
               onClick: ({ key }) => {
                 appendComponent(newComponent(key as ComponentType))
-                message.success(`已插入${INSERT_ITEMS.find((i) => i.key === key)?.label ?? '组件'}`)
+                message.success(t('content.inserted', { label: insertItems.find((i) => i.key === key)?.label ?? t('content.componentFallback') }))
               }
             }}
           >
             <Button type="dashed" block icon={<PlusOutlined />}>
-              插入组件
+              {t('content.insertComponent')}
             </Button>
           </Dropdown>
         </>
       ) : (
-        <Empty description="载入中…" />
+        <Empty description={t('common.loading')} />
       )}
     </div>
   )

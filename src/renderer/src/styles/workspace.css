@@ -19,6 +19,14 @@
   --fill: #f5f5f5;
   --r-card: 8px;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
+  /* 树动效时序（2026-09-08 卡牌摞定稿；demo: docs/prototype/tree-animation-demo.html） */
+  --stagger: 32ms;   /* 交错间隔（D8：>10 子项自动压缩） */
+  --t-deal: 320ms;   /* D2 发牌时长 */
+  --t-gather: 260ms; /* D3 收牌时长 */
+  --t-slot: 220ms;   /* D1 槽位开合 */
+  --ease-spring: cubic-bezier(.3, 1.46, .4, 1);
+  --ease-out: cubic-bezier(.2, .7, .3, 1);
+  --ease-in: cubic-bezier(.55, .04, .7, .3);
 }
 
 /* 桌面应用：锁死页面级滚动，只有内容区可滚 */
@@ -106,6 +114,71 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* 拖拽进行中：抑制行 hover 底色与快捷按钮浮现（与浮起跟随/落点高亮反馈叠加会闪烁） */
 .tree-scroll.is-dragging .tree-row:hover { background: transparent; }
 .tree-scroll.is-dragging .tree-row:hover .tree-quick { display: none; }
+
+/* ---------- 树动效（2026-09-08 卡牌摞 D1-D8；demo 定稿移植） ----------
+   行槽结构：.slot（grid 0fr↔1fr 高度槽）> .slot-inner > .deal（发牌动画包装）> .tree-row（dnd transform）
+   动画放 .deal 而非 .tree-row：dnd-kit 拖拽的 inline transform 会被 CSS 动画 fill 覆盖 */
+.slot { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--t-slot) var(--ease-out); transition-delay: var(--enter-delay, 0ms); }
+@starting-style { .slot { grid-template-rows: 0fr; } } /* 挂载即从收拢态展开（入场零 JS） */
+.slot > .slot-inner { overflow: hidden; min-height: 0; }
+/* D3 收拢：槽位 zipper 合拢（跟随收牌波次，反向 delay） */
+.slot.closing { grid-template-rows: 0fr; transition: grid-template-rows calc(var(--t-gather) * .72) var(--ease-in); transition-delay: var(--exit-delay, 0ms); }
+
+/* D2 发牌：卡牌从父行方向（上·左）抽出落位，spring 回弹 */
+.slot .deal { animation: deal-in var(--t-deal) var(--ease-spring) both; animation-delay: var(--enter-delay, 0ms); }
+@keyframes deal-in {
+  from { opacity: 0; transform: translate(-7px, -9px) scale(.94); }
+  55% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+/* D3 收牌：原路吸回父行，ease-in 加速 */
+.slot.closing .deal { animation: gather-out var(--t-gather) var(--ease-in) both; animation-delay: var(--exit-delay, 0ms); }
+@keyframes gather-out { to { opacity: 0; transform: translate(-7px, -9px) scale(.94); } }
+
+/* D6 连接线生长：缩进竖线段锚顶 scaleY 随行画出；收拢被槽位裁切自然回缩 */
+.slot .guide { animation: guide-draw var(--t-slot) var(--ease-out) both; animation-delay: var(--enter-delay, 0ms); transform-origin: top; }
+@keyframes guide-draw { from { transform: scaleY(0); } }
+
+/* 已落位钉住：取消收拢回弹时禁止重播发牌动画（animation 名切换会重启） */
+.slot.settled:not(.closing) .deal,
+.slot.settled:not(.closing) .guide { animation: none; }
+
+/* D4 折叠按钮（方框 +/- 变号）：点击方框整体旋转 180°，旋转途中竖杠消长完成变号；
+   旋转放 .pm-box、按压缩放放 .tree-switcher（transform 分层，互不覆盖） */
+.pm-box { width: 12px; height: 12px; flex: none; border: 1.1px solid currentColor; border-radius: 3.5px; display: grid; place-items: center; transition: transform .3s var(--ease-spring); }
+.tree-switcher.open .pm-box { transform: rotate(180deg); }
+.pm-sign { position: relative; width: 6px; height: 6px; }
+.pm-bar { position: absolute; background: currentColor; border-radius: 1px; }
+.pm-h { left: 0; right: 0; top: 50%; height: 1.4px; transform: translateY(-50%); }
+.pm-v { top: 0; bottom: 0; left: 50%; width: 1.4px; transform: translateX(-50%) scaleY(1); transition: transform .13s linear .07s; }
+.tree-switcher.open .pm-v { transform: translateX(-50%) scaleY(0); }
+
+/* D7 持牌暗示：折叠文件夹 hover 露出两道卡牌边缘（这里有一摞牌） */
+.tree-row.has-deck { position: relative; }
+.tree-row.has-deck::after {
+  content: ''; position: absolute; right: 10px; top: 50%;
+  width: 13px; height: 2px; border-radius: 1px;
+  background: var(--trace-500); box-shadow: 0 3px 0 -0.5px var(--trace-500);
+  opacity: 0; transform: translate(0, -50%);
+  transition: opacity .18s var(--ease-out), transform .22s var(--ease-spring);
+}
+.tree-row.has-deck:hover::after { opacity: .38; transform: translate(4px, -50%); }
+/* 拖拽进行中不露牌边（与落点高亮叠加会闪） */
+.tree-scroll.is-dragging .tree-row.has-deck:hover::after { opacity: 0; }
+
+/* D5 父行脉冲：展开一闪 + 图标 pop；收拢图标 squish */
+.tree-row.dealt { animation: parent-pulse .5s var(--ease-out); }
+@keyframes parent-pulse { 30% { background: var(--trace-bg); } }
+.tree-row.dealt .node-icon { animation: icon-pop .45s var(--ease-spring); }
+@keyframes icon-pop { 40% { transform: scale(1.18); } }
+.tree-row.gathered .node-icon { animation: icon-squish .4s var(--ease-spring); }
+@keyframes icon-squish { 40% { transform: scale(.86); } }
+
+/* 动效无障碍：系统偏好减动效 → 全部禁用（保持即显即用） */
+@media (prefers-reduced-motion: reduce) {
+  .slot { grid-template-rows: 1fr !important; }
+  .slot, .slot .deal, .slot .guide, .pm-box, .pm-v, .tree-row.has-deck::after { animation: none !important; transition: none !important; }
+}
 
 /* ---------- 内容区（§2.3 纸感） ---------- */
 .crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin-bottom: 12px; flex-wrap: wrap; }

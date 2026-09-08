@@ -1,58 +1,8 @@
 // 计划树纯逻辑（组件文件只导出组件，保证 React Fast Refresh 生效）
-// 2026-09-08 拖拽语义定稿：树不做排序——三分区落点换算（intentOf/computeTreeMove/滞回）退役，
-// 仅保留 flattenTree（可见扁平行）+ optimisticMove（松手即落位）；箭头数据驱动语义保持（U1 行为锚点）
+// 2026-09-08 拖拽/排序双定稿：树不做排序（仅移入/移出），flattenTree（扁平行渲染）随递归 TreeGroup 渲染退役；
+// 保留 kindOf（乐观插入位）+ optimisticMove（松手即落位）
 import { parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
-
-// 可见扁平行（渲染单位；path='' 为根）
-export interface FlatNode {
-  path: string
-  name: string
-  kind: 'plan' | 'folder' | 'root'
-  hasChildren: boolean
-  depth: number // 根=0；顶层=1；缩进=depth×TREE_INDENT
-  expanded: boolean
-  loaded: boolean
-}
-
-// childrenMap/loaded/expandedKeys → 可见行（DFS 只走展开层）
-// 箭头数据驱动：has_children=true → 箭头（未加载时展开即触发懒加载）；false → 无箭头占位
-export function flattenTree(
-  map: Record<string, PlanTreeNode[]>,
-  loaded: Record<string, boolean>,
-  expandedKeys: string[]
-): FlatNode[] {
-  const expanded = new Set(expandedKeys)
-  const rows: FlatNode[] = []
-  const rootChildren = map[''] ?? []
-  rows.push({
-    path: '',
-    name: '计划库（源头）',
-    kind: 'root',
-    // 根箭头同样数据驱动：已加载且空 → 无箭头；未加载 → 保守显示
-    hasChildren: loaded[''] === true ? rootChildren.length > 0 : true,
-    depth: 0,
-    expanded: expanded.has(''),
-    loaded: loaded[''] === true
-  })
-  const walk = (parent: string, depth: number): void => {
-    for (const nd of map[parent] ?? []) {
-      const isOpen = expanded.has(nd.path)
-      rows.push({
-        path: nd.path,
-        name: nd.name,
-        kind: nd.kind,
-        hasChildren: nd.has_children,
-        depth,
-        expanded: isOpen,
-        loaded: loaded[nd.path] === true
-      })
-      if (isOpen && nd.has_children) walk(nd.path, depth + 1)
-    }
-  }
-  walk('', 1)
-  return rows
-}
 
 // 节点 kind 查询（folder=纯容器；默认 plan）
 export function kindOf(map: Record<string, PlanTreeNode[]>, path: string): 'plan' | 'folder' {
@@ -60,6 +10,11 @@ export function kindOf(map: Record<string, PlanTreeNode[]>, path: string): 'plan
   const name = path.slice(path.lastIndexOf('/') + 1)
   const hit = (map[parent] ?? []).find((n) => n.path === path || n.name === name)
   return hit?.kind ?? 'plan'
+}
+
+// D8 交错压缩：子项 >10 时压间隔，总波次封顶 ~320ms（对齐 workspace.css --stagger: 32ms）
+export function effStagger(count: number, base = 32): number {
+  return count > 10 ? Math.max(6, Math.min(base, 320 / count)) : base
 }
 
 // ---------- 乐观移动（2026-09-07：松手弹回原位修复） ----------
@@ -116,7 +71,7 @@ export function optimisticMove(
       const idx = nameSortIndex(list, name)
       list.splice(idx, 0, { ...node, path: newPath })
       newMap[targetParent] = list
-      // 目标行 has_children 置真（空文件夹接收首子项：flattenTree 据此才下钻渲染，防乐观行不可见）
+      // 目标行 has_children 置真（空文件夹接收首子项：渲染据此才下钻，防乐观行不可见）
       const tp = parentRel(targetParent)
       if (newMap[tp]) newMap[tp] = newMap[tp].map((x) => (x.path === targetParent ? { ...x, has_children: true } : x))
     }

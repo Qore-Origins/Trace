@@ -3,9 +3,8 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Empty, Spin } from 'antd'
 import { useSearchStore } from '../stores/search-store'
 import { useAppStore } from '../stores/app-store'
+import { useTranslation } from '../i18n'
 import type { SearchHit } from '@shared/ipc-contract'
-
-const SCOPE_LABEL: Record<SearchHit['scope'], string> = { plan: '计划', task: '任务', note: '注释' }
 
 function highlight(text: string, keywords: string[]): React.ReactNode[] {
   if (!text) return []
@@ -44,20 +43,24 @@ function highlight(text: string, keywords: string[]): React.ReactNode[] {
 }
 
 export default function SearchOverlay(): React.JSX.Element {
+  const { t } = useTranslation()
   const { open, keywords, hits, querying, setOpen, setKeywords, locate } = useSearchStore()
   const indexState = useAppStore((s) => s.indexState)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (open) {
-      const t = setTimeout(() => inputRef.current?.focus(), 30)
-      return () => clearTimeout(t)
+      const t0 = setTimeout(() => inputRef.current?.focus(), 30)
+      return () => clearTimeout(t0)
     }
   }, [open])
 
   const kws = useMemo(() => keywords.trim().split(/\s+/).filter(Boolean), [keywords])
 
   if (!open) return <></>
+
+  const scopeLabel = (scope: SearchHit['scope']): string =>
+    scope === 'plan' ? t('search.scopePlan') : scope === 'task' ? t('search.scopeTask') : t('search.scopeNote')
 
   const grouped = {
     plan: hits.filter((h) => h.scope === 'plan'),
@@ -73,7 +76,7 @@ export default function SearchOverlay(): React.JSX.Element {
         <input
           ref={inputRef}
           className="o-input"
-          placeholder="沿迹回望…（多词 AND；Enter 无需按）"
+          placeholder={t('search.inputPlaceholder')}
           value={keywords}
           onChange={(e) => setKeywords(e.target.value)}
           onKeyDown={(e) => {
@@ -83,17 +86,17 @@ export default function SearchOverlay(): React.JSX.Element {
         />
         <div className="o-body">
           {keywords.trim() === '' ? (
-            <div className="o-empty">输入关键词开始溯源；命中后点击即回到源头</div>
+            <div className="o-empty">{t('search.startHint')}</div>
           ) : empty ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未命中——试试更短的关键词" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('search.noHit')} />
           ) : (
             <>
-              {indexState === 'building' && <div className="o-building">索引构建中，结果可能不全…</div>}
+              {indexState === 'building' && <div className="o-building">{t('search.buildingHint')}</div>}
               {(Object.keys(grouped) as Array<keyof typeof grouped>).map((scope) =>
                 grouped[scope].length === 0 ? null : (
                   <div key={scope}>
                     <div className="o-section">
-                      {SCOPE_LABEL[scope]}（{grouped[scope].length}）
+                      {scopeLabel(scope)}（{grouped[scope].length}）
                     </div>
                     {grouped[scope].map((h, i) => (
                       <div key={`${h.path}:${h.component_id ?? ''}:${i}`} className="o-item" onClick={() => void locate(h)}>

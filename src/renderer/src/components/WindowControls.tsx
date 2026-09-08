@@ -4,8 +4,10 @@ import { useEffect } from 'react'
 import { BorderOutlined, CloseOutlined, LineOutlined } from '@ant-design/icons'
 import { useAppStore } from '../stores/app-store'
 import { invoke } from '../ipc-client'
+import { useTranslation } from '../i18n'
 
 export default function WindowControls(): React.JSX.Element {
+  const { t } = useTranslation()
   const maximized = useAppStore((s) => s.winMaximized)
   // 初始状态对齐（首帧）
   useEffect(() => {
@@ -22,13 +24,13 @@ export default function WindowControls(): React.JSX.Element {
 
   return (
     <div className="win-controls">
-      {btn(<LineOutlined style={{ fontSize: 12 }} />, () => void invoke('window:minimize').catch(() => undefined), '最小化')}
+      {btn(<LineOutlined style={{ fontSize: 12 }} />, () => void invoke('window:minimize').catch(() => undefined), t('common.minimize'))}
       {btn(
         <BorderOutlined style={{ fontSize: 12 }} />,
         () => void invoke('window:toggleMaximize').catch(() => undefined),
-        maximized ? '还原' : '最大化'
+        maximized ? t('common.restore') : t('common.maximize')
       )}
-      {btn(<CloseOutlined style={{ fontSize: 12 }} />, () => void invoke('window:close').catch(() => undefined), '关闭', 'win-close')}
+      {btn(<CloseOutlined style={{ fontSize: 12 }} />, () => void invoke('window:close').catch(() => undefined), t('common.close'), 'win-close')}
     </div>
   )
 }

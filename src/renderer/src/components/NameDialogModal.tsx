@@ -3,14 +3,10 @@ import { useState } from 'react'
 import { Input, Modal } from 'antd'
 import { useUiStore, type NameDialogMode } from '../stores/ui-store'
 import { useTreeStore } from '../stores/tree-store'
-
-const TITLE: Record<NameDialogMode, string> = {
-  'create-plan': '新建计划',
-  'create-folder': '新建文件夹',
-  rename: '重命名'
-}
+import { useTranslation } from '../i18n'
 
 export default function NameDialogModal(): React.JSX.Element {
+  const { t } = useTranslation()
   const dialog = useUiStore((s) => s.nameDialog)
   const close = useUiStore((s) => s.closeNameDialog)
   const { createPlan, createFolder, renamePlan } = useTreeStore()
@@ -37,18 +33,21 @@ export default function NameDialogModal(): React.JSX.Element {
     }
   }
 
+  const title =
+    dialog?.mode === 'create-plan' ? t('dialog.createPlan') : dialog?.mode === 'create-folder' ? t('dialog.createFolder') : t('dialog.rename')
+
   return (
     <Modal
-      title={dialog ? TITLE[dialog.mode] : ''}
+      title={title}
       open={dialog !== null}
       onOk={() => void submit()}
       onCancel={close}
-      okText={dialog?.mode === 'rename' ? '重命名' : '创建'}
-      cancelText="取消"
+      okText={dialog?.mode === 'rename' ? t('dialog.renameBtn') : t('dialog.createBtn')}
+      cancelText={t('common.cancel')}
       destroyOnClose
     >
       <Input
-        placeholder={dialog?.mode === 'create-folder' ? '文件夹名称' : '计划名称'}
+        placeholder={dialog?.mode === 'create-folder' ? t('dialog.folderNamePlaceholder') : t('dialog.planNamePlaceholder')}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onPressEnter={() => void submit()}
