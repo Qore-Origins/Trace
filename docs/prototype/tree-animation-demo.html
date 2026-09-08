@@ -120,13 +120,8 @@ body.no-guide .guide { animation: none; }
 }
 .tree-row.has-deck:hover::after { opacity: .38; transform: translate(4px, -50%); }
 
-/* D5 父行脉冲：展开一闪 + 图标 pop；收拢 squish */
-.tree-row.dealt { animation: parent-pulse .5s var(--ease-out); }
-@keyframes parent-pulse { 30% { background: var(--trace-bg); } }
-.tree-row.dealt .node-icon { animation: icon-pop .45s var(--ease-spring); }
-@keyframes icon-pop { 40% { transform: scale(1.18); } }
-.tree-row.gathered .node-icon { animation: icon-squish .4s var(--ease-spring); }
-@keyframes icon-squish { 40% { transform: scale(.86); } }
+/* D5 父行脉冲——已移除（2026-09-08 用户实测：整行背景闪 + 图标缩放读感为「刷新」，属噪声）；
+   发牌/收牌本身即足够的状态反馈 */
 
 /* 已落位钉住：取消收拢回弹时禁止重播发牌动画（animation 名切换会重启） */
 .slot.settled:not(.closing) .tree-row,
@@ -219,7 +214,7 @@ body.fx-off .slot { grid-template-rows: 1fr !important; }
         <div><b>D2</b>发牌入场：卡牌从父行方向（上·左）抽出，<code>--i</code> 错峰 + spring 回弹落位</div>
         <div><b>D3</b>收牌出场：末张先走、波次向上汇聚进父行，ease-in 加速吸入，槽位 zipper 合拢</div>
         <div><b>D4</b>折叠按钮：方框 +/- 号，点击整体旋转 180°，旋转途中竖杠消长完成变号 + 按压缩放反馈</div>
-        <div><b>D5</b>父行脉冲：展开瞬间迹色一闪 + 图标 pop；收拢完成图标 squish</div>
+        <div><b>D5</b>父行脉冲——已移除：实测展开后整行闪色+图标缩放，读感为「刷新」属噪声；发牌本身即状态反馈</div>
         <div><b>D6</b>连接线生长：缩进竖线段锚顶 scaleY 随行画出——「迹」向下生长；收拢被槽位裁切自然回缩</div>
         <div><b>D7</b>持牌暗示：折叠文件夹 hover 露出两道卡牌边缘（这里有一摞牌）</div>
         <div><b>D8</b>节奏压缩：子项 &gt;10 时交错间隔自动压缩，总时长封顶约 600ms</div>
@@ -368,36 +363,54 @@ function buildRoot() {
   pathToGroupEl.set('', g)
 }
 
-// ---------- 展开/收拢（核心：延迟卸载 + 可取消） ----------
+// ---------- 展开/收拢（核心：延迟卸载 + 可取消 + 竞态防护） ----------
+let cascadeSeq = 0 // 级联代际：任何手动交互作废进行中的级联计划（防旧定时器晚到改写结果=「点了又弹回」）
+
 function toggle(node) {
+  cascadeSeq++ // 手动点击优先于级联计划
   const path = node.path
   if (collapsing.has(path)) { cancelCollapse(path); return } // 收拢中再点 = 取消回弹
   if (expanded.has(path)) { startCollapse(node); return }
   expand(node)
 }
 
+// 祖先是否处于收拢途中：行将随动画消失，此刻展开必把新组挂进「将死」子树 → 状态与 DOM 脱钩
+function ancestorClosing(path) {
+  if (path === '') return false
+  const segs = path.split('/')
+  for (let i = 0; i < segs.length; i++) {
+    if (collapsing.has(segs.slice(0, i).join('/'))) return true
+  }
+  return false
+}
+
 function expand(node) {
   if (expanded.has(node.path)) return
-  expanded.add(node.path)
+  if (ancestorClosing(node.path)) return
   const hostInner = slotInnerOf(node) // 挂载点：自身行的 slot-inner（子组随自身槽位收拢）；根（''）→ scroll
   if (!hostInner) return
+  expanded.add(node.path) // 状态提交在挂载点确认之后：早退不得遗留「已展开无组」假状态（点击失效源）
   const group = buildGroup(node, depthOf(node))
   hostInner.appendChild(group)
   pathToGroupEl.set(node.path, group)
 
-  // 父行状态刷新（方框变号 / 摘除持牌暗示）+ D5 脉冲
+  // 父行状态刷新（方框变号 / 摘除持牌暗示）
   const row = rowEl(node.path)
   if (row) {
     row.classList.remove('has-deck')
     row.querySelector('.tree-switcher')?.classList.add('open')
-    flash(row, 'dealt', 520)
   }
 }
 
 function startCollapse(node) {
   const path = node.path
   const group = pathToGroupEl.get(path)
-  if (!group) { expanded.delete(path); return }
+  // 组缺失或已随祖先子树脱钩（isConnected=false）→ 清状态返回，下次点击走展开路径自愈
+  if (!group || !group.isConnected) {
+    pathToGroupEl.delete(path)
+    expanded.delete(path)
+    return
+  }
   expanded.delete(path) // 状态立即翻转：方框即时变号、后续查询一致
 
   // 收拢揭示行 = 该组当前 DOM 内全部行槽（含嵌套组）
@@ -414,8 +427,7 @@ function startCollapse(node) {
   const row = rowEl(path)
   if (row) {
     row.querySelector('.tree-switcher')?.classList.remove('open')
-    if (!expanded.has(path)) row.classList.add('has-deck')
-    flash(row, 'gathered', 420)
+    if (path !== '' && !expanded.has(path)) row.classList.add('has-deck') // 根行不露牌边
   }
 
   const gather = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-gather'))
@@ -433,7 +445,11 @@ function cancelCollapse(path) {
   clearTimeout(c.timer)
   collapsing.delete(path)
   expanded.add(path)
-  c.group.querySelectorAll('.slot.closing').forEach((slot) => slot.classList.remove('closing'))
+  // 钉住已落位卡牌：摘除 closing 后 animation 名切回 deal-in 会整组重播发牌（读感=乱/失效）
+  c.group.querySelectorAll('.slot.closing').forEach((slot) => {
+    slot.classList.remove('closing')
+    slot.classList.add('settled')
+  })
   const row = rowEl(path)
   if (row) {
     row.classList.remove('has-deck')
@@ -455,10 +471,6 @@ function rowEl(path) {
   if (path === '') return scroll.querySelector('.tree-row')
   return scroll.querySelector(`.slot[data-path="${CSS.escape(path)}"] > .slot-inner > .tree-row`)
 }
-function flash(el, cls, ms) {
-  el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls)
-  setTimeout(() => el.classList.remove(cls), ms)
-}
 function selectRow(path) {
   selected = selected === path ? null : path
   scroll.querySelectorAll('.tree-row.selected').forEach((r) => r.classList.remove('selected'))
@@ -471,14 +483,20 @@ function allFolders(node, acc = []) {
   return acc
 }
 document.getElementById('expandAll').addEventListener('click', () => {
+  const seq = ++cascadeSeq // 新级联作废所有进行中的旧计划
   allFolders(TREE).forEach((f, i) => setTimeout(() => {
+    if (seq !== cascadeSeq) return // 代际过期：用户已手动干预或发起新级联
     if (collapsing.has(f.path)) cancelCollapse(f.path) // 收拢途中先取消，避免新旧两组并存
     expand(f)
   }, i * 150))
 })
 document.getElementById('collapseAll').addEventListener('click', () => {
+  const seq = ++cascadeSeq
   const list = allFolders(TREE).reverse() // 由深到浅收
-  list.forEach((f, i) => setTimeout(() => { if (expanded.has(f.path) && !collapsing.has(f.path)) startCollapse(f) }, i * 130))
+  list.forEach((f, i) => setTimeout(() => {
+    if (seq !== cascadeSeq) return
+    if (expanded.has(f.path) && !collapsing.has(f.path)) startCollapse(f)
+  }, i * 130))
 })
 document.getElementById('resetSel').addEventListener('click', () => {
   selected = null
