@@ -44,7 +44,7 @@ export default function NameDialogModal(): React.JSX.Element {
       onCancel={close}
       okText={dialog?.mode === 'rename' ? t('dialog.renameBtn') : t('dialog.createBtn')}
       cancelText={t('common.cancel')}
-      destroyOnClose
+      destroyOnHidden
     >
       <Input
         placeholder={dialog?.mode === 'create-folder' ? t('dialog.folderNamePlaceholder') : t('dialog.planNamePlaceholder')}
