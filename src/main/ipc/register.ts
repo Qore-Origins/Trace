@@ -2,7 +2,7 @@
 import { ipcMain, dialog, type BrowserWindow } from 'electron'
 import { promises as fs } from 'node:fs'
 import { basename } from 'node:path'
-import { toTraceResultError, ERR } from '../../shared/errors'
+import { toTraceResultError, ERR, TraceError } from '../../shared/errors'
 import type { TraceEvents } from '../services/event-bus'
 import { fail, ok, type ChannelName, type Channels, type TraceResult } from '../../shared/ipc-contract'
 import { AppService } from '../services/app-service'
@@ -10,6 +10,7 @@ import { StorageService } from '../services/storage-service'
 import { ConfigService } from '../services/config-service'
 import { TransferService } from '../services/transfer-service'
 import { SearchService } from '../services/search-service'
+import { ensureDiaryRoot, ensureTodayPage, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { bus } from '../services/event-bus'
 
 interface Deps {
@@ -135,12 +136,21 @@ export function registerIpc(deps: Deps): void {
   })
 
   // ---------- diary（日记深化 2026-09-10） ----------
-  // Task 1 桩：空数据返回保证链路可通——Task 2 接 diary-service 真实现
-  // 载荷不含 planRoot：renderer 不供给路径，根由 main 自解析（现有惯例：根由服务持有，
-  // register 不自行解析——先例：app 经 config.getRootDir、transfer 经 storage.getRootAbs）
-  reg('diary:ensure', async () => null)
-  reg('diary:month', async () => ({ entries: [] }))
-  reg('diary:day', async (p) => ({ date: p.date, components: [] }))
+  // 载荷不含 planRoot：renderer 不供给路径，根由 main 自解析（先例：app 经 config.getRootDir、transfer 经 storage.getRootAbs）
+  const diaryRoot = (): string => {
+    const r = storage.getRootAbs()
+    if (!r) throw new TraceError(ERR.INTERNAL, '计划库根目录未初始化')
+    return r
+  }
+  reg('diary:ensure', async () => {
+    // 幂等：日记根 + 今日页（模板三件套）——存在即跳过，只建不补
+    const root = diaryRoot()
+    await ensureDiaryRoot(root)
+    await ensureTodayPage(root)
+    return null
+  })
+  reg('diary:month', async (p) => ({ entries: await listMonthEntries(diaryRoot(), p.year, p.month) }))
+  reg('diary:day', async (p) => readDaySummary(diaryRoot(), p.date))
 
   // ---------- 事件转发：bus → 渲染器 ----------
   const forward = <K extends keyof TraceEvents>(event: K): void => {
