@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>心情分数滚动 Demo · 迹 Trace</title>
+<!--
+  心情数值滚动 Demo（odometer 选型）
+  三个变体：V1 轮带式（每列 0-9 竖带，机械计数器感，主推）/ V2 翻页式（整串一行翻一格）/ V3 无动画
+  本文件为独立原型，无构建依赖，直接浏览器打开。
+  交互建议：先点 "+1" 快速连点看 50→60 的进位感；再拖动滑块看 85.5→92.25 小数进位。
+  移植要点（定稿后）：
+    - token 与 workspace.css 一致（--ease-out/--t-roll 需进 :root 时序段）
+    - V1 实现：每列固定 0-9 轮带（div*10）translateY(-idx*行高)，仅变化列触发；
+      direction = 取最近距离（差 >5 反向绕行，0↔9 只滚 1 格）
+    - 帧更新使用 WAAPI；prefers-reduced-motion 时跳过动画直接到位
+    - 列宽用 tabular-nums + 等宽容器，避免数字跳变时列抖动
+-->
+<style>
+/* ---------- token（同 workspace.css） ---------- */
+:root {
+  --trace-500: #1677ff;
+  --trace-bg: #e6f4ff;
+  --text-1: #262626;
+  --text-2: #595959;
+  --text-3: #8c8c8c;
+  --text-4: #bfbfbf;
+  --split: #f0f0f0;
+  --border: #d9d9d9;
+  --paper: #ffffff;
+  --paper-dim: #fafafa;
+
+  --t-roll: 260ms;   /* 单格滚动时长（demo 可调） */
+  --ease-out: cubic-bezier(.2, .7, .3, 1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(--paper-dim); color: var(--text-1); font-size: 14px; }
+
+.demo { display: flex; height: 100%; }
+.demo-main { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+/* ---------- 心情卡（近似组件视觉） ---------- */
+.mood-card {
+  width: 520px; background: var(--paper); border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 2px 8px rgba(0,0,0,.05);
+  padding: 18px 22px;
+}
+.mood-card .kind { font-size: 12px; color: var(--text-4); margin-bottom: 10px; }
+.mood-row { display: flex; align-items: center; gap: 16px; }
+.mood-label { font-size: 13px; color: var(--text-3); flex: none; }
+
+/* ---------- 分数区（三变体共用尺寸） ---------- */
+.score-frame {
+  height: 64px; overflow: hidden; display: flex; align-items: center;
+  font-size: 48px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: rgb(96,130,182); min-width: 120px;
+}
+.score-frame .num { display: inline-block; height: 64px; line-height: 64px; }
+.score-frame .point { display: inline-block; height: 64px; line-height: 64px; }
+
+/* V1 轮带列 */
+.odom-col { display: inline-flex; flex-direction: column; overflow: hidden; height: 64px; }
+.odom-col .strip { transition: transform var(--t-roll) var(--ease-out); will-change: transform; }
+.odom-col .strip span { display: block; height: 64px; line-height: 64px; }
+
+/* V2 翻页整串 */
+.flip-strip { height: 64px; overflow: hidden; display: inline-block; }
+.flip-inner { transition: transform var(--t-roll) var(--ease-out); }
+.flip-inner span { display: block; height: 64px; line-height: 64px; font-variant-numeric: tabular-nums; }
+
+/* ---------- 参数面板 ---------- */
+.panel {
+  width: 300px; background: var(--paper); border-left: 1px solid var(--split);
+  padding: 18px 20px; overflow: auto;
+}
+.panel h3 { font-size: 15px; margin-bottom: 14px; }
+.panel section { margin-bottom: 16px; }
+.panel label { display: block; font-size: 13px; margin-bottom: 8px; color: var(--text-2); }
+.panel input[type=range] { width: 100%; }
+.panel .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel button {
+  border: 1px solid var(--border); background: var(--paper); border-radius: 6px;
+  padding: 5px 12px; font-size: 13px; cursor: pointer; color: var(--text-2);
+}
+.panel button:hover { background: var(--trace-bg); color: var(--trace-500); border-color: var(--trace-500); }
+.panel .note { font-size: 12px; color: var(--text-4); line-height: 1.6; margin-top: 6px; }
+.radio-row { display: flex; gap: 12px; align-items: center; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="demo">
+  <div class="demo-main">
+    <div class="mood-card">
+      <div class="kind">今日心情</div>
+      <div class="mood-row">
+        <span class="mood-label">心情分数</span>
+        <div class="score-frame" id="scoreFrame"></div>
+        <span class="mood-label" id="scoreTextLabel" style="min-width:56px; text-align:right; font-size:16px;">50</span>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>滚动 Demo 选型</h3>
+    <section>
+      <label>变体</label>
+      <div class="radio-row">
+        <label><input type="radio" name="variant" value="1" checked> V1 轮带式（机械计数器）</label>
+      </div>
+      <div class="radio-row">
+        <label><input type="radio" name="variant" value="2"> V2 翻页式（整串）</label>
+      </div>
+      <div class="radio-row">
+        <label><input type="radio" name="variant" value="3"> V3 无动画</label>
+      </div>
+      <div class="note">推荐先试 V1。</div>
+    </section>
+    <section>
+      <label>增减</label>
+      <div class="btn-row">
+        <button id="btnMinus">-1</button>
+        <button id="btnPlus">+1</button>
+        <button id="btnPlus5">+5（感受 95→100 进位）</button>
+        <button id="btnRandom">随机</button>
+      </div>
+    </section>
+    <section>
+      <label>拖动值：<span id="sliderVal">50</span></label>
+      <input type="range" id="slider" min="0" max="100" step="0.01" value="50">
+    </section>
+    <section>
+      <label>速度</label>
+      <div class="radio-row">
+        <label><input type="radio" name="speed" value="0.5"> 慢 0.5×</label>
+        <label><input type="radio" name="speed" value="1" checked> 1×</label>
+        <label><input type="radio" name="speed" value="2"> 快 2×</label>
+      </div>
+    </section>
+    <section>
+      <label>小数进位：85.5 → 92.25</label>
+      <div class="btn-row"><button id="btnDecimal">试试</button></div>
+    </section>
+    <section>
+      <label>辅助</label>
+      <div class="radio-row">
+        <label><input type="checkbox" id="chkReduce"> prefers-reduced-motion（模拟系统）</label>
+      </div>
+    </section>
+    <div class="note">
+      你选择的自定义。速度可在控制台调整：<code>--t-roll</code>。
+      定稿后提交 demo 移植说明。
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict'
+const frame = document.getElementById('scoreFrame')
+const scoreTextLabel = document.getElementById('scoreTextLabel')
+const sliderVal = document.getElementById('sliderVal')
+const reduceCheckbox = document.getElementById('chkReduce')
+let variant = '1'
+let current = 50
+let speedFactor = 1
+const LINE = 64
+
+function scoreColor(score) {
+  const t = Math.max(0, Math.min(1, (score - 30) / 50))
+  const from = [96, 130, 182], to = [255, 122, 69]
+  const mix = from.map((c, i) => Math.round(c + (to[i] - c) * t))
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`
+}
+
+function reducedMotion() {
+  return reduceCheckbox.checked ||
+    (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+}
+
+// ---------- V1 轮带式：每列 0-9 轮带 ----------
+function buildV1(frame, digits) {
+  frame.innerHTML = ''
+  for (const ch of digits) {
+    if (ch === '.') {
+      const p = document.createElement('span')
+      p.className = 'point'; p.textContent = '.'
+      frame.appendChild(p)
+      continue
+    }
+    const col = document.createElement('span')
+    col.className = 'odom-col'
+    const strip = document.createElement('span')
+    strip.className = 'strip'
+    for (let i = 0; i <= 9; i++) {
+      const s = document.createElement('span')
+      s.textContent = String(i)
+      strip.appendChild(s)
+    }
+    col.appendChild(strip)
+    frame.appendChild(col)
+  }
+}
+
+// 使第 idx 位（从 0 数）到位 digit：列内 0-9 轮带 + 短路径 wrap
+function setDigitV1(col, digitNow, digitNext) {
+  const strip = col.querySelector('.strip')
+  let diff = digitNext - digitNow
+  // 短路径：±5 内取直；否则反向绕 +10
+  if (diff > 5) diff -= 10
+  if (diff < -5) diff += 10
+  const currentIdx = digitNow
+  const target = currentIdx + diff
+  strip.style.transform = `translateY(-${target * LINE}px)`
+}
+
+function updateV1(fromScore, toScore) {
+  const fromStr = String(fromScore)
+  const toStr = String(toScore)
+  // 列数对齐：位数不足前面补 0（demo 简化：取目标位数）
+  const cols = frame.querySelectorAll('.odom-col')
+  if (cols.length !== toStr.replace(/\./g, '').length) {
+    buildV1(frame, toStr.split(''))
+    fromStr.split('').forEach(() => {}) // 简化：重建即到位（无新列动画）
+    // 重建后直接显示目标（无动画）——首建/长度变化时正确
+    const cols2 = frame.querySelectorAll('.odom-col')
+    let di = 0
+    for (const ch of toStr.split('')) {
+      if (ch === '.') continue
+      cols2[di++].querySelector('.strip').style.transform = `translateY(-${Number(ch) * LINE}px)`
+    }
+    return
+  }
+  let ci = 0
+  for (let i = 0; i < fromStr.length; i++) {
+    const a = Number(fromStr[i])
+    const b = Number(toStr[i])
+    if (toStr[i] === '.') continue
+    if (fromStr[i] === toStr[i]) { ci++; continue }
+    setDigitV1(cols[ci++], a, b)
+  }
+}
+
+// ---------- V2 翻页式：整串一行翻一格 ----------
+function buildV2(frame, digits) {
+  frame.innerHTML = ''
+  const wrap = document.createElement('span')
+  wrap.className = 'flip-strip'
+  const inner = document.createElement('span')
+  inner.className = 'flip-inner'
+  const a = document.createElement('span'); a.textContent = digits
+  const b = document.createElement('span'); b.textContent = digits
+  inner.appendChild(a); inner.appendChild(b)
+  wrap.appendChild(inner)
+  frame.appendChild(wrap)
+  // 返回 inner（state 持有）
+  return inner
+}
+let flipInner = null
+let flipAt = 0 // 0=第一行
+function updateV2(fromScore, toScore) {
+  if (!flipInner || document.querySelector('.flip-strip') === null) {
+    flipInner = buildV2(frame, String(toScore))
+    flipAt = 0
+    flipInner.style.transform = ''
+    return
+  }
+  const rows = flipInner.children
+  // 当前显示行内容 = fromScore；另一行写 toScore
+  const targetRow = flipAt === 0 ? 1 : 0
+  rows[targetRow].textContent = String(toScore)
+  flipInner.style.transform = `translateY(${flipAt === 0 ? -LINE : 0}px)`
+  flipAt = flipAt === 0 ? 1 : 0
+}
+
+// ---------- V3 无动画 ----------
+function buildV3(frame, digits) {
+  frame.innerHTML = ''
+  for (const ch of String(digits).split('')) {
+    const s = document.createElement('span')
+    s.className = ch === '.' ? 'point num' : 'num'
+    s.textContent = ch
+    frame.appendChild(s)
+  }
+}
+function updateV3(toScore) {
+  buildV3(frame, String(toScore))
+}
+
+// ---------- 外层渲染器 ----------
+function render(toScore) {
+  const from = current
+  current = toScore
+  scoreTextLabel.textContent = String(toScore)
+  sliderVal.textContent = String(toScore)
+  const color = scoreColor(toScore)
+  frame.style.color = color
+  if (variants[variant].reduceLike && reducedMotion()) {
+    // reduce：全部直接到位
+    if (variant === '1') { buildV1(frame, String(toScore).split('')); }
+    else if (variant === '2') { flipInner = buildV2(frame, String(toScore)); flipAt = 0; }
+    else buildV3(frame, String(toScore))
+    return
+  }
+  variants[variant].update(from, toScore)
+}
+
+const variants = {
+  '1': { update: updateV1 },
+  '2': { update: updateV2 },
+  '3': { update: updateV3 }
+}
+
+// ---------- 控件 ----------
+const slider = document.getElementById('slider')
+document.querySelectorAll('input[name=variant]').forEach((r) => {
+  r.addEventListener('change', (e) => {
+    variant = e.target.value
+    buildVariant(); render(current)
+  })
+})
+document.querySelectorAll('input[name=speed]').forEach((r) => {
+  r.addEventListener('change', (e) => {
+    speedFactor = Number(e.target.value)
+    document.documentElement.style.setProperty('--t-roll', `${Math.round(260 / speedFactor)}ms`)
+  })
+})
+function buildVariant() {
+  flipInner = null
+  if (variant === '1') { buildV1(frame, String(current).split('')); }
+  else if (variant === '2') { flipInner = buildV2(frame, String(current)); flipAt = 0; }
+  else buildV3(frame, String(current))
+}
+document.getElementById('btnPlus').onclick = () => render(Math.min(100, current + 1))
+document.getElementById('btnMinus').onclick = () => render(Math.max(0, current - 1))
+document.getElementById('btnPlus5').onclick = () => render(Math.min(100, current + 5))
+document.getElementById('btnRandom').onclick = () => render(Math.round(Math.random() * 10000) / 100)
+document.getElementById('btnDecimal').onclick = () => render(current < 90 ? 92.25 : 85.5)
+slider.addEventListener('input', (e) => render(Number(e.target.value)))
+document.getElementById('chkReduce').addEventListener('change', () => { buildVariant(); render(current) })
+
+buildVariant()
+render(50)
+</script>
+</body>
+</html>
