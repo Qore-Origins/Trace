@@ -24,6 +24,8 @@
   --t-deal: 320ms;   /* D2 发牌时长 */
   --t-gather: 260ms; /* D3 收牌时长 */
   --t-slot: 220ms;   /* D1 槽位开合 */
+  /* 心情分数轮带时序（2026-09-09 定稿；demo: demo/mood-score-roll-demo.html） */
+  --t-roll: 260ms;   /* 单格滚动时长 */
   --ease-spring: cubic-bezier(.3, 1.46, .4, 1);
   --ease-out: cubic-bezier(.2, .7, .3, 1);
   --ease-in: cubic-bezier(.55, .04, .7, .3);
@@ -276,7 +278,14 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
 .card.mood { border-left: 4px solid var(--split); }
 .mood-row { display: flex; align-items: center; gap: 12px; }
-.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; display: flex; align-items: center; justify-content: flex-end; }
+/* 心情分数轮带（V1 定稿移植）：每列 0-9 循环带，strip 逐列 transition；
+   列容器须 flex（非替换 inline 不可变换，隐式失败无报错——ERROR 库 inline-span-transform-ignored） */
+.mood-score-roll { display: inline-flex; align-items: center; font-variant-numeric: tabular-nums; }
+.mood-score-roll .roll-col { display: inline-flex; flex-direction: column; overflow: hidden; height: 32px; }
+.mood-score-roll .roll-strip { transition: transform var(--t-roll) var(--ease-out); will-change: transform; }
+.mood-score-roll .roll-strip span { display: block; height: 32px; line-height: 32px; }
+.mood-score-roll .roll-point { height: 32px; line-height: 32px; }
 .mood-input { width: 120px; }
 .mood-meta { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--text-4); margin-top: 4px; }
 .mood-date { font: inherit; border: none; background: transparent; color: var(--text-3); }

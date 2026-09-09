@@ -13,7 +13,7 @@ import { useTreeStore } from '../stores/tree-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
 import { useSearchStore } from '../stores/search-store'
 import { useAppStore } from '../stores/app-store'
-import { usePrefStore, type DealDirection, type Language } from '../stores/pref-store'
+import { usePrefStore, type DealDirection, type Language, type ScoreAnim } from '../stores/pref-store'
 import { invoke } from '../ipc-client'
 import { useTranslation } from '../i18n'
 
@@ -119,7 +119,7 @@ function TopBarSettingsHost(): React.JSX.Element {
   const open = useUiStore((s) => s.settingsOpen)
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
   const { rootDir, switchRootDir } = useAppStore()
-  const { language, dealDirection, setLanguage, setDealDirection } = usePrefStore()
+  const { language, dealDirection, scoreAnim, setLanguage, setDealDirection, setScoreAnim } = usePrefStore()
   const [version, setVersion] = useState('')
 
   useEffect(() => {
@@ -171,6 +171,19 @@ function TopBarSettingsHost(): React.JSX.Element {
               >
                 <Radio.Button value="top">{t('settings.dealTop')}</Radio.Button>
                 <Radio.Button value="bottom">{t('settings.dealBottom')}</Radio.Button>
+              </Radio.Group>
+            </div>
+            <div>
+              <div style={prefLabel(t('settings.scoreAnim'))}>{t('settings.scoreAnim')}</div>
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                size="small"
+                value={scoreAnim}
+                onChange={(e) => setScoreAnim(e.target.value as ScoreAnim)}
+              >
+                <Radio.Button value="roll">{t('settings.scoreAnimRoll')}</Radio.Button>
+                <Radio.Button value="none">{t('settings.scoreAnimNone')}</Radio.Button>
               </Radio.Group>
             </div>
           </div>

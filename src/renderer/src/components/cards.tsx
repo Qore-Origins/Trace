@@ -11,8 +11,10 @@ import type { Component, HeadingPayload, MoodPayload, MultiPlanPayload, NotePayl
 import { uuid32, validateNoteText, validateDueDate, validateScore, todayDateStr } from '@shared/validation'
 import { isOverdue } from '@shared/task-state'
 import { usePlanMutations } from '../stores/plan-store'
+import { usePrefStore } from '../stores/pref-store'
 import { useTranslation } from '../i18n'
 import { NoteMarkdown } from './note-md'
+import { MoodScoreRoll } from './mood-score-roll'
 
 function CardShell(props: {
   kind: string
@@ -430,11 +432,14 @@ export function scoreColor(score: number): string {
 function MoodCard({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
   const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
+  const scoreAnim = usePrefStore((s) => s.scoreAnim)
   const p = comp.payload as MoodPayload
   return (
     <CardShell kind="mood" componentId={comp.id} index={index} total={total} extraClass="mood">
       <div className="mood-row">
-        <div className="mood-score" style={{ color: scoreColor(p.score) }}>{p.score}</div>
+        <div className="mood-score" style={{ color: scoreColor(p.score) }}>
+          {scoreAnim === 'roll' ? <MoodScoreRoll value={p.score} /> : p.score}
+        </div>
         <InputNumber
           min={0} max={100} step={1} precision={2}
           className="mood-input"
