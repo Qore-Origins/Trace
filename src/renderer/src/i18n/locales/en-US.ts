@@ -233,6 +233,9 @@ const enUS: typeof zhCN = {
     exported: 'Exported {{plans}} plans / {{components}} components → {{path}}'
   },
   diary: {
+    navPlans: 'Plans',
+    nav: 'Diary',
+    name: 'Diary',
     calMonth: '{{month}}/{{year}}',
     monthPrev: '‹ Prev',
     monthNext: 'Next ›',

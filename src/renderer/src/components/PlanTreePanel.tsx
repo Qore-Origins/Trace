@@ -104,6 +104,8 @@ function RowContent(props: {
   const { onToggle, onOpen } = useContext(TreeUiCtx)
   const kind = node.kind
   const loading = node.expanded && !node.loaded // 懒加载中：方框位暂代旋转指示
+  // 日记根：库根下第一层的 Diary 文件夹——仅显示层换名+蓝标（Task 5）；磁盘名恒为 Diary，绝不改名
+  const isDiaryRoot = kind === 'folder' && node.name === 'Diary' && node.depth === 1
   if (kind === 'root') {
     // 根行：无快捷菜单（历史行为），仅展开/收拢
     return (
@@ -165,13 +167,14 @@ function RowContent(props: {
         ) : (
           <ReadOutlined className="node-icon plan" aria-label={t('common.plan')} />
         )}
+        {isDiaryRoot && <span className="diary-dot" aria-hidden="true" />}
         <span
           className="name"
           style={{
             ...(selected ? { color: 'var(--trace-500)', fontWeight: 500 } : kind === 'folder' ? { color: 'var(--text-2)' } : undefined)
           }}
         >
-          {node.name}
+          {isDiaryRoot ? t('diary.name') : node.name}
         </span>
         <span className="tree-quick">
           <button

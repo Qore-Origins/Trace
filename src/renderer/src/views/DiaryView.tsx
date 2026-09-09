@@ -1,6 +1,6 @@
 // DiaryView（日记深化 Task 4，2026-09-10）：统计条 → 月历热力 → 时间线/当日预览
 // 布局与交互抄 demo/diary-view-demo.html（方案定稿形态）；数据全部经 IPC（diary:ensure/month/day），renderer 不触 fs
-// 「在树中打开」为占位回调 onOpenInTree（Task 5 复用回溯定位接线）；顶栏导航入口亦为 Task 5
+// 「在树中打开」onOpenInTree 由 App 接线（Task 5：复用回溯定位 Diary/<date>）；顶栏导航入口同 Task 5
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Spin, message } from 'antd'
 import type { TFunction } from 'i18next'
@@ -119,8 +119,8 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
   const stats = useMemo(() => aggregateStats(entries), [entries])
   const grid = useMemo(() => buildMonthGrid(year, month), [year, month])
 
-  // Task 5 接线前占位：仅 console 输出（数据本地，不触任何 store）
-  const openInTree = onOpenInTree ?? ((date: string) => console.log('[DiaryView] 在树中打开（Task 5 接线）：', date))
+  // 兜底占位（App 已接线，仅独立挂载/测试场景会走到）：仅 console 输出，不触任何 store
+  const openInTree = onOpenInTree ?? ((date: string) => console.log('[DiaryView] 在树中打开：', date))
 
   const selectDay = (date: string): void => {
     const id = ++dayReq.current

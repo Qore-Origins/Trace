@@ -22,6 +22,7 @@ export default function TopBar(): React.JSX.Element {
         溯源 Trace
       </div>
       <MenuBar />
+      <ViewNav />
       <div className="search">
         <Input
           placeholder={t('search.topPlaceholder')}
@@ -32,6 +33,23 @@ export default function TopBar(): React.JSX.Element {
       <div className="spacer" />
       <WindowControls />
     </div>
+  )
+}
+
+// ---------- 视图导航（计划/日记）：Task 5 日记深化入口；路由=App 级 view 切换，此处只做入口与激活态 ----------
+function ViewNav(): React.JSX.Element {
+  const { t } = useTranslation()
+  const view = useUiStore((s) => s.view)
+  const setView = useUiStore((s) => s.setView)
+  return (
+    <nav className="view-nav" aria-label={t('menu.view')}>
+      <button type="button" className={`nav-btn${view === 'workspace' ? ' active' : ''}`} onClick={() => setView('workspace')}>
+        {t('diary.navPlans')}
+      </button>
+      <button type="button" className={`nav-btn${view === 'diary' ? ' active' : ''}`} onClick={() => setView('diary')}>
+        {t('diary.nav')}
+      </button>
+    </nav>
   )
 }
 

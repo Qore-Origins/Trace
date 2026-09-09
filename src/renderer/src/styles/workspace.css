@@ -77,7 +77,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* 顶栏：无边框标题栏——整体为拖拽区，交互控件 no-drag（双击空白=最大化/还原 系统行为）
    注意：新增顶栏交互元素必须加进 no-drag 白名单，否则点击被拖拽区吞掉（menu-title 2026-09-06 实证） */
 .ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; -webkit-app-region: drag; user-select: none; }
-.ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input, .ws-top .menu-title, .ws-top .menubar { -webkit-app-region: no-drag; }
+.ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input, .ws-top .menu-title, .ws-top .menubar, .ws-top .view-nav { -webkit-app-region: no-drag; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #3b5bdb, var(--origin)); }
 .ws-top .search { flex: 0 1 400px; }
@@ -89,6 +89,13 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .menu-title:hover { color: var(--text-1); background: transparent; }
 .menu-title:focus-visible { outline: 2px solid var(--trace-bg); }
 
+/* 视图导航（计划/日记，2026-09-10 日记深化 Task 5）：与菜单栏同语言的文字钮；激活态=主色 */
+.view-nav { display: flex; align-items: center; gap: 2px; }
+.nav-btn { padding: 4px 10px; font-size: 13px; color: var(--text-2); background: transparent; border: none; cursor: pointer; border-radius: 6px; transition: color var(--t-ui) var(--ease-out); }
+.nav-btn:hover { color: var(--text-1); }
+.nav-btn.active { color: var(--trace-500); font-weight: 500; }
+.nav-btn:focus-visible { outline: 2px solid var(--trace-bg); }
+
 /* 自绘窗口控制：极简裸图标——无底色无边框无圆角视觉，悬停仅图标变色（2026-09-06 三次定稿） */
 .win-controls { display: flex; align-items: center; gap: 2px; margin-left: 4px; margin-right: 8px; }
 .win-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); background: transparent; border: none; transition: color 0.15s; }
@@ -98,6 +105,8 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* ---------- 计划树（§3.1 连接线=迹的骨架；源头圆点） ---------- */
 .tree-root-label { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-weight: 500; }
 .tree-root-label .origin-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--origin); }
+/* 日记根蓝标（仅显示层标记；磁盘目录名仍为 Diary，永不改名） */
+.diary-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--trace-500); flex: none; }
 .tree-node-title { display: flex; align-items: center; gap: 4px; overflow: hidden; flex: 1; min-width: 0; }
 .tree-node-title .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 树行快捷钮：overlay 淡入+右滑入——原 display 瞬切会推动节点标题宽度（2026-09-09 禁止瞬切） */
@@ -187,7 +196,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
   .slot, .slot .deal, .slot .guide, .pm-box, .pm-v, .tree-row.has-deck::after,
   .tag-overdue, .card .actions, .tree-quick, .task-del, .search-mask, .search-overlay,
   .state-ring::after, .task-row, .tree-row, .task-date, .due-input, .single-due-input,
-  .menu-title, .tree-switcher, .drag-handle, .o-item, .mood-score, .dot-ok, .task-title input,
+  .menu-title, .nav-btn, .tree-switcher, .drag-handle, .o-item, .mood-score, .dot-ok, .task-title input,
   .diary-cal-nav, .diary-cal-day, .diary-tl-back, .diary-tl-item, .diary-pre-open {
     animation: none !important;
     transition: none !important;

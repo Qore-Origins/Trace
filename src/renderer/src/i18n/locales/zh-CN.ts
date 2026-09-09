@@ -230,6 +230,9 @@ const zhCN = {
     exported: '已导出 {{plans}} 个计划 / {{components}} 个组件 → {{path}}'
   },
   diary: {
+    navPlans: '计划',
+    nav: '日记',
+    name: '日记',
     calMonth: '{{year}} 年 {{month}} 月',
     monthPrev: '‹ 上月',
     monthNext: '下月 ›',
