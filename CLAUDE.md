@@ -70,6 +70,7 @@ Trace/
 │   │       ├── plan-repository.ts   # 计划树仓库
 │   │       ├── storage-service.ts   # 存储/落盘
 │   │       ├── search-service.ts    # 全文搜索（Sprint 3 溯源）
+│   │       ├── diary-service.ts     # 日记深化（幂等 ensure/月枚举/日摘要）
 │   │       ├── transfer-service.ts  # 导入导出
 │   │       ├── tree-cache.ts        # 树缓存
 │   │       ├── watch-service.ts     # 文件夹监视
@@ -163,6 +164,7 @@ Trace/
 | BR-004 | 导入导出走 transfer-service（fflate zip） | 格式 `xxx.plan`（参考 `D:\Desktop\Plan` 目录结构）；路径安全前置 |
 | BR-005 | 树节点 = 计划 / 文件夹 两类，语义区分 | "计划与文件夹没区别"是已识别的问题——视觉效果与操作必须可区分 |
 | BR-006 | 远期：智能体接入（开放 API 供 agent 调用） | 用户自配 base_url + API Key（含预设列表）；用于导入识别失败兜底等；不限于此，属规划保留项 |
+| BR-007 | 日记根自动管理区 | Diary/<YYYY-MM-DD>/ 由 diary-service 幂等维护（只建不补）；显示名「日记」；契约零变更（日计划=普通计划） |
 
 ### 窗口行为（无边框自绘约定）
 
