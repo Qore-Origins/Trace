@@ -120,6 +120,8 @@ const zhCN = {
     moodLabel: '心情',
     moodPlaceholder: '今天的心情怎么样？…',
     headingPlaceholder: '标题…',
+    customLabel: '自定义',
+    customSource: '来自预设「{{source}}」',
     unknownComponent: '⚠ 未知组件类型「{{type}}」——内容已原样保留，等待新版本应用读取。'
   },
   content: {

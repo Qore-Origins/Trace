@@ -273,6 +273,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .note-actions-end .ant-btn { color: var(--text-3); }
 .note-hint { font-size: 11px; color: var(--text-4); }
 
+/* 自定义组件卡（2026-09-09 组件扩展 Task 5） */
+.custom-source { font-size: 11px; color: var(--text-4); margin-top: 2px; }
+
 /* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
 .card.mood { border-left: 4px solid var(--split); }
 .mood-row { display: flex; align-items: center; gap: 12px; }

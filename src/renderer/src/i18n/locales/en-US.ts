@@ -123,6 +123,8 @@ const enUS: typeof zhCN = {
     moodLabel: 'Mood',
     moodPlaceholder: 'How do you feel today?…',
     headingPlaceholder: 'Title…',
+    customLabel: 'Custom',
+    customSource: 'From preset "{{source}}"',
     unknownComponent: '⚠ Unknown component type "{{type}}" — content preserved as-is, awaiting a newer app version.'
   },
   content: {
