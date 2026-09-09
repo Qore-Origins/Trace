@@ -312,9 +312,12 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
                           ) : (
                             daySummary.components.map((c, i) => <DayComponentCard key={`${c.kind}-${i}`} comp={c} />)
                           )}
-                          <button type="button" className="diary-pre-open" onClick={() => openInTree(selected)}>
-                            {t('diary.openInTree')}
-                          </button>
+                          {/* 空记录日（无 plan.json 或读取失败降级）不渲染「在树中打开」：点击定位不存在路径 → 幻影选中污染后续 F2/编辑菜单（评审 Minor-1） */}
+                          {daySummary.components.length > 0 && (
+                            <button type="button" className="diary-pre-open" onClick={() => openInTree(selected)}>
+                              {t('diary.openInTree')}
+                            </button>
+                          )}
                         </div>
                       )
                     ) : monthEntries.length === 0 ? (
