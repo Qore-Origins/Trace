@@ -79,7 +79,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
 
 /* V2 翻页整串 */
 .flip-strip { height: 64px; overflow: hidden; display: inline-block; }
-.flip-inner { transition: transform var(--t-roll) var(--ease-out); }
+/* display:inline-block 必需——非替换 inline 元素（裸 span）不可变换，transform 会被静默忽略，
+   轮带物理上永远动不了（此病此前未被发现，表现为"看不到翻页动画+显示滞后一步"） */
+.flip-inner { display: inline-block; transition: transform var(--t-roll) var(--ease-out); }
 .flip-inner span { display: block; height: 64px; line-height: 64px; font-variant-numeric: tabular-nums; }
 
 /* ---------- 参数面板 ---------- */
