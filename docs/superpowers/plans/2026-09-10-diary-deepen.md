@@ -93,20 +93,19 @@ git commit -m "feat(contract): diary 域 IPC 合约（ensure/month/day 三通道
 - [ ] **Step 1: 写失败测试 test/diary-service.spec.ts**
 
 ```ts
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ensureDiaryRoot, ensureTodayPage, listMonthEntries, readDaySummary } from '../src/main/services/diary-service'
-
-const T = { format_version: '1', title: 'x', components: [] as unknown[], created_at: '', updated_at: '' }
+import { todayDateStr } from '../src/shared/validation'
 
 describe('diary-service', () => {
   let root = ''
   beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'trace-diary-')) })
   afterEach(() => { import('node:fs').then((fs) => fs.rmSync(root, { recursive: true, force: true })) })
 
-  it('ensureDiaryRoot 幂等：重复调用只建一次（secondary 不报错）', async () => {
+  it('ensureDiaryRoot 幂等：重复调用只建一次（返回同一路径）', async () => {
     const p1 = await ensureDiaryRoot(root)
     const p2 = await ensureDiaryRoot(root)
     expect(p1).toBe(p2)
@@ -116,12 +115,12 @@ describe('diary-service', () => {
   it('ensureTodayPage 生成模板三件套（heading/mood/note）且幂等不覆盖', async () => {
     const dir = await ensureTodayPage(root)
     const json = JSON.parse(await (await import('node:fs/promises')).readFile(join(dir, 'plan.json'), 'utf-8'))
-    expect(json.title).toBe('2026-09-10')           // todayDateStr 实际值按系统；date 未知写 T(调用别 mock 动态日期)
+    expect(json.title).toBe(todayDateStr()) // title=今日（真实系统日期）
     const kinds = json.components.map((c: { kind: string }) => c.kind)
     expect(kinds).toEqual(['heading', 'mood', 'note'])
     const mood = json.components.find((c: { kind: string }) => c.kind === 'mood')
     expect(mood.payload.score).toBe(50)
-    expect(mood.payload.mood_date).toBe(json.title)
+    expect(mood.payload.mood_date).toBe(todayDateStr())
     // 幂等：改标题后重复 ensure 不覆盖
     json.title = '手动改过'
     await (await import('node:fs/promises')).writeFile(join(dir, 'plan.json'), JSON.stringify(json))
@@ -130,9 +129,6 @@ describe('diary-service', () => {
     expect(json2.title).toBe('手动改过')
   })
 })
-```
-
-（注：日期断言用真实 `todayDateStr()` 拼——写测试时导入 `todayDateStr` 而非硬编码 '2026-09-10'）
 
 - [ ] **Step 2: 运行确认失败** `npx vitest run test/diary-service.spec.ts`（函数不存在 → FAIL）
 
