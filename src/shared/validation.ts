@@ -25,6 +25,19 @@ export function validateNoteText(text: string, field = '文本'): void {
   if (text.length > MAX_TEXT_LEN) throw new TraceError(ERR.VALIDATION, `${field}超长（上限 ${MAX_TEXT_LEN} 字符）`)
 }
 
+// 截止日期：'YYYY-MM-DD'；undefined/'' 表示清除；CLAMP 外一律抛 ERR.VALIDATION
+export function validateDueDate(s: unknown): void {
+  if (s === undefined || s === '') return // 清除，视为通过
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    throw new TraceError(ERR.VALIDATION, '截止日期格式无效')
+  }
+  const [y, m, d] = s.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+    throw new TraceError(ERR.VALIDATION, '截止日期无效（该日期不存在）')
+  }
+}
+
 // uuid32（无连字符 32 hex）
 export function isUuid32(s: string): boolean {
   return /^[0-9a-f]{32}$/.test(s)

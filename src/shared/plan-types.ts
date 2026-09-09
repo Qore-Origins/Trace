@@ -10,6 +10,7 @@ export interface PlanDocument {
   created_at: string // ISO 8601 UTC
   updated_at: string // 每次原子写更新；savePlan CAS 锚点
   components: Component[] // 渲染顺序 = 数组顺序
+  due_date?: string // 'YYYY-MM-DD'；undefined=未设置（旧文档缺键即未设置）
 }
 
 export interface PlanLibraryMeta {
