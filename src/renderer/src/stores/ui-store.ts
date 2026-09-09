@@ -6,6 +6,9 @@ import { i18n } from '../i18n'
 
 export type NameDialogMode = 'create-plan' | 'create-folder' | 'rename' | 'preset'
 
+// 顶栏视图（纯 session 态，不持久化）：workspace 默认；diary 路由由 App 渲染（导航入口 Task 5 接线）
+export type ViewName = 'workspace' | 'diary'
+
 // 命名对话框的定制分支（如预设保存）：title/placeholder/okText/校验/提交动作全部由调用方注入，
 // mode:'preset' 仅作判别（preset 分支完全由 customize 驱动）
 export interface NameDialogCustomize {
@@ -26,17 +29,21 @@ export interface NameDialog {
 interface UiState {
   nameDialog: NameDialog | null
   settingsOpen: boolean
+  view: ViewName
   openNameDialog: (d: NameDialog) => void
   closeNameDialog: () => void
   setSettingsOpen: (open: boolean) => void
+  setView: (view: ViewName) => void
 }
 
 export const useUiStore = create<UiState>()((set) => ({
   nameDialog: null,
   settingsOpen: false,
+  view: 'workspace',
   openNameDialog: (d) => set({ nameDialog: d }),
   closeNameDialog: () => set({ nameDialog: null }),
-  setSettingsOpen: (open) => set({ settingsOpen: open })
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setView: (view) => set({ view })
 }))
 
 // 删除确认（树节点：计划/文件夹共用；BR-007 二次确认）

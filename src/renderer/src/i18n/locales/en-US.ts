@@ -231,6 +231,29 @@ const enUS: typeof zhCN = {
     renamed: 'Auto-renamed on conflict: {{list}}',
     skipped: 'Skipped {{count}} unreadable files',
     exported: 'Exported {{plans}} plans / {{components}} components → {{path}}'
+  },
+  diary: {
+    calMonth: '{{month}}/{{year}}',
+    monthPrev: '‹ Prev',
+    monthNext: 'Next ›',
+    weekdays: 'Mon,Tue,Wed,Thu,Fri,Sat,Sun',
+    statsAvg: 'Month avg',
+    statsDays: 'Check-in days',
+    statsRecords: 'Records',
+    recordsUnit: 'items',
+    trend: 'Trend',
+    monthLabel: 'This month',
+    preview: 'Day preview',
+    emptyMonth: 'No diary entries this month',
+    emptyDay: 'Nothing recorded on this day',
+    back: '← Back to timeline',
+    openInTree: 'Open in tree',
+    moodLabel: 'Mood today',
+    summaryLabel: 'Summary',
+    componentLabel: 'Components',
+    compsCount: '{{count}} comps',
+    scoreUnit: 'pts',
+    calHint: 'Click a date for its preview; "Open in tree" jumps to the plan tree'
   }
 }
 

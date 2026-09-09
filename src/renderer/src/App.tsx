@@ -3,16 +3,19 @@ import { useEffect } from 'react'
 import { Spin } from 'antd'
 import OnboardingView from './views/OnboardingView'
 import WorkspaceView from './views/WorkspaceView'
+import DiaryView from './views/DiaryView'
 import { useAppStore, subscribeAppEvents } from './stores/app-store'
 import { subscribeTreeEvents } from './stores/tree-store'
 import { subscribePlanEvents } from './stores/plan-store'
 import { subscribeSearchEvents } from './stores/search-store'
+import { useUiStore } from './stores/ui-store'
 import { useTranslation } from './i18n'
 
 export default function App(): React.JSX.Element {
   const { t } = useTranslation()
   const phase = useAppStore((s) => s.phase)
   const bootstrap = useAppStore((s) => s.bootstrap)
+  const view = useUiStore((s) => s.view)
 
   useEffect(() => {
     const offApp = subscribeAppEvents()
@@ -37,5 +40,6 @@ export default function App(): React.JSX.Element {
       </div>
     )
   }
-  return phase === 'onboarding' ? <OnboardingView /> : <WorkspaceView />
+  // ready 阶段按 ui-store view 路由：diary=日记视图（Task 4），workspace 照旧（导航入口 Task 5 接线）
+  return phase === 'onboarding' ? <OnboardingView /> : view === 'diary' ? <DiaryView /> : <WorkspaceView />
 }

@@ -228,6 +228,29 @@ const zhCN = {
     renamed: '同名自动改名：{{list}}',
     skipped: '跳过 {{count}} 个无法识别的文件',
     exported: '已导出 {{plans}} 个计划 / {{components}} 个组件 → {{path}}'
+  },
+  diary: {
+    calMonth: '{{year}} 年 {{month}} 月',
+    monthPrev: '‹ 上月',
+    monthNext: '下月 ›',
+    weekdays: '一,二,三,四,五,六,日',
+    statsAvg: '本月均分',
+    statsDays: '打卡天数',
+    statsRecords: '记录',
+    recordsUnit: '条',
+    trend: '趋势',
+    monthLabel: '本月时间线',
+    preview: '当日预览',
+    emptyMonth: '本月还没有日记记录',
+    emptyDay: '这一天没有任何记录',
+    back: '← 返回时间线',
+    openInTree: '在树中打开',
+    moodLabel: '今日心情',
+    summaryLabel: '今日小结',
+    componentLabel: '组件',
+    compsCount: '{{count}} 组件',
+    scoreUnit: '分',
+    calHint: '点击日期=当日预览；「在树中打开」=跳转到计划树'
   }
 }
 
