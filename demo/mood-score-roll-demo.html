@@ -6,15 +6,28 @@
 <title>心情分数滚动 Demo · 迹 Trace</title>
 <!--
   心情数值滚动 Demo（odometer 选型）
-  三个变体：V1 轮带式（每列 0-9 竖带，机械计数器感，主推）/ V2 翻页式（整串一行翻一格）/ V3 无动画
+  三变体：V1 轮带式（每列 0-9 循环竖带，机械计数器感，主推）/ V2 翻页式（整串一行翻一格）/ V3 无动画
   本文件为独立原型，无构建依赖，直接浏览器打开。
-  交互建议：先点 "+1" 快速连点看 50→60 的进位感；再拖动滑块看 85.5→92.25 小数进位。
+
+  V1 边界设计（小数进位/结构变化/链式往返）：
+    - 布局规范串：d = max(当前显示小数位, 目标小数位)——进位产生的尾 0 保留，
+      值 45.29 +0.01 → 显示 45.30（十分位 2→3 与百分位 9→0 同时滚）；45.9 +0.1 → 46.0
+      （标签区显示真实值 String(n)，与轮盘的机械显示一致/由 d 规则决定）
+    - 列状态机：每列记录物理位置 phys（绝对索引），短路径取差 >5 反向绕行（0↔9 只滚 1 格）；
+      由 phys 驱动而不是"按数字算索引"，修复进位后停在 0 复制槽、链式下一次滚动空跳 9 格的瞬变
+    - strip 为 0-9 循环带（初始 12 块/120 行，phys 居中）：长期链式滚动接近边界时自动追加块；
+      顶部溢出为兜底重建（需 50+ 次连续向下绕行，实际不可达）
+    - 结构增长（新增整数列/小数列）：先建目标结构并定位到补齐起点，强制 reflow 提交起点样式后滚至目标
+      （新建元素无先前渲染，不强制提交则 transition 不触发）——
+      50 → 50.1：先显示 50.0，小数位 0→1 滚入；9.5 → 10.0：新前导列 0→1 滚入
+    - 结构缩减（100.0 → 99.9）：瞬时重建。机械计数器不存在缩短，属于选型取舍（注明在 demo 说明）
+    - 所有值经 norm（±2dp round）防浮点串化（滑杆 0.01 步进会产生 45.29000000000000649）
+
   移植要点（定稿后）：
     - token 与 workspace.css 一致（--ease-out/--t-roll 需进 :root 时序段）
-    - V1 实现：每列固定 0-9 轮带（div*10）translateY(-idx*行高)，仅变化列触发；
-      direction = 取最近距离（差 >5 反向绕行，0↔9 只滚 1 格）
-    - 帧更新使用 WAAPI；prefers-reduced-motion 时跳过动画直接到位
+    - V1 实现：列状态（phys）+ 短路径方向规则；帧更新使用 WAAPI；prefers-reduced-motion 时跳过动画直接到位
     - 列宽用 tabular-nums + 等宽容器，避免数字跳变时列抖动
+    - 组件持有显示状态：从上一目标值（而非 DOM 当前值）计算下一次滚动，链式点击不断链
 -->
 <style>
 /* ---------- token（同 workspace.css） ---------- */
@@ -42,7 +55,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
 
 /* ---------- 心情卡（近似组件视觉） ---------- */
 .mood-card {
-  width: 520px; background: var(--paper); border-radius: 10px;
+  width: 560px; background: var(--paper); border-radius: 10px;
   box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 2px 8px rgba(0,0,0,.05);
   padding: 18px 22px;
 }
@@ -71,7 +84,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
 
 /* ---------- 参数面板 ---------- */
 .panel {
-  width: 300px; background: var(--paper); border-left: 1px solid var(--split);
+  width: 320px; background: var(--paper); border-left: 1px solid var(--split);
   padding: 18px 20px; overflow: auto;
 }
 .panel h3 { font-size: 15px; margin-bottom: 14px; }
@@ -128,6 +141,17 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
       </div>
     </section>
     <section>
+      <label>边界用例（自动演示：先落到起点，再播放滚动）</label>
+      <div class="btn-row">
+        <button data-case="45.29,45.3">45.29 → 45.3（+0.01 小数进位）</button>
+        <button data-case="45.9,46">45.9 → 46（跨整数进位）</button>
+        <button data-case="99.9,100">99.9 → 100（进位+新列）</button>
+        <button data-case="9.5,10">9.5 → 10（整数位增长）</button>
+        <button data-case="50,50.1">50 → 50.1（小数列插入）</button>
+        <button data-case="100,99.9">100 → 99.9（缩减·瞬时重建）</button>
+      </div>
+    </section>
+    <section>
       <label>拖动值：<span id="sliderVal">50</span></label>
       <input type="range" id="slider" min="0" max="100" step="0.01" value="50">
     </section>
@@ -140,18 +164,18 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
       </div>
     </section>
     <section>
-      <label>小数进位：85.5 → 92.25</label>
-      <div class="btn-row"><button id="btnDecimal">试试</button></div>
-    </section>
-    <section>
       <label>辅助</label>
       <div class="radio-row">
         <label><input type="checkbox" id="chkReduce"> prefers-reduced-motion（模拟系统）</label>
       </div>
     </section>
     <div class="note">
-      你选择的自定义。速度可在控制台调整：<code>--t-roll</code>。
-      定稿后提交 demo 移植说明。
+      设计说明（V1）：
+      1) 小数位取两值最大——45.29+0.01 显示 45.30（保留进位尾 0，机械感）；
+      2) 新增小数/整数位：新列从 0 滚入（先 50.0 再滚 50.1）；
+      3) 整数位缩减（100→99.9）：瞬时重建（机械计数无此件，唯一牺牲）；
+      4) 标签（右侧小数）= 真实值 String(n)，轮盘 = 机械显示（进位保留尾 0）。
+      速度可在控制台调整：<code>--t-roll</code>。
     </div>
   </div>
 </div>
@@ -163,9 +187,23 @@ const scoreTextLabel = document.getElementById('scoreTextLabel')
 const sliderVal = document.getElementById('sliderVal')
 const reduceCheckbox = document.getElementById('chkReduce')
 let variant = '1'
-let current = 50
+let current = 50          // 真实值（已 norm）
 let speedFactor = 1
 const LINE = 64
+const CLAMP_MIN = 0
+const CLAMP_MAX = 100
+
+// 显示状态（V1）：布局规范串 + 各列物理位置
+let dispStr = '50'        // 当前显示（规范串，含布局小数位）——上一目标值语义
+let domSig = ''           // 当前 DOM 结构签名 '整数位.小数位'
+let colStates = []        // 与 .odom-col 一一对应：{ phys, rows }（phys 为 strip 内绝对行索引）
+let pendingCase = 0       // 边界演示的落点→滚动延时
+const BLOCKS = 12         // 初始 0-9 块数（120 行）
+const INIT_ROWS = BLOCKS * 10
+const CENTER = BLOCKS * 5  // phys 初始位置 = CENTER + 数字（60+d，留 ±50 链式余量）
+
+function norm(v) { return Math.round(v * 100) / 100 }
+function clamp(v) { return Math.max(CLAMP_MIN, Math.min(CLAMP_MAX, v)) }
 
 function scoreColor(score) {
   const t = Math.max(0, Math.min(1, (score - 30) / 50))
@@ -179,13 +217,43 @@ function reducedMotion() {
     (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
 }
 
-// ---------- V1 轮带式：每列 0-9 轮带 ----------
-function buildV1(frame, digits) {
+// ---------- 布局规范串（所有进位/边界决策的单一真源） ----------
+function decCount(s) { const i = s.indexOf('.'); return i === -1 ? 0 : s.length - i - 1 }
+function intLen(s) { const i = s.indexOf('.'); return i === -1 ? s.length : i }
+
+// 值 → 规范串：d 位小数（不足补 0；d ≥ 值自带小数位，保证不截断）
+function fmtVal(val, d) {
+  const [iPart, dPart = ''] = String(val).split('.')
+  return d > 0 ? `${iPart}.${dPart.padEnd(d, '0')}` : iPart
+}
+
+// 旧显示串 → 目标结构下的补齐串（整数字左补 0，小数右补 0）
+function fmtPadded(s, toIntLen, toDecLen) {
+  const [iPart, dPart = ''] = s.split('.')
+  const ints = iPart.padStart(toIntLen, '0')
+  return toDecLen > 0 ? `${ints}.${dPart.padEnd(toDecLen, '0')}` : ints
+}
+
+// ---------- V1 轮带式：每列 0-9 循环带 + 列状态机 ----------
+function appendBlock(strip, st) {
+  const frag = document.createDocumentFragment()
+  for (let i = 0; i < 10; i++) {
+    const s = document.createElement('span')
+    s.textContent = String(i)
+    frag.appendChild(s)
+  }
+  strip.appendChild(frag)
+  st.rows += 10
+}
+
+function buildV1(frame, digitsStr) {
   frame.innerHTML = ''
-  for (const ch of digits) {
+  colStates = []
+  for (const ch of digitsStr) {
     if (ch === '.') {
       const p = document.createElement('span')
-      p.className = 'point'; p.textContent = '.'
+      p.className = 'point'
+      p.textContent = '.'
       frame.appendChild(p)
       continue
     }
@@ -193,63 +261,77 @@ function buildV1(frame, digits) {
     col.className = 'odom-col'
     const strip = document.createElement('span')
     strip.className = 'strip'
-    // 循环轮带：[9,0,1..9,0]——首尾各一份循环副本，短路径绕行（9→0/0→9）落在带内有值处
-    for (const v of [9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0]) {
-      const s = document.createElement('span')
-      s.textContent = String(v)
-      strip.appendChild(s)
-    }
+    const st = { phys: CENTER + Number(ch), rows: 0 }
+    for (let b = 0; b < BLOCKS; b++) appendBlock(strip, st)
+    strip.style.transform = `translateY(-${st.phys * LINE}px)`
     col.appendChild(strip)
     frame.appendChild(col)
+    colStates.push(st)
   }
+  domSig = `${intLen(digitsStr)}.${decCount(digitsStr)}`
 }
 
-// 数字 → 轮带索引（偏移 1：副本占位）
-const idxOf = (d) => d + 1
-
-// 定位各列到 digit（构建后必须调用——否则 strip 停在 0，出现"00"）
-function positionV1(frame, digits) {
-  const cols = frame.querySelectorAll('.odom-col')
-  let ci = 0
-  for (const ch of String(digits).split('')) {
-    if (ch === '.') continue
-    cols[ci++].querySelector('.strip').style.transform = `translateY(-${idxOf(Number(ch)) * LINE}px)`
-  }
+// 底部接近溢出：追加一块（追加不影响已有内容，无视觉跳变）
+function ensureBottom(strip, st, next) {
+  if (next > st.rows - 2) appendBlock(strip, st)
 }
 
-// 使该列从 digitNow 滚到 digitNext：短路径方向（差 >5 反向绕行，0↔9 只滚 1 格）
-function setDigitV1(col, digitNow, digitNext) {
-  const strip = col.querySelector('.strip')
-  let diff = digitNext - digitNow
-  // 短路径：±5 内取直；否则反向绕 +10（落在循环副本处）
+// 顶部溢出兜底：整列重建居中（需要 50+ 次连续向下绕行，实际不可达；保持显示正确）
+function rebuildCol(colEl, st, digit) {
+  const strip = colEl.querySelector('.strip')
+  strip.replaceChildren()
+  st.phys = CENTER + digit
+  st.rows = 0
+  for (let b = 0; b < BLOCKS; b++) appendBlock(strip, st)
+  strip.style.transform = `translateY(-${st.phys * LINE}px)`
+}
+
+// 使该列从 a 滚到 b：短路径（差 >5 反向绕行，0↔9 只滚 1 格），phys 驱动
+function rollCol(colEl, st, a, b) {
+  if (a === b) return
+  let diff = b - a
   if (diff > 5) diff -= 10
   if (diff < -5) diff += 10
-  const target = idxOf(digitNow) + diff
-  strip.style.transform = `translateY(-${target * LINE}px)`
+  let next = st.phys + diff
+  const strip = colEl.querySelector('.strip')
+  if (next < 2) { rebuildCol(colEl, st, b); return }
+  ensureBottom(strip, st, next)
+  st.phys = next
+  strip.style.transform = `translateY(-${next * LINE}px)`
 }
 
-function updateV1(fromScore, toScore) {
-  const fromStr = String(fromScore)
-  const toStr = String(toScore)
+function rollCols(fromStr, toStr) {
   const cols = frame.querySelectorAll('.odom-col')
-  const digitCount = toStr.replace(/\./g, '').length
-  // 位数不同（长度差/列数差）→ 重建定位（不做中间动画，保证显示正确；选型阶段取舍）
-  if (cols.length !== digitCount || fromStr.length !== toStr.length) {
-    buildV1(frame, toStr.split(''))
-    positionV1(frame, toStr)
+  let ci = 0
+  for (let i = 0; i < toStr.length; i++) {
+    if (toStr[i] === '.') continue
+    rollCol(cols[ci], colStates[ci], Number(fromStr[i]), Number(toStr[i]))
+    ci++
+  }
+}
+
+function v1Update(fromStr, toStr) {
+  const toIntLen = intLen(toStr)
+  if (intLen(fromStr) > toIntLen) {
+    // 结构缩减（100.0→99.9）：瞬时重建——机械计数器无"缩短"，此时新结构无对应旧列
+    buildV1(frame, toStr)
     return
   }
-  let ci = 0
-  for (let i = 0; i < fromStr.length; i++) {
-    if (toStr[i] === '.') continue
-    const a = Number(fromStr[i])
-    const b = Number(toStr[i])
-    if (a === b) { ci++; continue }
-    setDigitV1(cols[ci++], a, b)
+  const fromPadded = fmtPadded(fromStr, toIntLen, decCount(toStr))
+  const sig = `${toIntLen}.${decCount(toStr)}`
+  if (sig !== domSig) {
+    // 结构增长：新建目标结构并定位到补齐起点（新列 0），随即滚到目标。
+    // 新建元素无"之前渲染"状态，直接改 transform 不会触发 transition——
+    // 必须强制一次样式提交（reflow），把补齐起点注册为过渡起点值，再滚
+    buildV1(frame, fromPadded)
+    void frame.offsetWidth
+    rollCols(fromPadded, toStr)
+    return
   }
+  rollCols(fromPadded, toStr)
 }
 
-// ---------- V2 翻页式：整串一行翻一格 ----------
+// ---------- V2 翻页式：整串一行翻一格（长宽一致时才翻页，否则重建） ----------
 function buildV2(frame, digits) {
   frame.innerHTML = ''
   const wrap = document.createElement('span')
@@ -261,27 +343,27 @@ function buildV2(frame, digits) {
   inner.appendChild(a); inner.appendChild(b)
   wrap.appendChild(inner)
   frame.appendChild(wrap)
-  // 返回 inner（state 持有）
   return inner
 }
 let flipInner = null
-let flipAt = 0 // 0=第一行
-function updateV2(fromScore, toScore) {
-  if (!flipInner || document.querySelector('.flip-strip') === null) {
-    flipInner = buildV2(frame, String(toScore))
+let flipAt = 0
+let v2PrevLen = 0
+function updateV2(toStr) {
+  if (!flipInner || v2PrevLen !== toStr.length) {
+    flipInner = buildV2(frame, toStr)
     flipAt = 0
+    v2PrevLen = toStr.length
     flipInner.style.transform = ''
     return
   }
   const rows = flipInner.children
-  // 当前显示行内容 = fromScore；另一行写 toScore
   const targetRow = flipAt === 0 ? 1 : 0
-  rows[targetRow].textContent = String(toScore)
+  rows[targetRow].textContent = toStr
   flipInner.style.transform = `translateY(${flipAt === 0 ? -LINE : 0}px)`
   flipAt = flipAt === 0 ? 1 : 0
 }
 
-// ---------- V3 无动画 ----------
+// ---------- V3 无动画（显示真实值） ----------
 function buildV3(frame, digits) {
   frame.innerHTML = ''
   for (const ch of String(digits).split('')) {
@@ -291,32 +373,37 @@ function buildV3(frame, digits) {
     frame.appendChild(s)
   }
 }
-function updateV3(toScore) {
-  buildV3(frame, String(toScore))
-}
 
 // ---------- 外层渲染器 ----------
-function render(toScore) {
-  const from = current
-  current = toScore
-  scoreTextLabel.textContent = String(toScore)
-  sliderVal.textContent = String(toScore)
-  const color = scoreColor(toScore)
-  frame.style.color = color
-  if (variants[variant].reduceLike && reducedMotion()) {
-    // reduce：全部直接到位
-    if (variant === '1') { buildV1(frame, String(toScore).split('')); }
-    else if (variant === '2') { flipInner = buildV2(frame, String(toScore)); flipAt = 0; }
-    else buildV3(frame, String(toScore))
-    return
+function render(rawVal, opts = {}) {
+  const val = clamp(norm(rawVal))
+  clearTimeout(pendingCase)
+  pendingCase = 0
+  const fromStr = dispStr
+  const toStr0 = String(val)
+  const d = Math.max(decCount(fromStr), decCount(toStr0))
+  const toStr = fmtVal(val, d)
+  current = val
+  scoreTextLabel.textContent = toStr0
+  sliderVal.textContent = toStr0
+  frame.style.color = scoreColor(val)
+  if (variant === '1') {
+    if (toStr === fromStr) { dispStr = toStr; return }
+    if (reducedMotion() || opts.instant) { buildV1(frame, toStr); dispStr = toStr; return }
+    v1Update(fromStr, toStr)
+  } else if (variant === '2') {
+    if (reducedMotion() || opts.instant) { flipInner = buildV2(frame, toStr); flipAt = 0; v2PrevLen = toStr.length; dispStr = toStr; return }
+    updateV2(toStr)
+  } else {
+    buildV3(frame, toStr0)
   }
-  variants[variant].update(from, toScore)
+  dispStr = toStr
 }
 
-const variants = {
-  '1': { update: updateV1 },
-  '2': { update: updateV2 },
-  '3': { update: updateV3 }
+// 边界演示：先瞬时落到起点，400ms 后播放到目标的滚动
+function runCase(from, to) {
+  render(from, { instant: true })
+  pendingCase = setTimeout(() => { pendingCase = 0; render(to) }, 400)
 }
 
 // ---------- 控件 ----------
@@ -324,7 +411,8 @@ const slider = document.getElementById('slider')
 document.querySelectorAll('input[name=variant]').forEach((r) => {
   r.addEventListener('change', (e) => {
     variant = e.target.value
-    buildVariant(); render(current)
+    buildVariant()
+    render(current)
   })
 })
 document.querySelectorAll('input[name=speed]').forEach((r) => {
@@ -335,20 +423,24 @@ document.querySelectorAll('input[name=speed]').forEach((r) => {
 })
 function buildVariant() {
   flipInner = null
-  if (variant === '1') {
-    buildV1(frame, String(current).split(''))
-    positionV1(frame, current)
-  } else if (variant === '2') { flipInner = buildV2(frame, String(current)); flipAt = 0; }
+  v2PrevLen = 0
+  if (variant === '1') buildV1(frame, dispStr)
+  else if (variant === '2') { flipInner = buildV2(frame, dispStr); flipAt = 0; v2PrevLen = dispStr.length }
   else buildV3(frame, String(current))
 }
-document.getElementById('btnPlus').onclick = () => render(Math.min(100, current + 1))
-document.getElementById('btnMinus').onclick = () => render(Math.max(0, current - 1))
-document.getElementById('btnPlus01').onclick = () => render(Math.round((current + 0.1) * 100) / 100)
-document.getElementById('btnMinus01').onclick = () => render(Math.round((current - 0.1) * 100) / 100)
-document.getElementById('btnPlus001').onclick = () => render(Math.round((current + 0.01) * 100) / 100)
-document.getElementById('btnPlus5').onclick = () => render(Math.min(100, current + 5))
+document.getElementById('btnPlus').onclick = () => render(current + 1)
+document.getElementById('btnMinus').onclick = () => render(current - 1)
+document.getElementById('btnPlus01').onclick = () => render(current + 0.1)
+document.getElementById('btnMinus01').onclick = () => render(current - 0.1)
+document.getElementById('btnPlus001').onclick = () => render(current + 0.01)
+document.getElementById('btnPlus5').onclick = () => render(current + 5)
 document.getElementById('btnRandom').onclick = () => render(Math.round(Math.random() * 10000) / 100)
-document.getElementById('btnDecimal').onclick = () => render(current < 90 ? 92.25 : 85.5)
+document.querySelectorAll('[data-case]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const [from, to] = btn.dataset.case.split(',')
+    runCase(Number(from), Number(to))
+  })
+})
 slider.addEventListener('input', (e) => render(Number(e.target.value)))
 document.getElementById('chkReduce').addEventListener('change', () => { buildVariant(); render(current) })
 
