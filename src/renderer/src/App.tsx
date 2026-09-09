@@ -20,12 +20,13 @@ export default function App(): React.JSX.Element {
 
   // 「在树中打开」（Task 5 日记深化接线）：定位 Diary/<date> 计划并切回工作台。
   // 复用搜索回溯定位 locate（expandTo → select → open → 滚动），不新建并行定位路径；
-  // 定位前先 refreshAll：diary:ensure 直写磁盘不发 plan-changed 事件，树可能是日记创建前的旧快照
+  // 定位前定向双刷新（评审 Important-1：refreshAll 清空全树会震树，展开组 spinner 常亮，改用不震树的定向刷新）：
+  //   loadChildren('') 补日记根节点、loadChildren('Diary') 补今日页节点（diary:ensure 直写磁盘不发 plan-changed 事件，树可能是旧快照；
+  //   expandTo 只刷未加载层，补不了已加载层的 stale，故须在 locate 前显式刷这两层）
   const openInTree = (date: string): void => {
     setView('workspace')
-    void useTreeStore
-      .getState()
-      .refreshAll()
+    const tree = useTreeStore.getState()
+    void Promise.all([tree.loadChildren(''), tree.loadChildren('Diary')])
       .catch(() => undefined) // 刷新失败不阻断定位：计划仍会打开，最多树高亮缺席
       .then(() => {
         void useSearchStore.getState().locate({ scope: 'plan', path: `Diary/${date}`, snippet: '', matched_field: 'path' })
