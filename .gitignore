@@ -11,6 +11,9 @@ output/
 *.log
 logs/
 
+# 迁移脚本打包产物（源为 scripts/migrate-md-library.ts）
+scripts/migrate-md-library.mjs
+
 # 系统文件
 .DS_Store
 Thumbs.db
