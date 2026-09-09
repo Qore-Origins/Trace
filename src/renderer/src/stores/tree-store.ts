@@ -127,11 +127,30 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   },
 
   removePlan: async (path) => {
-    await invoke('storage:deletePlan', { path, confirmed: true })
+    // 先关闭被删子树内打开的计划：删除成功会 emit plan-changed(被删路径)，
+    // 若 currentPath 仍指向它，订阅会静默重拉 open() → 读已删文件 → 误报「目标位置不存在」
+    const plan = usePlanStore.getState()
+    if (plan.currentPath && (plan.currentPath === path || plan.currentPath.startsWith(path + '/'))) {
+      plan.close()
+    }
+    try {
+      await invoke('storage:deletePlan', { path, confirmed: true })
+    } catch (e) {
+      // 删除失败必须提示（此前 onOk 静默吞错，文件被占用/已被外部删除时用户毫无反馈）
+      message.error(e instanceof ClientError ? e.message : i18n.t('errors.deleteFailed'))
+      return
+    }
+    // 清理被删子树残留状态：expandedKeys/childrenMap/loaded 中的旧键
+    // （否则同名重建文件夹后，expandedKeys 残留导致其意外自动展开、childrenMap 残留脏数据）
+    const under = (k: string): boolean => k === path || k.startsWith(path + '/')
+    const childrenMap: TreeState['childrenMap'] = {}
+    for (const [k, v] of Object.entries(get().childrenMap)) if (!under(k)) childrenMap[k] = v
+    const loaded: TreeState['loaded'] = {}
+    for (const [k, v] of Object.entries(get().loaded)) if (!under(k)) loaded[k] = v
+    set({ expandedKeys: get().expandedKeys.filter((k) => !under(k)), childrenMap, loaded })
     await refreshAround(set, get, path)
     if (get().selectedPath === path || get().selectedPath?.startsWith(path + '/')) {
       get().select(null)
-      usePlanStore.getState().close()
     }
   },
 

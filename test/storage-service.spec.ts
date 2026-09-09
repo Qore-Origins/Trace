@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PlanRepository } from '../src/main/services/plan-repository'
 import { StorageService } from '../src/main/services/storage-service'
+import { bus } from '../src/main/services/event-bus'
 import { TraceError, ERR } from '../src/shared/errors'
 import type { PlanDocument, Component } from '../src/shared/plan-types'
 
@@ -94,6 +95,17 @@ describe('renamePlan / deletePlan', () => {
     await service.createPlan('A', '子')
     await service.deletePlan('A', true)
     await expect(fs.access(join(root, 'A'))).rejects.toThrow()
+  })
+  it('删除成功发 plan-changed 事件（树刷新/索引重建依赖；2026-09-08 补）', async () => {
+    await service.createPlan('', 'A')
+    const events: string[] = []
+    const off = bus.on('trace:plan-changed', (p) => events.push(p.path))
+    try {
+      await service.deletePlan('A', true)
+    } finally {
+      off()
+    }
+    expect(events).toContain('A')
   })
 })
 

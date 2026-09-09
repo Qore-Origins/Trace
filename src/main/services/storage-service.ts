@@ -150,6 +150,8 @@ export class StorageService {
     }
     await this.repo.rmRecursive(root, rel)
     this.treeCache.invalidatePrefix(rel)
+    // 与其余结构变更一致：通知树刷新与搜索索引重建（否则索引残留已删计划的幽灵条目）
+    bus.emit('trace:plan-changed', { path: rel })
   }
 
   async movePlan(pathRel: string, targetParentRel: string): Promise<void> {
