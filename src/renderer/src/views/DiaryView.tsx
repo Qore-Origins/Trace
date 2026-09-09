@@ -94,6 +94,7 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
   useEffect(() => {
     let alive = true
     setLoading(true)
+    dayReq.current++ // 作废在途日摘要请求（响应晚到不得写入新月/新状态的预览态）
     setSelected(null)
     setDaySummary(null)
     void invoke('diary:ensure', {})
@@ -137,6 +138,8 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
       })
       .catch((e) => {
         if (dayReq.current !== id) return
+        // 读取失败降级空态（防预览列永久 spinner——selected 已置而 daySummary 恒 null 会死等）；toast 说明原因
+        setDaySummary({ date, components: [] })
         message.error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'))
       })
   }
