@@ -458,7 +458,11 @@ function MoodCard({ comp, index, total }: { comp: Component; index: number; tota
         onChange={(e) => { validateNoteText(e.target.value, t('cards.moodLabel')); patchComponent(comp.id, (pl) => { (pl as MoodPayload).text = e.target.value }) }} />
       <div className="mood-meta">
         <input type="date" className="mood-date" value={p.mood_date}
-          onChange={(e) => { if (e.target.value) patchComponent(comp.id, (pl) => { (pl as MoodPayload).mood_date = e.target.value }) }} />
+          onChange={(e) => {
+            // 清空=回退今天（mood_date 契约必填；空值 guard 导致受控回弹——2026-09-09 ledger 此项）
+            const next = e.target.value || todayDateStr()
+            patchComponent(comp.id, (pl) => { (pl as MoodPayload).mood_date = next })
+          }} />
         <span>{p.created_at.slice(0, 10)}</span>
       </div>
     </CardShell>
