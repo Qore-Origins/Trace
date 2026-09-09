@@ -110,4 +110,4 @@ npm config set registry https://registry.npmmirror.com
 
 ## 许可
 
-UNLICENSED（私有项目）。署名：Copyright (c) 2026 Qore
+[MIT](LICENSE)。署名：Copyright (c) 2026 Qore
