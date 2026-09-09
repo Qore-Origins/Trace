@@ -26,7 +26,13 @@ const NOTE_PREVIEW_LEN = 60
 const TEMPLATE_HEADING_SIZE = 18
 const TEMPLATE_MOOD_SCORE = 50
 
-const repo = new PlanRepository()
+// 默认自建（测试/未注入环境）；主装配处经 setDiaryRepo 注入共享实例——diary 自写事件才能被
+// watch.markInternalWrite 抑制，否则 chokidar 回声 → trace:fs-external-change 外部变更误报（评审 F1）
+let repo: PlanRepository = new PlanRepository()
+
+export function setDiaryRepo(r: PlanRepository): void {
+  repo = r
+}
 
 // 日记根绝对路径；幂等（recursive mkdir 已存在无副作用，不触碰已有内容）
 export async function ensureDiaryRoot(planRoot: string): Promise<string> {

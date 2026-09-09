@@ -7,6 +7,7 @@ import { AppService } from './services/app-service'
 import { WatchService } from './services/watch-service'
 import { TransferService } from './services/transfer-service'
 import { SearchService } from './services/search-service'
+import { setDiaryRepo } from './services/diary-service'
 import { registerIpc } from './ipc/register'
 import { bus } from './services/event-bus'
 
@@ -22,6 +23,7 @@ const SECURITY_BASE = {
 const repo = new PlanRepository({
   onInternalWrite: (abs) => watch.markInternalWrite(abs)
 })
+setDiaryRepo(repo) // diary 自写事件同样经 markInternalWrite 抑制（评审 F1：防外部变更误报）
 const config = new ConfigService(app.getPath('userData'), repo)
 const storage = new StorageService(repo)
 const watch = new WatchService(storage.treeCache)
