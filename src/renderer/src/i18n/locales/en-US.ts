@@ -120,6 +120,9 @@ const enUS: typeof zhCN = {
     noteDone: 'Done',
     noteEdit: 'Edit (Markdown)',
     noteMdHint: 'Markdown: **bold** `code` - list [link](url)',
+    moodLabel: 'Mood',
+    moodPlaceholder: 'How do you feel today?…',
+    headingPlaceholder: 'Title…',
     unknownComponent: '⚠ Unknown component type "{{type}}" — content preserved as-is, awaiting a newer app version.'
   },
   content: {
@@ -137,6 +140,9 @@ const enUS: typeof zhCN = {
     reloadCurrent: 'Reload current plan',
     insertComponent: 'Insert component',
     noteShort: 'Note',
+    insertMood: 'Mood today',
+    insertHeading: 'Heading',
+    insertCustom: 'Custom',
     inserted: 'Inserted {{label}}',
     componentFallback: 'component',
     dueDateLabel: 'Due date',

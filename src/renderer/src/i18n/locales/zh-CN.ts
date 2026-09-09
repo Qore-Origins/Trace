@@ -117,6 +117,9 @@ const zhCN = {
     noteDone: '完成',
     noteEdit: '编辑（Markdown）',
     noteMdHint: '支持 Markdown：**粗体** `代码` - 列表 [链接](url)',
+    moodLabel: '心情',
+    moodPlaceholder: '今天的心情怎么样？…',
+    headingPlaceholder: '标题…',
     unknownComponent: '⚠ 未知组件类型「{{type}}」——内容已原样保留，等待新版本应用读取。'
   },
   content: {
@@ -134,6 +137,9 @@ const zhCN = {
     reloadCurrent: '重新加载当前计划',
     insertComponent: '插入组件',
     noteShort: '注释',
+    insertMood: '今日心情',
+    insertHeading: '标题',
+    insertCustom: '自定义组件',
     inserted: '已插入{{label}}',
     componentFallback: '组件',
     dueDateLabel: '截止日期',

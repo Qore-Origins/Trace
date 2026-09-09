@@ -2,13 +2,13 @@
 // 组件卡拖拽排序（2026-09-07，@dnd-kit 同款 AI Resource Hub）：手柄发起（distance 8 防误触），
 // 拖动中被拖卡放大投影置顶、其余卡 transform 实时让位，落点 arrayMove 语义换序
 import { useState } from 'react'
-import { Input, Checkbox, Button } from 'antd'
+import { Input, Checkbox, Button, InputNumber, Slider } from 'antd'
 import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, EditOutlined, HolderOutlined } from '@ant-design/icons'
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { Component, MultiPlanPayload, NotePayload, SinglePlanPayload, TaskDetailPayload, TaskItem, TaskListPayload } from '@shared/plan-types'
-import { uuid32, validateNoteText, validateDueDate, todayDateStr } from '@shared/validation'
+import type { Component, HeadingPayload, MoodPayload, MultiPlanPayload, NotePayload, SinglePlanPayload, TaskDetailPayload, TaskItem, TaskListPayload } from '@shared/plan-types'
+import { uuid32, validateNoteText, validateDueDate, validateScore, todayDateStr } from '@shared/validation'
 import { isOverdue } from '@shared/task-state'
 import { usePlanMutations } from '../stores/plan-store'
 import { useTranslation } from '../i18n'
@@ -33,7 +33,11 @@ function CardShell(props: {
           ? t('cards.kindTaskList')
           : props.kind === 'task_detail'
             ? t('cards.kindTaskDetail')
-            : t('cards.kindNote')
+            : props.kind === 'mood'
+              ? t('cards.moodLabel')
+              : props.kind === 'heading'
+                ? t('content.insertHeading')
+                : t('cards.kindNote')
   const { moveComponent, removeComponent } = usePlanMutations()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.componentId })
   return (
@@ -413,6 +417,72 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
   )
 }
 
+// ---------- 今日心情（日记向：大数字+描述+日期，评分 0-100 可小数） ----------
+// 心情色阶：≤30 冷灰蓝 → ≥80 暖橙（线性）
+export function scoreColor(score: number): string {
+  const t = Math.max(0, Math.min(1, (score - 30) / 50))
+  const from = [96, 130, 182] // 冷
+  const to = [255, 122, 69] // 暖
+  const mix = from.map((c, i) => Math.round(c + (to[i] - c) * t))
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`
+}
+
+function MoodCard({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
+  const { t } = useTranslation()
+  const { patchComponent } = usePlanMutations()
+  const p = comp.payload as MoodPayload
+  return (
+    <CardShell kind="mood" componentId={comp.id} index={index} total={total} extraClass="mood">
+      <div className="mood-row">
+        <div className="mood-score" style={{ color: scoreColor(p.score) }}>{p.score}</div>
+        <InputNumber
+          min={0} max={100} step={1} precision={2}
+          className="mood-input"
+          value={p.score}
+          onChange={(v) => {
+            try {
+              patchComponent(comp.id, (payload) => { (payload as MoodPayload).score = validateScore(v) })
+            } catch {
+              // 非法输入静默拒绝（不改 store）
+            }
+          }}
+        />
+      </div>
+      <Input.TextArea variant="borderless" autoSize placeholder={t('cards.moodPlaceholder')}
+        value={p.text}
+        onChange={(e) => { validateNoteText(e.target.value, t('cards.moodLabel')); patchComponent(comp.id, (pl) => { (pl as MoodPayload).text = e.target.value }) }} />
+      <div className="mood-meta">
+        <input type="date" className="mood-date" value={p.mood_date}
+          onChange={(e) => { if (e.target.value) patchComponent(comp.id, (pl) => { (pl as MoodPayload).mood_date = e.target.value }) }} />
+        <span>{p.created_at.slice(0, 10)}</span>
+      </div>
+    </CardShell>
+  )
+}
+
+// ---------- 标题（单行纯标题，字号滑杆 14-32 实时预览） ----------
+function HeadingCard({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
+  const { t } = useTranslation()
+  const { patchComponent } = usePlanMutations()
+  const p = comp.payload as HeadingPayload
+  // 与 TaskDetailCard.patch 同款包装：patchComponent 收 ComponentPayload 宽类型，此处夹窄为 HeadingPayload
+  const replace = (fn: (pl: HeadingPayload) => void): void => patchComponent(comp.id, (payload) => fn(payload as HeadingPayload))
+  return (
+    <CardShell kind="heading" componentId={comp.id} index={index} total={total} extraClass="heading">
+      <Input variant="borderless" placeholder={t('cards.headingPlaceholder')} className="heading-input"
+        style={{ fontSize: p.size }}
+        maxLength={200}
+        value={p.title}
+        onChange={(e) => replace((pl) => { pl.title = e.target.value })}
+      />
+      <div className="heading-tools">
+        <Slider min={14} max={32} value={p.size} onChange={(v) => replace((pl) => { pl.size = v })} />
+        <span className="heading-size">{p.size}px</span>
+      </div>
+    </CardShell>
+  )
+}
+
 // ---------- 降级占位（契约向前兼容：未知 type 不崩不丢） ----------
 function FallbackBlock({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
   const { t } = useTranslation()
@@ -454,6 +524,11 @@ export function ComponentRenderer({ components, today }: { components: Component
               return <TaskDetailCard key={c.id} comp={c} index={i} total={components.length} today={today} />
             case 'note':
               return <NoteCard key={c.id} comp={c} index={i} total={components.length} />
+            case 'mood':
+              return <MoodCard key={c.id} comp={c} index={i} total={components.length} />
+            case 'heading':
+              return <HeadingCard key={c.id} comp={c} index={i} total={components.length} />
+            // case 'custom': CustomCard 属 Task 5（MdContent 抽取后）；此前 custom 走 default 降级占位（数据不丢）
             default:
               return <FallbackBlock key={c.id} comp={c} index={i} total={components.length} />
           }

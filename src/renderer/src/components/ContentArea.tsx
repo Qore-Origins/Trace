@@ -25,8 +25,14 @@ function newComponent(type: ComponentType): Component {
       return { id, type, payload: { title: '', status: 'not_started', created_at: now } }
     case 'note':
       return { id, type, payload: { content: '', created_at: now } }
+    case 'mood':
+      return { id, type, payload: { score: 50, text: '', mood_date: todayStr(), created_at: now } }
+    case 'heading':
+      return { id, type, payload: { title: '', size: 18 } }
+    case 'custom':
+      return { id, type, payload: { content: '' } }
     default:
-      // 契约已扩（mood/heading/custom）但工厂 default payload 属后续任务；UI 菜单未含新类型前此路径不可达，fail-fast 而非静默造卡
+      // 契约 8 类已全部有工厂 case，此分支不可达；fail-fast 守卫未来新增类型（而非静默造卡）
       throw new TraceError(ERR.INTERNAL, `未知组件类型：${type}`)
   }
 }
@@ -50,7 +56,10 @@ export default function ContentArea(): React.JSX.Element {
     { key: 'multi_plan', label: t('cards.kindMultiPlan') },
     { key: 'task_list', label: t('cards.kindTaskList') },
     { key: 'task_detail', label: t('cards.kindTaskDetail') },
-    { key: 'note', label: t('content.noteShort') }
+    { key: 'note', label: t('content.noteShort') },
+    { key: 'mood', label: t('content.insertMood') },
+    { key: 'heading', label: t('content.insertHeading') },
+    { key: 'custom', label: t('content.insertCustom') }
   ]
 
   // 文件夹容器视图：列出子项，点击进入

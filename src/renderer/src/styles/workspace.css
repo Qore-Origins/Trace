@@ -273,6 +273,19 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .note-actions-end .ant-btn { color: var(--text-3); }
 .note-hint { font-size: 11px; color: var(--text-4); }
 
+/* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
+.card.mood { border-left: 4px solid var(--split); }
+.mood-row { display: flex; align-items: center; gap: 12px; }
+.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+.mood-input { width: 120px; }
+.mood-meta { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--text-4); margin-top: 4px; }
+.mood-date { font: inherit; border: none; background: transparent; color: var(--text-3); }
+.card.heading { padding-top: 4px; padding-bottom: 4px; }
+.heading-input { font-weight: 600; color: var(--text-1); }
+.heading-tools { display: flex; align-items: center; gap: 8px; }
+.heading-tools .ant-slider { flex: 1; }
+.heading-size { font-size: 12px; color: var(--text-4); min-width: 36px; text-align: right; }
+
 /* 文件夹容器视图 */
 .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .folder-item { display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; }
