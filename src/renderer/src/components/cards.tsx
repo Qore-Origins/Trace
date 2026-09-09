@@ -1,8 +1,9 @@
 // 计划单片组件卡（前端详细设计 §3.3-3.5 / LLD §2.3）：渲染即编辑；payload 直改 + 防抖保存
 // 组件卡拖拽排序（2026-09-07，@dnd-kit 同款 AI Resource Hub）：手柄发起（distance 8 防误触），
 // 拖动中被拖卡放大投影置顶、其余卡 transform 实时让位，落点 arrayMove 语义换序
-import { Input, Checkbox } from 'antd'
-import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, HolderOutlined } from '@ant-design/icons'
+import { useState } from 'react'
+import { Input, Checkbox, Button } from 'antd'
+import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, EditOutlined, HolderOutlined } from '@ant-design/icons'
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -11,6 +12,7 @@ import { uuid32, validateNoteText } from '@shared/validation'
 import { isOverdue } from '@shared/task-state'
 import { usePlanMutations } from '../stores/plan-store'
 import { useTranslation } from '../i18n'
+import { NoteMarkdown } from './note-md'
 
 function CardShell(props: {
   kind: string
@@ -349,24 +351,49 @@ function TaskDetailCard({ comp, index, total, today }: { comp: Component; index:
 }
 
 // ---------- 注释旁批（§3.5） ----------
+// 双态：有内容默认预览（Markdown 子集渲染，含代码块）；空内容/切编辑 → textarea 编辑
 function NoteCard({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
   const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as NotePayload
+  const [editing, setEditing] = useState(p.content.trim() === '')
+  const openLink = (url: string): void => {
+    if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer')
+    // 相对/无协议链接仅拦截内嵌导航（防止 Electron 页面跳走），不打开
+  }
   return (
     <CardShell kind="note" componentId={comp.id} index={index} total={total} extraClass="note">
-      <Input.TextArea
-        variant="borderless"
-        placeholder={t('cards.notePlaceholder')}
-        autoSize
-        value={p.content}
-        onChange={(e) => {
-          validateNoteText(e.target.value, t('cards.noteLabel'))
-          patchComponent(comp.id, (payload) => {
-            ;(payload as NotePayload).content = e.target.value
-          })
-        }}
-      />
+      {editing ? (
+        <>
+          <Input.TextArea
+            variant="borderless"
+            placeholder={t('cards.notePlaceholder')}
+            autoSize
+            value={p.content}
+            onChange={(e) => {
+              validateNoteText(e.target.value, t('cards.noteLabel'))
+              patchComponent(comp.id, (payload) => {
+                ;(payload as NotePayload).content = e.target.value
+              })
+            }}
+          />
+          <div className="note-actions">
+            <Button size="small" type="text" onClick={() => setEditing(false)}>
+              {t('cards.noteDone')}
+            </Button>
+            <span className="note-hint">{t('cards.noteMdHint')}</span>
+          </div>
+        </>
+      ) : (
+        <>
+          <NoteMarkdown content={p.content} onLink={openLink} />
+          <div className="note-actions note-actions-end">
+            <Button size="small" type="text" icon={<EditOutlined />} onClick={() => setEditing(true)}>
+              {t('cards.noteEdit')}
+            </Button>
+          </div>
+        </>
+      )}
       <div className="note-time">{p.created_at.slice(0, 10)}</div>
     </CardShell>
   )

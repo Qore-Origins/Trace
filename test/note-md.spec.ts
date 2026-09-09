@@ -1,0 +1,63 @@
+// NoteMarkdown 解析器单测（renderer 纯函数；React 节点仅断言类型/标签，不渲染）
+import { describe, expect, it } from 'vitest'
+import { parseBlocks, renderText } from '../src/renderer/src/components/note-md'
+
+describe('note-md parseBlocks', () => {
+  it('代码块：闭合围栏转为 code 块，内容原样', () => {
+    const blocks = parseBlocks('```python\ndef main():\n    print(1)\n```')
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].kind).toBe('code')
+    expect((blocks[0] as { code: string }).code).toBe('def main():\n    print(1)')
+    expect((blocks[0] as { lang: string }).lang).toBe('python')
+  })
+
+  it('代码块：未闭合围栏吞到文末', () => {
+    const blocks = parseBlocks('```\na\nb\n')
+    expect(blocks).toHaveLength(1)
+    expect((blocks[0] as { code: string }).code).toBe('a\nb')
+  })
+
+  it('代码块不残留围栏文本（迁移保底注释核心场景）', () => {
+    const text = parseBlocks('```python\ndef main():\n    pass\n```').map((b) => (b.kind === 'code' ? b.code : '')).join('')
+    expect(text).not.toContain('```')
+  })
+
+  it('段落：空行分隔，行内空格保留', () => {
+    const blocks = parseBlocks('**粗体** 你好\n第二行\n\n第三段')
+    expect(blocks.map((b) => b.kind)).toEqual(['para', 'para'])
+  })
+
+  it('无序/有序列表聚合', () => {
+    const ul = parseBlocks('- 甲\n- 乙\n- 丙')
+    expect(ul).toHaveLength(1)
+    expect((ul[0] as { kind: string; items: string[] }).kind).toBe('list')
+    expect((ul[0] as { items: string[] }).items).toEqual(['甲', '乙', '丙'])
+
+    const ol = parseBlocks('1. 一\n2. 二')
+    expect((ol[0] as { ordered: boolean }).ordered).toBe(true)
+  })
+})
+
+describe('note-md renderText（React 片段结构）', () => {
+  it('粗体/行内码', () => {
+    const nodes = renderText('这是**很重**与`c1 := 2`代码', 'k')
+    expect(nodes.map((n) => (typeof n === 'object' ? (n as { type: unknown }).type : '»»' + n))).toEqual([
+      '»»这是',
+      'strong',
+      '»»与',
+      'code',
+      '»»代码'
+    ])
+  })
+
+  it('链接文本与目标保留', () => {
+    const nodes = renderText('看[这里](https://a.b/c)', 'k')
+    const a = nodes.find((n) => typeof n === 'object' && (n as { type: unknown }).type === 'a') as { props: { href: string; children: string } }
+    expect(a.props.href).toBe('https://a.b/c')
+    expect(a.props.children).toBe('这里')
+  })
+
+  it('普通文本原样、无 React 实体', () => {
+    expect(renderText('a <b> & c', 'k').join('')).toBe('a <b> & c')
+  })
+})
