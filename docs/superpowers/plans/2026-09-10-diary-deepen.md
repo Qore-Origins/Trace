@@ -206,10 +206,9 @@ git commit -m "feat(diary): DiaryView 月历/时间线/统计/预览（IPC 取�
 ### Task 5: 顶栏「日记」导航 + 树特殊根标签 + 「在树中打开」接线
 
 **Files:**
-- Modify: `src/renderer/src/views/WorkspaceView.tsx`（SettingsModal 区域外：顶栏 nav 区块、「日记」钮 setView('diary')、view==='diary' 时隐藏 content 区切换）
+- Modify: `src/renderer/src/views/WorkspaceView.tsx` 或 TopBar（顶栏 nav 区块：「日记」钮 setView('diary')；**路由采用 Task 4 定案的 App 级 view===diary 切换**——本任务只加入口按钮与激活态）
 - Modify: `src/renderer/src/components/PlanTreePanel.tsx`（Diary 根特殊标签：节点路径===`Diary` 或显示名映射——按现有 tree-node 渲染加判断，显示 `t('diary.name')` + 蓝标 dot）
-- Modify: `src/renderer/src/i18n/locales/zh-CN.ts` + `en-US.ts`（`diary: { name: '日记'/Diary, nav: '日记', monthLabel, emptyMonth, emptyDay, openInTree, summaryLabel, moodLabel, componentLabel }`——对齐 demo 文案）
-- Modify: `src/renderer/src/components/ContentArea.tsx` 或树 store（定位开卡——复用搜索回溯动作：查 plan-store 现有 select/openPlan 方法后接「在树中打开」）
+- Modify: `src/renderer/src/i18n/locales/zh-CN.ts` + `en-US.ts`（补 Task 4 未含树标签键——Task 4 已含 nav/统计/预览系文案）
 
 **Interfaces:**
 - Consumes: `DiaryView` 的 `onOpenInTree(date: string)`——实现为：树定位并打开该日计划（现有回溯树选择 action）
