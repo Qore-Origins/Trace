@@ -45,13 +45,39 @@ describe('mood-roll-machine', () => {
     expect(commit.transitions[3]).toEqual({ from: 9, to: 0, phys: CENTER + 10, rows: 120, rebuildCol: false })
   })
 
-  it('结构缩减：100 → 99.9 rebuild（瞬时重建，唯一无动画路径）', () => {
+  it('结构缩减：100 → 99 shrink（共同大结构滚动 100→099，完成后移除前导列；不再瞬时重建）', () => {
+    const st = initRollState('100')
+    const { commit, state } = stepRoll(st, 99)
+    expect(commit.action).toBe('shrink')
+    expect(commit.buildStr).toBe('')
+    expect(commit.removeCols).toBe(1)
+    // 100 → 099：百位 1→0，十位/个位 0→9（反向绕行各 -1）
+    expect(commit.transitions[0]).toEqual({ from: 1, to: 0, phys: CENTER, rows: 120, rebuildCol: false })
+    expect(commit.transitions[1]).toEqual({ from: 0, to: 9, phys: CENTER - 1, rows: 120, rebuildCol: false })
+    expect(commit.transitions[2]).toEqual({ from: 0, to: 9, phys: CENTER - 1, rows: 120, rebuildCol: false })
+    expect(state.str).toBe('99')
+    expect(state.cols).toHaveLength(2)
+  })
+
+  it('结构缩减+小数位保留：100 → 99.9 shrink（先补出 100.0 起点再滚，removeCols=1）', () => {
     const st = initRollState('100')
     const { commit, state } = stepRoll(st, 99.9)
-    expect(commit.action).toBe('rebuild')
-    expect(commit.buildStr).toBe('99.9')
-    expect(commit.transitions).toHaveLength(0)
+    expect(commit.action).toBe('shrink')
+    expect(commit.buildStr).toBe('100.0')
+    expect(commit.requireReflow).toBe(true)
+    expect(commit.removeCols).toBe(1)
+    expect(commit.transitions).toHaveLength(4)
     expect(state.str).toBe('99.9')
+    expect(state.cols).toHaveLength(3)
+  })
+
+  it('shrink 链式：shrink 后值再变走 roll（状态列数已对齐）', () => {
+    let st = initRollState('100')
+    ;({ state: st } = stepRoll(st, 99))
+    const { commit, state: st2 } = stepRoll(st, 98)
+    expect(commit.action).toBe('roll')
+    expect(st2.str).toBe('98')
+    expect(st2.cols).toHaveLength(2)
   })
 
   it('同值 noop：显示 45.30 时目标 45.3 规范等价，不重复滚动', () => {

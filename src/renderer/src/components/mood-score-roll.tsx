@@ -6,7 +6,6 @@
 //   - insert（结构增长）需先 force reflow 提交起点样式，否则新建列 transition 不触发
 import { useEffect, useRef, useState } from 'react'
 import {
-  ROLL_INIT_ROWS,
   initRollState,
   stepRoll,
   type ColState,
@@ -16,6 +15,7 @@ import {
 
 const LINE = 32 // 行高（workspace.css .mood-score-roll 行高 32px）
 const BLOCKS = 12 // 初始 0-9 块数（与机器 ROLL_INIT_ROWS 对应）
+const SHRINK_FINISH_MS = 300 // shrink 收尾：滚动（260ms）完成后延时移除前导列
 
 function appendBlock(strip: HTMLElement): void {
   const frag = document.createDocumentFragment()
@@ -51,33 +51,38 @@ function buildFrame(el: HTMLElement, str: string, cols: ColState[]): void {
 }
 
 function applyCommit(el: HTMLElement, commit: RollCommit): void {
-  let builtRows: number[] | null = null
-  if (commit.action === 'rebuild' || commit.action === 'insert') {
-    buildFrame(el, commit.buildStr, commit.startCols)
-    builtRows = commit.startCols.map(() => ROLL_INIT_ROWS)
-    if (commit.requireReflow) void el.offsetWidth // 新列过渡起点提交（插入列 0→x 才能起 transition）
+  if (commit.action === 'insert' || commit.action === 'shrink') {
+    if (commit.buildStr) {
+      buildFrame(el, commit.buildStr, commit.startCols)
+      if (commit.requireReflow) void el.offsetWidth // 新列过渡起点提交（插入列 0→x 才能起 transition）
+    }
   }
-  if (commit.transitions.length === 0) return
-  const cols = el.querySelectorAll('.roll-col')
-  builtRows = builtRows ?? new Array(cols.length).fill(ROLL_INIT_ROWS)
   commit.transitions.forEach((tr, i) => {
-    const strip = cols[i].querySelector('.roll-strip') as HTMLElement
+    const col = el.querySelectorAll('.roll-col')[i]
+    const strip = col.querySelector('.roll-strip') as HTMLElement
     if (tr.rebuildCol) {
       // 顶部溢出兜底：整列重建居中（机器层判定，需 50+ 次连续向下绕行，实际不可达）
       strip.replaceChildren()
       for (let b = 0; b < BLOCKS; b++) appendBlock(strip)
-      builtRows![i] = ROLL_INIT_ROWS
-    } else if (tr.rows > builtRows![i]) {
-      appendBlock(strip)
-      builtRows![i] += 10
+    }
+    const have = strip.children.length
+    if (tr.rows > have) {
+      for (let b = 0; b < (tr.rows - have) / 10; b++) appendBlock(strip)
     }
     strip.style.transform = `translateY(-${tr.phys * LINE}px)`
   })
 }
 
+// 移除前端 n 个前导列（shrink 收尾：099 → 99 的列撤除）
+function removeLeadingCols(el: HTMLElement, count: number): void {
+  const cols = el.querySelectorAll('.roll-col')
+  for (let i = 0; i < count && i < cols.length; i++) cols[i].remove()
+}
+
 export function MoodScoreRoll({ value }: { value: number }): React.JSX.Element {
   const elRef = useRef<HTMLSpanElement | null>(null)
   const stRef = useRef<RollState | null>(null)
+  const shrinkRef = useRef<{ timer: number; count: number } | null>(null) // shrink 收尾（延时移除前导列）
   const [reduced] = useState(
     () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   )
@@ -91,6 +96,10 @@ export function MoodScoreRoll({ value }: { value: number }): React.JSX.Element {
     buildFrame(el, init.str, init.cols)
     return () => {
       stRef.current = null
+      if (shrinkRef.current) {
+        window.clearTimeout(shrinkRef.current.timer)
+        shrinkRef.current = null
+      }
       el.innerHTML = ''
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,10 +111,27 @@ export function MoodScoreRoll({ value }: { value: number }): React.JSX.Element {
     const el = elRef.current
     const st = stRef.current
     if (!el || !st) return
+    // shrink 收尾被新动作打断：先延迟移除计划并立即移除前导列（与新动作列数对齐）
+    const pending = shrinkRef.current
+    if (pending) {
+      window.clearTimeout(pending.timer)
+      shrinkRef.current = null
+      removeLeadingCols(el, pending.count)
+    }
     const { commit, state } = stepRoll(st, value)
     if (commit.action === 'noop') return
     applyCommit(el, commit)
     stRef.current = state
+    if (commit.action === 'shrink' && commit.removeCols > 0) {
+      const count = commit.removeCols
+      shrinkRef.current = {
+        count,
+        timer: window.setTimeout(() => {
+          shrinkRef.current = null
+          removeLeadingCols(el, count)
+        }, SHRINK_FINISH_MS)
+      }
+    }
   }, [value, reduced])
 
   if (reduced) return <span>{value}</span>

@@ -7,7 +7,8 @@
 //   - 每列记录物理位置 phys（绝对索引），短路径绕行（差 >5 反向，0↔9 只滚 1 格）——
 //     修复"进位停在 0 复制槽、链式下一次滚动空跳"的历史瞬变（旧实现按数字反推索引）
 //   - 结构增长（新增列）→ insert：先建补齐起点（新列 0）再滚到目标；
-//     结构缩减（整数位变少）→ rebuild：瞬时重建（机械计数器无"缩短"，唯一无动画路径）
+//     结构缩减（整数位变少）→ shrink：在共同大结构上滚动（toFilled 前导补 0，100→099），
+//     滚动完成后移除多余前导列——机械计数器无"缩短"，任何值变化都有滚动
 //   - 值先 norm（±2dp）防浮点串化进入格式决策
 
 const BLOCKS = 12 // 初始 0-9 块数
@@ -28,14 +29,15 @@ export interface ColumnRoll {
   rebuildCol: boolean // 顶部溢出兜底：整列重建居中（需 50+ 次连续向下绕行，实际不可达）
 }
 
-export type RollAction = 'noop' | 'rebuild' | 'roll' | 'insert'
+export type RollAction = 'noop' | 'roll' | 'insert' | 'shrink'
 
 export interface RollCommit {
   action: RollAction
-  buildStr: string // rebuild/insert 时需重建的串（rebuild=toStr 瞬时；insert=补齐起点）
+  buildStr: string // insert/shrink 需要重建起点时（如 100→99.9 需先补出 .0）；其余空
   startCols: ColState[] // 重建时各列的定位（phys 初始索引）
-  transitions: ColumnRoll[] // 逐列滚动（rebuild 空）
-  requireReflow: boolean // insert：DOM 需先强制 reflow 提交起点样式再滚（新列过渡起点）
+  transitions: ColumnRoll[] // 逐列滚动（noop 空；shrink 含前导列 1→0 段）
+  removeCols: number // 仅 shrink：滚动完成后移除的前导列数（DOM 延时收尾）
+  requireReflow: boolean // 插入列需先强制 reflow 提交起点样式再滚（新列过渡起点）
 }
 
 export interface RollState {
@@ -121,14 +123,28 @@ export function stepRoll(state: RollState, toValue: number): { commit: RollCommi
   const fromStr = state.str
   const toStr = fmtVal(v, Math.max(decCount(fromStr), decCount(String(v))))
   if (toStr === fromStr) {
-    return { commit: { action: 'noop', buildStr: '', startCols: [], transitions: [], requireReflow: false }, state }
+    return { commit: { action: 'noop', buildStr: '', startCols: [], transitions: [], removeCols: 0, requireReflow: false }, state }
   }
   if (intLen(fromStr) > intLen(toStr)) {
-    // 结构缩减（100.0→99.9）：瞬时重建
-    const cols = buildCols(toStr)
+    // 结构缩减：在共同大结构上滚动（toStr 前导补 0），滚动后移除多余前导列
+    const dec = decCount(toStr)
+    const fromFilled = fmtPadded(fromStr, intLen(fromStr), dec) // '100' → '100.0'（dec 同时增长时）
+    const toFilled = fmtPadded(toStr, intLen(fromStr), dec) // '99.9' → '099.9'
+    const needBuild = fromFilled !== fromStr
+    const cols0 = needBuild ? buildCols(fromFilled) : state.cols
+    const r = rollPairs(fromFilled, toFilled, cols0)
+    const removeCols = intLen(fromStr) - intLen(toStr)
+    const { transitions, cols } = r
     return {
-      commit: { action: 'rebuild', buildStr: toStr, startCols: cols, transitions: [], requireReflow: false },
-      state: { str: toStr, sig: sigOf(toStr), cols }
+      commit: {
+        action: 'shrink',
+        buildStr: needBuild ? fromFilled : '',
+        startCols: needBuild ? cols0 : [],
+        transitions,
+        removeCols,
+        requireReflow: needBuild
+      },
+      state: { str: toStr, sig: sigOf(toStr), cols: cols.slice(removeCols) }
     }
   }
   const fromPadded = fmtPadded(fromStr, intLen(toStr), decCount(toStr))
@@ -136,7 +152,7 @@ export function stepRoll(state: RollState, toValue: number): { commit: RollCommi
     // 同结构：逐列滚
     const r = rollPairs(fromPadded, toStr, state.cols)
     return {
-      commit: { action: 'roll', buildStr: '', startCols: [], transitions: r.transitions, requireReflow: false },
+      commit: { action: 'roll', buildStr: '', startCols: [], transitions: r.transitions, removeCols: 0, requireReflow: false },
       state: { str: toStr, sig: sigOf(toStr), cols: r.cols }
     }
   }
@@ -144,7 +160,7 @@ export function stepRoll(state: RollState, toValue: number): { commit: RollCommi
   const startCols = buildCols(fromPadded)
   const r = rollPairs(fromPadded, toStr, startCols)
   return {
-    commit: { action: 'insert', buildStr: fromPadded, startCols, transitions: r.transitions, requireReflow: true },
+    commit: { action: 'insert', buildStr: fromPadded, startCols, transitions: r.transitions, removeCols: 0, requireReflow: true },
     state: { str: toStr, sig: sigOf(toStr), cols: r.cols }
   }
 }
