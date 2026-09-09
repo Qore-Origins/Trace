@@ -86,15 +86,20 @@ interface CustomPreset { id: string; name: string; content: string }
 - 删除预设：菜单条目 hover 显示删除钮；预设不重命名（第一版）
 - 快照语义：插入时复制 `content` 到新建 custom 卡（`source=预设名`）；改预设不影响已插入卡
 
-## 四、计划截止日期（due_date）
+## 四、截止日期（两级，用户澄清：组件级为重点）
 
-- 归属：`PlanDocument` 级（计划=树节点的语义，BR-005），非 single_plan 卡；纯文件夹节点无此字段
-- UI（内容区计划头部，面包屑行下）：
-  - 未设置 →「＋ 截止日期」轻按钮
-  - 已设置 → 日期显示（点击可改 `input[type=date]`）+ 清除钮
-  - 过期（due_date < 今天）→ 红色警示文案
-- 保存链路：savePlan 原子写随文档；清空=置 undefined
-- 校验：`validateDueDate`（shared/validation：`YYYY-MM-DD` 格式 + 合法日期，拒绝空串）
+### 4.1 计划文档级（PlanDocument.due_date，2026-09-09 用户已确认实现）
+
+- `PlanDocument.due_date?: string`（'YYYY-MM-DD'）；计划=树节点语义（BR-005）；纯文件夹节点无此字段
+- UI（内容区计划头部）：未设置→「＋ 截止日期」轻按钮；已设置→日期可改+清除钮；过期红警示
+- 保存链路：savePlan 随文档原子写；清空=删除键；校验：`validateDueDate`（已实现并提交 c3f7ce9/5f35f9f）
+
+### 4.2 计划组件级（single_plan.due_date，Task 2b——用户真实意图：**每一个计划文件中的每一个计划组件**）
+
+- `SinglePlanPayload.due_date?: string`（'YYYY-MM-DD'；undefined=未设置；新卡默认无）
+- UI（SinglePlanCard 摘要下方）：`input[type=date]` 可设置/清空（清空=删除键）；过期（<今天）红字 + `cards.overdue` 文案（键已存在）
+- 校验复用 `validateDueDate`；`todayDateStr()` 移入 shared/validation（ContentArea 已有本地 todayStr 不动）
+- 测试：validation.spec 增 todayDateStr 格式用例；CDP 设置/清除/过期红三态验证
 
 ## 五、搜索与计数
 

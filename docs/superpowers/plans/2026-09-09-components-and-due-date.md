@@ -201,6 +201,98 @@ git commit -m "feat(plan): 计划截止日期——计划头部设置/清除/过
 
 ---
 
+### Task 2b: single_plan 组件级截止日期（用户澄清：每一个计划组件都要有，可选可清空）
+
+**Files:**
+- Modify: `src/shared/plan-types.ts`（`SinglePlanPayload` 加 `due_date?: string`）
+- Modify: `src/shared/validation.ts`（追加 `todayDateStr()`：本地日期 'YYYY-MM-DD'）
+- Modify: `src/renderer/src/components/cards.tsx`（SinglePlanCard 摘要下方加日期行：设置/清除/过期红）
+- Modify: `src/renderer/src/styles/workspace.css`（`.single-due` 系列样式）
+- Test: `test/validation.spec.ts`（追加 todayDateStr 用例）
+
+**Interfaces:**
+- Consumes: `validateDueDate`（Task 1，已提交）、`usePlanMutations().patchComponent`（现有）、`cards.overdue` i18n（已存在）
+- Produces: `SinglePlanPayload.due_date?: string`；`todayDateStr(): string`（shared/validation，格式 `YYYY-MM-DD`）
+
+- [ ] **Step 1: 失败测试（validation.spec.ts 追加）**
+
+```ts
+import { todayDateStr, validateDueDate } from '../src/shared/validation'
+
+describe('todayDateStr', () => {
+  it('返回本地今天 YYYY-MM-DD 且可被 validateDueDate 通过', () => {
+    const s = todayDateStr()
+    expect(s).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(() => validateDueDate(s)).not.toThrow()
+  })
+})
+```
+
+（Run: `npx vitest run test/validation.spec.ts` → FAIL（todayDateStr 未定义））
+
+- [ ] **Step 2: 实现**
+
+```ts
+// validation.ts 追加
+// 本地今天（'YYYY-MM-DD'，组件卡日期默认值/过期判断共用）
+export function todayDateStr(): string {
+  const d = new Date()
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+```
+
+```ts
+// plan-types.ts SinglePlanPayload（title/summary/created_at 后追加）
+  due_date?: string // 'YYYY-MM-DD'；undefined=未设置（组件级截止日期，可选可清空）
+```
+
+```tsx
+// cards.tsx SinglePlanCard：summary div 之后、</CardShell> 之前插入
+      <div className="single-due">
+        <input
+          type="date"
+          className={`single-due-input${p.due_date && p.due_date < todayDateStr() ? ' overdue' : ''}`}
+          value={p.due_date ?? ''}
+          onChange={(e) => {
+            validateDueDate(e.target.value || undefined)
+            patchComponent(comp.id, (payload) => {
+              ;(payload as SinglePlanPayload).due_date = e.target.value || undefined // 清空=undefined
+            })
+          }}
+        />
+        {p.due_date && p.due_date < todayDateStr() && <span className="single-due-overdue">{t('cards.overdue')}</span>}
+      </div>
+```
+
+```tsx
+// cards.tsx imports 追加（validateDueDate 于现有 shared/validation import 行）
+// import { uuid32, validateNoteText, validateDueDate, todayDateStr } from '@shared/validation'
+```
+
+```css
+/* workspace.css 追加（置于 .single-due 系列） */
+.single-due { margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+.single-due-input { font-size: 12px; border: none; background: transparent; color: var(--text-3); font-family: inherit; padding: 0; }
+.single-due-input.overdue { color: #cf1322; }
+.single-due-overdue { font-size: 12px; color: #cf1322; }
+```
+
+- [ ] **Step 3: 验证**
+
+Run: `npx vitest run test/validation.spec.ts` → PASS（含 todayDateStr 新增）
+Run: `npm run typecheck && npm run test` → 0 错 / 104 用例全绿
+CDP（dev 清场 start；真实鼠标/Programmatic click 均可）：打开任意含 single_plan 的计划 → `.single-due-input` 存在默认空 → 设置今天 → 落盘断言 `plan.json` components[0].payload.due_date=今天 → 清除 → 断言键删除
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/shared/plan-types.ts src/shared/validation.ts test/validation.spec.ts src/renderer/src/components/cards.tsx src/renderer/src/styles/workspace.css
+git commit -m "feat(cards): 计划组件截止日期——single_plan 卡可设置/清除/过期警示"
+```
+
+---
+
 ### Task 3: 新组件契约 + 校验（TDD）
 
 **Files:**
