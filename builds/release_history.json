@@ -32,6 +32,36 @@
       "commit": "e1d6f10",
       "publishedAt": "2026-09-09T14:20:01Z",
       "url": "https://github.com/Qore-Origins/Trace/releases/tag/v0.9.0"
+    },
+    {
+      "platform": "Gitee",
+      "repo": "Qore/trace",
+      "tag": "v0.9.0",
+      "target": "main",
+      "title": "v0.9.0 — 溯源 Trace 公测版（Beta）",
+      "label": "None",
+      "isLatest": true,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.9.0.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_0.9.0_beta_20260909_01.exe",
+          "platform": "win32-x64",
+          "size": 123405967,
+          "sizeFormatted": "117.69 MB",
+          "sha256": "727A3D2659FD89CDE64993CB52946ADABEE636B5FDFD8A0668A4CB1C92FC3DF9",
+          "localPath": "builds/windows/Trace_0.9.0_beta_20260909_01.exe",
+          "note": "Gitee 附件上限 100MB（117.69MB 超限）——下载走 GitHub 资产链接",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.9.0/Trace_0.9.0_beta_20260909_01.exe"
+        }
+      ],
+      "versionInPackageJson": "0.9.0+1",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-09T22:16:00",
+      "commit": "e1d6f10",
+      "publishedAt": "2026-09-09T14:21:00Z",
+      "url": "https://gitee.com/Qore/trace/releases/v0.9.0"
     }
   ]
 }
