@@ -8,7 +8,7 @@ import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, close
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Component, MultiPlanPayload, NotePayload, SinglePlanPayload, TaskDetailPayload, TaskItem, TaskListPayload } from '@shared/plan-types'
-import { uuid32, validateNoteText } from '@shared/validation'
+import { uuid32, validateNoteText, validateDueDate, todayDateStr } from '@shared/validation'
 import { isOverdue } from '@shared/task-state'
 import { usePlanMutations } from '../stores/plan-store'
 import { useTranslation } from '../i18n'
@@ -123,6 +123,20 @@ function SinglePlanCard({ comp, index, total }: { comp: Component; index: number
             })
           }
         />
+      </div>
+      <div className="single-due">
+        <input
+          type="date"
+          className={`single-due-input${p.due_date && p.due_date < todayDateStr() ? ' overdue' : ''}`}
+          value={p.due_date ?? ''}
+          onChange={(e) => {
+            validateDueDate(e.target.value || undefined)
+            patchComponent(comp.id, (payload) => {
+              ;(payload as SinglePlanPayload).due_date = e.target.value || undefined // 清空=undefined
+            })
+          }}
+        />
+        {p.due_date && p.due_date < todayDateStr() && <span className="single-due-overdue">{t('cards.overdue')}</span>}
       </div>
     </CardShell>
   )

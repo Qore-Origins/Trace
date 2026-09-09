@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateDueDate } from '../src/shared/validation'
+import { todayDateStr, validateDueDate } from '../src/shared/validation'
 import { ERR, TraceError } from '../src/shared/errors'
 
 describe('validateDueDate', () => {
@@ -15,5 +15,13 @@ describe('validateDueDate', () => {
     expect(() => validateDueDate('2026-13-01')).toThrow(TraceError)
     expect(() => validateDueDate('2026-02-30')).toThrow(TraceError)
     expect(() => validateDueDate(20260910)).toThrow(TraceError)
+  })
+})
+
+describe('todayDateStr', () => {
+  it('返回本地今天 YYYY-MM-DD 且可被 validateDueDate 通过', () => {
+    const s = todayDateStr()
+    expect(s).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(() => validateDueDate(s)).not.toThrow()
   })
 })

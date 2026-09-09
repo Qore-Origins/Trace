@@ -34,6 +34,7 @@ export interface SinglePlanPayload {
   done: boolean
   summary?: string
   created_at: string
+  due_date?: string // 'YYYY-MM-DD'；undefined=未设置（组件级截止日期，可选可清空）
 }
 
 export interface MultiPlanOption {

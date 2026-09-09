@@ -38,6 +38,13 @@ export function validateDueDate(s: unknown): void {
   }
 }
 
+// 本地今天（'YYYY-MM-DD'，组件卡日期默认值/过期判断共用）
+export function todayDateStr(): string {
+  const d = new Date()
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 // uuid32（无连字符 32 hex）
 export function isUuid32(s: string): boolean {
   return /^[0-9a-f]{32}$/.test(s)
