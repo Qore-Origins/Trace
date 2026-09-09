@@ -45,6 +45,27 @@ export interface AppInfo {
 
 export interface BootstrapInfo extends AppInfo {}
 
+// ---------- diary 域 ----------
+// 域：diary（日记深化 2026-09-10；契约零变更——日计划仍是普通计划）
+export interface DiaryMonthEntry {
+  date: string            // 'YYYY-MM-DD'（目录名=聚合键）
+  score: number | null    // 当日 mood 卡分数；无 mood 卡为 null（不参与均分/打卡）
+  notePreview: string     // 首个 note 组件文首 60 字符；无则 ''
+  compCount: number
+}
+export interface DiaryDayComponent {
+  kind: string            // 组件 kind（复用 ComponentType）
+  label: string           // 渲染标签（heading=null 用 '标题'；由视图层 i18n 映射；此处可空）
+  excerpt: string         // 摘要文本（mood=分数文本；note/custom=首行；task 类=任务数/标题；heading='heading'）
+}
+export interface DiaryDaySummary {
+  date: string
+  components: DiaryDayComponent[]
+}
+export const IPC_DIARY_ENSURE = 'diary:ensure'
+export const IPC_DIARY_MONTH = 'diary:month'
+export const IPC_DIARY_DAY = 'diary:day'
+
 // ---------- 请求/响应载荷 ----------
 
 export interface Channels {
@@ -97,6 +118,10 @@ export interface Channels {
     req: { target_parent_path: string; paths: string[] }
     res: { imported: Array<{ path: string; renamedFrom?: string }>; plans: number; components: number; tasks: number; notes: number; skipped: string[] }
   }
+  // diary（日记深化 2026-09-10；月历/日摘要取数——planRoot=当前库根，由渲染器经 bootstrap 持有）
+  'diary:ensure': { req: { planRoot: string }; res: null }
+  'diary:month': { req: { planRoot: string; year: number; month: number }; res: { entries: DiaryMonthEntry[] } }
+  'diary:day': { req: { planRoot: string; date: string }; res: DiaryDaySummary }
 }
 
 export type ChannelName = keyof Channels
