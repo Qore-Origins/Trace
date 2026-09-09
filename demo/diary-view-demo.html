@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日记视图 Demo · 迹 Trace</title>
+<!--
+  日记深化 · 顶栏日视图原型（2026-09-09 方案定稿形态）
+  布局：顶栏导航（模拟）→ 统计条（本月均分/打卡天数/趋势迷你线）→ 月历热力（心情色块+分数+组件数角标）
+        + 右侧时间线列（当月倒序）；点选日期 = 当日预览（组件摘要 + 在树中打开，模拟）
+  功能定稿点：数据=日记根下日计划（Diary/<YYYY-MM-DD>/，模板三件套 mood+note+heading）
+  独立原型，无构建依赖；打开即用（数据为模拟值，今日=2026-09-09）
+-->
+<style>
+:root {
+  --trace-500: #1677ff;
+  --trace-bg: #e6f4ff;
+  --text-1: #262626;
+  --text-2: #595959;
+  --text-3: #8c8c8c;
+  --text-4: #bfbfbf;
+  --split: #f0f0f0;
+  --border: #d9d9d9;
+  --paper: #ffffff;
+  --paper-dim: #fafafa;
+  --fill: #f5f5f5;
+  --ok: #52c41a;
+  --ease-out: cubic-bezier(.2, .7, .3, 1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(--paper-dim); color: var(--text-1); font-size: 14px; }
+button { font: inherit; }
+
+.app { display: flex; flex-direction: column; height: 100%; }
+/* 顶栏（模拟） */
+.topbar { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 14px; padding: 0 16px; }
+.topbar .brand { font-weight: 600; font-size: 15px; }
+.topbar .nav { display: flex; gap: 2px; }
+.nav .nav-item { padding: 4px 10px; font-size: 13px; color: var(--text-3); border-radius: 6px; cursor: pointer; transition: color .18s var(--ease-out), background-color .18s var(--ease-out); }
+.nav .nav-item:hover { color: var(--text-1); background: var(--paper-dim); }
+.nav .nav-item.active { color: var(--trace-500); background: var(--trace-bg); font-weight: 500; }
+
+.main { flex: 1; display: flex; min-height: 0; }
+.content { flex: 1; overflow: auto; padding: 14px 24px 32px; }
+
+/* 统计条 */
+.stats { display: flex; align-items: center; gap: 22px; background: var(--paper); border: 1px solid var(--split); border-radius: 10px; padding: 10px 18px; margin-bottom: 14px; flex-wrap: wrap; }
+.stat { display: flex; align-items: baseline; gap: 6px; }
+.stat .k { font-size: 12px; color: var(--text-3); }
+.stat .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 12px; font-weight: 400; color: var(--text-3); }
+.trend { display: flex; align-items: flex-end; gap: 6px; margin-left: auto; }
+.trend .k { font-size: 12px; color: var(--text-3); }
+.trend svg { display: block; }
+
+/* 日历 + 时间线 */
+.layout { display: flex; gap: 14px; align-items: flex-start; }
+.cal-zone { flex: 1; min-width: 0; background: var(--paper); border: 1px solid var(--split); border-radius: 10px; overflow: hidden; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--split); }
+.cal-head .month { font-size: 15px; font-weight: 600; }
+.cal-head .month-nav { display: flex; gap: 4px; }
+.cal-nav { border: 1px solid var(--border); background: var(--paper); border-radius: 6px; padding: 3px 10px; color: var(--text-2); cursor: pointer; transition: background-color .18s var(--ease-out), color .18s var(--ease-out), border-color .18s var(--ease-out); }
+.cal-nav:hover { background: var(--trace-bg); color: var(--trace-500); border-color: var(--trace-500); }
+.week-row { display: grid; grid-template-columns: repeat(7, 1fr); font-size: 12px; color: var(--text-3); text-align: center; padding: 6px 8px 2px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 4px 8px 10px; }
+.cal-day { min-height: 64px; border: 1px solid transparent; border-radius: 8px; padding: 5px 6px; cursor: pointer; background: var(--paper); transition: border-color .18s var(--ease-out), background-color .18s var(--ease-out), box-shadow .18s var(--ease-out); }
+.cal-day.blank { pointer-events: none; }
+.cal-day.future { color: var(--text-4); pointer-events: none; }
+.cal-day:not(.blank):not(.future):hover { border-color: var(--trace-500); }
+.cal-day.has { background: var(--paper-dim); }
+.cal-day.selected { border-color: var(--trace-500); box-shadow: inset 0 0 0 1px var(--trace-500); }
+.cal-day.today .dnum { color: var(--trace-500); font-weight: 700; }
+.cal-day .dnum { font-size: 13px; font-weight: 500; }
+.cal-day .score { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.4; }
+.cal-day .score small { font-size: 11px; font-weight: 400; color: var(--text-3); }
+.cal-day .comps { font-size: 11px; color: var(--text-4); }
+.cal-foot { font-size: 11px; color: var(--text-4); padding: 6px 14px 10px; border-top: 1px solid var(--split); }
+
+/* 时间线 */
+.timeline { width: 300px; flex: none; background: var(--paper); border: 1px solid var(--split); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; max-height: 640px; }
+.tl-head { padding: 10px 14px; border-bottom: 1px solid var(--split); display: flex; align-items: center; justify-content: space-between; }
+.tl-head .t { font-size: 13px; font-weight: 600; }
+.tl-back { visibility: hidden; border: none; background: transparent; color: var(--trace-500); font-size: 12px; cursor: pointer; padding: 2px 4px; }
+.tl-back.show { visibility: visible; }
+.tl-list { flex: 1; overflow: auto; padding: 4px 8px 10px; }
+.tl-item { display: flex; gap: 10px; padding: 7px 6px; border-radius: 6px; cursor: pointer; transition: background-color .18s var(--ease-out); }
+.tl-item:hover { background: var(--paper-dim); }
+.tl-item .d { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; min-width: 72px; }
+.tl-item .dot { width: 20px; height: 20px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 700; }
+.tl-item .s { font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.tl-empty { font-size: 12px; color: var(--text-4); padding: 18px 10px; text-align: center; }
+
+/* 当日预览 */
+.day-pre { padding: 4px 8px 10px; }
+.day-pre .dp-title { font-size: 13px; font-weight: 600; padding: 2px 6px 6px; }
+.dp-card { border: 1px solid var(--split); border-radius: 8px; background: var(--paper-dim); padding: 8px 10px; margin-bottom: 8px; }
+.dp-card .k { font-size: 11px; color: var(--text-4); }
+.dp-card .t { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.dp-card .t.big { font-size: 20px; font-weight: 700; }
+.dp-open { width: 100%; border: 1px solid var(--border); background: var(--paper); border-radius: 6px; color: var(--text-2); font-size: 12px; padding: 5px; cursor: pointer; transition: background-color .18s var(--ease-out), color .18s var(--ease-out); }
+.dp-open:hover { background: var(--trace-bg); color: var(--trace-500); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <span class="brand">溯源 Trace</span>
+    <div class="nav">
+      <span class="nav-item">计划</span>
+      <span class="nav-item active">日记</span>
+      <span class="nav-item">检索</span>
+    </div>
+  </div>
+  <div class="main">
+    <div class="content">
+      <div class="stats">
+        <div class="stat"><span class="k">本月均分</span><span class="v" id="stAvg">–</span></div>
+        <div class="stat"><span class="k">打卡天数</span><span class="v" id="stDays">–</span></div>
+        <div class="stat"><span class="k">记录</span><span class="v" id="stCount">–</span></div>
+        <div class="trend">
+          <span class="k">趋势</span>
+          <svg id="stTrend" width="180" height="34" viewBox="0 0 180 34"></svg>
+        </div>
+      </div>
+      <div class="layout">
+        <div class="cal-zone">
+          <div class="cal-head">
+            <span class="month" id="calMonth">2026 年 9 月</span>
+            <div class="month-nav">
+              <button class="cal-nav" id="btnPrev">‹ 上月</button>
+              <button class="cal-nav" id="btnNext">下月 ›</button>
+            </div>
+          </div>
+          <div class="week-row" id="weekRow"></div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-foot">点击日期=当日预览；「在树中打开」=跳转到计划树（模拟）。</div>
+        </div>
+        <div class="timeline">
+          <div class="tl-head">
+            <button class="tl-back" id="btnBack">← 返回时间线</button>
+            <span class="t" id="tlTitle">本月时间线</span>
+          </div>
+          <div class="tl-list" id="tlList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict'
+// ---------- 模拟数据（日记根 Diay/<YYYY-MM-DD>/ 的日计划摘要） ----------
+// 2026-09-09 为"今日"；分数 30-80 冷→暖；comps=当日组件数
+const TODAY = '2026-09-09'
+const DATA = {
+  '2026-09-01': { score: 45, note: '计划收尾，组件批次就位', comps: 4 },
+  '2026-09-02': { score: 58, note: '搜索回溯链路验证', comps: 3 },
+  '2026-09-03': { score: 34, note: '修了三个瞬切点，顺手', comps: 5 },
+  '2026-09-05': { score: 66, note: 'demo 定稿：轮带式', comps: 3 },
+  '2026-09-06': { score: 72, note: '开源 MIT，双端发布准备', comps: 3 },
+  '2026-09-08': { score: 55, note: '公测 v0.9.0 发布', comps: 6 },
+  '2026-09-09': { score: 50, note: '日记深化，先出 demo', comps: 3 },
+  '2026-08-11': { score: 40, note: '月初规划：Sprint 3 溯源', comps: 2 },
+  '2026-08-14': { score: 62, note: '组件托比定稿', comps: 4 },
+  '2026-08-19': { score: 48, note: '阴雨天，慢节奏', comps: 2 },
+  '2026-08-25': { score: 70, note: '回溯脉冲打通', comps: 3 },
+  '2026-08-30': { score: 52, note: '月末回顾', comps: 2 }
+}
+
+function scoreColor(score) {
+  const t = Math.max(0, Math.min(1, (score - 30) / 50))
+  const from = [96, 130, 182], to = [255, 122, 69]
+  const mix = from.map((c, i) => Math.round(c + (to[i] - c) * t))
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`
+}
+
+const state = { year: 2026, month: 8 } // 0-based；今月=9月（index 8）
+let selected = null
+
+const $ = (id) => document.getElementById(id)
+const pad = (n) => String(n).padStart(2, '0')
+const key = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`
+
+// ---------- 渲染 ----------
+function renderWeekRow() {
+  const labels = ['一', '二', '三', '四', '五', '六', '日']
+  $('weekRow').innerHTML = labels.map((l) => `<div>${l}</div>`).join('')
+}
+
+function renderCalendar() {
+  const { year, month } = state
+  $('calMonth').textContent = `${year} 年 ${month + 1} 月`
+  const first = new Date(year, month, 1)
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  // 起始偏移：周一为一周首日
+  const lead = (first.getDay() + 6) % 7
+  let html = ''
+  for (let i = 0; i < lead; i++) html += '<div class="cal-day blank"></div>'
+  for (let d = 1; d <= daysInMonth; d++) {
+    const k = key(year, month, d)
+    const rec = DATA[k]
+    const isToday = k === TODAY
+    const isFuture = k > TODAY // ISO 字符串可直接比较（today 为 '2026-09-09'）
+    const cls = ['cal-day', isToday ? 'today' : '', isFuture ? 'future' : '', rec ? 'has' : '', selected === k ? 'selected' : ''].filter(Boolean).join(' ')
+    let inner = `<div class="dnum">${d}</div>`
+    if (rec) {
+      inner += `<div class="score" style="color:${scoreColor(rec.score)}">${rec.score}<small> 分</small></div>`
+      inner += `<div class="comps">${rec.comps} 组件</div>`
+    }
+    html += `<div class="${cls}" data-day="${k}" ${rec ? '' : 'data-norec'}>${inner}</div>`
+  }
+  $('calGrid').innerHTML = html
+}
+
+function renderTimeline() {
+  const { year, month } = state
+  const start = key(year, month, 1)
+  const end = key(year, month + 1, 1)
+  const days = Object.keys(DATA).filter((k) => k >= start && k < end).sort().reverse()
+  if (selected) {
+    const rec = DATA[selected]
+    $('btnBack').classList.add('show')
+    $('tlTitle').textContent = `${selected} 当日预览`
+    let cards = ''
+    if (rec) {
+      cards += `<div class="dp-card"><div class="k">今日心情</div><div class="t big" style="color:${scoreColor(rec.score)}">${rec.score} 分</div></div>`
+      cards += `<div class="dp-card"><div class="k">今日小结</div><div class="t">${rec.note}</div></div>`
+      cards += `<div class="dp-card"><div class="k">组件</div><div class="t">${rec.comps} 个（标题/心情/小结）</div></div>`
+    } else {
+      cards += `<div class="tl-empty">这一天没有任何记录</div>`
+    }
+    cards += `<button class="dp-open">在树中打开（模拟跳转）</button>`
+    $('tlList').innerHTML = `<div class="day-pre">${cards}</div>`
+    return
+  }
+  $('btnBack').classList.remove('show')
+  $('tlTitle').textContent = `${year} 年 ${month + 1} 月时间线`
+  if (days.length === 0) {
+    $('tlList').innerHTML = '<div class="tl-empty">本月还没有日记记录</div>'
+    return
+  }
+  $('tlList').innerHTML = days.map((k) => {
+    const rec = DATA[k]
+    return `<div class="tl-item" data-day="${k}">
+      <span class="d">${k.slice(5)}</span>
+      <span class="dot" style="background:${scoreColor(rec.score)}">${rec.score}</span>
+      <span class="s">${rec.note}</span>
+    </div>`
+  }).join('')
+}
+
+function renderStats() {
+  const { year, month } = state
+  const start = key(year, month, 1)
+  const end = key(year, month + 1, 1)
+  const days = Object.keys(DATA).filter((k) => k >= start && k < end).sort()
+  $('stAvg').textContent = days.length ? (Math.round(days.reduce((s, k) => s + DATA[k].score, 0) / days.length) + '') : '–'
+  $('stDays').textContent = String(days.length)
+  $('stCount').textContent = String(days.reduce((s, k) => s + DATA[k].comps, 0)) + ' 条'
+  // 趋势迷你线（逐日均分连线；无数据天不画）
+  const svg = $('stTrend')
+  const W = 180, H = 34
+  if (days.length > 1) {
+    const pts = days.map((k, i) => {
+      const x = 6 + (i / (days.length - 1)) * (W - 12)
+      const y = H - 8 - (DATA[k].score / 100) * (H - 14)
+      return `${x},${y}`
+    })
+    svg.innerHTML = `<polyline points="${pts.join(' ')}" fill="none" stroke="#1677ff" stroke-width="1.6" stroke-linecap="round"/>`
+    const first = DATA[days[0]].score
+    const last = DATA[days[days.length - 1]].score
+    svg.innerHTML += `<circle cx="${6}" cy="${H - 8 - (first / 100) * (H - 14)}" r="2.2" fill="#1677ff"/>
+      <circle cx="${W - 6}" cy="${H - 8 - (last / 100) * (H - 14)}" r="2.2" fill="#1677ff"/>`
+  } else {
+    svg.innerHTML = ''
+  }
+}
+
+function renderAll() {
+  renderWeekRow()
+  renderCalendar()
+  renderTimeline()
+  renderStats()
+}
+
+// ---------- 交互 ----------
+document.getElementById('btnPrev').onclick = () => { state.month--; if (state.month < 0) { state.month = 11; state.year-- } selected = null; renderAll() }
+document.getElementById('btnNext').onclick = () => { state.month++; if (state.month > 11) { state.month = 0; state.year++ } selected = null; renderAll() }
+document.getElementById('calGrid').addEventListener('click', (e) => {
+  const el = e.target.closest('.cal-day')
+  if (!el || el.classList.contains('future') || el.classList.contains('blank')) return
+  selected = el.dataset.day
+  renderCalendar(); renderTimeline()
+})
+document.getElementById('tlList').addEventListener('click', (e) => {
+  const el = e.target.closest('.tl-item')
+  if (el) { selected = el.dataset.day; renderCalendar(); renderTimeline() }
+})
+document.getElementById('btnBack').onclick = () => { selected = null; renderTimeline() }
+
+renderAll()
+</script>
+</body>
+</html>
