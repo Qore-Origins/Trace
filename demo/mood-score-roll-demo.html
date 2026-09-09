@@ -6,7 +6,8 @@
 <title>心情分数滚动 Demo · 迹 Trace</title>
 <!--
   心情数值滚动 Demo（odometer 选型）
-  三变体：V1 轮带式（每列 0-9 循环竖带，机械计数器感，主推）/ V2 翻页式（整串一行翻一格）/ V3 无动画
+  两变体：V1 轮带式（每列 0-9 循环竖带，机械计数器感，主推）/ 无动画
+  2026-09-09 用户定案：V2 翻页式效果一般已剔除；应用内该动画进设置（scoreAnim：roll / none）
   本文件为独立原型，无构建依赖，直接浏览器打开。
 
   V1 边界设计（小数进位/结构变化/链式往返）：
@@ -77,13 +78,6 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
 .odom-col .strip { transition: transform var(--t-roll) var(--ease-out); will-change: transform; }
 .odom-col .strip span { display: block; height: 64px; line-height: 64px; }
 
-/* V2 翻页整串 */
-.flip-strip { height: 64px; overflow: hidden; display: inline-block; }
-/* display:inline-block 必需——非替换 inline 元素（裸 span）不可变换，transform 会被静默忽略，
-   轮带物理上永远动不了（此病此前未被发现，表现为"看不到翻页动画+显示滞后一步"） */
-.flip-inner { display: inline-block; transition: transform var(--t-roll) var(--ease-out); }
-.flip-inner span { display: block; height: 64px; line-height: 64px; font-variant-numeric: tabular-nums; }
-
 /* ---------- 参数面板 ---------- */
 .panel {
   width: 320px; background: var(--paper); border-left: 1px solid var(--split);
@@ -123,12 +117,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
         <label><input type="radio" name="variant" value="1" checked> V1 轮带式（机械计数器）</label>
       </div>
       <div class="radio-row">
-        <label><input type="radio" name="variant" value="2"> V2 翻页式（整串）</label>
+        <label><input type="radio" name="variant" value="none"> 无动画</label>
       </div>
-      <div class="radio-row">
-        <label><input type="radio" name="variant" value="3"> V3 无动画</label>
-      </div>
-      <div class="note">推荐先试 V1。</div>
+      <div class="note">V2 翻页式已剔除（用户定案：设置中仅 轮带式/无动画 两项）。</div>
     </section>
     <section>
       <label>增减</label>
@@ -333,43 +324,7 @@ function v1Update(fromStr, toStr) {
   rollCols(fromPadded, toStr)
 }
 
-// ---------- V2 翻页式：整串一行翻一格 ----------
-// 状态权威化：v2Active = 应可见行（0/1），transform 一律由它推导（单一真源）；
-// 同值更新直接跳过——V1 有同值守卫而旧版 V2 没有，滑杆抖动/连点的同值翻转
-// 会在过渡中途改写可见行文本并造成奇偶漂移（用户反馈"一直有问题"的机制）。
-// 静止时不变量：可见行 == 最后一次非空更新的目标串（下方 v2SelfTest 连带回归）
-function buildV2(frame, digits) {
-  frame.innerHTML = ''
-  const wrap = document.createElement('span')
-  wrap.className = 'flip-strip'
-  const inner = document.createElement('span')
-  inner.className = 'flip-inner'
-  const a = document.createElement('span'); a.textContent = digits
-  const b = document.createElement('span'); b.textContent = digits
-  inner.appendChild(a); inner.appendChild(b)
-  wrap.appendChild(inner)
-  frame.appendChild(wrap)
-  v2Active = 0
-  v2PrevLen = digits.length
-  return inner
-}
-let flipInner = null
-let v2Active = 0        // 应可见行（0/1）
-let v2PrevLen = 0
-function updateV2(toStr) {
-  const rows = flipInner.children
-  if (rows[v2Active].textContent === toStr) return   // 内容未变：跳过（防同值翻转漂移）
-  if (toStr.length !== v2PrevLen) {                   // 长度变化：瞬时重建（宽度跳变不做翻页）
-    flipInner = buildV2(frame, toStr)
-    return
-  }
-  const hidden = 1 - v2Active
-  rows[hidden].textContent = toStr
-  v2Active = hidden
-  flipInner.style.transform = v2Active === 0 ? 'translateY(0)' : `translateY(-${LINE}px)`
-}
-
-// ---------- V3 无动画（显示真实值） ----------
+// ---------- 无动画（显示真实值） ----------
 function buildV3(frame, digits) {
   frame.innerHTML = ''
   for (const ch of String(digits).split('')) {
@@ -397,9 +352,6 @@ function render(rawVal, opts = {}) {
     if (toStr === fromStr) { dispStr = toStr; return }
     if (reducedMotion() || opts.instant) { buildV1(frame, toStr); dispStr = toStr; return }
     v1Update(fromStr, toStr)
-  } else if (variant === '2') {
-    if (reducedMotion() || opts.instant) { flipInner = buildV2(frame, toStr); dispStr = toStr; return }
-    updateV2(toStr)
   } else {
     buildV3(frame, toStr0)
   }
@@ -411,43 +363,6 @@ function runCase(from, to) {
   render(from, { instant: true })
   pendingCase = setTimeout(() => { pendingCase = 0; render(to) }, 400)
 }
-
-// ---------- V2 自检（纯状态机镜像，逻辑层回归；打开浏览器控制台查看） ----------
-// 与 updateV2 的守卫/重建/翻转决策完全同构，用随机性与边界序列验证"静止即目标"
-function v2Sim(init, ops) {
-  let rows = [init, init]
-  let active = 0
-  let len = init.length
-  const step = (s) => {
-    if (rows[active] === s) return
-    if (s.length !== len) { rows = [s, s]; active = 0; len = s.length; return }
-    const h = 1 - active
-    rows[h] = s
-    active = h
-    len = s.length
-  }
-  ops.forEach(step)
-  return rows[active]
-}
-function v2SelfTest() {
-  const cases = [
-    { init: '50.11', ops: ['50.12'], want: '50.12' },
-    { init: '50.10', ops: ['50.11', '50.12', '50.13', '50.14'], want: '50.14' },
-    { init: '50.12', ops: ['50.12', '50.12'], want: '50.12' },
-    { init: '50', ops: ['50.1', '50.11', '50.11', '50.12'], want: '50.12' },
-    { init: '50.12', ops: ['50.13', '50.13', '50.14'], want: '50.14' },
-    { init: '50.14', ops: ['50.12', '50.10', '50.9'], want: '50.9' }
-  ]
-  const jitter = []
-  for (let i = 0; i < 10; i++) jitter.push(`50.1${i}`)   // 滑杆抖动：连续+同值混合
-  jitter.push('50.11', '50.11', '50.12')
-  cases.push({ init: '50.1', ops: jitter, want: '50.12' })
-  console.table(cases.map((c) => {
-    const got = v2Sim(c.init, c.ops)
-    return { init: c.init, ops: c.ops.join(',') || '-', want: c.want, got, ok: got === c.want }
-  }))
-}
-v2SelfTest()
 
 // ---------- 控件 ----------
 const slider = document.getElementById('slider')
@@ -465,10 +380,7 @@ document.querySelectorAll('input[name=speed]').forEach((r) => {
   })
 })
 function buildVariant() {
-  flipInner = null
-  v2PrevLen = 0
   if (variant === '1') buildV1(frame, dispStr)
-  else if (variant === '2') flipInner = buildV2(frame, dispStr)
   else buildV3(frame, String(current))
 }
 document.getElementById('btnPlus').onclick = () => render(current + 1)
