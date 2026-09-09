@@ -118,10 +118,10 @@ export interface Channels {
     req: { target_parent_path: string; paths: string[] }
     res: { imported: Array<{ path: string; renamedFrom?: string }>; plans: number; components: number; tasks: number; notes: number; skipped: string[] }
   }
-  // diary（日记深化 2026-09-10；月历/日摘要取数——planRoot=当前库根，由渲染器经 bootstrap 持有）
-  'diary:ensure': { req: { planRoot: string }; res: null }
-  'diary:month': { req: { planRoot: string; year: number; month: number }; res: { entries: DiaryMonthEntry[] } }
-  'diary:day': { req: { planRoot: string; date: string }; res: DiaryDaySummary }
+  // diary（日记深化 2026-09-10；月历/日摘要取数——renderer 不供给路径，根由 main 自解析）
+  'diary:ensure': { req: {}; res: null }
+  'diary:month': { req: { year: number; month: number }; res: { entries: DiaryMonthEntry[] } }
+  'diary:day': { req: { date: string }; res: DiaryDaySummary }
 }
 
 export type ChannelName = keyof Channels

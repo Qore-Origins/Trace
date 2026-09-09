@@ -136,8 +136,8 @@ export function registerIpc(deps: Deps): void {
 
   // ---------- diary（日记深化 2026-09-10） ----------
   // Task 1 桩：空数据返回保证链路可通——Task 2 接 diary-service 真实现
-  // planRoot 约定：请求携带渲染器当前库根；真实现按现有模式取根（根由服务持有，
-  // register 不自行解析——现有先例：app 经 config.getRootDir、transfer 经 storage.getRootAbs）
+  // 载荷不含 planRoot：renderer 不供给路径，根由 main 自解析（现有惯例：根由服务持有，
+  // register 不自行解析——先例：app 经 config.getRootDir、transfer 经 storage.getRootAbs）
   reg('diary:ensure', async () => null)
   reg('diary:month', async () => ({ entries: [] }))
   reg('diary:day', async (p) => ({ date: p.date, components: [] }))
