@@ -1,7 +1,7 @@
 // 计划单片组件卡（前端详细设计 §3.3-3.5 / LLD §2.3）：渲染即编辑；payload 直改 + 防抖保存
 // 组件卡拖拽排序（2026-09-07，@dnd-kit 同款 AI Resource Hub）：手柄发起（distance 8 防误触），
 // 拖动中被拖卡放大投影置顶、其余卡 transform 实时让位，落点 arrayMove 语义换序
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Input, Checkbox, InputNumber, Slider, Button, message } from 'antd'
 import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, HolderOutlined, SaveOutlined } from '@ant-design/icons'
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
@@ -463,46 +463,72 @@ export function scoreColor(score: number): string {
 const ROLL_H = 34 // 行高 px（与 .mood-score 行高一致）
 const ROLL_MS = 220
 const ROLL_EASE = 'cubic-bezier(0.2, 0.7, 0.3, 1)' // 同 --ease-out
+// 状态机纯函数（可单测）：rollOnText=值变化时"隐藏行写新值"；rollFinish=动画/超时结束翻转停靠行
+export interface RollFrame { a: string; b: string; at: 0 | 1 }
+export function rollShown(f: RollFrame): string {
+  return f.at === 0 ? f.a : f.b
+}
+export function rollOnText<T extends RollFrame>(f: T, text: string): T {
+  if (text === rollShown(f)) return f
+  return { ...f, [f.at === 0 ? 'b' : 'a']: text } as T // 隐藏行写新值（泛型保留扩展字段）
+}
+export function rollFinish<T extends RollFrame>(f: T): T {
+  return { ...f, at: f.at === 0 ? 1 : 0 } as T
+}
+
 export function MoodScoreRoll({ score, color }: { score: number; color: string }): React.JSX.Element {
   const text = String(score)
-  const [frame, setFrame] = useState({ a: text, b: text, at: 0 }) // at:0=停在 a 行；1=停在 b 行（-34px）
+  // frame: at:0=停在 a 行；1=停在 b 行（-34px）；pending=本帧的滚动参数（由动画执行层消费）
+  const [frame, setFrame] = useState<RollFrame & { pending?: { from: number; to: number } }>({ a: text, b: text, at: 0 })
   const box = useRef<HTMLDivElement>(null)
+  // 产帧层：值变化 →（帧 + pending 滚动参数）；不直接碰 DOM（无 effect 时序错位）
   useEffect(() => {
-    if (text === (frame.at === 0 ? frame.a : frame.b)) return
-    setFrame((f) => ({ ...f, [f.at === 0 ? 'b' : 'a']: text })) // 隐藏行写新值
+    if (text === rollShown(frame)) return
+    setFrame((f) => {
+      const next = rollOnText(f, text)
+      if (next === f) return f
+      const from = f.at === 0 ? 0 : -ROLL_H
+      const to = f.at === 0 ? -ROLL_H : 0
+      return { ...next, pending: { from, to } }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text])
-  useEffect(() => {
-    const shown = frame.at === 0 ? frame.a : frame.b
-    if (!box.current || text === shown) return
+  // 动画执行层：本帧 DOM 提交后执行（新帧内容已渲染，cols/滚动目标一致）
+  useLayoutEffect(() => {
+    const p = frame.pending
+    if (!p) return
     const el = box.current
-    const to = frame.at === 0 ? -ROLL_H : 0
-    const from = frame.at === 0 ? 0 : -ROLL_H
+    if (!el) return
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     if (reduce) {
-      setFrame((f) => ({ ...f, at: f.at === 0 ? 1 : 0 }))
+      setFrame((f) => rollFinish({ ...f, pending: undefined }))
       return
     }
     const cols = Array.from(el.querySelectorAll<HTMLElement>('[data-roll][data-changed="true"]'))
-    let done = false
-    const finish = (): void => {
-      if (done) return
-      done = true
-      setFrame((f) => ({ ...f, at: f.at === 0 ? 1 : 0 }))
-    }
     const anims = cols.map((c) =>
-      c.animate([{ transform: `translateY(${from}px)` }, { transform: `translateY(${to}px)` }], {
+      c.animate([{ transform: `translateY(${p.from}px)` }, { transform: `translateY(${p.to}px)` }], {
         duration: ROLL_MS,
         easing: ROLL_EASE,
         fill: 'forwards'
       })
     )
-    const pending = anims.length > 0 ? Promise.any(anims.map((a) => a.finished)).then(finish) : finish()
+    let done = false
+    const finish = (): void => {
+      if (done) return
+      done = true
+      setFrame((f) => rollFinish({ ...f, pending: undefined })) // 翻转停靠行并清 pending
+    }
+    if (anims.length === 0) {
+      finish()
+      return
+    }
+    Promise.any(anims.map((a) => a.finished)).then(finish).catch(() => undefined)
     const t = setTimeout(finish, 300) // 后台窗口 animation.finished 不 resolve 的兜底
     return () => {
       clearTimeout(t)
       if (!done) anims.forEach((a) => a.cancel())
     }
-  }, [frame, text])
+  }, [frame])
   return (
     <div ref={box} className="mood-score-roll" style={{ color }}>
       {text.split('').map((ch, i) => {
