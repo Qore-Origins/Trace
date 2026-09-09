@@ -135,6 +135,21 @@ export class SearchService {
         if (content) docs.push({ scope: 'note', path, component_id: c.id, text: content, matched_field: 'note_content', snippetSource: content })
         break
       }
+      case 'mood': {
+        const text = `${str('text')} ${str('mood_date')}`.trim()
+        if (text) docs.push({ scope: 'note', path, component_id: c.id, text, matched_field: 'note_content', snippetSource: str('text') })
+        break
+      }
+      case 'heading': {
+        const text = str('title')
+        if (text) docs.push({ scope: 'plan', path, component_id: c.id, text, matched_field: 'title', snippetSource: text })
+        break
+      }
+      case 'custom': {
+        const text = str('content')
+        if (text) docs.push({ scope: 'note', path, component_id: c.id, text, matched_field: 'note_content', snippetSource: text })
+        break
+      }
       default:
         break // 未知类型容忍（契约向前兼容）
     }

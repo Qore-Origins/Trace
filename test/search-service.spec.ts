@@ -115,3 +115,20 @@ function waitReady(): Promise<void> {
     check()
   })
 }
+
+describe('新组件类型索引（mood/heading/custom）', () => {
+  it('三类组件入索引且 scope 正确', async () => {
+    await putDoc('学期计划', {
+      components: [
+        { id: 'm1', type: 'mood', payload: { score: 88.5, text: '今天松弛，写了代码', mood_date: '2026-09-09', created_at: '2026-09-09T00:00:00Z' } },
+        { id: 'h1', type: 'heading', payload: { title: '溯源计划本', size: 22 } },
+        { id: 'x1', type: 'custom', payload: { content: '记录 python 代码片段，含**加粗**', source: '日常' } }
+      ]
+    })
+    search.start(root)
+    await waitReady()
+    expect(search.query(['松弛']).some((h) => h.scope === 'note' && h.component_id === 'm1')).toBe(true)
+    expect(search.query(['溯源计划本']).some((h) => h.scope === 'plan' && h.component_id === 'h1')).toBe(true)
+    expect(search.query(['代码片段']).some((h) => h.scope === 'note' && h.component_id === 'x1')).toBe(true)
+  })
+})
