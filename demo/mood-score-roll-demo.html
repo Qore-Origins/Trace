@@ -190,9 +190,10 @@ function buildV1(frame, digits) {
     col.className = 'odom-col'
     const strip = document.createElement('span')
     strip.className = 'strip'
-    for (let i = 0; i <= 9; i++) {
+    // 循环轮带：[9,0,1..9,0]——首尾各一份循环副本，短路径绕行（9→0/0→9）落在带内有值处
+    for (const v of [9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0]) {
       const s = document.createElement('span')
-      s.textContent = String(i)
+      s.textContent = String(v)
       strip.appendChild(s)
     }
     col.appendChild(strip)
@@ -200,25 +201,27 @@ function buildV1(frame, digits) {
   }
 }
 
+// 数字 → 轮带索引（偏移 1：副本占位）
+const idxOf = (d) => d + 1
+
 // 定位各列到 digit（构建后必须调用——否则 strip 停在 0，出现"00"）
 function positionV1(frame, digits) {
   const cols = frame.querySelectorAll('.odom-col')
   let ci = 0
   for (const ch of String(digits).split('')) {
     if (ch === '.') continue
-    cols[ci++].querySelector('.strip').style.transform = `translateY(-${Number(ch) * LINE}px)`
+    cols[ci++].querySelector('.strip').style.transform = `translateY(-${idxOf(Number(ch)) * LINE}px)`
   }
 }
 
-// 使第 idx 位（从 0 数）到位 digit：列内 0-9 轮带 + 短路径 wrap
+// 使该列从 digitNow 滚到 digitNext：短路径方向（差 >5 反向绕行，0↔9 只滚 1 格）
 function setDigitV1(col, digitNow, digitNext) {
   const strip = col.querySelector('.strip')
   let diff = digitNext - digitNow
-  // 短路径：±5 内取直；否则反向绕 +10
+  // 短路径：±5 内取直；否则反向绕 +10（落在循环副本处）
   if (diff > 5) diff -= 10
   if (diff < -5) diff += 10
-  const currentIdx = digitNow
-  const target = currentIdx + diff
+  const target = idxOf(digitNow) + diff
   strip.style.transform = `translateY(-${target * LINE}px)`
 }
 
@@ -235,7 +238,7 @@ function updateV1(fromScore, toScore) {
     let di = 0
     for (const ch of toStr.split('')) {
       if (ch === '.') continue
-      cols2[di++].querySelector('.strip').style.transform = `translateY(-${Number(ch) * LINE}px)`
+      cols2[di++].querySelector('.strip').style.transform = `translateY(-${idxOf(Number(ch)) * LINE}px)`
     }
     return
   }
