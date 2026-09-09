@@ -1,7 +1,7 @@
 // ContentArea（§2.2）：面包屑 + 组件序列 + 空态 + 外部变更提示 + 插入组件；文件夹=容器视图
 import { useEffect, useMemo } from 'react'
 import { Alert, Button, Dropdown, Empty, message, type MenuProps } from 'antd'
-import { CalendarOutlined, FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
+import { CalendarOutlined, DeleteOutlined, FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
 import { useTreeStore } from '../stores/tree-store'
 import { useUiStore } from '../stores/ui-store'
@@ -58,6 +58,7 @@ export default function ContentArea(): React.JSX.Element {
   const { appendComponent } = usePlanMutations()
   const { selectedKind, childrenMap, loaded, loadChildren } = useTreeStore()
   const customPresets = usePrefStore((s) => s.customPresets)
+  const removePreset = usePrefStore((s) => s.removePreset)
   const today = useMemo(() => new Date(), [doc?.updated_at])
 
   // 插入预设快照：复制 content 到新卡、source=预设名（改预设不影响已插入卡）
@@ -83,7 +84,26 @@ export default function ContentArea(): React.JSX.Element {
       label: t('content.insertCustom'),
       children: [
         { key: 'custom-new', label: t('content.customNew') },
-        ...customPresets.map((p) => ({ key: `custom-${p.id}`, label: p.name }))
+        ...customPresets.map((p) => ({
+          key: `custom-${p.id}`,
+          label: (
+            <span className="preset-item">
+              <span className="preset-name">{p.name}</span>
+              <button
+                type="button"
+                className="preset-del lite-btn danger"
+                title={t('common.delete')}
+                aria-label={`${t('common.delete')} ${p.name}`}
+                onClick={(e) => {
+                  e.stopPropagation() // 防冒泡触发菜单条目 onClick（插入快照）
+                  removePreset(p.id)
+                }}
+              >
+                <DeleteOutlined />
+              </button>
+            </span>
+          )
+        }))
       ]
     }
   ]

@@ -276,6 +276,13 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* 自定义组件卡（2026-09-09 组件扩展 Task 5） */
 .custom-source { font-size: 11px; color: var(--text-4); margin-top: 2px; }
 
+/* 预设菜单条目删除钮（2026-09-09 Task 6 补完）：hover 条目才现，danger 红复用 .lite-btn.danger 气质 */
+.preset-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 120px; }
+.preset-item .preset-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-item .preset-del { flex: none; padding: 1px 4px; visibility: hidden; }
+.ant-dropdown-menu-item:hover .preset-del,
+.ant-dropdown-menu-item:focus-visible .preset-del { visibility: visible; }
+
 /* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
 .card.mood { border-left: 4px solid var(--split); }
 .mood-row { display: flex; align-items: center; gap: 12px; }
