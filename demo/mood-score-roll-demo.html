@@ -200,6 +200,16 @@ function buildV1(frame, digits) {
   }
 }
 
+// 定位各列到 digit（构建后必须调用——否则 strip 停在 0，出现"00"）
+function positionV1(frame, digits) {
+  const cols = frame.querySelectorAll('.odom-col')
+  let ci = 0
+  for (const ch of String(digits).split('')) {
+    if (ch === '.') continue
+    cols[ci++].querySelector('.strip').style.transform = `translateY(-${Number(ch) * LINE}px)`
+  }
+}
+
 // 使第 idx 位（从 0 数）到位 digit：列内 0-9 轮带 + 短路径 wrap
 function setDigitV1(col, digitNow, digitNext) {
   const strip = col.querySelector('.strip')
@@ -325,8 +335,10 @@ document.querySelectorAll('input[name=speed]').forEach((r) => {
 })
 function buildVariant() {
   flipInner = null
-  if (variant === '1') { buildV1(frame, String(current).split('')); }
-  else if (variant === '2') { flipInner = buildV2(frame, String(current)); flipAt = 0; }
+  if (variant === '1') {
+    buildV1(frame, String(current).split(''))
+    positionV1(frame, current)
+  } else if (variant === '2') { flipInner = buildV2(frame, String(current)); flipAt = 0; }
   else buildV3(frame, String(current))
 }
 document.getElementById('btnPlus').onclick = () => render(Math.min(100, current + 1))
