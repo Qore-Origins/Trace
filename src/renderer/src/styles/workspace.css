@@ -27,7 +27,6 @@
   --ease-spring: cubic-bezier(.3, 1.46, .4, 1);
   --ease-out: cubic-bezier(.2, .7, .3, 1);
   --ease-in: cubic-bezier(.55, .04, .7, .3);
-  --t-roll: 220ms;   /* 心情数值 odometer 滚动时长 */
 }
 
 /* 桌面应用：锁死页面级滚动，只有内容区可滚 */
@@ -274,24 +273,10 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .note-actions-end .ant-btn { color: var(--text-3); }
 .note-hint { font-size: 11px; color: var(--text-4); }
 
-/* 自定义组件卡（2026-09-09 组件扩展 Task 5） */
-.custom-source { font-size: 11px; color: var(--text-4); margin-top: 2px; }
-
-/* 预设菜单条目删除钮（2026-09-09 Task 6 补完）：hover 条目才现，danger 红复用 .lite-btn.danger 气质 */
-.preset-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 120px; }
-.preset-item .preset-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.preset-item .preset-del { flex: none; padding: 1px 4px; visibility: hidden; }
-.ant-dropdown-menu-item:hover .preset-del,
-.ant-dropdown-menu-item:focus-visible .preset-del { visibility: visible; }
-
 /* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
 .card.mood { border-left: 4px solid var(--split); }
 .mood-row { display: flex; align-items: center; gap: 12px; }
-.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; height: 34px; line-height: 34px; overflow: hidden; }
-/* 逐位 odometer：列常驻双行堆叠，WAAPI 驱动（动画显式播放，不依赖挂载过渡）；方向交替无回弹 */
-.mood-score-roll { display: inline-flex; }
-.digit-col { display: inline-flex; flex-direction: column; height: 34px; overflow: hidden; }
-.digit-col > span { height: 34px; line-height: 34px; }
+.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
 .mood-input { width: 120px; }
 .mood-meta { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--text-4); margin-top: 4px; }
 .mood-date { font: inherit; border: none; background: transparent; color: var(--text-3); }
