@@ -1,7 +1,7 @@
 // 存储契约 v1 类型（唯一事实源：docs/lifecycle/02-系统设计 Design/数据库设计说明书 DB Design.md §5.2）
 // 双进程共享：主进程读写、渲染器类型校验均引用本文件
 
-export type ComponentType = 'single_plan' | 'multi_plan' | 'task_list' | 'task_detail' | 'note'
+export type ComponentType = 'single_plan' | 'multi_plan' | 'task_list' | 'task_detail' | 'note' | 'mood' | 'heading' | 'custom'
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'done'
 
@@ -78,9 +78,29 @@ export interface NotePayload {
   created_at: string
 }
 
+export interface MoodPayload {
+  score: number
+  text: string
+  mood_date: string
+  created_at: string
+}
+
+export interface HeadingPayload {
+  title: string
+  size: number
+}
+
+export interface CustomPayload {
+  content: string
+  source?: string
+}
+
 export type ComponentPayload =
   | SinglePlanPayload
   | MultiPlanPayload
   | TaskListPayload
   | TaskDetailPayload
   | NotePayload
+  | MoodPayload
+  | HeadingPayload
+  | CustomPayload

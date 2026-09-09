@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { todayDateStr, validateDueDate } from '../src/shared/validation'
+import { todayDateStr, validateDueDate, validateScore } from '../src/shared/validation'
 import { ERR, TraceError } from '../src/shared/errors'
 
 describe('validateDueDate', () => {
@@ -23,5 +23,20 @@ describe('todayDateStr', () => {
     const s = todayDateStr()
     expect(s).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(() => validateDueDate(s)).not.toThrow()
+  })
+})
+
+describe('validateScore', () => {
+  it('数字与小数收敛通过', () => {
+    expect(validateScore(87.5)).toBe(87.5)
+    expect(validateScore(87.123)).toBe(87.12)
+    expect(validateScore('50')).toBe(50) // 输入框字符串容错
+  })
+  it('边界与越界', () => {
+    expect(validateScore(0)).toBe(0)
+    expect(validateScore(100)).toBe(100)
+    expect(() => validateScore(-1)).toThrow(TraceError)
+    expect(() => validateScore(101)).toThrow(TraceError)
+    expect(() => validateScore('abc')).toThrow(TraceError)
   })
 })

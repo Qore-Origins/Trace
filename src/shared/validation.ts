@@ -53,3 +53,12 @@ export function isUuid32(s: string): boolean {
 export function uuid32(): string {
   return crypto.randomUUID().replace(/-/g, '')
 }
+
+// 心情评分：0-100 数字，可小数（收敛 ≤2 位）
+export function validateScore(x: unknown): number {
+  const n = typeof x === 'string' && x.trim() !== '' ? Number(x) : (x as number)
+  if (typeof n !== 'number' || Number.isNaN(n) || n < 0 || n > 100) {
+    throw new TraceError(ERR.VALIDATION, '心情评分需在 0-100 之间')
+  }
+  return Math.round(n * 100) / 100
+}

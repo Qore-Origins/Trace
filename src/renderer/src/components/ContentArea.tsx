@@ -7,6 +7,7 @@ import { useTreeStore } from '../stores/tree-store'
 import { useUiStore } from '../stores/ui-store'
 import { ComponentRenderer } from './cards'
 import { uuid32 } from '@shared/validation'
+import { ERR, TraceError } from '@shared/errors'
 import { useTranslation } from '../i18n'
 import type { Component, ComponentType } from '@shared/plan-types'
 
@@ -24,6 +25,9 @@ function newComponent(type: ComponentType): Component {
       return { id, type, payload: { title: '', status: 'not_started', created_at: now } }
     case 'note':
       return { id, type, payload: { content: '', created_at: now } }
+    default:
+      // 契约已扩（mood/heading/custom）但工厂 default payload 属后续任务；UI 菜单未含新类型前此路径不可达，fail-fast 而非静默造卡
+      throw new TraceError(ERR.INTERNAL, `未知组件类型：${type}`)
   }
 }
 
