@@ -1,7 +1,7 @@
 // 计划单片组件卡（前端详细设计 §3.3-3.5 / LLD §2.3）：渲染即编辑；payload 直改 + 防抖保存
 // 组件卡拖拽排序（2026-09-07，@dnd-kit 同款 AI Resource Hub）：手柄发起（distance 8 防误触），
 // 拖动中被拖卡放大投影置顶、其余卡 transform 实时让位，落点 arrayMove 语义换序
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Input, Checkbox, InputNumber, Slider, Button, message } from 'antd'
 import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, HolderOutlined, SaveOutlined } from '@ant-design/icons'
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
@@ -458,43 +458,69 @@ export function scoreColor(score: number): string {
   return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`
 }
 
-// 数值滚动（逐位 odometer）：只有变化的数字位独立滚动一格（同一位 5→8 只滚该列），其余位静止；
-// 滚动中再变=从当前显示值重滚；仅挂载显初值；prefers-reduced-motion 瞬时（CSS 侧 transition: none）
-function MoodScoreRoll({ score, color }: { score: number; color: string }): React.JSX.Element {
+// 数值滚动（逐位 odometer，WAAPI）：列结构常驻；值变化=隐藏行写新值→仅变化列显式动画滚一格
+// （WAAPI 不依赖挂载过渡——修复"消失又出现"；方向随停靠行翻转，fill 保持无回弹；后台有超时兜底）
+const ROLL_H = 34 // 行高 px（与 .mood-score 行高一致）
+const ROLL_MS = 220
+const ROLL_EASE = 'cubic-bezier(0.2, 0.7, 0.3, 1)' // 同 --ease-out
+export function MoodScoreRoll({ score, color }: { score: number; color: string }): React.JSX.Element {
   const text = String(score)
-  const [frame, setFrame] = useState({ from: text, to: text, rolling: false })
+  const [frame, setFrame] = useState({ a: text, b: text, at: 0 }) // at:0=停在 a 行；1=停在 b 行（-34px）
+  const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (text === frame.to) return
-    setFrame((f) => ({ from: f.to, to: text, rolling: true })) // 滚动中再变：从当前目标值重滚
+    if (text === (frame.at === 0 ? frame.a : frame.b)) return
+    setFrame((f) => ({ ...f, [f.at === 0 ? 'b' : 'a']: text })) // 隐藏行写新值
   }, [text])
-  const fold = (): void => setFrame((f) => (f.rolling ? { from: f.to, to: f.to, rolling: false } : f))
-  // 兜底折叠：窗口后台/最小化时 transitionend 不触发（视口隐藏 CSS 过渡不推进），超时后强制收尾
   useEffect(() => {
-    if (!frame.rolling) return
-    const t = setTimeout(fold, 260)
-    return () => clearTimeout(t)
-  }, [frame.rolling])
+    const shown = frame.at === 0 ? frame.a : frame.b
+    if (!box.current || text === shown) return
+    const el = box.current
+    const to = frame.at === 0 ? -ROLL_H : 0
+    const from = frame.at === 0 ? 0 : -ROLL_H
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    if (reduce) {
+      setFrame((f) => ({ ...f, at: f.at === 0 ? 1 : 0 }))
+      return
+    }
+    const cols = Array.from(el.querySelectorAll<HTMLElement>('[data-roll][data-changed="true"]'))
+    let done = false
+    const finish = (): void => {
+      if (done) return
+      done = true
+      setFrame((f) => ({ ...f, at: f.at === 0 ? 1 : 0 }))
+    }
+    const anims = cols.map((c) =>
+      c.animate([{ transform: `translateY(${from}px)` }, { transform: `translateY(${to}px)` }], {
+        duration: ROLL_MS,
+        easing: ROLL_EASE,
+        fill: 'forwards'
+      })
+    )
+    const pending = anims.length > 0 ? Promise.any(anims.map((a) => a.finished)).then(finish) : finish()
+    const t = setTimeout(finish, 300) // 后台窗口 animation.finished 不 resolve 的兜底
+    return () => {
+      clearTimeout(t)
+      if (!done) anims.forEach((a) => a.cancel())
+    }
+  }, [frame, text])
   return (
-    <div
-      className="mood-score-roll"
-      style={{ color }}
-      data-rolling={frame.rolling || undefined}
-      onTransitionEnd={fold}
-    >
-      {frame.rolling ? (
-        frame.to.split('').map((ch, i) => {
-          const from = frame.from[i] ?? ch
-          const changed = from !== ch
-          return (
-            <span className={`digit-col${changed ? ' rolling' : ''}`} key={i}>
-              <span>{changed ? from : ch}</span>
-              <span>{ch}</span>
-            </span>
-          )
-        })
-      ) : (
-        <span className="mood-count-plain">{frame.to}</span>
-      )}
+    <div ref={box} className="mood-score-roll" style={{ color }}>
+      {text.split('').map((ch, i) => {
+        const a = frame.a[i] ?? ch
+        const b = frame.b[i] ?? ch
+        return (
+          <span
+            key={i}
+            data-roll
+            data-changed={(a !== b).toString()}
+            className="digit-col"
+            style={frame.at === 1 ? { transform: `translateY(${-ROLL_H}px)` } : undefined}
+          >
+            <span>{a}</span>
+            <span>{b}</span>
+          </span>
+        )
+      })}
     </div>
   )
 }
