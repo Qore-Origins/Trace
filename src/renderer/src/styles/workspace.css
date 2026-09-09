@@ -26,6 +26,8 @@
   --t-slot: 220ms;   /* D1 槽位开合 */
   /* 心情分数轮带时序（2026-09-09 定稿；demo: demo/mood-score-roll-demo.html） */
   --t-roll: 260ms;   /* 单格滚动时长 */
+  /* 交互态基线（2026-09-09 禁止瞬切整顿：hover/active/状态切换统一此档） */
+  --t-ui: 180ms;     /* 颜色/透明度/位置类交互过渡 */
   --ease-spring: cubic-bezier(.3, 1.46, .4, 1);
   --ease-out: cubic-bezier(.2, .7, .3, 1);
   --ease-in: cubic-bezier(.55, .04, .7, .3);
@@ -83,7 +85,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 
 /* VS Code 式菜单栏：极简文字，无底色，悬停变色（与窗口控制同语言） */
 .menubar { display: flex; align-items: center; gap: 2px; }
-.menu-title { padding: 4px 10px; font-size: 13px; color: var(--text-2); cursor: pointer; border-radius: 6px; user-select: none; }
+.menu-title { padding: 4px 10px; font-size: 13px; color: var(--text-2); cursor: pointer; border-radius: 6px; user-select: none; transition: color var(--t-ui) var(--ease-out); }
 .menu-title:hover { color: var(--text-1); background: transparent; }
 .menu-title:focus-visible { outline: 2px solid var(--trace-bg); }
 
@@ -98,24 +100,25 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .tree-root-label .origin-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--origin); }
 .tree-node-title { display: flex; align-items: center; gap: 4px; overflow: hidden; flex: 1; min-width: 0; }
 .tree-node-title .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-quick { display: none; gap: 0; flex: none; }
-.tree-row:hover .tree-quick { display: flex; }
+/* 树行快捷钮：overlay 淡入+右滑入——原 display 瞬切会推动节点标题宽度（2026-09-09 禁止瞬切） */
+.tree-quick { position: absolute; right: 8px; top: 50%; display: flex; gap: 0; opacity: 0; transform: translateY(-50%) translateX(6px); pointer-events: none; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out), right var(--t-ui) var(--ease-out); }
+.tree-row:hover .tree-quick { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
 .tree-quick .lite-btn { padding: 2px 5px; }
 
 /* 自渲染树行（2026-09-07 dnd-kit 版，视觉对齐 antd 时代基线） */
-.tree-row { position: relative; display: flex; align-items: center; min-height: 28px; border-radius: 6px; padding: 0 4px 0 2px; user-select: none; }
+.tree-row { position: relative; display: flex; align-items: center; min-height: 28px; border-radius: 6px; padding: 0 4px 0 2px; user-select: none; transition: background-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out); }
 .tree-row:hover { background: var(--paper-dim); }
 .tree-row.drop-into { background: var(--trace-bg); box-shadow: inset 0 0 0 1px var(--trace-500); }
 .tree-row.dragging { z-index: 10; background: var(--paper); box-shadow: 0 0 0 2px var(--trace-500), 0 10px 28px rgba(0, 0, 0, 0.18); }
 .tree-guides { display: flex; flex: none; align-self: stretch; }
 .tree-guides .guide { width: 18px; flex: none; border-left: 1px solid var(--split); }
-.tree-switcher { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-4); cursor: pointer; padding: 0; font-size: 10px; border-radius: 4px; }
+.tree-switcher { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-4); cursor: pointer; padding: 0; font-size: 10px; border-radius: 4px; transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out); }
 .tree-switcher:hover { color: var(--text-1); background: var(--fill); }
 .tree-switcher.placeholder { visibility: hidden; }
 .tree-row .drag-handle { margin-right: -2px; }
 /* 拖拽进行中：抑制行 hover 底色与快捷按钮浮现（与浮起跟随/落点高亮反馈叠加会闪烁） */
 .tree-scroll.is-dragging .tree-row:hover { background: transparent; }
-.tree-scroll.is-dragging .tree-row:hover .tree-quick { display: none; }
+.tree-scroll.is-dragging .tree-row:hover .tree-quick { opacity: 0; pointer-events: none; }
 
 /* ---------- 树动效（2026-09-08 卡牌摞 D1-D8；demo 定稿移植） ----------
    行槽结构：.slot（grid 0fr↔1fr 高度槽）> .slot-inner > .deal（发牌动画包装）> .tree-row（dnd transform）
@@ -167,8 +170,8 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .tree-row.has-deck:hover::after { opacity: .38; transform: translate(4px, -50%); }
 /* 拖拽进行中不露牌边（与落点高亮叠加会闪） */
 .tree-scroll.is-dragging .tree-row.has-deck:hover::after { opacity: 0; }
-/* 牌边让位：持牌行 hover 时快钮左移让出牌边区（快钮本就 hover 现身，无跳动；2026-09-09 ⋯ 退役后防残留重叠） */
-.tree-row.has-deck:hover .tree-quick { margin-right: 20px; }
+/* 牌边让位：持牌行 hover 时快钮右移让出牌边区（overlay 化后改 right 过渡；牌边 right:10px，快钮让到 34px） */
+.tree-row.has-deck:hover .tree-quick { right: 34px; }
 
 /* D5 父行脉冲：展开一闪 + 图标 pop；收拢图标 squish */
 .tree-row.dealt { animation: parent-pulse .5s var(--ease-out); }
@@ -178,10 +181,16 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .tree-row.gathered .node-icon { animation: icon-squish .4s var(--ease-spring); }
 @keyframes icon-squish { 40% { transform: scale(.86); } }
 
-/* 动效无障碍：系统偏好减动效 → 全部禁用（保持即显即用） */
+/* 动效无障碍：系统偏好减动效 → 全部禁用（保持即显即用；2026-09-09 交互态过渡一并纳入） */
 @media (prefers-reduced-motion: reduce) {
   .slot { grid-template-rows: 1fr !important; }
-  .slot, .slot .deal, .slot .guide, .pm-box, .pm-v, .tree-row.has-deck::after { animation: none !important; transition: none !important; }
+  .slot, .slot .deal, .slot .guide, .pm-box, .pm-v, .tree-row.has-deck::after,
+  .tag-overdue, .card .actions, .tree-quick, .task-del, .search-mask, .search-overlay,
+  .state-ring::after, .task-row, .tree-row, .task-date, .due-input, .single-due-input,
+  .menu-title, .tree-switcher, .drag-handle, .o-item, .mood-score, .dot-ok, .task-title input {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* ---------- 内容区（§2.3 纸感） ---------- */
@@ -191,8 +200,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 
 /* 计划头部截止日期行（未设=添加按钮；已设=date 输入+清除；过期红警示） */
 .due-date { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 13px; color: var(--text-3); }
-.due-input { font: inherit; color: var(--text-2); border: none; background: transparent; }
-.due-input:focus { outline: none; border-bottom: 1px solid var(--trace-500); }
+/* focus/过期换色变速过渡；底线恒占（transparent 基线）防 1px 布局跳变 */
+.due-input { font: inherit; color: var(--text-2); border: none; background: transparent; border-bottom: 1px solid transparent; transition: color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out); }
+.due-input:focus { outline: none; border-bottom-color: var(--trace-500); }
 .due-date.overdue .due-input { color: #cf1322; }
 .due-overdue { font-size: 12px; color: #cf1322; }
 
@@ -200,12 +210,13 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .card .kind { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-4); margin-bottom: 4px; user-select: none; }
 .card .head { display: flex; align-items: center; gap: 8px; }
 .card .head h3 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
-.card .actions { display: none; gap: 0; position: absolute; top: 6px; right: 8px; background: var(--paper); border-radius: 6px; }
-.card:hover .actions { display: flex; }
+/* 卡片操作钮（升/降/删）：overlay 淡入+下移入场——原先 display 瞬切（2026-09-09 禁止瞬切） */
+.card .actions { position: absolute; top: 6px; right: 8px; display: flex; gap: 0; align-items: center; background: var(--paper); border-radius: 6px; opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
+.card:hover .actions { opacity: 1; transform: none; pointer-events: auto; }
 .card .actions .lite-btn { padding: 2px 6px; }
 
 /* 组件卡拖拽排序（@dnd-kit，同款 AI Resource Hub：实时让位 + 被拖卡浮起） */
-.drag-handle { display: inline-flex; flex: none; padding: 1px; border-radius: 4px; cursor: grab; color: var(--text-4); }
+.drag-handle { display: inline-flex; flex: none; padding: 1px; border-radius: 4px; cursor: grab; color: var(--text-4); transition: color var(--t-ui) var(--ease-out); }
 .drag-handle:hover { color: var(--trace-500); }
 .drag-handle:active { cursor: grabbing; }
 .card.dragging { z-index: 10; scale: 1.02; box-shadow: 0 0 0 2px var(--trace-500), 0 10px 28px rgba(0, 0, 0, 0.18); }
@@ -223,27 +234,34 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .single-summary { margin-top: 6px; margin-left: 28px; }
 .card.single-done .single-summary textarea { color: var(--text-3); }
 .single-due { margin-top: 4px; display: flex; align-items: center; gap: 8px; }
-.single-due-input { font-size: 12px; border: none; background: transparent; color: var(--text-3); font-family: inherit; padding: 0; }
+.single-due-input { font-size: 12px; border: none; background: transparent; color: var(--text-3); font-family: inherit; padding: 0; transition: color var(--t-ui) var(--ease-out); }
 .single-due-input.overdue { color: #cf1322; }
 .single-due-overdue { font-size: 12px; color: #cf1322; }
 
-/* 任务行（§3.2 足迹三态） */
-.task-row { display: flex; align-items: center; gap: 10px; padding: 5px 4px; border-radius: 6px; }
+/* 任务行（§3.2 足迹三态）——交互态统一过渡（2026-09-09 禁止瞬切：B 方案 overlay 删除钮） */
+.task-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 5px 60px 5px 4px; border-radius: 6px; transition: background-color var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out); }
 .task-row:hover { background: var(--paper-dim); }
 .task-row .state-ring { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--text-4); cursor: pointer; position: relative; transition: all 0.15s; background: transparent; padding: 0; }
 .task-row.doing .state-ring { border-color: var(--trace-500); background: var(--trace-500); box-shadow: 0 0 0 3px var(--trace-bg); }
 .task-row.doing .task-title input { color: var(--trace-500); }
 .task-row.done .state-ring { border-color: var(--text-4); background: var(--fill); }
-.task-row.done .state-ring::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-3); }
+/* 勾号常驻（opacity 切换）——content 不可过渡，改为恒有 + 淡入缩放入场 */
+.task-row .state-ring::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-3); opacity: 0; scale: 0.6; transition: opacity var(--t-ui) var(--ease-out), scale 0.22s var(--ease-spring); }
+.task-row.done .state-ring::after { opacity: 1; scale: 1; }
 .task-row.done .task-title input { text-decoration: line-through; color: var(--text-3); }
 .task-row.done { opacity: 0.55; }
 .task-title { flex: 1; min-width: 0; }
-.task-title input { border: none; outline: none; width: 100%; font-size: 14px; background: transparent; color: var(--text-1); }
-.task-date { font-size: 12px; color: var(--text-3); border: 1px solid transparent; border-radius: 4px; padding: 2px; background: transparent; }
+.task-title input { border: none; outline: none; width: 100%; font-size: 14px; background: transparent; color: var(--text-1); transition: color var(--t-ui) var(--ease-out); }
+.task-date { font-size: 12px; color: var(--text-3); border: 1px solid transparent; border-radius: 4px; padding: 2px; background: transparent; transition: border-color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out); }
 .task-date:hover { border-color: var(--border); background: #fff; }
-.tag-overdue { font-size: 11px; color: #d48806; background: #fffbe6; border-radius: 4px; padding: 1px 6px; flex: none; }
-.task-del { display: none; }
-.task-row:hover .task-del { display: inline-flex; }
+/* 逾期标：max-width+opacity 平滑展开（@starting-style 入场，不顶动布局）；
+   离开为 React 卸载（数据态低频，无 leave 钩子，可缓） */
+.tag-overdue { font-size: 11px; color: #d48806; background: #fffbe6; border-radius: 4px; padding: 1px 6px; flex: none; max-width: 52px; overflow: hidden; transition: max-width var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out), padding var(--t-ui) var(--ease-out); }
+@starting-style { .tag-overdue { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; } }
+/* 删除钮 B 方案（demo/del-hover-demo.html 定稿）：overlay 不占位——hover 淡入+右滑入，内容永不被顶；
+   行右 padding 60px 为悬浮缓冲（防盖死日期）；按钮在行内，移出即离场无间隙 */
+.task-del { position: absolute; right: 8px; top: 50%; flex: none; transform: translateY(-50%) translateX(6px); opacity: 0; pointer-events: none; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
+.task-row:hover .task-del { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
 
 /* 注释旁批（§3.5） */
 .card.note { background: var(--paper-dim); border-left: 4px solid var(--split); border-radius: 0 var(--r-card) var(--r-card) 0; }
@@ -278,7 +296,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
 .card.mood { border-left: 4px solid var(--split); }
 .mood-row { display: flex; align-items: center; gap: 12px; }
-.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; display: flex; align-items: center; justify-content: flex-end; }
+.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; display: flex; align-items: center; justify-content: flex-end; transition: color var(--t-roll) var(--ease-out); }
 /* 心情分数轮带（V1 定稿移植）：每列 0-9 循环带，strip 逐列 transition；
    列容器须 flex（非替换 inline 不可变换，隐式失败无报错——ERROR 库 inline-span-transform-ignored） */
 .mood-score-roll { display: inline-flex; align-items: center; font-variant-numeric: tabular-nums; }
@@ -300,13 +318,15 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .folder-item { display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; }
 .folder-item:hover { border-color: var(--trace-500); }
 
-/* ---------- 溯源浮层（§3.6） ---------- */
-.search-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.08); z-index: 30; }
-.search-overlay { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); width: 560px; max-width: calc(100vw - 48px); background: var(--paper); border-radius: var(--r-card); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); z-index: 31; overflow: hidden; display: flex; flex-direction: column; }
+/* ---------- 溯源浮层（§3.6）——进入动画（@starting-style 挂载过渡；关闭为卸载，数据态可缓） ---------- */
+.search-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.08); z-index: 30; transition: opacity var(--t-ui) var(--ease-out); }
+@starting-style { .search-mask { opacity: 0; } }
+.search-overlay { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); width: 560px; max-width: calc(100vw - 48px); background: var(--paper); border-radius: var(--r-card); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); z-index: 31; overflow: hidden; display: flex; flex-direction: column; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
+@starting-style { .search-overlay { opacity: 0; transform: translateX(-50%) translateY(-8px); } }
 .search-overlay .o-input { width: 100%; height: 44px; border: none; border-bottom: 1px solid var(--split); outline: none; padding: 0 16px; font-size: 14px; font-family: inherit; }
 .search-overlay .o-body { max-height: 380px; overflow: auto; padding: 6px; }
 .o-section { font-size: 12px; color: var(--text-4); padding: 8px 8px 4px; }
-.o-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.o-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background-color var(--t-ui) var(--ease-out); }
 .o-item:hover { background: var(--paper-dim); }
 .o-item .o-title { font-size: 13px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .o-item .o-path { font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -314,7 +334,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .o-building { padding: 6px 10px; font-size: 12px; color: var(--text-3); }
 
 /* 状态栏（§3.8） */
-.dot-ok { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 4px; }
+.dot-ok { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 4px; transition: background-color var(--t-ui) var(--ease-out); }
 .dot-building { background: var(--trace-500); }
 .dot-error { background: var(--warning); }
 .status-saved { color: var(--text-2); }
