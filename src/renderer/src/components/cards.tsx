@@ -1,8 +1,8 @@
 // 计划单片组件卡（前端详细设计 §3.3-3.5 / LLD §2.3）：渲染即编辑；payload 直改 + 防抖保存
 // 组件卡拖拽排序（2026-09-07，@dnd-kit 同款 AI Resource Hub）：手柄发起（distance 8 防误触），
 // 拖动中被拖卡放大投影置顶、其余卡 transform 实时让位，落点 arrayMove 语义换序
-import { Input, Checkbox, InputNumber, Slider } from 'antd'
-import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, HolderOutlined } from '@ant-design/icons'
+import { Input, Checkbox, InputNumber, Slider, Button, message } from 'antd'
+import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, HolderOutlined, SaveOutlined } from '@ant-design/icons'
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -10,6 +10,8 @@ import type { Component, CustomPayload, HeadingPayload, MoodPayload, MultiPlanPa
 import { uuid32, validateNoteText, validateDueDate, validateScore, todayDateStr } from '@shared/validation'
 import { isOverdue } from '@shared/task-state'
 import { usePlanMutations } from '../stores/plan-store'
+import { useUiStore } from '../stores/ui-store'
+import { usePrefStore } from '../stores/pref-store'
 import { useTranslation } from '../i18n'
 import { MdContent } from './md-content'
 
@@ -405,6 +407,41 @@ function CustomCard({ comp, index, total }: { comp: Component; index: number; to
           patchComponent(comp.id, (payload) => { (payload as CustomPayload).content = next })
         }}
       />
+      <div className="note-actions">
+        <Button
+          size="small"
+          type="text"
+          icon={<SaveOutlined />}
+          onClick={() => {
+            const content = (comp.payload as CustomPayload).content
+            if (!content.trim()) {
+              message.warning(t('cards.customEmpty'))
+              return
+            }
+            // 经 ui-store 广播触发命名对话框（mode:'preset' 判别，文案/校验/提交全由 customize 注入）
+            useUiStore.getState().openNameDialog({
+              mode: 'preset',
+              targetPath: '',
+              initialName: '',
+              customize: {
+                titleKey: 'dialog.savePreset',
+                placeholderKey: 'dialog.presetNamePlaceholder',
+                okTextKey: 'dialog.saveBtn',
+                validate: (name: string) => {
+                  if (!name.trim()) return t('dialog.presetNameEmpty')
+                  if (name.trim().length > 60) return t('dialog.presetNameTooLong')
+                  return null
+                },
+                onSubmit: async (name: string) => {
+                  usePrefStore.getState().addPreset(name.trim(), content)
+                }
+              }
+            })
+          }}
+        >
+          {t('cards.customSavePreset')}
+        </Button>
+      </div>
       {p.source && <div className="custom-source">{t('cards.customSource', { source: p.source })}</div>}
     </CardShell>
   )

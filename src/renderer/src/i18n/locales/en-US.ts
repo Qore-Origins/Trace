@@ -125,6 +125,8 @@ const enUS: typeof zhCN = {
     headingPlaceholder: 'Title…',
     customLabel: 'Custom',
     customSource: 'From preset "{{source}}"',
+    customSavePreset: 'Save as preset',
+    customEmpty: 'Empty content — nothing to save',
     unknownComponent: '⚠ Unknown component type "{{type}}" — content preserved as-is, awaiting a newer app version.'
   },
   content: {
@@ -145,6 +147,7 @@ const enUS: typeof zhCN = {
     insertMood: 'Mood today',
     insertHeading: 'Heading',
     insertCustom: 'Custom',
+    customNew: 'New custom',
     inserted: 'Inserted {{label}}',
     componentFallback: 'component',
     dueDateLabel: 'Due date',
@@ -193,7 +196,12 @@ const enUS: typeof zhCN = {
     planNamePlaceholder: 'Plan name',
     folderNamePlaceholder: 'Folder name',
     createBtn: 'Create',
-    renameBtn: 'Rename'
+    renameBtn: 'Rename',
+    savePreset: 'Save as preset',
+    presetNamePlaceholder: 'Preset name…',
+    saveBtn: 'Save',
+    presetNameEmpty: 'Preset name required',
+    presetNameTooLong: 'Preset name too long (max 60)'
   },
   confirm: {
     deletePlanTitle: 'Delete plan "{{name}}"?',

@@ -1,15 +1,16 @@
 // ContentArea（§2.2）：面包屑 + 组件序列 + 空态 + 外部变更提示 + 插入组件；文件夹=容器视图
 import { useEffect, useMemo } from 'react'
-import { Alert, Button, Dropdown, Empty, message } from 'antd'
+import { Alert, Button, Dropdown, Empty, message, type MenuProps } from 'antd'
 import { CalendarOutlined, FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
 import { useTreeStore } from '../stores/tree-store'
 import { useUiStore } from '../stores/ui-store'
+import { usePrefStore, type CustomPreset } from '../stores/pref-store'
 import { ComponentRenderer } from './cards'
 import { uuid32 } from '@shared/validation'
 import { ERR, TraceError } from '@shared/errors'
 import { useTranslation } from '../i18n'
-import type { Component, ComponentType } from '@shared/plan-types'
+import type { Component, ComponentType, CustomPayload } from '@shared/plan-types'
 
 function newComponent(type: ComponentType): Component {
   const now = new Date().toISOString()
@@ -44,14 +45,32 @@ function todayStr(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+// Menu items 联合含 MenuDividerType（无 key/label），按 key 取 label 需窄化守卫
+function itemLabel(items: NonNullable<MenuProps['items']>, key: string, fallback: string): string {
+  const item = items.find((i) => i !== null && 'key' in i && i.key === key)
+  if (item && 'label' in item && typeof item.label === 'string') return item.label
+  return fallback
+}
+
 export default function ContentArea(): React.JSX.Element {
   const { t } = useTranslation()
   const { currentPath, document: doc, externalAlert, open, setDueDate } = usePlanStore()
   const { appendComponent } = usePlanMutations()
   const { selectedKind, childrenMap, loaded, loadChildren } = useTreeStore()
+  const customPresets = usePrefStore((s) => s.customPresets)
   const today = useMemo(() => new Date(), [doc?.updated_at])
 
-  const insertItems: Array<{ key: ComponentType; label: string }> = [
+  // 插入预设快照：复制 content 到新卡、source=预设名（改预设不影响已插入卡）
+  const insertCustomWithPreset = (preset: CustomPreset): void => {
+    const comp = newComponent('custom')
+    ;(comp.payload as CustomPayload).content = preset.content
+    ;(comp.payload as CustomPayload).source = preset.name
+    appendComponent(comp)
+    message.success(t('content.inserted', { label: preset.name }))
+  }
+
+  // 「自定义组件」为子菜单：新建 + 预设列表（antd Menu items 带 children 即子菜单形态）
+  const insertItems: MenuProps['items'] = [
     { key: 'single_plan', label: t('cards.kindSinglePlan') },
     { key: 'multi_plan', label: t('cards.kindMultiPlan') },
     { key: 'task_list', label: t('cards.kindTaskList') },
@@ -59,7 +78,14 @@ export default function ContentArea(): React.JSX.Element {
     { key: 'note', label: t('content.noteShort') },
     { key: 'mood', label: t('content.insertMood') },
     { key: 'heading', label: t('content.insertHeading') },
-    { key: 'custom', label: t('content.insertCustom') }
+    {
+      key: 'custom',
+      label: t('content.insertCustom'),
+      children: [
+        { key: 'custom-new', label: t('content.customNew') },
+        ...customPresets.map((p) => ({ key: `custom-${p.id}`, label: p.name }))
+      ]
+    }
   ]
 
   // 文件夹容器视图：列出子项，点击进入
@@ -196,8 +222,18 @@ export default function ContentArea(): React.JSX.Element {
             menu={{
               items: insertItems,
               onClick: ({ key }) => {
+                if (key === 'custom-new') {
+                  appendComponent(newComponent('custom'))
+                  message.success(t('content.inserted', { label: t('content.customNew') }))
+                  return
+                }
+                if (key.startsWith('custom-')) {
+                  const preset = customPresets.find((p) => `custom-${p.id}` === key)
+                  if (preset) insertCustomWithPreset(preset)
+                  return
+                }
                 appendComponent(newComponent(key as ComponentType))
-                message.success(t('content.inserted', { label: insertItems.find((i) => i.key === key)?.label ?? t('content.componentFallback') }))
+                message.success(t('content.inserted', { label: itemLabel(insertItems, key, t('content.componentFallback')) }))
               }
             }}
           >

@@ -122,6 +122,8 @@ const zhCN = {
     headingPlaceholder: '标题…',
     customLabel: '自定义',
     customSource: '来自预设「{{source}}」',
+    customSavePreset: '保存为预设',
+    customEmpty: '内容为空，无法保存预设',
     unknownComponent: '⚠ 未知组件类型「{{type}}」——内容已原样保留，等待新版本应用读取。'
   },
   content: {
@@ -142,6 +144,7 @@ const zhCN = {
     insertMood: '今日心情',
     insertHeading: '标题',
     insertCustom: '自定义组件',
+    customNew: '新建自定义组件',
     inserted: '已插入{{label}}',
     componentFallback: '组件',
     dueDateLabel: '截止日期',
@@ -190,7 +193,12 @@ const zhCN = {
     planNamePlaceholder: '计划名称',
     folderNamePlaceholder: '文件夹名称',
     createBtn: '创建',
-    renameBtn: '重命名'
+    renameBtn: '重命名',
+    savePreset: '保存为预设',
+    presetNamePlaceholder: '预设名称…',
+    saveBtn: '保存',
+    presetNameEmpty: '预设名称不能为空',
+    presetNameTooLong: '预设名称过长（上限 60）'
   },
   confirm: {
     deletePlanTitle: '删除计划「{{name}}」？',
