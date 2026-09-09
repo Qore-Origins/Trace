@@ -30,12 +30,11 @@
 - Modify: `src/preload/index.ts` + `src/preload/index.d.ts`（暴露 `diary` 桥）
 
 **Interfaces:**
-- Produces（后续任务消费）:
+- Produces（后续任务消费；2026-09-10 实施实现：bridge 为扁平 Channels（非 api.diary.* 对象域）——renderer 端经 `ipcClient.invoke('diary:month', ...)` 调用，类型由 `Channels` derive（index.d.ts 零编辑））:
   - `DiaryMonthEntry` `{ date: string; score: number | null; notePreview: string; compCount: number }`（date='YYYY-MM-DD'）
   - `DiaryDaySummary` `{ date: string; components: Array<{ kind: string; label: string; excerpt: string }> }`
-  - `IPC_DIARY_ENSURE = 'diary:ensure'`、`IPC_DIARY_MONTH = 'diary:month'`、`IPC_DIARY_DAY = 'diary:day'`
-  - 渲染侧 API（preload bridge）：`api.diary.ensure(planRoot: string): Promise<void>` / `api.diary.month(planRoot: string, year: number, month: number): Promise<DiaryMonthEntry[]>`（month=1-12）/ `api.diary.day(planRoot: string, date: string): Promise<DiaryDaySummary>`
-  - `diary:month` 请求载荷 `{ planRoot: string; year: number; month: number }`；响应 `{ entries: DiaryMonthEntry[] }`
+  - `IPC_DIARY_ENSURE = 'diary:ensure'`、`IPC_DIARY_MONTH = 'diary:month'`、`IPC_DIARY_DAY = 'diary:day'`（前缀入 ALLOWED_PREFIXES）
+  - 通道载荷（**无 planRoot**——main 侧经 config/storage 自解析当前根，renderer 不供给绝对路径）：`diary:ensure {}`；`diary:month { year: number; month: number }`（month=1-12）→ `{ entries: DiaryMonthEntry[] }`；`diary:day { date: string }` → `DiaryDaySummary`
 
 - [ ] **Step 1: ipc-contract.ts 增类型与通道**
 
@@ -129,6 +128,7 @@ describe('diary-service', () => {
     expect(json2.title).toBe('手动改过')
   })
 })
+```
 
 - [ ] **Step 2: 运行确认失败** `npx vitest run test/diary-service.spec.ts`（函数不存在 → FAIL）
 
@@ -183,7 +183,7 @@ git commit -m "feat(diary): 月网格/统计聚合纯函数（周一起始；无
 - Modify: `src/renderer/src/App.tsx`（view==='diary' 时渲染 DiaryView，workspace 照旧——按现有 App 结构接入）
 
 **Interfaces:**
-- Consumes: `api.diary.month/day/ensure`（preload 桥）、`usePrefStore`（语言，用于 i18n）、PlanTree 定位动作（Task 5 接线，本任务先渲染）
+- Consumes: `ipcClient.invoke('diary:month', { year, month })`、`ipcClient.invoke('diary:day', { date })`、`ipcClient.invoke('diary:ensure', {})`（renderer 端 ipc-client，无 planRoot 载荷）、`usePrefStore`（语言，用于 i18n）、PlanTree 定位动作（Task 5 接线，本任务先渲染）
 - Produces: 无（UI 终端）
 
 - [ ] **Step 1: ui-store 加 view 态（含持久化无关——纯 session 态）**
