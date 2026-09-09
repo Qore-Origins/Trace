@@ -120,6 +120,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
       <div class="btn-row">
         <button id="btnMinus">-1</button>
         <button id="btnPlus">+1</button>
+        <button id="btnMinus01">-0.1</button>
+        <button id="btnPlus01">+0.1</button>
+        <button id="btnPlus001">+0.01</button>
         <button id="btnPlus5">+5（感受 95→100 进位）</button>
         <button id="btnRandom">随机</button>
       </div>
@@ -228,26 +231,20 @@ function setDigitV1(col, digitNow, digitNext) {
 function updateV1(fromScore, toScore) {
   const fromStr = String(fromScore)
   const toStr = String(toScore)
-  // 列数对齐：位数不足前面补 0（demo 简化：取目标位数）
   const cols = frame.querySelectorAll('.odom-col')
-  if (cols.length !== toStr.replace(/\./g, '').length) {
+  const digitCount = toStr.replace(/\./g, '').length
+  // 位数不同（长度差/列数差）→ 重建定位（不做中间动画，保证显示正确；选型阶段取舍）
+  if (cols.length !== digitCount || fromStr.length !== toStr.length) {
     buildV1(frame, toStr.split(''))
-    fromStr.split('').forEach(() => {}) // 简化：重建即到位（无新列动画）
-    // 重建后直接显示目标（无动画）——首建/长度变化时正确
-    const cols2 = frame.querySelectorAll('.odom-col')
-    let di = 0
-    for (const ch of toStr.split('')) {
-      if (ch === '.') continue
-      cols2[di++].querySelector('.strip').style.transform = `translateY(-${idxOf(Number(ch)) * LINE}px)`
-    }
+    positionV1(frame, toStr)
     return
   }
   let ci = 0
   for (let i = 0; i < fromStr.length; i++) {
+    if (toStr[i] === '.') continue
     const a = Number(fromStr[i])
     const b = Number(toStr[i])
-    if (toStr[i] === '.') continue
-    if (fromStr[i] === toStr[i]) { ci++; continue }
+    if (a === b) { ci++; continue }
     setDigitV1(cols[ci++], a, b)
   }
 }
@@ -346,6 +343,9 @@ function buildVariant() {
 }
 document.getElementById('btnPlus').onclick = () => render(Math.min(100, current + 1))
 document.getElementById('btnMinus').onclick = () => render(Math.max(0, current - 1))
+document.getElementById('btnPlus01').onclick = () => render(Math.round((current + 0.1) * 100) / 100)
+document.getElementById('btnMinus01').onclick = () => render(Math.round((current - 0.1) * 100) / 100)
+document.getElementById('btnPlus001').onclick = () => render(Math.round((current + 0.01) * 100) / 100)
 document.getElementById('btnPlus5').onclick = () => render(Math.min(100, current + 5))
 document.getElementById('btnRandom').onclick = () => render(Math.round(Math.random() * 10000) / 100)
 document.getElementById('btnDecimal').onclick = () => render(current < 90 ? 92.25 : 85.5)
