@@ -27,6 +27,7 @@
   --ease-spring: cubic-bezier(.3, 1.46, .4, 1);
   --ease-out: cubic-bezier(.2, .7, .3, 1);
   --ease-in: cubic-bezier(.55, .04, .7, .3);
+  --t-roll: 220ms;   /* 心情数值 odometer 滚动时长 */
 }
 
 /* 桌面应用：锁死页面级滚动，只有内容区可滚 */
@@ -286,7 +287,16 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
 .card.mood { border-left: 4px solid var(--split); }
 .mood-row { display: flex; align-items: center; gap: 12px; }
-.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; height: 34px; line-height: 34px; overflow: hidden; }
+/* 逐位 odometer：每列两行堆叠，rolling 时仅变化列上移一跨（其余位静止）——transitions not keyframes（可重触发） */
+.mood-score-roll { display: inline-flex; }
+.digit-col { display: inline-flex; flex-direction: column; height: 34px; overflow: hidden; transition: transform var(--t-roll) var(--ease-out); }
+.digit-col.rolling { transform: translateY(-34px); }
+.digit-col > span { height: 34px; line-height: 34px; }
+.mood-count-plain { display: inline-block; height: 34px; line-height: 34px; }
+@media (prefers-reduced-motion: reduce) {
+  .digit-col { transition: none; }
+}
 .mood-input { width: 120px; }
 .mood-meta { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--text-4); margin-top: 4px; }
 .mood-date { font: inherit; border: none; background: transparent; color: var(--text-3); }
