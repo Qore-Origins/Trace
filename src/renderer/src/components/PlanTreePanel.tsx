@@ -10,7 +10,6 @@ import {
   FolderOutlined,
   HolderOutlined,
   LoadingOutlined,
-  MoreOutlined,
   PlusOutlined,
   ReadOutlined
 } from '@ant-design/icons'
@@ -197,21 +196,6 @@ function RowContent(props: {
           >
             <FolderAddOutlined />
           </button>
-          <Dropdown
-            menu={{
-              items: [
-                { key: 'create-plan', label: t('tree.newChildPlan'), onClick: () => openNameDialog({ mode: 'create-plan', targetPath: node.path, initialName: '' }) },
-                { key: 'create-folder', label: t('tree.newChildFolder'), onClick: () => openNameDialog({ mode: 'create-folder', targetPath: node.path, initialName: '' }) },
-                { type: 'divider' },
-                { key: 'rename', label: t('common.rename'), onClick: () => openNameDialog({ mode: 'rename', targetPath: node.path, initialName: node.name }) },
-                { key: 'delete', label: t('common.delete'), danger: true, onClick: () => confirmRemoveTree(node.path, kind) }
-              ]
-            }}
-          >
-            <button type="button" className="lite-btn" aria-label={t('tree.more')} onClick={(e) => e.stopPropagation()}>
-              <MoreOutlined />
-            </button>
-          </Dropdown>
         </span>
       </span>
     </>
@@ -231,9 +215,13 @@ function PmBox(): React.JSX.Element {
 }
 
 // ---------- 行（计划=仅拖；文件夹=拖+落点；根=仅落点）+ D5 父行脉冲 ----------
+// 2026-09-08：⋯ 悬停按钮退役——与收拢文件夹的 D7 牌边图标（right:10px）重叠；
+// 操作菜单改为右键整行呼出（桌面惯例），快捷新建 + / 文件夹按钮保留
 function TreeRow(props: { node: RowView }): React.JSX.Element {
   const { node } = props
   const { activeId, canReceive, selectedPath } = useContext(TreeUiCtx)
+  const { t } = useTranslation()
+  const openNameDialog = useUiStore((s) => s.openNameDialog)
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: node.path,
     disabled: node.kind === 'root'
@@ -253,7 +241,7 @@ function TreeRow(props: { node: RowView }): React.JSX.Element {
 
   const hasDeck = node.kind === 'folder' && node.hasChildren && !node.expanded // D7 持牌暗示
   const receivable = isOver && activeId != null && canReceive(activeId, node.path)
-  return (
+  const row = (
     <div
       ref={(el) => {
         setDragRef(el)
@@ -267,6 +255,24 @@ function TreeRow(props: { node: RowView }): React.JSX.Element {
     >
       <RowContent node={node} selected={selectedPath === node.path} handle={node.kind === 'root' ? null : { attributes, listeners }} />
     </div>
+  )
+  if (node.kind === 'root') return row
+  const kind = node.kind // 闭包内保留收窄（confirmRemoveTree 仅收 plan/folder）
+  return (
+    <Dropdown
+      trigger={['contextMenu']}
+      menu={{
+        items: [
+          { key: 'create-plan', label: t('tree.newChildPlan'), onClick: () => openNameDialog({ mode: 'create-plan', targetPath: node.path, initialName: '' }) },
+          { key: 'create-folder', label: t('tree.newChildFolder'), onClick: () => openNameDialog({ mode: 'create-folder', targetPath: node.path, initialName: '' }) },
+          { type: 'divider' },
+          { key: 'rename', label: t('common.rename'), onClick: () => openNameDialog({ mode: 'rename', targetPath: node.path, initialName: node.name }) },
+          { key: 'delete', label: t('common.delete'), danger: true, onClick: () => confirmRemoveTree(node.path, kind) }
+        ]
+      }}
+    >
+      {row}
+    </Dropdown>
   )
 }
 
