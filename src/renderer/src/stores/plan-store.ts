@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
 import { message } from 'antd'
 import type { PlanDocument, Component } from '@shared/plan-types'
+import { validateDueDate } from '@shared/validation'
 import { ERR } from '@shared/errors'
 import { i18n } from '../i18n'
 
@@ -22,6 +23,8 @@ interface PlanState {
   close: () => void
   // 渲染即编辑入口：mutator 在文档副本上执行，自动调度防抖保存
   mutate: (mutator: (doc: PlanDocument) => void) => void
+  // 计划截止日期：赋值 ''/undefined 时删键（同 mutate 防抖保存路径）
+  setDueDate: (due?: string) => void
   flush: () => Promise<void>
 }
 
@@ -52,6 +55,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   close: () => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
+    pendingMutate = false
     set({ currentPath: null, document: null, saveState: 'idle', externalAlert: false })
   },
 
@@ -69,6 +73,22 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     }, DEBOUNCE_MS)
   },
 
+  setDueDate: (due?: string) => {
+    try {
+      validateDueDate(due) // 合约守卫：undefined/''=清除通过；非法值抛 TraceError（UI 日期输入恒合法，为外部调用方兜底）
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : i18n.t('errors.saveFailed'))
+      return
+    }
+    get().mutate((doc) => {
+      if (due) {
+        doc.due_date = due
+      } else {
+        delete doc.due_date // 清空=删键（旧文档兼容：undefined 即未设置）
+      }
+    })
+  },
+
   flush: async () => {
     const { document, currentPath, serverUpdatedAt } = get()
     if (!document || !currentPath || !pendingMutate || saving) return
@@ -80,11 +100,16 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         document,
         expected_updated_at: serverUpdatedAt
       })
+      // IPC 往返期间计划被删除/关闭/切换：丢弃结果（防污染新状态）
+      if (get().currentPath !== currentPath) return
       set({ serverUpdatedAt: r.updated_at, saveState: 'saved', lastError: null })
     } catch (e) {
+      // 同上：目标已不在（如被删除）属正常竞态，静默丢弃，不误报
+      if (get().currentPath !== currentPath) return
       if (e instanceof ClientError && e.code === ERR.CONFLICT) {
         // CAS 冲突：静默重拉（提示一次）
         const fresh = await invoke('storage:readPlan', { path: currentPath })
+        if (get().currentPath !== currentPath) return
         set({ document: fresh, serverUpdatedAt: fresh.updated_at, saveState: 'idle' })
         message.warning(i18n.t('errors.contentRefreshed'))
       } else {

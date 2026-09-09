@@ -81,7 +81,6 @@ const enUS: typeof zhCN = {
     dragMoveTitle: 'Drag into / out of folders',
     newChildPlan: 'New child plan',
     newChildFolder: 'New child folder',
-    more: 'More actions',
     newPlanBtn: 'Plan',
     newFolderBtn: 'Folder',
     cannotMoveIntoSelf: 'Cannot move into itself or its own children',
@@ -118,6 +117,9 @@ const enUS: typeof zhCN = {
     statusInProgress: 'En route',
     statusNotStarted: 'Not started',
     notePlaceholder: 'Margin note: review, insights, additions…',
+    noteDone: 'Done',
+    noteEdit: 'Edit (Markdown)',
+    noteMdHint: 'Markdown: **bold** `code` - list [link](url)',
     unknownComponent: '⚠ Unknown component type "{{type}}" — content preserved as-is, awaiting a newer app version.'
   },
   content: {
@@ -136,7 +138,11 @@ const enUS: typeof zhCN = {
     insertComponent: 'Insert component',
     noteShort: 'Note',
     inserted: 'Inserted {{label}}',
-    componentFallback: 'component'
+    componentFallback: 'component',
+    dueDateLabel: 'Due date',
+    dueDateAdd: '＋ Due date',
+    dueDateClear: 'Clear',
+    dueDateOverdue: 'Overdue'
   },
   status: {
     editing: 'Editing…',
@@ -195,6 +201,7 @@ const enUS: typeof zhCN = {
     startupFailed: 'Startup failed',
     openPlanFailed: 'Failed to open plan',
     saveFailed: 'Save failed',
+    deleteFailed: 'Delete failed, please retry',
     searchFailed: 'Search failed',
     setFailed: 'Setup failed, please retry',
     contentRefreshed: 'Content was updated elsewhere; refreshed for you'

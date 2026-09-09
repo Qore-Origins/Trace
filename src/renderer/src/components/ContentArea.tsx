@@ -1,7 +1,7 @@
 // ContentArea（§2.2）：面包屑 + 组件序列 + 空态 + 外部变更提示 + 插入组件；文件夹=容器视图
 import { useEffect, useMemo } from 'react'
 import { Alert, Button, Dropdown, Empty, message } from 'antd'
-import { FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
+import { CalendarOutlined, FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
 import { useTreeStore } from '../stores/tree-store'
 import { useUiStore } from '../stores/ui-store'
@@ -27,9 +27,16 @@ function newComponent(type: ComponentType): Component {
   }
 }
 
+// 本地日期 'YYYY-MM-DD'（due_date 存储格式；字符串比较即时间序）
+function todayStr(): string {
+  const d = new Date()
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 export default function ContentArea(): React.JSX.Element {
   const { t } = useTranslation()
-  const { currentPath, document: doc, externalAlert, open } = usePlanStore()
+  const { currentPath, document: doc, externalAlert, open, setDueDate } = usePlanStore()
   const { appendComponent } = usePlanMutations()
   const { selectedKind, childrenMap, loaded, loadChildren } = useTreeStore()
   const today = useMemo(() => new Date(), [doc?.updated_at])
@@ -128,6 +135,30 @@ export default function ContentArea(): React.JSX.Element {
           </span>
         ))}
       </div>
+
+      {doc && (
+        <div className={`due-date${doc.due_date && doc.due_date < todayStr() ? ' overdue' : ''}`}>
+          <span className="due-label">{t('content.dueDateLabel')}</span>
+          {doc.due_date ? (
+            <>
+              <input
+                type="date"
+                className="due-input"
+                value={doc.due_date}
+                onChange={(e) => void setDueDate(e.target.value || undefined)}
+              />
+              <Button size="small" type="text" onClick={() => void setDueDate(undefined)}>
+                {t('content.dueDateClear')}
+              </Button>
+              {doc.due_date < todayStr() && <span className="due-overdue">{t('content.dueDateOverdue')}</span>}
+            </>
+          ) : (
+            <Button size="small" type="text" icon={<CalendarOutlined />} onClick={() => void setDueDate(todayStr())}>
+              {t('content.dueDateAdd')}
+            </Button>
+          )}
+        </div>
+      )}
 
       {externalAlert && (
         <Alert

@@ -78,7 +78,6 @@ const zhCN = {
     dragMoveTitle: '拖动移入/移出文件夹',
     newChildPlan: '新建子计划',
     newChildFolder: '新建子文件夹',
-    more: '更多操作',
     newPlanBtn: '计划',
     newFolderBtn: '文件夹',
     cannotMoveIntoSelf: '不能移动到自身或子计划中',
@@ -115,6 +114,9 @@ const zhCN = {
     statusInProgress: '在途',
     statusNotStarted: '未出发',
     notePlaceholder: '旁批：复盘、心得、补充…',
+    noteDone: '完成',
+    noteEdit: '编辑（Markdown）',
+    noteMdHint: '支持 Markdown：**粗体** `代码` - 列表 [链接](url)',
     unknownComponent: '⚠ 未知组件类型「{{type}}」——内容已原样保留，等待新版本应用读取。'
   },
   content: {
@@ -133,7 +135,11 @@ const zhCN = {
     insertComponent: '插入组件',
     noteShort: '注释',
     inserted: '已插入{{label}}',
-    componentFallback: '组件'
+    componentFallback: '组件',
+    dueDateLabel: '截止日期',
+    dueDateAdd: '＋ 截止日期',
+    dueDateClear: '清除',
+    dueDateOverdue: '已过期'
   },
   status: {
     editing: '编辑中…',
@@ -192,6 +198,7 @@ const zhCN = {
     startupFailed: '启动失败',
     openPlanFailed: '打开计划失败',
     saveFailed: '保存失败',
+    deleteFailed: '删除失败，请重试',
     searchFailed: '检索失败',
     setFailed: '设置失败，请重试',
     contentRefreshed: '内容已在别处更新，已为你刷新'
