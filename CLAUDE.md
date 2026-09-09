@@ -32,7 +32,7 @@
 |------|-----|
 | 项目名称 | 溯源 Trace（`productName: 溯源 Trace`） |
 | 项目类型 | 桌面计划管理软件（个人自用，本地优先） |
-| 当前版本 | v1.0.0 |
+| 当前版本 | v0.9.0 公测版（版本史见 docs/changelog/CHANGELOG.md；1.0.0 为正式版） |
 | 应用 ID | `com.qore.trace` |
 | 署名 | Copyright (c) 2026 Qore |
 | GitHub 仓库 | `git@github.com:Qore-Origins/Trace.git`（**组织为 Qore-Origins，简称 Qore 已被占用**） |
@@ -258,6 +258,7 @@ npm run icon             # 生成 ico
 |------|------|----------|
 | v1.0.0 | 2026-09-07 | 初始版本：项目信息、四层架构、IPC 合约、构建/测试/发布规范、禁止事项 |
 | v1.0.1 | 2026-09-07 | 依会话回溯补充：GitHub 仓库 Qore-Origins、无边框自绘窗口约定、BR-005/006（.plan 导出/智能体接入远期）、协作约定（讲清下一步/等什么/还差什么） |
+| v0.9.0 | 2026-09-09 | 版本线确立：<1.0.0 按 git 里程碑编目（0.1-0.9），package.json 唯一真源；changelog 转正式 CHANGELOG.md（keep-a-changelog 风格） |
 
 ---
 
