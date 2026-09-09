@@ -1,0 +1,37 @@
+{
+  "project": "Trace",
+  "description": "溯源 Trace（by Qore）在 GitHub 等平台的 Release 发布记录。字段对应 GitHub New release 表单：tag / target / title / notes / assets / label。notes 正文存于独立 markdown 文件（真实换行，便于直接复制粘贴到 GitHub Release notes 框）。",
+  "namingRule": "tag 采用 v<语义版本>（如 v0.9.0）；assets 为对应构建产物；notes 正文存 release_notes_<tag>.md；发布后回填 url/publishedAt/downloadUrl 并将 status 改为 published。",
+  "statusEnum": "draft（待发布）/ published（已发布）/ unpublished（仅本地构建，未在平台发布）",
+  "releases": [
+    {
+      "platform": "GitHub",
+      "repo": "Qore-Origins/Trace",
+      "tag": "v0.9.0",
+      "target": "main",
+      "title": "v0.9.0 — 溯源 Trace 公测版（Beta）",
+      "label": "None",
+      "isLatest": true,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.9.0.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_0.9.0_beta_20260909_01.exe",
+          "platform": "win32-x64",
+          "size": 123405967,
+          "sizeFormatted": "117.69 MB",
+          "sha256": "727A3D2659FD89CDE64993CB52946ADABEE636B5FDFD8A0668A4CB1C92FC3DF9",
+          "localPath": "builds/windows/Trace_0.9.0_beta_20260909_01.exe",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.9.0/Trace_0.9.0_beta_20260909_01.exe"
+        }
+      ],
+      "versionInPackageJson": "0.9.0+1",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-09T22:16:00",
+      "commit": "e1d6f10",
+      "publishedAt": "2026-09-09T14:20:01Z",
+      "url": "https://github.com/Qore-Origins/Trace/releases/tag/v0.9.0"
+    }
+  ]
+}

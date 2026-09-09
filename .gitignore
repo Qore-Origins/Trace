@@ -25,3 +25,6 @@ Resource/ico/Wan_*.png
 # IDE
 .idea/
 .vscode/
+
+# 构建产物归档（二进制不进 git——分发走 GitHub Release 资产；账本 build_history.json 入仓）
+builds/windows/
