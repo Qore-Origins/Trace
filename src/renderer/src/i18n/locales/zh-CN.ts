@@ -81,7 +81,8 @@ const zhCN = {
     newPlanBtn: '计划',
     newFolderBtn: '文件夹',
     cannotMoveIntoSelf: '不能移动到自身或子计划中',
-    moveFailed: '移动失败，已还原'
+    moveFailed: '移动失败，已还原',
+    resize: '调整侧边栏宽度'
   },
   cards: {
     kindSinglePlan: '单选计划',

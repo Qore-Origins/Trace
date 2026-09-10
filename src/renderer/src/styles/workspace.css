@@ -41,7 +41,10 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* ---------- 布局骨架（§2.2） ---------- */
 .ws { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }
 .ws-main { flex: 1; display: flex; min-height: 0; }
-.ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); display: flex; flex-direction: column; min-height: 0; }
+.ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); display: flex; flex-direction: column; min-height: 0; position: relative; }
+/* 拖拽调宽手柄（VS Code 参考行为）：右缘 6px 命中带，跨在分界线上；hover/拖动亮蓝提示 */
+.tree-resizer { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; z-index: 5; background: transparent; }
+.tree-resizer:hover, .tree-resizer:active { background: rgba(22, 119, 255, 0.25); }
 .ws-tree .tree-scroll { flex: 1; overflow: auto; padding: 8px 6px 4px; }
 .ws-tree .tree-footer { flex: none; display: flex; gap: 6px; padding: 8px 6px 10px; border-top: 1px solid var(--split); }
 .ws-content { flex: 1; overflow: auto; padding: 14px 24px 32px; }

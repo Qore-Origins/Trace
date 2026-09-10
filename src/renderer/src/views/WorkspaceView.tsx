@@ -1,15 +1,17 @@
 // WorkspaceView（§2.2）：双栏工作台；<960px 树折叠为抽屉
 // 全局交互底座（搜索浮层/命名对话框/设置弹窗 + 全局快捷键）已提升至 App（评审 Important-1），
 // 本视图只保留树选中相关快捷键（F2 重命名 / Delete 删除）——选中态仅工作台可见，日记视图不误删隐藏选中
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Drawer, Grid } from 'antd'
 import { MenuOutlined } from '@ant-design/icons'
 import TopBar from '../components/TopBar'
 import PlanTreePanel from '../components/PlanTreePanel'
 import ContentArea from '../components/ContentArea'
 import StatusBar from '../components/StatusBar'
+import TreeResizer from '../components/TreeResizer'
 import { useTreeStore } from '../stores/tree-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
+import { usePrefStore } from '../stores/pref-store'
 import { useTranslation } from '../i18n'
 
 function useNarrow(): boolean {
@@ -31,6 +33,8 @@ export default function WorkspaceView(): React.JSX.Element {
 
   const { selectedPath, selectedKind } = useTreeStore()
   const openNameDialog = useUiStore((s) => s.openNameDialog)
+  const treeWidth = usePrefStore((s) => s.treeWidth)
+  const treeBoxRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -75,7 +79,10 @@ export default function WorkspaceView(): React.JSX.Element {
         </div>
       ) : (
         <div className="ws-main">
-          <div className="ws-tree">{tree}</div>
+          <div className="ws-tree" ref={treeBoxRef} style={{ width: treeWidth }}>
+            {tree}
+            <TreeResizer targetRef={treeBoxRef} />
+          </div>
           <ContentArea />
         </div>
       )}

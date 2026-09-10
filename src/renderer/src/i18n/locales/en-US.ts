@@ -84,7 +84,8 @@ const enUS: typeof zhCN = {
     newPlanBtn: 'Plan',
     newFolderBtn: 'Folder',
     cannotMoveIntoSelf: 'Cannot move into itself or its own children',
-    moveFailed: 'Move failed, restored'
+    moveFailed: 'Move failed, restored',
+    resize: 'Resize sidebar'
   },
   cards: {
     kindSinglePlan: 'Single plan',
