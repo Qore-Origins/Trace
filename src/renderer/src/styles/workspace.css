@@ -299,6 +299,13 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .note-md a { color: #1677ff; text-decoration: none; cursor: pointer; }
 .note-md a:hover { text-decoration: underline; }
 .note-md strong { color: var(--text-1); }
+/* 引用/分隔线/表格（2026-09-10 渲染器扩展——用户命名设计文档截图修复） */
+.note-md blockquote { margin: 0 0 8px; padding: 2px 10px; border-left: 3px solid var(--split); color: var(--text-3); }
+.note-md blockquote:last-child { margin-bottom: 0; }
+.note-md hr { border: none; border-top: 1px solid var(--split); margin: 10px 0; }
+.note-md table { border-collapse: collapse; margin: 0 0 8px; font-size: 12px; }
+.note-md th, .note-md td { border: 1px solid var(--split); padding: 4px 8px; text-align: left; }
+.note-md th { background: var(--paper-dim); font-weight: 600; color: var(--text-1); }
 .note-actions { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
 .note-actions-end { justify-content: flex-end; }
 .note-actions-end .ant-btn { color: var(--text-3); }

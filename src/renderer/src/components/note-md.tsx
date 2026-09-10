@@ -10,6 +10,9 @@ type Block =
   | { kind: 'para'; lines: string[] }
   | { kind: 'list'; ordered: boolean; items: string[] }
   | { kind: 'code'; lang: string; code: string }
+  | { kind: 'quote'; lines: string[] }
+  | { kind: 'hr' }
+  | { kind: 'table'; head: string[]; rows: string[][] }
 
 interface FenceMatch {
   lang: string
@@ -24,8 +27,66 @@ function isFenceEnd(line: string): boolean {
   return /^```\s*$/.test(line)
 }
 
-export function parseBlocks(text: string): Block[] {
+const HR_RE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/
+const QUOTE_RE = /^\s*>\s?(.*)$/
+const TABLE_ROW_RE = /^\s*\|.*\|\s*$/
+
+// HTML 注释剥除（<!-- ... -->，单行/跨行；代码块内原样保留）
+// 2026-09-10 用户截图修复：命名设计文档内含注释，原实现把注释字面泄漏进正文
+export function stripHtmlComments(text: string): string {
   const lines = text.split(/\r?\n/)
+  const out: string[] = []
+  let inFence = false
+  let inComment = false
+  for (const line of lines) {
+    if (!inComment && isFence(line)) {
+      inFence = !inFence
+      out.push(line)
+      continue
+    }
+    if (inFence) {
+      out.push(line)
+      continue
+    }
+    let l = line
+    for (;;) {
+      if (inComment) {
+        const end = l.indexOf('-->')
+        if (end === -1) {
+          l = ''
+          break
+        }
+        inComment = false
+        l = l.slice(end + 3)
+        continue
+      }
+      const start = l.indexOf('<!--')
+      if (start === -1) break
+      const end = l.indexOf('-->', start + 4)
+      if (end === -1) {
+        inComment = true
+        l = l.slice(0, start)
+        break
+      }
+      l = l.slice(0, start) + l.slice(end + 3)
+    }
+    out.push(l)
+  }
+  return out.join('\n')
+}
+
+function tableCells(line: string): string[] {
+  return line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+}
+
+// 表格分隔行：仅由 空格 | : - 组成且含 -（如 |---|---| / |:--|--:|）
+function isTableSep(line: string): boolean {
+  const t = line.trim()
+  return t.includes('-') && /^[\s|:-]+$/.test(t)
+}
+
+export function parseBlocks(text: string): Block[] {
+  const lines = stripHtmlComments(text).split(/\r?\n/)
   const blocks: Block[] = []
   let i = 0
   while (i < lines.length) {
@@ -52,6 +113,42 @@ export function parseBlocks(text: string): Block[] {
       continue
     }
 
+    // 2.5 分隔线
+    if (HR_RE.test(line)) {
+      blocks.push({ kind: 'hr' })
+      i++
+      continue
+    }
+
+    // 2.6 引用块（> 连续行聚合，前缀剥离）
+    const q = QUOTE_RE.exec(line)
+    if (q) {
+      const qlines: string[] = []
+      while (i < lines.length) {
+        const m = QUOTE_RE.exec(lines[i])
+        if (!m) break
+        qlines.push(m[1])
+        i++
+      }
+      blocks.push({ kind: 'quote', lines: qlines })
+      continue
+    }
+
+    // 2.7 表格（| 行连续聚合；第二行为分隔行才成表，否则按段落）
+    if (TABLE_ROW_RE.test(line)) {
+      const rowsRaw: string[] = []
+      while (i < lines.length && TABLE_ROW_RE.test(lines[i])) {
+        rowsRaw.push(lines[i])
+        i++
+      }
+      if (rowsRaw.length >= 2 && isTableSep(rowsRaw[1])) {
+        blocks.push({ kind: 'table', head: tableCells(rowsRaw[0]), rows: rowsRaw.slice(2).map(tableCells) })
+      } else {
+        blocks.push({ kind: 'para', lines: rowsRaw })
+      }
+      continue
+    }
+
     // 3. 列表（- / * / 1. 平铺，连续匹配行聚合为一个块）
     const ul = /^\s*[-*]\s+(.+)$/.exec(line)
     const ol = /^\s*\d+\.\s+(.+)$/.exec(line)
@@ -68,9 +165,18 @@ export function parseBlocks(text: string): Block[] {
       continue
     }
 
-    // 4. 段落：聚合到空行或下一个结构行为止
+    // 4. 段落：聚合到空行或下一个结构行为止（含 hr/引用/表格起始）
     const para: string[] = []
-    while (i < lines.length && lines[i].trim() !== '' && !isFence(lines[i]) && !/^\s*[-*]\s+\S/.test(lines[i]) && !/^\s*\d+\.\s+\S/.test(lines[i])) {
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !isFence(lines[i]) &&
+      !HR_RE.test(lines[i]) &&
+      !QUOTE_RE.test(lines[i]) &&
+      !TABLE_ROW_RE.test(lines[i]) &&
+      !/^\s*[-*]\s+\S/.test(lines[i]) &&
+      !/^\s*\d+\.\s+\S/.test(lines[i])
+    ) {
       para.push(lines[i])
       i++
     }
@@ -137,6 +243,32 @@ export function NoteMarkdown({ content, onLink }: { content: string; onLink?: (u
         if (b.kind === 'list') {
           const items = b.items.map((it, li) => <li key={`${key}-i-${li}`}>{renderText(it, `${key}-i-${li}`, onLink)}</li>)
           return b.ordered ? <ol key={key}>{items}</ol> : <ul key={key}>{items}</ul>
+        }
+        if (b.kind === 'hr') return <hr key={key} />
+        if (b.kind === 'quote') {
+          return <blockquote key={key}>{renderText(b.lines.join(' '), key, onLink)}</blockquote>
+        }
+        if (b.kind === 'table') {
+          return (
+            <table key={key}>
+              <thead>
+                <tr>
+                  {b.head.map((c, ci) => (
+                    <th key={`${key}-h-${ci}`}>{renderText(c, `${key}-h-${ci}`, onLink)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {b.rows.map((r, ri) => (
+                  <tr key={`${key}-r-${ri}`}>
+                    {r.map((c, ci) => (
+                      <td key={`${key}-r-${ri}-${ci}`}>{renderText(c, `${key}-r-${ri}-${ci}`, onLink)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
         }
         return <p key={key}>{renderText(b.lines.join(' '), key, onLink)}</p>
       })}

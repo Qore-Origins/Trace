@@ -36,6 +36,53 @@ describe('note-md parseBlocks', () => {
     const ol = parseBlocks('1. 一\n2. 二')
     expect((ol[0] as { ordered: boolean }).ordered).toBe(true)
   })
+
+  // 2026-09-10 渲染错误修复（用户截图：HTML 注释字面泄漏+引用/分隔线/表格平铺）
+  it('HTML 注释剥除：单行与跨行均不显示，前后文本保留', () => {
+    const blocks = parseBlocks('前段<!-- 隐藏\n- 甲\n- 乙 -->后段')
+    // 跨行注释剥离后残留换行 → 前后文各成一段（注释内容不出现）
+    expect(blocks.map((b) => (b as { lines: string[] }).lines.join(''))).toEqual(['前段', '后段'])
+  })
+
+  it('HTML 注释剥除：行内单行注释前后文合成一段', () => {
+    const blocks = parseBlocks('甲<!-- 隐藏 -->乙')
+    expect(blocks).toHaveLength(1)
+    expect((blocks[0] as { lines: string[] }).lines.join('')).toBe('甲乙')
+  })
+
+  it('HTML 注释在代码块内原样保留', () => {
+    const blocks = parseBlocks('```\n<!-- x -->\n```')
+    expect(blocks[0].kind).toBe('code')
+    expect((blocks[0] as { code: string }).code).toBe('<!-- x -->')
+  })
+
+  it('引用块聚合（> 前缀剥离）', () => {
+    const blocks = parseBlocks('> 命名释义\n> 口号详见文档')
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].kind).toBe('quote')
+    expect((blocks[0] as { lines: string[] }).lines).toEqual(['命名释义', '口号详见文档'])
+  })
+
+  it('分隔线渲染为 hr 块', () => {
+    expect(parseBlocks('a\n\n---\n\nb').map((b) => b.kind)).toEqual(['para', 'hr', 'para'])
+  })
+
+  it('表格：表头+分隔行+数据行', () => {
+    const blocks = parseBlocks('| 项 | 值 |\n|---|---|\n| 中文名 | 溯源 |\n| 包名 | com.qore.trace |')
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].kind).toBe('table')
+    const t = blocks[0] as { head: string[]; rows: string[][] }
+    expect(t.head).toEqual(['项', '值'])
+    expect(t.rows).toEqual([
+      ['中文名', '溯源'],
+      ['包名', 'com.qore.trace']
+    ])
+  })
+
+  it('表格无分隔行时按段落处理（不误判）', () => {
+    const blocks = parseBlocks('| 只有一行 | 没有分隔 |')
+    expect(blocks[0].kind).toBe('para')
+  })
 })
 
 describe('note-md renderText（React 片段结构）', () => {
