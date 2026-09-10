@@ -121,6 +121,65 @@
       "commit": "dbe2eae",
       "publishedAt": "2026-09-10T02:00:00Z",
       "url": "https://gitee.com/Qore/trace/releases/v0.10.0"
+    },
+    {
+      "platform": "GitHub",
+      "repo": "Qore-Origins/Trace",
+      "tag": "v0.10.1",
+      "target": "main",
+      "title": "v0.10.1 — 溯源 Trace 公测版 Beta 2 修订",
+      "label": "None",
+      "isLatest": true,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.10.1.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_0.10.1_beta_20260910_01.exe",
+          "platform": "win32-x64",
+          "size": 123413019,
+          "sizeFormatted": "117.70 MB",
+          "sha256": "4A3BD5E98D6A07A53AA4B386AB26578321C3F4412F90A245F5C8607F2F02351D",
+          "localPath": "builds/windows/Trace_0.10.1_beta_20260910_01.exe",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.10.1/Trace_0.10.1_beta_20260910_01.exe"
+        }
+      ],
+      "versionInPackageJson": "0.10.1+1",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-10T17:55:00",
+      "commit": "fc3dc9a",
+      "publishedAt": "2026-09-10T10:05:54Z",
+      "url": "https://github.com/Qore-Origins/Trace/releases/tag/v0.10.1"
+    },
+    {
+      "platform": "Gitee",
+      "repo": "Qore/trace",
+      "tag": "v0.10.1",
+      "target": "main",
+      "title": "v0.10.1 — 溯源 Trace 公测版 Beta 2 修订",
+      "label": "None",
+      "isLatest": true,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.10.1.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_0.10.1_beta_20260910_01.exe",
+          "platform": "win32-x64",
+          "size": 123413019,
+          "sizeFormatted": "117.70 MB",
+          "sha256": "4A3BD5E98D6A07A53AA4B386AB26578321C3F4412F90A245F5C8607F2F02351D",
+          "localPath": "builds/windows/Trace_0.10.1_beta_20260910_01.exe",
+          "note": "Gitee 附件上限 100MB（117.70MB 超限）——下载走 GitHub 资产链接",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.10.1/Trace_0.10.1_beta_20260910_01.exe"
+        }
+      ],
+      "versionInPackageJson": "0.10.1+1",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-10T17:55:00",
+      "commit": "fc3dc9a",
+      "publishedAt": "2026-09-10T10:10:00Z",
+      "url": "https://gitee.com/Qore/trace/releases/v0.10.1"
     }
   ]
 }
