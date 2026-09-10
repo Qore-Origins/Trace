@@ -93,6 +93,12 @@ function collectRevealedSlots(
 }
 
 // ---------- 行内容（根/子行共享）：缩进连接线 + 手柄位 + 方框 +/- + 标题/快捷操作 ----------
+// 容器能力：仅文件夹/库根可承载子项——「新建计划/文件夹」仅在此类节点出现
+// （BR-005 计划/文件夹语义区分对操作矩阵的落实；用户反馈：计划上不该有新建子项钮）
+function canHostChildren(kind: RowView['kind']): boolean {
+  return kind === 'folder' || kind === 'root'
+}
+
 function RowContent(props: {
   node: RowView
   selected: boolean
@@ -176,30 +182,32 @@ function RowContent(props: {
         >
           {isDiaryRoot ? t('diary.name') : node.name}
         </span>
-        <span className="tree-quick">
-          <button
-            type="button"
-            className="lite-btn"
-            aria-label={t('tree.newChildPlan')}
-            onClick={(e) => {
-              e.stopPropagation()
-              openNameDialog({ mode: 'create-plan', targetPath: node.path, initialName: '' })
-            }}
-          >
-            <PlusOutlined />
-          </button>
-          <button
-            type="button"
-            className="lite-btn"
-            aria-label={t('tree.newChildFolder')}
-            onClick={(e) => {
-              e.stopPropagation()
-              openNameDialog({ mode: 'create-folder', targetPath: node.path, initialName: '' })
-            }}
-          >
-            <FolderAddOutlined />
-          </button>
-        </span>
+        {canHostChildren(kind) && (
+          <span className="tree-quick">
+            <button
+              type="button"
+              className="lite-btn"
+              aria-label={t('tree.newChildPlan')}
+              onClick={(e) => {
+                e.stopPropagation()
+                openNameDialog({ mode: 'create-plan', targetPath: node.path, initialName: '' })
+              }}
+            >
+              <PlusOutlined />
+            </button>
+            <button
+              type="button"
+              className="lite-btn"
+              aria-label={t('tree.newChildFolder')}
+              onClick={(e) => {
+                e.stopPropagation()
+                openNameDialog({ mode: 'create-folder', targetPath: node.path, initialName: '' })
+              }}
+            >
+              <FolderAddOutlined />
+            </button>
+          </span>
+        )}
       </span>
     </>
   )
@@ -266,9 +274,14 @@ function TreeRow(props: { node: RowView }): React.JSX.Element {
       trigger={['contextMenu']}
       menu={{
         items: [
-          { key: 'create-plan', label: t('tree.newChildPlan'), onClick: () => openNameDialog({ mode: 'create-plan', targetPath: node.path, initialName: '' }) },
-          { key: 'create-folder', label: t('tree.newChildFolder'), onClick: () => openNameDialog({ mode: 'create-folder', targetPath: node.path, initialName: '' }) },
-          { type: 'divider' },
+          // 新建子项仅容器节点（文件夹/库根）；计划没有子项语义
+          ...(canHostChildren(kind)
+            ? [
+                { key: 'create-plan', label: t('tree.newChildPlan'), onClick: () => openNameDialog({ mode: 'create-plan', targetPath: node.path, initialName: '' }) },
+                { key: 'create-folder', label: t('tree.newChildFolder'), onClick: () => openNameDialog({ mode: 'create-folder', targetPath: node.path, initialName: '' }) },
+                { type: 'divider' as const }
+              ]
+            : []),
           { key: 'rename', label: t('common.rename'), onClick: () => openNameDialog({ mode: 'rename', targetPath: node.path, initialName: node.name }) },
           { key: 'delete', label: t('common.delete'), danger: true, onClick: () => confirmRemoveTree(node.path, kind) }
         ]
