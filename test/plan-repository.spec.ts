@@ -86,3 +86,43 @@ describe('moveDir EXDEV fallback（SPIKE-3 定案）', () => {
     await expect(fs.access(join(root, 'src'))).rejects.toThrow()
   })
 })
+
+// 2026-09-10 用户反馈修复：目录级增删改移此前不登记内部写 → chokidar 回声触发
+// fs-external-change → 渲染层 refreshAll（整树重载）。VS Code 借鉴：操作应局部生效、不重载树
+describe('目录操作内部写登记（防 watch 回声整树重载）', () => {
+  it('mkdirPlan：mkdir 前登记目标目录', async () => {
+    const marks: string[] = []
+    const r = new PlanRepository({ onInternalWrite: (p) => marks.push(p) })
+    await r.mkdirPlan(root, '', 'a')
+    expect(marks).toContain(join(root, 'a'))
+  })
+
+  it('rmRecursive：删除前登记被删目录（前缀抑制其内全部事件）', async () => {
+    const marks: string[] = []
+    const r = new PlanRepository({ onInternalWrite: (p) => marks.push(p) })
+    await r.mkdirPlan(root, '', 'b')
+    marks.length = 0
+    await r.rmRecursive(root, 'b')
+    expect(marks).toContain(join(root, 'b'))
+  })
+
+  it('moveDir：登记源与目标两侧（unlinkDir + addDir 回声都抑制）', async () => {
+    const marks: string[] = []
+    const r = new PlanRepository({ onInternalWrite: (p) => marks.push(p) })
+    await r.mkdirPlan(root, '', 'c')
+    marks.length = 0
+    await r.moveDir(join(root, 'c'), join(root, 'd'))
+    expect(marks).toContain(join(root, 'c'))
+    expect(marks).toContain(join(root, 'd'))
+  })
+
+  it('renamePlanDir：经 moveDir 登记源与目标', async () => {
+    const marks: string[] = []
+    const r = new PlanRepository({ onInternalWrite: (p) => marks.push(p) })
+    await r.mkdirPlan(root, '', 'e')
+    marks.length = 0
+    await r.renamePlanDir(root, 'e', 'f')
+    expect(marks).toContain(join(root, 'e'))
+    expect(marks).toContain(join(root, 'f'))
+  })
+})

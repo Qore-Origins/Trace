@@ -266,8 +266,17 @@ export function subscribeTreeEvents(): () => void {
     const gp = parentRel(parentRel(p.path))
     if (gp !== parentRel(p.path)) void useTreeStore.getState().loadChildren(gp).catch(() => {})
   })
-  const off2 = onEvent('trace:fs-external-change', () => {
-    void useTreeStore.getState().refreshAll().catch(() => {})
+  const off2 = onEvent('trace:fs-external-change', (p) => {
+    // 定向刷新（VS Code 借鉴：变更只更新相关层，不整树重载——2026-09-10 用户反馈）
+    // 应用自身操作的 chokidar 回声已在 main 侧抑制（PlanRepository 目录操作登记）；此处覆盖真外部变更
+    const rel = p.paths[0]
+    if (!rel) {
+      void useTreeStore.getState().refreshAll().catch(() => {})
+      return
+    }
+    void useTreeStore.getState().loadChildren(parentRel(rel)).catch(() => {})
+    const gp = parentRel(parentRel(rel))
+    if (gp !== parentRel(rel)) void useTreeStore.getState().loadChildren(gp).catch(() => {})
   })
   return () => {
     off1()

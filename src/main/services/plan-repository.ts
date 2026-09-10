@@ -200,6 +200,8 @@ export class PlanRepository {
   async mkdirPlan(rootAbs: string, parentRelPath: string, name: string): Promise<string> {
     const parentAbs = parentRelPath === '' ? rootAbs : join(rootAbs, parentRelPath)
     const dirAbs = join(parentAbs, name)
+    // 内部写登记：新建目录的 addDir 事件须被 watch 抑制（否则回声触发整树重载——2026-09-10 用户反馈）
+    this.notifyWrite(dirAbs)
     try {
       await fs.mkdir(dirAbs) // 已存在则抛 EEXIST → 转 NAME_CONFLICT
     } catch (e) {
@@ -234,8 +236,11 @@ export class PlanRepository {
   }
 
   async rmRecursive(rootAbs: string, rel: string): Promise<void> {
+    const abs = join(rootAbs, rel)
+    // 内部写登记：unlinkDir 及其内全部 unlink 事件须被 watch 抑制（2026-09-10 用户反馈——删除致整树重载）
+    this.notifyWrite(abs)
     try {
-      await fs.rm(join(rootAbs, rel), { recursive: true, force: false })
+      await fs.rm(abs, { recursive: true, force: false })
     } catch (e) {
       throw fsErrorToTrace(e)
     }
@@ -243,13 +248,16 @@ export class PlanRepository {
 
   // 跨盘安全移动：同盘 rename；EXDEV → copy 目录 + rm 源（SPIKE-3 定案）
   async moveDir(fromAbs: string, toAbs: string): Promise<void> {
+    // 内部写登记：源侧 unlinkDir 与目标侧 addDir 回声均抑制（含 EXDEV copy 产生的目标子树事件）
+    this.notifyWrite(fromAbs)
+    this.notifyWrite(toAbs)
     try {
       await this.rename(fromAbs, toAbs)
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw fsErrorToTrace(e)
       try {
         await this.copyDirRecursive(fromAbs, toAbs)
-        await fs.rm(fromAbs, { recursive: true, force: true })
+        await fs.rm(fromAbs, { recursive: true, force: true }) // 源已在本方法开头登记抑制
       } catch (e2) {
         throw fsErrorToTrace(e2)
       }
