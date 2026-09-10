@@ -49,6 +49,12 @@ export class PlanRepository {
     this.deps.onInternalWrite?.(absPath)
   }
 
+  // 自身写入回声抑制入口：供外部服务（diary-service 等自建目录场景）在 mkdir/写入前登记路径，
+  // 委托注入的 onInternalWrite（主装配处=watch.markInternalWrite，评审 F1 注入链）
+  markInternalWrite(absPath: string): void {
+    this.notifyWrite(absPath)
+  }
+
   // ---------- 库结构 ----------
 
   // 首次配置/启动校验：可写探测 + .trace/plan-library.json 创建或加载
@@ -136,6 +142,8 @@ export class PlanRepository {
 
   private async writeJsonAtomic(target: string, data: unknown): Promise<void> {
     const dir = dirname(target)
+    // mkdir 前登记目录：新建目录（如日记日页首次写入）的 addDir 事件同样被 watch 抑制（评审 Important-3）
+    this.notifyWrite(dir)
     await fs.mkdir(dir, { recursive: true })
     const tmp = join(dir, `.${target.split(/[\\/]/).pop() ?? 'file'}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`)
     let handle: fs.FileHandle | undefined

@@ -37,6 +37,8 @@ export function setDiaryRepo(r: PlanRepository): void {
 // 日记根绝对路径；幂等（recursive mkdir 已存在无副作用，不触碰已有内容）
 export async function ensureDiaryRoot(planRoot: string): Promise<string> {
   const { abs } = resolveWithin(planRoot, DIARY_DIR)
+  // mkdir 前经注入实例登记：首次进日记视图建 Diary/ 目录的 addDir 事件被 watch 抑制（评审 Important-3）
+  repo.markInternalWrite(abs)
   await fs.mkdir(abs, { recursive: true })
   return abs
 }
@@ -47,6 +49,8 @@ export async function ensureTodayPage(planRoot: string): Promise<string> {
   const rel = `${DIARY_DIR}/${today}`
   const { abs } = resolveWithin(planRoot, rel)
   if (await repo.hasPlanFile(planRoot, rel)) return abs
+  // 写模板前登记日目录：新建 Diary/<today>/ 的 addDir 事件被 watch 抑制（评审 Important-3）
+  repo.markInternalWrite(abs)
   const now = new Date().toISOString()
   const template: PlanDocument = {
     format_version: '1',

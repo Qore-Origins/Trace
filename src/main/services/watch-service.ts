@@ -46,14 +46,15 @@ export class WatchService {
     this.suppress.clear()
   }
 
-  // Repository 原子写回调：写入前后登记，抑制回声
+  // Repository 原子写回调：写入前后登记，抑制回声；登记的目录路径按前缀匹配抑制其内全部事件
   markInternalWrite(absPath: string): void {
     this.suppress.set(absPath, Date.now())
     this.suppress.set(join(absPath, 'plan.json'), Date.now())
     if (this.suppress.size > 500) this.prune()
   }
 
-  private isSuppressed(absPath: string): boolean {
+  // 事件是否命中抑制登记（public：单测直接断言 markInternalWrite → 抑制映射，无需真实 chokidar 事件）
+  isSuppressed(absPath: string): boolean {
     const now = Date.now()
     for (const [key, ts] of this.suppress) {
       if (now - ts > 500) this.suppress.delete(key)

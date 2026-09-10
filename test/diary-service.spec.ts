@@ -7,8 +7,10 @@ import {
   ensureDiaryRoot,
   ensureTodayPage,
   listMonthEntries,
-  readDaySummary
+  readDaySummary,
+  setDiaryRepo
 } from '../src/main/services/diary-service'
+import { PlanRepository } from '../src/main/services/plan-repository'
 import { todayDateStr } from '../src/shared/validation'
 import { TraceError, ERR } from '../src/shared/errors'
 import type { PlanDocument } from '../src/shared/plan-types'
@@ -232,5 +234,20 @@ describe('readDaySummary', () => {
     await expect(readDaySummary(root, '2026/09/01')).rejects.toMatchObject({ code: ERR.VALIDATION })
     await expect(readDaySummary(root, '20260901')).rejects.toMatchObject({ code: ERR.VALIDATION })
     await expect(readDaySummary(root, '2026-9-1')).rejects.toMatchObject({ code: ERR.VALIDATION })
+  })
+})
+
+describe('watch 回声抑制登记（评审 Important-3）', () => {
+  it('ensureDiaryRoot / ensureTodayPage 经注入 repo 在 mkdir/写前登记目录（addDir 抑制链路）', async () => {
+    const marks: string[] = []
+    setDiaryRepo(new PlanRepository({ onInternalWrite: (abs) => marks.push(abs) }))
+    try {
+      await ensureDiaryRoot(root)
+      expect(marks).toContain(join(root, 'Diary'))
+      await ensureTodayPage(root)
+      expect(marks).toContain(join(root, 'Diary', todayDateStr()))
+    } finally {
+      setDiaryRepo(new PlanRepository()) // 复位模块级注入，避免污染其他用例
+    }
   })
 })
