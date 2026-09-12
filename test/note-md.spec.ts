@@ -1,6 +1,6 @@
 // NoteMarkdown 解析器单测（renderer 纯函数；React 节点仅断言类型/标签，不渲染）
 import { describe, expect, it } from 'vitest'
-import { parseBlocks, renderText } from '../src/renderer/src/components/note-md'
+import { highlightCode, parseBlocks, renderText } from '../src/renderer/src/components/note-md'
 
 describe('note-md parseBlocks', () => {
   it('代码块：闭合围栏转为 code 块，内容原样', () => {
@@ -82,6 +82,30 @@ describe('note-md parseBlocks', () => {
   it('表格无分隔行时按段落处理（不误判）', () => {
     const blocks = parseBlocks('| 只有一行 | 没有分隔 |')
     expect(blocks[0].kind).toBe('para')
+  })
+})
+
+describe('note-md highlightCode（2026-09-10 代码块语法高亮）', () => {
+  it('已知语言：产出 hljs 着色 span，原文转义保留', () => {
+    const html = highlightCode('const n = 1 // 注释', 'javascript')
+    expect(html).toContain('hljs-keyword')
+    expect(html).toContain('hljs-comment')
+    expect(html).toContain('const')
+  })
+
+  it('HTML 内容被转义（无注入面）', () => {
+    const html = highlightCode('<script>alert(1)</script>', 'javascript')
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+
+  it('未知语言回退纯转义（原文可还原）', () => {
+    const html = highlightCode('a < b & c', 'not-a-lang')
+    expect(html).toBe('a &lt; b &amp; c')
+  })
+
+  it('未声明语言同样回退纯转义', () => {
+    expect(highlightCode('x > 1', '')).toBe('x &gt; 1')
   })
 })
 

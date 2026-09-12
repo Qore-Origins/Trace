@@ -1,8 +1,12 @@
-// NoteMarkdown：注释组件的最小 Markdown 渲染器（零依赖，覆盖注释实际出现的子集）
+// NoteMarkdown：注释组件的 Markdown 渲染器（覆盖注释实际出现的子集）
 // 语料来源：Markdown 迁入保底注释（transfer-service 定典）——代码块/粗体/行内码/链接/列表/小标题
-// 安全：纯 React 节点输出（无 dangerouslySetInnerHTML / innerHTML），链接默认拦截不导航
+// 2026-09-10 代码块语法高亮（用户计划项"markdown渲染高亮、代码块高亮"；marktext 同类功能用 prismjs，
+//   本项目经选型用 highlight.js——lib/common 入口约 35 种常用语言）
+// 安全：React 节点输出；唯二例外是代码块的 dangerouslySetInnerHTML——其内容经 highlight.js
+//   转义（<>& 均转义后才插入着色 span）或 highlightCode 的手动转义，无注入面
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
+import hljs from 'highlight.js/lib/common'
 
 // ---------- 块级解析 ----------
 
@@ -185,6 +189,23 @@ export function parseBlocks(text: string): Block[] {
   return blocks
 }
 
+// ---------- 代码块高亮 ----------
+
+const ESC_MAP: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;' }
+
+// 代码块着色为 HTML 字符串（供 dangerouslySetInnerHTML）：
+// 已知语言走 highlight.js（输出本身已转义）；未知/未声明语言退回纯转义（保持纯文本显示）
+export function highlightCode(code: string, lang: string): string {
+  if (lang && hljs.getLanguage(lang)) {
+    try {
+      return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+    } catch {
+      // 高亮器内部异常不阻塞渲染——退回纯文本
+    }
+  }
+  return code.replace(/[&<>]/g, (c) => ESC_MAP[c])
+}
+
 // ---------- 行内解析 ----------
 
 const INLINE_SPLIT = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/
@@ -236,7 +257,10 @@ export function NoteMarkdown({ content, onLink }: { content: string; onLink?: (u
         if (b.kind === 'code') {
           return (
             <pre key={key} data-lang={b.lang}>
-              <code>{b.code}</code>
+              <code
+                className={b.lang && hljs.getLanguage(b.lang) ? `hljs language-${b.lang}` : undefined}
+                dangerouslySetInnerHTML={{ __html: highlightCode(b.code, b.lang) }}
+              />
             </pre>
           )
         }

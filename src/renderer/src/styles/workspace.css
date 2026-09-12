@@ -298,6 +298,15 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 }
 .note-md pre:last-child { margin-bottom: 0; }
 .note-md pre code { font-family: Consolas, 'Courier New', monospace; font-size: 12px; line-height: 1.6; color: var(--text-1); white-space: pre; }
+/* 代码块语法高亮（highlight.js token 配色；github-light 色系对齐 Trace 纸面——不用 hljs 整包主题防背景冲突） */
+.note-md .hljs-keyword, .note-md .hljs-selector-tag, .note-md .hljs-literal, .note-md .hljs-section { color: #cf222e; }
+.note-md .hljs-string, .note-md .hljs-attr, .note-md .hljs-symbol, .note-md .hljs-bullet, .note-md .hljs-addition { color: #0a3069; }
+.note-md .hljs-comment, .note-md .hljs-quote, .note-md .hljs-deletion, .note-md .hljs-meta { color: #6e7781; font-style: italic; }
+.note-md .hljs-number, .note-md .hljs-regexp, .note-md .hljs-link { color: #0550ae; }
+.note-md .hljs-title, .note-md .hljs-title.function_, .note-md .hljs-name, .note-md .hljs-selector-id, .note-md .hljs-selector-class { color: #8250df; }
+.note-md .hljs-built_in, .note-md .hljs-class .hljs-title, .note-md .hljs-type, .note-md .hljs-template-variable, .note-md .hljs-variable { color: #953800; }
+.note-md .hljs-emphasis { font-style: italic; }
+.note-md .hljs-strong { font-weight: 600; }
 .note-md :not(pre) > code {
   font-family: Consolas, 'Courier New', monospace; font-size: 12px;
   background: #f0f0f0; border-radius: 3px; padding: 1px 4px;

@@ -5,7 +5,9 @@
 
 ## [未发布]
 
-- 删除过渡动画：计划/文件夹删除先平滑收合（.slot.removing，独立于折叠通道）再真删除——与新建的发牌入场对仗；首版误用 closingPaths 通道（父组波次表 null 恒不生效）已重建
+- 代码块语法高亮：注释/自定义组件的 Markdown 代码块按语言着色（highlight.js lib/common ~35 种常用语言；自写配色对齐 Trace 纸面；未知/未声明语言回退纯文本；+4 单测）——用户计划项「markdown渲染高亮、代码块高亮」（marktext 同类功能用 prismjs，本项目选型 highlight.js）
+- 拖拽排序被拖卡形变根治：剥掉 useSortable transform 的 scale 分量（useDerivedTransform 把矮卡拉成目标卡形状；CDP 实证 scaleY 2.34→1.0）
+- 删除过渡动画：计划/文件夹删除先平滑收合（.slot.removing，独立于折叠通道）再真删除——与新建的发牌入场对仗；Delete 快捷键经请求通道统一动画；首版误用 closingPaths 通道（父组波次表 null 恒不生效）已重建
 - 重名提示补全：新建/重命名失败弹真实原因（同名计划或文件夹已存在），对话框保持开启供改名——此前静默吞错"点击没效果"；文案含计划与文件夹两类
 - BR-008 记录（远期）：「导出为」图片/PDF/.plan
 
