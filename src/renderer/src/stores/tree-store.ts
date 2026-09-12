@@ -27,6 +27,8 @@ interface TreeState {
   expandTo: (path: string) => Promise<void>
   refreshAll: () => Promise<void>
   exportPlan: (path: string) => Promise<string | null>
+  exportPdf: (path: string) => Promise<string | null>
+  exportPng: (path: string) => Promise<string | null>
   importPlan: (targetParent: string) => Promise<string | null>
   importMarkdown: (targetParent: string) => Promise<string | null>
 }
@@ -232,6 +234,23 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     if (!picked.filePath) return null
     const r = await invoke('transfer:exportPlan', { path, saveTo: picked.filePath })
     return `已导出 ${r.plans} 个计划 / ${r.components} 个组件 → ${r.savedTo}`
+  },
+
+  // 导出为（BR-008）：离屏窗口渲染计划卡 → PDF/PNG；用户取消保存对话框返回 null
+  exportPdf: async (path) => {
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    const picked = await invoke('app:pickSavePath', { defaultName: `${name}-${todayYmd()}.pdf`, extensions: ['pdf'] })
+    if (!picked.filePath) return null
+    const r = await invoke('transfer:exportPdf', { path, saveTo: picked.filePath })
+    return `已导出 PDF → ${r.savedTo}`
+  },
+
+  exportPng: async (path) => {
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    const picked = await invoke('app:pickSavePath', { defaultName: `${name}-${todayYmd()}.png`, extensions: ['png'] })
+    if (!picked.filePath) return null
+    const r = await invoke('transfer:exportPng', { path, saveTo: picked.filePath })
+    return `已导出图片 → ${r.savedTo}`
   },
 
   importPlan: async (targetParent) => {

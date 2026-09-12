@@ -43,6 +43,8 @@ const zhCN = {
     importPlan: '导入 .plan…',
     importMd: '迁入 Markdown 计划…',
     exportPlan: '导出当前计划 (.plan)…',
+    exportPdf: '导出为 PDF…',
+    exportPng: '导出为图片…',
     switchRoot: '切换计划库目录…',
     settings: '设置…',
     quit: '退出',

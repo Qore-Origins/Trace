@@ -46,6 +46,8 @@ const enUS: typeof zhCN = {
     importPlan: 'Import .plan…',
     importMd: 'Migrate Markdown plans…',
     exportPlan: 'Export current plan (.plan)…',
+    exportPdf: 'Export as PDF…',
+    exportPng: 'Export as image…',
     switchRoot: 'Switch library folder…',
     settings: 'Settings…',
     quit: 'Quit',

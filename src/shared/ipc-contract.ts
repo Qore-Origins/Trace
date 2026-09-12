@@ -107,6 +107,9 @@ export interface Channels {
   'window:toggleDevtools': { req: void; res: null }
   // transfer（.plan 导入导出 + Markdown 迁入）
   'transfer:exportPlan': { req: { path: string; saveTo: string }; res: { savedTo: string; plans: number; components: number; tasks: number } }
+  // 导出为（BR-008）：离屏窗口渲染计划卡 → PDF/PNG
+  'transfer:exportPdf': { req: { path: string; saveTo: string }; res: { savedTo: string } }
+  'transfer:exportPng': { req: { path: string; saveTo: string }; res: { savedTo: string } }
   'transfer:importPlan': {
     req: { target_parent_path: string; filePath: string }
     res: { imported: Array<{ path: string; renamedFrom?: string }>; plans: number; components: number; tasks: number; notes: number; skipped: string[] }

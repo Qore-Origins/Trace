@@ -9,6 +9,7 @@ import { AppService } from '../services/app-service'
 import { StorageService } from '../services/storage-service'
 import { ConfigService } from '../services/config-service'
 import { TransferService } from '../services/transfer-service'
+import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
 import { ensureDiaryRoot, ensureTodayPage, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { bus } from '../services/event-bus'
@@ -18,6 +19,7 @@ interface Deps {
   storage: StorageService
   config: ConfigService
   transfer: TransferService
+  export: ExportService
   search: SearchService
   getWindow: () => BrowserWindow | null
   log: (channel: string, code: number, detail?: string) => void
@@ -126,6 +128,8 @@ export function registerIpc(deps: Deps): void {
 
   // ---------- transfer ----------
   reg('transfer:exportPlan', (p) => transfer.exportPlan(p.path, p.saveTo))
+  reg('transfer:exportPdf', (p) => deps.export.exportPdf(p.path, p.saveTo))
+  reg('transfer:exportPng', (p) => deps.export.exportPng(p.path, p.saveTo))
   reg('transfer:importPlan', (p) => transfer.importPlan(p.target_parent_path, p.filePath))
   reg('transfer:importMarkdown', async (p) => {
     // 文件读取在主进程（渲染器无 fs 权限）

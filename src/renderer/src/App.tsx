@@ -8,6 +8,7 @@ import { Button, Descriptions, Modal, Radio, Spin } from 'antd'
 import OnboardingView from './views/OnboardingView'
 import WorkspaceView from './views/WorkspaceView'
 import DiaryView from './views/DiaryView'
+import ExportView from './views/ExportView'
 import NameDialogModal from './components/NameDialogModal'
 import SearchOverlay from './components/SearchOverlay'
 import { useAppStore, subscribeAppEvents } from './stores/app-store'
@@ -98,6 +99,13 @@ export default function App(): React.JSX.Element {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [phase])
+
+  // 导出窗口分流（BR-008「导出为」）：离屏窗口以 ?export=1 加载——只渲染计划卡，
+  // 不走 onboarding/ready 流程与全局底座（ThemeGate 对导出模式恒亮色）
+  const exportParams = new URLSearchParams(window.location.search)
+  if (exportParams.get('export') === '1') {
+    return <ExportView path={exportParams.get('path') ?? ''} />
+  }
 
   if (phase === 'checking') {
     return (

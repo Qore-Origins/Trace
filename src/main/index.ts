@@ -8,6 +8,7 @@ import { WatchService } from './services/watch-service'
 import { TransferService } from './services/transfer-service'
 import { SearchService } from './services/search-service'
 import { setDiaryRepo } from './services/diary-service'
+import { ExportService, resolveRendererSource } from './services/export-service'
 import { registerIpc } from './ipc/register'
 import { bus } from './services/event-bus'
 
@@ -42,6 +43,8 @@ const appService = new AppService(config, repo, storage, (rootAbs) => {
   watch.start(rootAbs)
   search.start(rootAbs) // 根目录变化 → 索引重建（含首启全量）
 }, () => search.getState())
+// 导出为（BR-008）：离屏窗口渲染，PDF/PNG 双路；渲染层源与主窗口同源加载
+const exportService = new ExportService(repo, () => storage.getRootAbs() ?? '', resolveRendererSource(__dirname), join(__dirname, '../preload/index.js'))
 
 let mainWindow: BrowserWindow | null = null
 
@@ -128,6 +131,7 @@ if (!app.requestSingleInstanceLock()) {
       storage,
       config,
       transfer,
+      export: exportService,
       search,
       getWindow: () => mainWindow,
       log: (channel, code, detail) => {

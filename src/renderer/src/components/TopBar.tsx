@@ -56,7 +56,7 @@ function ViewNav(): React.JSX.Element {
 // ---------- VS Code 式菜单栏（极简：无底色，悬停变色） ----------
 function MenuBar(): React.JSX.Element {
   const { t } = useTranslation()
-  const { selectedPath, exportPlan, importPlan, importMarkdown, refreshAll } = useTreeStore()
+  const { selectedPath, exportPlan, exportPdf, exportPng, importPlan, importMarkdown, refreshAll } = useTreeStore()
   const switchRootDir = useAppStore((s) => s.switchRootDir)
   const openNameDialog = useUiStore((s) => s.openNameDialog)
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
@@ -87,6 +87,18 @@ function MenuBar(): React.JSX.Element {
       label: t('menu.exportPlan'),
       disabled: !selectedPath,
       onClick: () => selectedPath && void run(() => exportPlan(selectedPath))
+    },
+    {
+      key: 'export-pdf',
+      label: t('menu.exportPdf'),
+      disabled: !selectedPath,
+      onClick: () => selectedPath && void run(() => exportPdf(selectedPath))
+    },
+    {
+      key: 'export-png',
+      label: t('menu.exportPng'),
+      disabled: !selectedPath,
+      onClick: () => selectedPath && void run(() => exportPng(selectedPath))
     },
     { type: 'divider' },
     { key: 'switch-root', label: t('menu.switchRoot'), onClick: () => void switchRootDir() },
