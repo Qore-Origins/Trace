@@ -49,6 +49,7 @@ function AntdGate({ children }: { children: React.ReactNode }): React.JSX.Elemen
   const language = usePrefStore((s) => s.language)
   const themeMode = usePrefStore((s) => s.theme)
   const systemDark = useSyncExternalStore(subscribeSystemDark, getSystemDark, getSystemDark)
+  // 导出窗口同样跟随用户主题（离屏窗口同源同 localStorage，persist 自动恢复；2026-09-12 用户建议采纳）
   const dark = resolveDark(themeMode, systemDark)
   useEffect(() => {
     document.documentElement.classList.toggle('theme-dark', dark)

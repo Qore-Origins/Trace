@@ -125,6 +125,18 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
   }
 }
 
+/* 导出物阅读态（BR-008 离屏窗口 .export-root）：隐藏纯交互控件，保留内容与数据 */
+.export-root .drag-handle,
+.export-root .heading-tools,
+.export-root .note-actions,
+.export-root .lite-btn,
+.export-root .dashed-btn,
+.export-root .state-ring,
+.export-root .card .actions { display: none !important; }
+/* 日期输入退化为文本观感（去 hover 边框/背景） */
+.export-root input[type='date'] { pointer-events: none; border: none; background: transparent; }
+.export-root .task-title input { border: none; background: transparent; }
+
 /* ---------- 布局骨架（§2.2） ---------- */
 .ws { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }
 .ws-main { flex: 1; display: flex; min-height: 0; }
@@ -446,7 +458,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 @starting-style { .search-mask { opacity: 0; } }
 .search-overlay { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); width: 560px; max-width: calc(100vw - 48px); background: var(--paper); border-radius: var(--r-card); box-shadow: 0 4px 16px var(--shadow-overlay); z-index: 31; overflow: hidden; display: flex; flex-direction: column; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
 @starting-style { .search-overlay { opacity: 0; transform: translateX(-50%) translateY(-8px); } }
-.search-overlay .o-input { width: 100%; height: 44px; border: none; border-bottom: 1px solid var(--split); outline: none; padding: 0 16px; font-size: 14px; font-family: inherit; }
+.search-overlay .o-input { width: 100%; height: 44px; border: none; border-bottom: 1px solid var(--split); outline: none; padding: 0 16px; font-size: 14px; font-family: inherit; background: var(--paper); color: var(--text-1); }
 .search-overlay .o-body { max-height: 380px; overflow: auto; padding: 6px; }
 .o-section { font-size: 12px; color: var(--text-4); padding: 8px 8px 4px; }
 .o-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background-color var(--t-ui) var(--ease-out); }

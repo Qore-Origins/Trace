@@ -56,7 +56,7 @@ function ViewNav(): React.JSX.Element {
 // ---------- VS Code 式菜单栏（极简：无底色，悬停变色） ----------
 function MenuBar(): React.JSX.Element {
   const { t } = useTranslation()
-  const { selectedPath, exportPlan, exportPdf, exportPng, importPlan, importMarkdown, refreshAll } = useTreeStore()
+  const { selectedPath, selectedKind, exportPlan, exportPdf, exportPng, importPlan, importMarkdown, refreshAll } = useTreeStore()
   const switchRootDir = useAppStore((s) => s.switchRootDir)
   const openNameDialog = useUiStore((s) => s.openNameDialog)
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
@@ -91,13 +91,14 @@ function MenuBar(): React.JSX.Element {
     {
       key: 'export-pdf',
       label: t('menu.exportPdf'),
-      disabled: !selectedPath,
+      // 导出为仅计划可导（文件夹无内容渲染面——离屏 readPlan 会 PATH_NOT_FOUND）
+      disabled: !selectedPath || selectedKind !== 'plan',
       onClick: () => selectedPath && void run(() => exportPdf(selectedPath))
     },
     {
       key: 'export-png',
       label: t('menu.exportPng'),
-      disabled: !selectedPath,
+      disabled: !selectedPath || selectedKind !== 'plan',
       onClick: () => selectedPath && void run(() => exportPng(selectedPath))
     },
     { type: 'divider' },
