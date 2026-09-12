@@ -99,7 +99,10 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .nav-btn.active { color: var(--trace-500); font-weight: 500; }
 .nav-btn:focus-visible { outline: 2px solid var(--trace-bg); }
 
-/* 自绘窗口控制：极简裸图标——无底色无边框无圆角视觉，悬停仅图标变色（2026-09-06 三次定稿） */
+/* 自绘窗口控制：极简裸图标——无底色无边框无圆角视觉，悬停仅图标变色（2026-09-06 三次定稿）
+   no-drag 在组件级全局生效（而非每个标题栏手动白名单）：引导页标题栏曾漏配致按钮点不开
+   （2026-09-12 用户截图实证；同 menu-title 2026-09-06 病根——拖拽区吞点击） */
+.win-controls, .win-controls .win-btn { -webkit-app-region: no-drag; }
 .win-controls { display: flex; align-items: center; gap: 2px; margin-left: 4px; margin-right: 8px; }
 .win-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); background: transparent; border: none; transition: color 0.15s; }
 .win-btn:hover, .win-btn:active { background: transparent; color: var(--text-1); }
