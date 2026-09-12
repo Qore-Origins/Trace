@@ -1,7 +1,8 @@
 // appStore：应用阶段/根目录/索引状态（前端详细设计 §4.1）
+import { getMessage, getModal } from '../antd-host'
 import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
-import { message, Modal } from 'antd'
+
 import { i18n } from '../i18n'
 
 export type AppPhase = 'checking' | 'onboarding' | 'ready'
@@ -38,7 +39,7 @@ export const useAppStore = create<AppState>()((set) => ({
         set({ phase: 'onboarding', rootDir: info.rootDir, rootInvalid: info.rootConfigured && info.rootInvalid })
       }
     } catch (e) {
-      message.error(e instanceof ClientError ? e.message : '启动失败')
+      getMessage().error(e instanceof ClientError ? e.message : '启动失败')
       set({ phase: 'onboarding' })
     }
   },
@@ -54,7 +55,7 @@ export const useAppStore = create<AppState>()((set) => ({
     if (!picked.dirPath) return
     const { useTreeStore } = await import('./tree-store')
     const { usePlanStore } = await import('./plan-store')
-    Modal.confirm({
+    getModal().confirm({
       title: i18n.t('confirm.switchRootTitle'),
       content: i18n.t('confirm.switchRootDesc', { dir: picked.dirPath }),
       okText: i18n.t('confirm.switchRootBtn'),

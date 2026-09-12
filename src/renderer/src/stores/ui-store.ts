@@ -1,4 +1,5 @@
 // uiStore：跨组件 UI 状态（命名对话框由 树底按钮/节点菜单/顶栏菜单/快捷键 共用触发，单点挂载）
+import { getMessage, getModal } from '../antd-host'
 import { create } from 'zustand'
 import { Modal } from 'antd'
 import { useTreeStore } from './tree-store'
@@ -50,7 +51,7 @@ export const useUiStore = create<UiState>()((set) => ({
 // onConfirm 缺省直接删除；树面板传入收拢动画版（先播收牌波次再真删——与新建的发牌入场对仗）
 export function confirmRemoveTree(path: string, kind: 'plan' | 'folder', onConfirm?: (path: string) => void): void {
   const name = path.slice(path.lastIndexOf('/') + 1)
-  Modal.confirm({
+  getModal().confirm({
     title: i18n.t(kind === 'folder' ? 'confirm.deleteFolderTitle' : 'confirm.deletePlanTitle', { name }),
     content: i18n.t(kind === 'folder' ? 'confirm.deleteFolderDesc' : 'confirm.deletePlanDesc'),
     okText: i18n.t('common.delete'),

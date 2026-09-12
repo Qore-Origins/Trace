@@ -1,6 +1,7 @@
 // 命名对话框（单点挂载）：新建计划/文件夹、重命名、保存预设——由树底按钮、节点菜单、顶栏菜单、快捷键、卡内按钮共用触发
+import { getMessage, getModal } from '../antd-host'
 import { useState } from 'react'
-import { Input, Modal, message } from 'antd'
+import { Input, Modal } from 'antd'
 import { useUiStore, type NameDialogMode } from '../stores/ui-store'
 import { useTreeStore } from '../stores/tree-store'
 import { ClientError } from '../ipc-client'
@@ -33,7 +34,7 @@ export default function NameDialogModal(): React.JSX.Element {
     if (dialog.customize) {
       const err = dialog.customize.validate(name)
       if (err) {
-        message.error(err)
+        getMessage().error(err)
         return
       }
       await dialog.customize.onSubmit(name)
@@ -49,7 +50,7 @@ export default function NameDialogModal(): React.JSX.Element {
     } catch (e) {
       // 弹出失败原因（重名等），对话框保持开启供改名重试
       // ——此前静默吞错（注释声称"IPC 层弹出"但该机制不存在），用户看到"点击没效果"（2026-09-10）
-      message.error(e instanceof ClientError ? e.message : t('errors.opFailed'))
+      getMessage().error(e instanceof ClientError ? e.message : t('errors.opFailed'))
     }
   }
 

@@ -1,6 +1,7 @@
 // ContentArea（§2.2）：面包屑 + 组件序列 + 空态 + 外部变更提示 + 插入组件；文件夹=容器视图
+import { getMessage, getModal } from '../antd-host'
 import { useEffect, useMemo } from 'react'
-import { Alert, Button, Dropdown, Empty, message, type MenuProps } from 'antd'
+import { Alert, Button, Dropdown, Empty, type MenuProps } from 'antd'
 import { CalendarOutlined, DeleteOutlined, FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
 import { useTreeStore } from '../stores/tree-store'
@@ -67,7 +68,7 @@ export default function ContentArea(): React.JSX.Element {
     ;(comp.payload as CustomPayload).content = preset.content
     ;(comp.payload as CustomPayload).source = preset.name
     appendComponent(comp)
-    message.success(t('content.inserted', { label: preset.name }))
+    getMessage().success(t('content.inserted', { label: preset.name }))
   }
 
   // 「自定义组件」为子菜单：新建 + 预设列表（antd Menu items 带 children 即子菜单形态）
@@ -244,7 +245,7 @@ export default function ContentArea(): React.JSX.Element {
               onClick: ({ key }) => {
                 if (key === 'custom-new') {
                   appendComponent(newComponent('custom'))
-                  message.success(t('content.inserted', { label: t('content.customNew') }))
+                  getMessage().success(t('content.inserted', { label: t('content.customNew') }))
                   return
                 }
                 if (key.startsWith('custom-')) {
@@ -253,7 +254,7 @@ export default function ContentArea(): React.JSX.Element {
                   return
                 }
                 appendComponent(newComponent(key as ComponentType))
-                message.success(t('content.inserted', { label: itemLabel(insertItems, key, t('content.componentFallback')) }))
+                getMessage().success(t('content.inserted', { label: itemLabel(insertItems, key, t('content.componentFallback')) }))
               }
             }}
           >

@@ -1,8 +1,9 @@
 // DiaryView（日记深化 Task 4，2026-09-10）：统计条 → 月历热力 → 时间线/当日预览
 // 布局与交互抄 demo/diary-view-demo.html（方案定稿形态）；数据全部经 IPC（diary:ensure/month/day），renderer 不触 fs
 // 「在树中打开」onOpenInTree 由 App 接线（Task 5：复用回溯定位 Diary/<date>）；顶栏导航入口同 Task 5
+import { getMessage, getModal } from '../antd-host'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Spin, message } from 'antd'
+import { Spin } from 'antd'
 import type { TFunction } from 'i18next'
 import TopBar from '../components/TopBar'
 import { invoke, ClientError } from '../ipc-client'
@@ -103,7 +104,7 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
         if (alive) setEntries(res.entries)
       })
       .catch((e) => {
-        if (alive) message.error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'))
+        if (alive) getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'))
       })
       .finally(() => {
         if (alive) setLoading(false)
@@ -140,7 +141,7 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
         if (dayReq.current !== id) return
         // 读取失败降级空态（防预览列永久 spinner——selected 已置而 daySummary 恒 null 会死等）；toast 说明原因
         setDaySummary({ date, components: [] })
-        message.error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'))
+        getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'))
       })
   }
 

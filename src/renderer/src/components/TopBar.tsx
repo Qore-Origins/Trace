@@ -1,6 +1,7 @@
 // TopBar（§2.2）：无边框标题栏——品牌 / 菜单栏（VS Code 式）/ 全局搜索 / 自绘窗口控制
 // 2026-09-06：导入导出收进「文件」菜单（不再有独立按钮）；创建入口在树底与「文件」菜单
-import { Dropdown, Input, Modal, message } from 'antd'
+import { getMessage, getModal } from '../antd-host'
+import { Dropdown, Input } from 'antd'
 import type { MenuProps } from 'antd'
 import WindowControls from './WindowControls'
 import { useTreeStore } from '../stores/tree-store'
@@ -64,9 +65,9 @@ function MenuBar(): React.JSX.Element {
   const run = async (action: () => Promise<string | null>): Promise<void> => {
     try {
       const msg = await action()
-      if (msg) message.success(msg, 5)
+      if (msg) getMessage().success(msg, 5)
     } catch (e) {
-      message.error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'), 5)
+      getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'), 5)
     }
   }
 
@@ -139,7 +140,7 @@ function MenuBar(): React.JSX.Element {
       onClick: () => {
         void invoke('app:getAppInfo')
           .then((info) => {
-            Modal.info({
+            getModal().info({
               title: t('about.title'),
               content: (
                 <div style={{ fontSize: 13, lineHeight: 1.8 }}>

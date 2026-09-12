@@ -1,12 +1,13 @@
 import React, { useEffect, useSyncExternalStore } from 'react'
 import ReactDOM from 'react-dom/client'
-import { ConfigProvider, theme as antdTheme, unstableSetRender } from 'antd'
+import { ConfigProvider, App as AntdApp, theme as antdTheme, unstableSetRender } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
 import { I18nextProvider } from 'react-i18next'
 import App from './App'
 import { i18n } from './i18n'
 import { usePrefStore, type ThemeMode } from './stores/pref-store'
+import { bindAntdHost } from './antd-host'
 import './styles/workspace.css'
 
 // antd v5 静态方法（Modal.confirm/message 等）默认走 ReactDOM.render，React 19 已移除 → 静默不渲染
@@ -62,9 +63,22 @@ function AntdGate({ children }: { children: React.ReactNode }): React.JSX.Elemen
         token: { colorPrimary: '#1677ff' }
       }}
     >
-      {children}
+      <AntdApp>
+        <AntdHostBinder />
+        {children}
+      </AntdApp>
     </ConfigProvider>
   )
+}
+
+// 绑定上下文化 message/Modal 实例到 antd-host（store 等非组件上下文的静态调用经此取用，
+// 全部弹层吃主题算法/locale——「关于」弹窗暗色下发白的根因修复）
+function AntdHostBinder(): null {
+  const app = AntdApp.useApp()
+  useEffect(() => {
+    bindAntdHost(app.modal, app.message)
+  }, [app])
+  return null
 }
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(

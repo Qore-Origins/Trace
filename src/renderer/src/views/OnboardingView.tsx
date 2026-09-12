@@ -1,6 +1,7 @@
 // 首启引导（§3.7）：品牌陈述=数据承诺；无注册无网络
+import { getMessage, getModal } from '../antd-host'
 import { useState } from 'react'
-import { Alert, Button, Typography, message } from 'antd'
+import { Alert, Button, Typography } from 'antd'
 import { FolderOpenOutlined } from '@ant-design/icons'
 import { useAppStore } from '../stores/app-store'
 import { invoke, ClientError } from '../ipc-client'
@@ -25,7 +26,7 @@ export default function OnboardingView(): React.JSX.Element {
       // 引导页只在「未配置」或「旧根目录失效」时出现——两者均无需切换确认（主进程同语义）
       await setRootDir(chosen, false)
     } catch (e) {
-      message.error(e instanceof ClientError ? e.message : t('errors.setFailed'))
+      getMessage().error(e instanceof ClientError ? e.message : t('errors.setFailed'))
     } finally {
       setBusy(false)
     }

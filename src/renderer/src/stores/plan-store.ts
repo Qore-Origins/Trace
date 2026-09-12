@@ -1,7 +1,8 @@
 // planStore：当前计划文档 + 渲染即编辑（防抖保存 + CAS 冲突处理）
+import { getMessage, getModal } from '../antd-host'
 import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
-import { message } from 'antd'
+
 import type { PlanDocument, Component } from '@shared/plan-types'
 import { validateDueDate } from '@shared/validation'
 import { ERR } from '@shared/errors'
@@ -47,7 +48,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
       const doc = await invoke('storage:readPlan', { path })
       set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
     } catch (e) {
-      message.error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
+      getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
       set({ currentPath: path, document: null })
     }
   },
@@ -77,7 +78,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     try {
       validateDueDate(due) // 合约守卫：undefined/''=清除通过；非法值抛 TraceError（UI 日期输入恒合法，为外部调用方兜底）
     } catch (e) {
-      message.error(e instanceof Error ? e.message : i18n.t('errors.saveFailed'))
+      getMessage().error(e instanceof Error ? e.message : i18n.t('errors.saveFailed'))
       return
     }
     get().mutate((doc) => {
@@ -111,11 +112,11 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         const fresh = await invoke('storage:readPlan', { path: currentPath })
         if (get().currentPath !== currentPath) return
         set({ document: fresh, serverUpdatedAt: fresh.updated_at, saveState: 'idle' })
-        message.warning(i18n.t('errors.contentRefreshed'))
+        getMessage().warning(i18n.t('errors.contentRefreshed'))
       } else {
         const msg = e instanceof ClientError ? e.message : i18n.t('errors.saveFailed')
         set({ saveState: 'error', lastError: msg })
-        message.error(msg)
+        getMessage().error(msg)
       }
     } finally {
       saving = false

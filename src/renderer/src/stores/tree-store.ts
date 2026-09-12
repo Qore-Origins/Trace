@@ -1,7 +1,8 @@
 // treeStore：计划树（懒加载 childrenMap / 展开 / 选中 / 结构操作）
+import { getMessage, getModal } from '../antd-host'
 import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
-import { message } from 'antd'
+
 import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
 import { i18n } from '../i18n'
@@ -144,7 +145,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       await invoke('storage:deletePlan', { path, confirmed: true })
     } catch (e) {
       // 删除失败必须提示（此前 onOk 静默吞错，文件被占用/已被外部删除时用户毫无反馈）
-      message.error(e instanceof ClientError ? e.message : i18n.t('errors.deleteFailed'))
+      getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.deleteFailed'))
       return
     }
     // 清理被删子树残留状态：expandedKeys/childrenMap/loaded 中的旧键
@@ -163,7 +164,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
 
   movePlan: async (dragPath, targetParent) => {
     if (isSelfOrDescendant(dragPath, targetParent)) {
-      message.warning('不能移动到自身或子计划中')
+      getMessage().warning('不能移动到自身或子计划中')
       return false
     }
     const name = dragPath.slice(dragPath.lastIndexOf('/') + 1)
@@ -194,7 +195,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       if (opt) {
         set({ childrenMap: snap.childrenMap, loaded: snap.loaded, expandedKeys: snap.expandedKeys, selectedPath: snap.selectedPath })
       }
-      message.error(e instanceof ClientError ? e.message : i18n.t('tree.moveFailed'))
+      getMessage().error(e instanceof ClientError ? e.message : i18n.t('tree.moveFailed'))
       return false
     }
     await refreshAround(set, get, newPath)
