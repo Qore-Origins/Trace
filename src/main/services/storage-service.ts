@@ -50,7 +50,9 @@ export class StorageService {
     }
 
     // 2026-09-08 排序定稿：全部按文件名排序（zh-CN），children_order 载体退役（历史字段读取时忽略）
-    const sorted = [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    // ignorePunctuation：忽略 -/_ 等标点差异后按字母数字比较——zh-CN collation 会把 _ 组排到 - 组前，
+    // 混用分隔符的日期命名（Daily_Plan_20260910 / Daily_Plan-20260825）不再按日期直觉序（2026-09-12 用户反馈）
+    const sorted = [...names].sort((a, b) => a.localeCompare(b, 'zh-CN', { ignorePunctuation: true }))
 
     const nodes: Awaited<ReturnType<StorageService['treeGetChildren']>> = []
     for (const [i, name] of sorted.entries()) {

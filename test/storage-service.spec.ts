@@ -57,6 +57,18 @@ describe('createPlan / treeGetChildren', () => {
     const meta = JSON.parse(await fs.readFile(metaFile, 'utf8')) as { children_order?: string[] }
     expect(meta.children_order).toBeUndefined() // 不再写顺序载体
   })
+  it('混合分隔符按日期直觉序（ignorePunctuation——localeCompare zh-CN 会把 _ 组排到 - 组前，2026-09-12 用户反馈）', async () => {
+    // 命名混用 Daily_Plan_ / Daily_Plan- 两种分隔符：期望忽略标点后按日期升序
+    await service.createPlan('', 'Daily_Plan_20260910-心情不错')
+    await service.createPlan('', 'Daily_Plan-20260825-心情差迭代期')
+    await service.createPlan('', 'Daily_Plan-20260901-心情还行')
+    const nodes = await service.treeGetChildren('')
+    expect(nodes.map((n) => n.name)).toEqual([
+      'Daily_Plan-20260825-心情差迭代期',
+      'Daily_Plan-20260901-心情还行',
+      'Daily_Plan_20260910-心情不错'
+    ])
+  })
 })
 
 describe('文件夹容器（folder，无 plan.json）', () => {
