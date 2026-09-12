@@ -3,6 +3,12 @@
 > package.json 为版本唯一真源；发布前更新本文件与 docs/lifecycle。
 > 0.1-0.8 为按 git commit 里程碑回溯编目（历史区间以 commit 锚定，日期为阶段结束日）。
 
+## [未发布]
+
+- 深色主题：设置可选 亮色/暗色/跟随系统（antd darkAlgorithm + CSS 变量暗色映射双轨；40 处散落硬编码色收敛为语义 token；hljs 换 github-dark 系；滚动条随主题）；亮暗切换经 View Transitions 整页 450ms 渐变（合成器 cross-fade，零掉帧）
+- BR-008 导出为：文件菜单新增「导出为 PDF…/导出为图片…」——离屏窗口渲染计划卡（阅读态隐藏交互控件），A4 PDF 可选中可搜索、PNG 按内容自适应高度（CDP 实证两路产物）
+- 日记批次清债：死代码删除（startOfMonth/IPC_DIARY_* 常量）、DIARY_DIR 单点常量入 shared、日期日历真伪校验（2026-02-31 拒绝）、task_list 坏 payload 守卫、index.ts 装配 TDZ 消除（终审延后 8 项清 7）
+
 ## [0.11.1] - 2026-09-12 — 公测版 Beta 3 修订
 
 - 引导页窗口控制修复：选择计划库（首次安装/原库不可用）时右上角最小化/最大化/关闭可点击——no-drag 提升为窗口控制组件级全局（引导页标题栏漏配白名单致拖拽区吞点击）；已真机验收
