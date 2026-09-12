@@ -3,6 +3,7 @@
 // 工作台与日记两视图共用——view 路由切换不再使底座随 WorkspaceView 卸载而静默失效
 // （修复：日记视图下 Ctrl+F 搜索 / Ctrl+N 新建计划 / 文件→设置 全部无效）
 import { useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Button, Descriptions, Modal, Radio, Spin } from 'antd'
 import OnboardingView from './views/OnboardingView'
 import WorkspaceView from './views/WorkspaceView'
@@ -133,6 +134,19 @@ function TopBarSettingsHost(): React.JSX.Element {
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
   const { rootDir, switchRootDir } = useAppStore()
   const { language, dealDirection, scoreAnim, theme: themeMode, setLanguage, setDealDirection, setScoreAnim, setTheme } = usePrefStore()
+
+  // 主题切换经 View Transitions（合成器整页 cross-fade，替代掉帧的全元素 transition）；
+  // flushSync 把 antd 重渲染（algorithm 切换 + cssinjs）压进快照回调内同步完成
+  const changeTheme = (next: ThemeMode): void => {
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => void }
+    if (doc.startViewTransition) {
+      doc.startViewTransition(() => {
+        flushSync(() => setTheme(next))
+      })
+      return
+    }
+    setTheme(next)
+  }
   const [version, setVersion] = useState('')
 
   useEffect(() => {
@@ -206,7 +220,7 @@ function TopBarSettingsHost(): React.JSX.Element {
                 buttonStyle="solid"
                 size="small"
                 value={themeMode}
-                onChange={(e) => setTheme(e.target.value as ThemeMode)}
+                onChange={(e) => changeTheme(e.target.value as ThemeMode)}
               >
                 <Radio.Button value="light">{t('settings.themeLight')}</Radio.Button>
                 <Radio.Button value="dark">{t('settings.themeDark')}</Radio.Button>
