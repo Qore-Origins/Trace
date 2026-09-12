@@ -42,10 +42,14 @@ function CardShell(props: {
                 : t('cards.kindNote')
   const { moveComponent, removeComponent } = usePlanMutations()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.componentId })
+  // 剥掉 scale 分量（仅保留位移补偿）：dnd-kit useDerivedTransform 在 index 切换时会给出
+  // 初始/当前矩形的比例（scaleX/scaleY），卡片高度不一时被拖卡被拉伸成目标卡形状
+  // （用户报告"继承目标卡宽高"，CDP 实证 transform matrix scaleY=2.34——2026-09-10）
+  const tt = transform ? { x: transform.x, y: transform.y, scaleX: 1, scaleY: 1 } : null
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      style={{ transform: CSS.Transform.toString(tt), transition }}
       className={`card ${props.extraClass ?? ''}${isDragging ? ' dragging' : ''}`}
       data-component-id={props.componentId}
     >
