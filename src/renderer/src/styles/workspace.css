@@ -110,6 +110,28 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 ::-webkit-scrollbar-track { background: var(--sb-track); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
+/* 主题切换渐变（2026-09-12 用户反馈：亮暗切换希望过渡而非瞬变）——
+   仅在切换瞬间由 main.tsx 挂 .theme-transitioning 启用（300ms 后摘除），
+   平时零开销且不覆盖既有元素的 transition 声明（!important 只在过渡窗口内生效） */
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition:
+    background-color 240ms var(--ease-out),
+    color 240ms var(--ease-out),
+    border-color 240ms var(--ease-out),
+    box-shadow 240ms var(--ease-out),
+    fill 240ms var(--ease-out),
+    stroke 240ms var(--ease-out) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition: none !important;
+  }
+}
+
 /* ---------- 布局骨架（§2.2） ---------- */
 .ws { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }
 .ws-main { flex: 1; display: flex; min-height: 0; }

@@ -42,14 +42,25 @@ function resolveDark(theme: ThemeMode, systemDark: boolean): boolean {
 }
 
 // antd locale/主题随偏好联动（内置组件文案 + 暗色算法）；
-// dataset.theme 同步驱动 workspace.css 的变量映射（--paper/--text-* 等在 .theme-dark 下换暗色值）
+// dataset.theme 同步驱动 workspace.css 的变量映射（--paper/--text-* 等在 .theme-dark 下换暗色值）。
+// 切换瞬间挂 .theme-transitioning（全局颜色属性过渡 240ms，CSS 见 workspace.css）——
+// 平时不启用（零开销、不干扰既有 hover/交互动画）；首挂载跳过（初始渲染无需过渡）
 function AntdGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const language = usePrefStore((s) => s.language)
   const themeMode = usePrefStore((s) => s.theme)
   const systemDark = useSyncExternalStore(subscribeSystemDark, getSystemDark, getSystemDark)
   const dark = resolveDark(themeMode, systemDark)
+  const firstThemeRun = React.useRef(true)
   useEffect(() => {
     document.documentElement.classList.toggle('theme-dark', dark)
+    if (firstThemeRun.current) {
+      firstThemeRun.current = false
+      return
+    }
+    const root = document.documentElement
+    root.classList.add('theme-transitioning')
+    const t = window.setTimeout(() => root.classList.remove('theme-transitioning'), 300)
+    return () => window.clearTimeout(t)
   }, [dark])
   return (
     <ConfigProvider
