@@ -13,12 +13,13 @@ import type {
   TaskListPayload
 } from '../../shared/plan-types'
 import type { DiaryDayComponent, DiaryDaySummary, DiaryMonthEntry } from '../../shared/ipc-contract'
+import { DIARY_DIR } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { todayDateStr, uuid32 } from '../../shared/validation'
 import { PlanRepository } from './plan-repository'
 import { resolveWithin } from './path-safety'
 
-export const DIARY_DIR = 'Diary'
+export { DIARY_DIR }
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 const DATE_FORMAT_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -126,13 +127,19 @@ export async function readDaySummary(planRoot: string, date: string): Promise<Di
   if (typeof date !== 'string' || !DATE_FORMAT_RE.test(date)) {
     throw new TraceError(ERR.VALIDATION, '日期格式无效（需为 YYYY-MM-DD）')
   }
+  // 日历真伪（2026-02-31 类折叠截堵；validateDueDate 文案带"截止"语义，此处内联同法）
+  const [y, m, d] = date.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+    throw new TraceError(ERR.VALIDATION, '日期无效（该日期不存在）')
+  }
   const doc = await repo.readPlan(planRoot, `${DIARY_DIR}/${date}`)
   return { date, components: doc.components.map(toDayComponent) }
 }
 
-// 组件 → 摘要条目（label/excerpt 规则 = ipc-contract DiaryDayComponent 注释）
+// 组件 → 摘要条目（label 恒 ''——视图层按 kind 走 i18n；excerpt 规则 = ipc-contract 注释）
 function toDayComponent(c: Component): DiaryDayComponent {
-  return { kind: c.type, label: c.type === 'heading' ? '标题' : '', excerpt: excerptOf(c) }
+  return { kind: c.type, label: '', excerpt: excerptOf(c) }
 }
 
 // payload 按 type 收窄读取（plan-types 的 Component 非判别联合，显式断言——与 storage-service.findTask 同法）
@@ -146,9 +153,9 @@ function excerptOf(c: Component): string {
     case 'custom':
       return firstLine((c.payload as NotePayload | CustomPayload).content)
     case 'task_list':
-      return String((c.payload as TaskListPayload).items.length)
+      return String((c.payload as TaskListPayload).items?.length ?? 0) // 手改坏 payload 防 TypeError
     case 'task_detail':
-      return (c.payload as TaskDetailPayload).title
+      return (c.payload as TaskDetailPayload).title ?? ''
     case 'heading':
       return 'heading'
     default:

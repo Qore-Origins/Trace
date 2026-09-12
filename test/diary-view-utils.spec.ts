@@ -2,7 +2,7 @@
 // 日历事实为硬编码定值（UTC 推算验证过），不复用实现逻辑，避免测试与实现同源互证
 import { describe, expect, it } from 'vitest'
 import type { DiaryMonthEntry } from '../src/shared/ipc-contract'
-import { aggregateStats, buildMonthGrid, startOfMonth } from '../src/renderer/src/views/diary-view-utils'
+import { aggregateStats, buildMonthGrid } from '../src/renderer/src/views/diary-view-utils'
 
 function entry(date: string, score: number | null, compCount: number): DiaryMonthEntry {
   return { date, score, notePreview: '', compCount }
@@ -91,23 +91,3 @@ describe('aggregateStats', () => {
   })
 })
 
-describe('startOfMonth', () => {
-  it('归属三值：早于 (year,month) → -1；当月内（含首/末日）→ 0；晚于月末 → 1', () => {
-    expect(startOfMonth('2026-08-31', 2026, 9)).toBe(-1)
-    expect(startOfMonth('2026-09-01', 2026, 9)).toBe(0)
-    expect(startOfMonth('2026-09-30', 2026, 9)).toBe(0)
-    expect(startOfMonth('2026-10-01', 2026, 9)).toBe(1)
-  })
-  it('跨年 12 月：边界按次年 1 月比较', () => {
-    expect(startOfMonth('2026-11-30', 2026, 12)).toBe(-1)
-    expect(startOfMonth('2026-12-31', 2026, 12)).toBe(0)
-    expect(startOfMonth('2027-01-01', 2026, 12)).toBe(1)
-  })
-  it('1 月边界：去年 12-31 早于 2026-01', () => {
-    expect(startOfMonth('2025-12-31', 2026, 1)).toBe(-1)
-    expect(startOfMonth('2026-02-01', 2026, 1)).toBe(1)
-  })
-  it('单参数意义：key 为 2026-09-09（当日）时属于 2026-09', () => {
-    expect(startOfMonth('2026-09-09', 2026, 9)).toBe(0)
-  })
-})

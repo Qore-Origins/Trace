@@ -28,6 +28,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
+import { DIARY_DIR } from '@shared/plan-types'
 import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
@@ -116,7 +117,7 @@ function RowContent(props: {
   const kind = node.kind
   const loading = node.expanded && !node.loaded // 懒加载中：方框位暂代旋转指示
   // 日记根：库根下第一层的 Diary 文件夹——仅显示层换名+蓝标（Task 5）；磁盘名恒为 Diary，绝不改名
-  const isDiaryRoot = kind === 'folder' && node.name === 'Diary' && node.depth === 1
+  const isDiaryRoot = kind === 'folder' && node.name === DIARY_DIR && node.depth === 1
   if (kind === 'root') {
     // 根行：无快捷菜单（历史行为），仅展开/收拢
     return (

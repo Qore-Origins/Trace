@@ -55,16 +55,13 @@ export interface DiaryMonthEntry {
 }
 export interface DiaryDayComponent {
   kind: string            // 组件 kind（复用 ComponentType）
-  label: string           // 渲染标签（heading=null 用 '标题'；由视图层 i18n 映射；此处可空）
-  excerpt: string         // 摘要文本（mood=分数文本；note/custom=首行；task 类=任务数/标题；heading='heading'）
+  label: string           // 渲染标签恒 ''——视图层按 kind 走 i18n 映射（DiaryView kindLabel）
+  excerpt: string         // 摘要文本（mood=分数文本；note/custom=首行；task_list=任务数；task_detail=标题；heading='heading'）
 }
 export interface DiaryDaySummary {
   date: string
   components: DiaryDayComponent[]
 }
-export const IPC_DIARY_ENSURE = 'diary:ensure'
-export const IPC_DIARY_MONTH = 'diary:month'
-export const IPC_DIARY_DAY = 'diary:day'
 
 // ---------- 请求/响应载荷 ----------
 

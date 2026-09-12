@@ -16,6 +16,7 @@ import { subscribeSearchEvents, useSearchStore } from './stores/search-store'
 import { useUiStore } from './stores/ui-store'
 import { usePrefStore, type DealDirection, type Language, type ScoreAnim } from './stores/pref-store'
 import { invoke } from './ipc-client'
+import { DIARY_DIR } from '@shared/plan-types'
 import { useTranslation } from './i18n'
 
 // 输入控件内不劫持快捷键（Ctrl+N/F5 等不作用于输入框；Ctrl+F 例外——输入框内也应打开溯源）
@@ -41,10 +42,10 @@ export default function App(): React.JSX.Element {
   const openInTree = (date: string): void => {
     setView('workspace')
     const tree = useTreeStore.getState()
-    void Promise.all([tree.loadChildren(''), tree.loadChildren('Diary')])
+    void Promise.all([tree.loadChildren(''), tree.loadChildren(DIARY_DIR)])
       .catch(() => undefined) // 刷新失败不阻断定位：计划仍会打开，最多树高亮缺席
       .then(() => {
-        void useSearchStore.getState().locate({ scope: 'plan', path: `Diary/${date}`, snippet: '', matched_field: 'path' })
+        void useSearchStore.getState().locate({ scope: 'plan', path: `${DIARY_DIR}/${date}`, snippet: '', matched_field: 'path' })
       })
   }
 

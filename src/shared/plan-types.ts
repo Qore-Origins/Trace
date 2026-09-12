@@ -104,3 +104,6 @@ export type ComponentPayload =
   | MoodPayload
   | HeadingPayload
   | CustomPayload
+
+// 日记根目录名（BR-007；ASCII 保路径安全，显示名走 i18n——main 与 renderer 单点共享）
+export const DIARY_DIR = 'Diary'

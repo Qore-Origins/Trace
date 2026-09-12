@@ -21,20 +21,6 @@ export interface DiaryStats {
   trend: DiaryTrendPoint[] // 逐日趋势点（仅连有分日，升序）
 }
 
-function pad2(n: number): string {
-  return String(n).padStart(2, '0')
-}
-
-/** (year, month) 的月首日 key，如 2026-09 → '2026-09-01' */
-function monthStartKey(year: number, month: number): string {
-  return `${year}-${pad2(month)}-01`
-}
-
-/** (year, month) 次月首日 key（跨年进位），如 2026-12 → '2027-01-01' */
-function nextMonthStartKey(year: number, month: number): string {
-  return month === 12 ? `${year + 1}-01-01` : `${year}-${pad2(month + 1)}-01`
-}
-
 /**
  * 月历网格（周一起首，对齐 diary-view-demo）：
  * 前导占位格（day=0）× 首日偏移，随后当月 1..月末日格；无尾部补格（末行留白由 CSS grid 处理）。
@@ -63,15 +49,4 @@ export function aggregateStats(entries: DiaryMonthEntry[]): DiaryStats {
     .map((e) => ({ date: e.date, score: e.score }))
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   return { avg, daysCount: scored.length, compCount, trend }
-}
-
-/**
- * 日期归属判定（日期比较辅助，按定长 ISO 字符串比较、不做 Date 换算）：
- * key 早于 (year, month) → -1；key 落在该月（含首/末日）→ 0；key 晚于该月 → 1。
- * 例：startOfMonth('2026-08-31', 2026, 9) → -1；startOfMonth('2026-09-09', 2026, 9) → 0。
- */
-export function startOfMonth(key: string, year: number, month: number): number {
-  if (key < monthStartKey(year, month)) return -1
-  if (key >= nextMonthStartKey(year, month)) return 1
-  return 0
 }

@@ -20,13 +20,18 @@ const SECURITY_BASE = {
 } as const
 
 // ---------- 服务装配 ----------
+// watch 经惰性引用绑定（终审延后项）：repo/storage/watch 三者构造互依，原写法靠
+// "构造期不触回调"的隐式约定规避 TDZ——改为 watchRef 空安全调用，构造期若误触回调
+// 显式 no-op（不崩），装配完成后回调即接通
+let watchRef: WatchService | null = null
 const repo = new PlanRepository({
-  onInternalWrite: (abs) => watch.markInternalWrite(abs)
+  onInternalWrite: (abs) => watchRef?.markInternalWrite(abs)
 })
 setDiaryRepo(repo) // diary 自写事件同样经 markInternalWrite 抑制（评审 F1：防外部变更误报）
 const config = new ConfigService(app.getPath('userData'), repo)
 const storage = new StorageService(repo)
 const watch = new WatchService(storage.treeCache)
+watchRef = watch
 const search = new SearchService(repo)
 const transfer = new TransferService(repo, storage.treeCache, () => {
   const r = storage.getRootAbs()

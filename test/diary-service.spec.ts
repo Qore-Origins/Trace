@@ -207,7 +207,7 @@ describe('readDaySummary', () => {
     const summary = await readDaySummary(root, '2026-09-01')
     expect(summary.date).toBe('2026-09-01')
     expect(summary.components).toEqual([
-      { kind: 'heading', label: '标题', excerpt: 'heading' },
+      { kind: 'heading', label: '', excerpt: 'heading' },
       { kind: 'mood', label: '', excerpt: '72.5' },
       { kind: 'note', label: '', excerpt: '第一行' },
       { kind: 'custom', label: '', excerpt: '自定义首行' },
@@ -234,6 +234,19 @@ describe('readDaySummary', () => {
     await expect(readDaySummary(root, '2026/09/01')).rejects.toMatchObject({ code: ERR.VALIDATION })
     await expect(readDaySummary(root, '20260901')).rejects.toMatchObject({ code: ERR.VALIDATION })
     await expect(readDaySummary(root, '2026-9-1')).rejects.toMatchObject({ code: ERR.VALIDATION })
+  })
+
+  it('日历真伪校验：2026-02-31 / 2026-13-01 → VALIDATION(20)（清债：此前格式放行）', async () => {
+    await expect(readDaySummary(root, '2026-02-31')).rejects.toMatchObject({ code: ERR.VALIDATION })
+    await expect(readDaySummary(root, '2026-13-01')).rejects.toMatchObject({ code: ERR.VALIDATION })
+  })
+
+  it('坏 payload 守卫：task_list 无 items 时摘要有守卫不炸（清债：TypeError → 笼统 INTERNAL）', async () => {
+    await writeDayPlan('2026-09-04', {
+      ...sampleDoc([{ id: FIXED_ID, type: 'task_list', payload: { title: '坏列表' } } as unknown as Component])
+    })
+    const s = await readDaySummary(root, '2026-09-04')
+    expect(s.components[0]).toEqual({ kind: 'task_list', label: '', excerpt: '0' })
   })
 })
 
