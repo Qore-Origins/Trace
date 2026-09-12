@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Input, Modal, message } from 'antd'
 import { useUiStore, type NameDialogMode } from '../stores/ui-store'
 import { useTreeStore } from '../stores/tree-store'
+import { ClientError } from '../ipc-client'
 import { useTranslation } from '../i18n'
 
 export default function NameDialogModal(): React.JSX.Element {
@@ -45,8 +46,10 @@ export default function NameDialogModal(): React.JSX.Element {
       else if (dialog.mode === 'create-folder') await createFolder(dialog.targetPath, name)
       else if (dialog.mode === 'rename' && name !== dialog.initialName) await renamePlan(dialog.targetPath, name)
       close()
-    } catch {
-      // 重名等错误提示由 IPC 层弹出；对话框保持开启供修改
+    } catch (e) {
+      // 弹出失败原因（重名等），对话框保持开启供改名重试
+      // ——此前静默吞错（注释声称"IPC 层弹出"但该机制不存在），用户看到"点击没效果"（2026-09-10）
+      message.error(e instanceof ClientError ? e.message : t('errors.opFailed'))
     }
   }
 

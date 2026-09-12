@@ -140,6 +140,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .slot > .slot-inner { overflow: hidden; min-height: 0; }
 /* D3 收拢：槽位 zipper 合拢（跟随收牌波次，反向 delay） */
 .slot.closing { grid-template-rows: 0fr; transition: grid-template-rows calc(var(--t-gather) * .72) var(--ease-in); transition-delay: var(--exit-delay, 0ms); }
+/* 删除收拢：行槽平滑收合（独立于 closing 通道——被删行自身收合消失不弹回；2026-09-10） */
+.slot.removing { grid-template-rows: 0fr; transition: grid-template-rows var(--t-gather) var(--ease-in); transition-delay: 0ms; }
+.slot.removing .deal { animation: gather-out var(--t-gather) var(--ease-in) both; }
 
 /* D2 发牌：卡牌从父行方向（上·左）抽出落位，spring 回弹 */
 .slot .deal { animation: deal-in var(--t-deal) var(--ease-spring) both; animation-delay: var(--enter-delay, 0ms); }
