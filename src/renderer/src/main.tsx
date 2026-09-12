@@ -59,7 +59,7 @@ function AntdGate({ children }: { children: React.ReactNode }): React.JSX.Elemen
     }
     const root = document.documentElement
     root.classList.add('theme-transitioning')
-    const t = window.setTimeout(() => root.classList.remove('theme-transitioning'), 300)
+    const t = window.setTimeout(() => root.classList.remove('theme-transitioning'), 550)
     return () => window.clearTimeout(t)
   }, [dark])
   return (

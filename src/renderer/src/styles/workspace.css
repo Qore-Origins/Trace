@@ -117,12 +117,12 @@ html.theme-transitioning *,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
   transition:
-    background-color 240ms var(--ease-out),
-    color 240ms var(--ease-out),
-    border-color 240ms var(--ease-out),
-    box-shadow 240ms var(--ease-out),
-    fill 240ms var(--ease-out),
-    stroke 240ms var(--ease-out) !important;
+    background-color 450ms var(--ease-out),
+    color 450ms var(--ease-out),
+    border-color 450ms var(--ease-out),
+    box-shadow 450ms var(--ease-out),
+    fill 450ms var(--ease-out),
+    stroke 450ms var(--ease-out) !important;
 }
 @media (prefers-reduced-motion: reduce) {
   html.theme-transitioning *,
