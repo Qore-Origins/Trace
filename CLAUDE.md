@@ -32,7 +32,7 @@
 |------|-----|
 | 项目名称 | 溯源 Trace（`productName: 溯源 Trace`） |
 | 项目类型 | 桌面计划管理软件（个人自用，本地优先） |
-| 当前版本 | v0.11.1 公测版 Beta 3 修订（版本史见 docs/changelog/CHANGELOG.md；1.0.0 为正式版） |
+| 当前版本 | v0.12.0 公测版 Beta 4（版本史见 docs/changelog/CHANGELOG.md；1.0.0 为正式版） |
 | 应用 ID | `com.qore.trace` |
 | 署名 | Copyright (c) 2026 Qore |
 | GitHub 仓库 | `git@github.com:Qore-Origins/Trace.git`（**组织为 Qore-Origins，简称 Qore 已被占用**） |
