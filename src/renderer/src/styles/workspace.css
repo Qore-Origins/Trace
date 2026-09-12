@@ -1,6 +1,7 @@
 /* 主题「迹 · Trace Mark」（前端详细设计 §1/§2；token 同 UI 规范 §2）
    UI 整顿基线（2026-09-06）：禁止页面级滚动；控件风格三源合一（antd / 统一样式类，禁裸 button） */
 :root {
+  color-scheme: light; /* 原生控件（date picker 日历弹层/表单）跟随主题——dark 映射见 .theme-dark */
   --trace-500: #1677ff;
   --trace-700: #0958d9;
   --trace-bg: #e6f4ff;
@@ -62,6 +63,7 @@
 
 /* ---------- 暗色主题（html.theme-dark，main.tsx ThemeGate 驱动；antd 走 darkAlgorithm 双轨） ---------- */
 html.theme-dark {
+  color-scheme: dark; /* 原生 date picker 日历弹层等 UA 组件转暗（2026-09-12 用户截图反馈） */
   --paper: #1f1f1f;
   --paper-dim: #2b2b2b;
   --fill: #303030;
