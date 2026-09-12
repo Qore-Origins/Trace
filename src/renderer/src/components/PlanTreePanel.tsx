@@ -53,13 +53,15 @@ interface TreeUiCtxValue {
   activeId: string | null // 拖拽中的行 path
   canReceive: (dragPath: string, target: string) => boolean
   selectedPath: string | null
+  removeWithAnimation: (path: string) => void // 删除先播收拢波次再真删（面板持有 closingPaths 态）
 }
 const TreeUiCtx = createContext<TreeUiCtxValue>({
   onToggle: () => undefined,
   onOpen: () => undefined,
   activeId: null,
   canReceive: () => false,
-  selectedPath: null
+  selectedPath: null,
+  removeWithAnimation: () => undefined
 })
 
 // 收拢波次表：父组收拢时「全部揭示行槽 path → 出场延迟(ms)」；null=非收拢子树
@@ -230,7 +232,7 @@ function PmBox(): React.JSX.Element {
 // 操作菜单改为右键整行呼出（桌面惯例），快捷新建 + / 文件夹按钮保留
 function TreeRow(props: { node: RowView }): React.JSX.Element {
   const { node } = props
-  const { activeId, canReceive, selectedPath } = useContext(TreeUiCtx)
+  const { activeId, canReceive, selectedPath, removeWithAnimation } = useContext(TreeUiCtx)
   const { t } = useTranslation()
   const openNameDialog = useUiStore((s) => s.openNameDialog)
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
@@ -283,7 +285,7 @@ function TreeRow(props: { node: RowView }): React.JSX.Element {
               ]
             : []),
           { key: 'rename', label: t('common.rename'), onClick: () => openNameDialog({ mode: 'rename', targetPath: node.path, initialName: node.name }) },
-          { key: 'delete', label: t('common.delete'), danger: true, onClick: () => confirmRemoveTree(node.path, kind) }
+          { key: 'delete', label: t('common.delete'), danger: true, onClick: () => confirmRemoveTree(node.path, kind, removeWithAnimation) }
         ]
       }}
     >
@@ -379,7 +381,7 @@ function TreeGroup(props: { parentPath: string; depth: number }): React.JSX.Elem
 }
 
 export default function PlanTreePanel(): React.JSX.Element {
-  const { childrenMap, loaded, expandedKeys, selectedPath, loadChildren, select, setExpanded, movePlan } = useTreeStore()
+  const { childrenMap, loaded, expandedKeys, selectedPath, loadChildren, select, setExpanded, movePlan, removePlan } = useTreeStore()
   const openPlan = usePlanStore((s) => s.open)
   const closePlan = usePlanStore((s) => s.close)
   const openNameDialog = useUiStore((s) => s.openNameDialog)
@@ -461,6 +463,30 @@ export default function PlanTreePanel(): React.JSX.Element {
     }
   }
 
+  // 删除先播收拢（与折叠同构的状态序列：closingPaths 兜住组、波次表收牌），动画完执行真删除——
+  // 终态=行收拢消失不弹回（与新建的发牌入场对仗；用户反馈：删除此前是瞬间消失）
+  const removeWithAnimation = (path: string): void => {
+    const st = useTreeStore.getState()
+    const nextClosing = new Set(closingPaths)
+    nextClosing.add(path)
+    const nextExpanded = st.expandedKeys.filter((k) => k !== path)
+    if (nextExpanded.length !== st.expandedKeys.length) setExpanded(nextExpanded)
+    setClosingPaths(nextClosing)
+    const revealed = collectRevealedSlots(path, st.childrenMap, nextExpanded, nextClosing)
+    const s = effStagger(revealed.length)
+    const total = Math.max((revealed.length - 1) * s + tokenMs('--t-gather', 260) + 60, 200)
+    const timer = setTimeout(() => {
+      closeTimers.current.delete(path)
+      setClosingPaths((prev) => {
+        const n = new Set(prev)
+        n.delete(path)
+        return n
+      })
+      void removePlan(path)
+    }, total)
+    closeTimers.current.set(path, timer)
+  }
+
   // 碰撞：指针所在行命中；剔除被拖项自身（文件夹行自身也是落点，须排除）
   const treeCollision: CollisionDetection = (args) =>
     pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter((c) => c.id !== args.active.id) })
@@ -492,7 +518,7 @@ export default function PlanTreePanel(): React.JSX.Element {
     loaded: loaded[''] === true
   }
 
-  const uiCtx: TreeUiCtxValue = { onToggle, onOpen, activeId, canReceive, selectedPath }
+  const uiCtx: TreeUiCtxValue = { onToggle, onOpen, activeId, canReceive, selectedPath, removeWithAnimation }
 
   return (
     <>

@@ -46,8 +46,9 @@ export const useUiStore = create<UiState>()((set) => ({
   setView: (view) => set({ view })
 }))
 
-// 删除确认（树节点：计划/文件夹共用；BR-007 二次确认）
-export function confirmRemoveTree(path: string, kind: 'plan' | 'folder'): void {
+// 删除确认（树节点：计划/文件夹共用；二次确认）。
+// onConfirm 缺省直接删除；树面板传入收拢动画版（先播收牌波次再真删——与新建的发牌入场对仗）
+export function confirmRemoveTree(path: string, kind: 'plan' | 'folder', onConfirm?: (path: string) => void): void {
   const name = path.slice(path.lastIndexOf('/') + 1)
   Modal.confirm({
     title: i18n.t(kind === 'folder' ? 'confirm.deleteFolderTitle' : 'confirm.deletePlanTitle', { name }),
@@ -55,6 +56,12 @@ export function confirmRemoveTree(path: string, kind: 'plan' | 'folder'): void {
     okText: i18n.t('common.delete'),
     okButtonProps: { danger: true },
     cancelText: i18n.t('common.cancel'),
-    onOk: () => useTreeStore.getState().removePlan(path).catch(() => undefined)
+    onOk: () => {
+      if (onConfirm) {
+        onConfirm(path)
+        return
+      }
+      return useTreeStore.getState().removePlan(path).catch(() => undefined)
+    }
   })
 }

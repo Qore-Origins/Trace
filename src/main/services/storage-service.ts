@@ -74,12 +74,12 @@ export class StorageService {
     const parent = this.safe(parentPathRel)
     const root = this.root()
     const siblings = await this.repo.listPlanDirs(root, parent)
-    if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+    if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
     try {
       await this.repo.mkdirPlan(root, parent, name)
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+        throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
       }
       throw e
     }
@@ -97,14 +97,14 @@ export class StorageService {
     const root = this.root()
 
     const siblings = await this.repo.listPlanDirs(root, parent)
-    if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+    if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
 
     let dirAbs: string
     try {
       dirAbs = await this.repo.mkdirPlan(root, parent, name)
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+        throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
       }
       throw e
     }
@@ -129,7 +129,7 @@ export class StorageService {
 
     const siblings = await this.repo.listPlanDirs(root, parent)
     if (siblings.includes(newName) && newName !== oldName) {
-      throw new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+      throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
     }
 
     await this.repo.renamePlanDir(root, rel, newName)
@@ -167,7 +167,7 @@ export class StorageService {
 
     if (targetParent !== oldParent) {
       const siblings = await this.repo.listPlanDirs(root, targetParent)
-      if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名文件夹已存在，请换一个名称')
+      if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
     }
 
     const fromAbs = targetJoin(root, rel)
