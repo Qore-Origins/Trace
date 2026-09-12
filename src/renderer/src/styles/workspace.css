@@ -47,6 +47,10 @@
   --resizer-hover: rgba(22, 119, 255, 0.25);
   --onboard-grad-a: #ffffff;
   --onboard-grad-b: #f5f9ff;
+  /* 滚动条（webkit；暗色映射见 .theme-dark） */
+  --sb-thumb: #d0d0d0;
+  --sb-thumb-hover: #b0b0b0;
+  --sb-track: transparent;
   /* hljs 代码高亮（github-light 系；暗色映射见 .theme-dark） */
   --hl-keyword: #cf222e;
   --hl-string: #0a3069;
@@ -82,6 +86,9 @@ html.theme-dark {
   --resizer-hover: rgba(22, 119, 255, 0.35);
   --onboard-grad-a: #1f1f1f;
   --onboard-grad-b: #111d2c;
+  --sb-thumb: #4b4b4b;
+  --sb-thumb-hover: #5e5e5e;
+  --sb-track: transparent;
   /* hljs 代码高亮换 github-dark 系 */
   --hl-keyword: #ff7b72;
   --hl-string: #a5d6ff;
@@ -95,6 +102,13 @@ html.theme-dark {
 * { box-sizing: border-box; margin: 0; padding: 0; } /* 全局 reset：丢此条时 body 默认 margin 8px 把界面顶出窗口 8px（2026-09-06 状态栏切字根因，数字诊断实证） */
 html, body, #root { height: 100%; overflow: hidden; }
 body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text-1); font-size: 14px; line-height: 1.5; background: var(--paper-dim); }
+
+/* 滚动条随主题（2026-09-12 用户反馈：暗色下默认亮色滚动条刺眼） */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--sb-thumb); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--sb-thumb-hover); background-clip: content-box; border: 2px solid transparent; }
+::-webkit-scrollbar-track { background: var(--sb-track); }
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* ---------- 布局骨架（§2.2） ---------- */
 .ws { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }

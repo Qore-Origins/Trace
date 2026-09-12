@@ -314,7 +314,7 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
         ))}
         <button
           type="button"
-          style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}
+          className="lite-btn" style={{ marginTop: 4 }}
           onClick={() =>
             patchComponent(comp.id, (payload) => {
               ;(payload as TaskListPayload).items.push({ id: uuid32(), title: '', status: 'not_started' })
