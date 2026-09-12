@@ -1,6 +1,6 @@
 {
   "name": "trace",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "溯源 Trace · by Qore —— 计划有迹可循的桌面计划管理软件",
   "main": "./out/main/index.js",
   "author": "Qore <Qore-Origins>",
