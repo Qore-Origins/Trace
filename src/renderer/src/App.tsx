@@ -14,7 +14,7 @@ import { subscribeTreeEvents, useTreeStore } from './stores/tree-store'
 import { subscribePlanEvents } from './stores/plan-store'
 import { subscribeSearchEvents, useSearchStore } from './stores/search-store'
 import { useUiStore } from './stores/ui-store'
-import { usePrefStore, type DealDirection, type Language, type ScoreAnim } from './stores/pref-store'
+import { usePrefStore, type DealDirection, type Language, type ScoreAnim, type ThemeMode } from './stores/pref-store'
 import { invoke } from './ipc-client'
 import { DIARY_DIR } from '@shared/plan-types'
 import { useTranslation } from './i18n'
@@ -132,7 +132,7 @@ function TopBarSettingsHost(): React.JSX.Element {
   const open = useUiStore((s) => s.settingsOpen)
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
   const { rootDir, switchRootDir } = useAppStore()
-  const { language, dealDirection, scoreAnim, setLanguage, setDealDirection, setScoreAnim } = usePrefStore()
+  const { language, dealDirection, scoreAnim, theme: themeMode, setLanguage, setDealDirection, setScoreAnim, setTheme } = usePrefStore()
   const [version, setVersion] = useState('')
 
   useEffect(() => {
@@ -197,6 +197,20 @@ function TopBarSettingsHost(): React.JSX.Element {
               >
                 <Radio.Button value="roll">{t('settings.scoreAnimRoll')}</Radio.Button>
                 <Radio.Button value="none">{t('settings.scoreAnimNone')}</Radio.Button>
+              </Radio.Group>
+            </div>
+            <div>
+              <div style={prefLabel(t('settings.theme'))}>{t('settings.theme')}</div>
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                size="small"
+                value={themeMode}
+                onChange={(e) => setTheme(e.target.value as ThemeMode)}
+              >
+                <Radio.Button value="light">{t('settings.themeLight')}</Radio.Button>
+                <Radio.Button value="dark">{t('settings.themeDark')}</Radio.Button>
+                <Radio.Button value="system">{t('settings.themeSystem')}</Radio.Button>
               </Radio.Group>
             </div>
           </div>

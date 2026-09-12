@@ -1,12 +1,12 @@
-import React from 'react'
+import React, { useEffect, useSyncExternalStore } from 'react'
 import ReactDOM from 'react-dom/client'
-import { ConfigProvider, unstableSetRender } from 'antd'
+import { ConfigProvider, theme as antdTheme, unstableSetRender } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
 import { I18nextProvider } from 'react-i18next'
 import App from './App'
 import { i18n } from './i18n'
-import { usePrefStore } from './stores/pref-store'
+import { usePrefStore, type ThemeMode } from './stores/pref-store'
 import './styles/workspace.css'
 
 // antd v5 静态方法（Modal.confirm/message 等）默认走 ReactDOM.render，React 19 已移除 → 静默不渲染
@@ -27,18 +27,49 @@ unstableSetRender((node, container) => {
   }
 })
 
-// antd locale 随偏好语言联动（内置组件文案：Modal 按钮/Empty/日期等）
-function AntdLocaleGate({ children }: { children: React.ReactNode }): React.JSX.Element {
+// 系统暗色偏好订阅（theme='system' 时实时联动；useSyncExternalStore 供 React 感知外部源变化）
+function subscribeSystemDark(cb: () => void): () => void {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)')
+  mq.addEventListener('change', cb)
+  return () => mq.removeEventListener('change', cb)
+}
+function getSystemDark(): boolean {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+function resolveDark(theme: ThemeMode, systemDark: boolean): boolean {
+  return theme === 'dark' || (theme === 'system' && systemDark)
+}
+
+// antd locale/主题随偏好联动（内置组件文案 + 暗色算法）；
+// dataset.theme 同步驱动 workspace.css 的变量映射（--paper/--text-* 等在 .theme-dark 下换暗色值）
+function AntdGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const language = usePrefStore((s) => s.language)
-  return <ConfigProvider locale={language === 'en-US' ? enUS : zhCN}>{children}</ConfigProvider>
+  const themeMode = usePrefStore((s) => s.theme)
+  const systemDark = useSyncExternalStore(subscribeSystemDark, getSystemDark, getSystemDark)
+  const dark = resolveDark(themeMode, systemDark)
+  useEffect(() => {
+    document.documentElement.classList.toggle('theme-dark', dark)
+  }, [dark])
+  return (
+    <ConfigProvider
+      locale={language === 'en-US' ? enUS : zhCN}
+      theme={{
+        algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        token: { colorPrimary: '#1677ff' }
+      }}
+    >
+      {children}
+    </ConfigProvider>
+  )
 }
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <I18nextProvider i18n={i18n}>
-      <AntdLocaleGate>
+      <AntdGate>
         <App />
-      </AntdLocaleGate>
+      </AntdGate>
     </I18nextProvider>
   </React.StrictMode>
 )

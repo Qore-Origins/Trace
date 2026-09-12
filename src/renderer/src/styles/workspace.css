@@ -31,6 +31,64 @@
   --ease-spring: cubic-bezier(.3, 1.46, .4, 1);
   --ease-out: cubic-bezier(.2, .7, .3, 1);
   --ease-in: cubic-bezier(.55, .04, .7, .3);
+  /* 语义 token（2026-09-12 深色主题收敛：散落硬编码色归口；.theme-dark 见上方映射块） */
+  --hover-active: #bae0ff;
+  --danger-hover-bg: #fff2f0;
+  --warn-bg: #fffbe6;
+  --warn-text: #d48806;
+  --danger-text: #cf1322;
+  --code-bg: #f6f8fa;
+  --input-hover-bg: #fff;
+  --mask: rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-pop: rgba(0, 0, 0, 0.18);
+  --pulse-strong: rgba(22, 119, 255, 0.55);
+  --pulse-weak: rgba(22, 119, 255, 0.15);
+  --resizer-hover: rgba(22, 119, 255, 0.25);
+  --onboard-grad-a: #ffffff;
+  --onboard-grad-b: #f5f9ff;
+  /* hljs 代码高亮（github-light 系；暗色映射见 .theme-dark） */
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-comment: #6e7781;
+  --hl-number: #0550ae;
+  --hl-title: #8250df;
+  --hl-type: #953800;
+}
+
+/* ---------- 暗色主题（html.theme-dark，main.tsx ThemeGate 驱动；antd 走 darkAlgorithm 双轨） ---------- */
+html.theme-dark {
+  --paper: #1f1f1f;
+  --paper-dim: #2b2b2b;
+  --fill: #303030;
+  --text-1: #e6e6e6;
+  --text-2: #bfbfbf;
+  --text-3: #8c8c8c;
+  --text-4: #5c5c5c;
+  --split: #333333;
+  --border: #434343;
+  --trace-bg: #112a45;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --hover-active: #11305c;
+  --danger-hover-bg: #2c1315;
+  --warn-bg: #2b2411;
+  --warn-text: #d89614;
+  --danger-text: #ff7875;
+  --code-bg: #161616;
+  --input-hover-bg: #252525;
+  --mask: rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-pop: rgba(0, 0, 0, 0.5);
+  --resizer-hover: rgba(22, 119, 255, 0.35);
+  --onboard-grad-a: #1f1f1f;
+  --onboard-grad-b: #111d2c;
+  /* hljs 代码高亮换 github-dark 系 */
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-comment: #8b949e;
+  --hl-number: #79c0ff;
+  --hl-title: #d2a8ff;
+  --hl-type: #ffa657;
 }
 
 /* 桌面应用：锁死页面级滚动，只有内容区可滚 */
@@ -44,7 +102,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); display: flex; flex-direction: column; min-height: 0; position: relative; }
 /* 拖拽调宽手柄（VS Code 参考行为）：右缘 6px 命中带，跨在分界线上；hover/拖动亮蓝提示 */
 .tree-resizer { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; z-index: 5; background: transparent; }
-.tree-resizer:hover, .tree-resizer:active { background: rgba(22, 119, 255, 0.25); }
+.tree-resizer:hover, .tree-resizer:active { background: var(--resizer-hover); }
 .ws-tree .tree-scroll { flex: 1; overflow: auto; padding: 8px 6px 4px; }
 .ws-tree .tree-footer { flex: none; display: flex; gap: 6px; padding: 8px 6px 10px; border-top: 1px solid var(--split); }
 .ws-content { flex: 1; overflow: auto; padding: 14px 24px 32px; }
@@ -63,8 +121,8 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
   transition: all 0.15s;
 }
 .lite-btn:hover { background: var(--trace-bg); color: var(--trace-500); }
-.lite-btn:active { background: #bae0ff; }
-.lite-btn.danger:hover { background: #fff2f0; color: var(--danger); }
+.lite-btn:active { background: var(--hover-active); }
+.lite-btn.danger:hover { background: var(--danger-hover-bg); color: var(--danger); }
 .lite-btn:disabled { opacity: 0.35; cursor: default; }
 .lite-btn:disabled:hover { background: transparent; color: var(--text-3); }
 
@@ -124,7 +182,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .tree-row { position: relative; display: flex; align-items: center; min-height: 28px; border-radius: 6px; padding: 0 4px 0 2px; user-select: none; transition: background-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out); }
 .tree-row:hover { background: var(--paper-dim); }
 .tree-row.drop-into { background: var(--trace-bg); box-shadow: inset 0 0 0 1px var(--trace-500); }
-.tree-row.dragging { z-index: 10; background: var(--paper); box-shadow: 0 0 0 2px var(--trace-500), 0 10px 28px rgba(0, 0, 0, 0.18); }
+.tree-row.dragging { z-index: 10; background: var(--paper); box-shadow: 0 0 0 2px var(--trace-500), 0 10px 28px var(--shadow-pop); }
 .tree-guides { display: flex; flex: none; align-self: stretch; }
 .tree-guides .guide { width: 18px; flex: none; border-left: 1px solid var(--split); }
 .tree-switcher { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-4); cursor: pointer; padding: 0; font-size: 10px; border-radius: 4px; transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out); }
@@ -222,8 +280,8 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* focus/过期换色变速过渡；底线恒占（transparent 基线）防 1px 布局跳变 */
 .due-input { font: inherit; color: var(--text-2); border: none; background: transparent; border-bottom: 1px solid transparent; transition: color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out); }
 .due-input:focus { outline: none; border-bottom-color: var(--trace-500); }
-.due-date.overdue .due-input { color: #cf1322; }
-.due-overdue { font-size: 12px; color: #cf1322; }
+.due-date.overdue .due-input { color: var(--danger-text); }
+.due-overdue { font-size: 12px; color: var(--danger-text); }
 
 .card { background: var(--paper); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 12px 16px; margin-bottom: 12px; position: relative; }
 .card .kind { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-4); margin-bottom: 4px; user-select: none; }
@@ -238,12 +296,12 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .drag-handle { display: inline-flex; flex: none; padding: 1px; border-radius: 4px; cursor: grab; color: var(--text-4); transition: color var(--t-ui) var(--ease-out); }
 .drag-handle:hover { color: var(--trace-500); }
 .drag-handle:active { cursor: grabbing; }
-.card.dragging { z-index: 10; scale: 1.02; box-shadow: 0 0 0 2px var(--trace-500), 0 10px 28px rgba(0, 0, 0, 0.18); }
+.card.dragging { z-index: 10; scale: 1.02; box-shadow: 0 0 0 2px var(--trace-500), 0 10px 28px var(--shadow-pop); }
 
 .card.pulse { animation: card-pulse 2s ease-out; }
 @keyframes card-pulse {
-  0% { box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.55), var(--shadow-card); }
-  70% { box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.15), var(--shadow-card); }
+  0% { box-shadow: 0 0 0 3px var(--pulse-strong), var(--shadow-card); }
+  70% { box-shadow: 0 0 0 3px var(--pulse-weak), var(--shadow-card); }
   100% { box-shadow: var(--shadow-card); }
 }
 
@@ -255,8 +313,8 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* 左缘 28px 与 .single-summary 对齐（2026-09-09 ledger 对齐项——meas 320 vs 348 差此值） */
 .single-due { margin-top: 4px; margin-left: 28px; display: flex; align-items: center; gap: 8px; }
 .single-due-input { font-size: 12px; border: none; background: transparent; color: var(--text-3); font-family: inherit; padding: 0; transition: color var(--t-ui) var(--ease-out); }
-.single-due-input.overdue { color: #cf1322; }
-.single-due-overdue { font-size: 12px; color: #cf1322; }
+.single-due-input.overdue { color: var(--danger-text); }
+.single-due-overdue { font-size: 12px; color: var(--danger-text); }
 
 /* 任务行（§3.2 足迹三态）——交互态统一过渡（2026-09-09 禁止瞬切：B 方案 overlay 删除钮） */
 .task-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 5px 60px 5px 4px; border-radius: 6px; transition: background-color var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out); }
@@ -273,10 +331,10 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .task-title { flex: 1; min-width: 0; }
 .task-title input { border: none; outline: none; width: 100%; font-size: 14px; background: transparent; color: var(--text-1); transition: color var(--t-ui) var(--ease-out); }
 .task-date { font-size: 12px; color: var(--text-3); border: 1px solid transparent; border-radius: 4px; padding: 2px; background: transparent; transition: border-color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out); }
-.task-date:hover { border-color: var(--border); background: #fff; }
+.task-date:hover { border-color: var(--border); background: var(--input-hover-bg); }
 /* 逾期标：max-width+opacity 平滑展开（@starting-style 入场，不顶动布局）；
    离开为 React 卸载（数据态低频，无 leave 钩子，可缓） */
-.tag-overdue { font-size: 11px; color: #d48806; background: #fffbe6; border-radius: 4px; padding: 1px 6px; flex: none; max-width: 52px; overflow: hidden; transition: max-width var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out), padding var(--t-ui) var(--ease-out); }
+.tag-overdue { font-size: 11px; color: var(--warn-text); background: var(--warn-bg); border-radius: 4px; padding: 1px 6px; flex: none; max-width: 52px; overflow: hidden; transition: max-width var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out), padding var(--t-ui) var(--ease-out); }
 @starting-style { .tag-overdue { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; } }
 /* 删除钮 B 方案（demo/del-hover-demo.html 定稿）：overlay 不占位——hover 淡入+右滑入，内容永不被顶；
    行右 padding 60px 为悬浮缓冲（防盖死日期）；按钮在行内，移出即离场无间隙 */
@@ -296,25 +354,25 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .note-md li { margin-bottom: 2px; }
 .note-md pre {
   margin: 0 0 8px; padding: 8px 10px;
-  background: #f6f8fa; border: 1px solid var(--split); border-radius: 6px;
+  background: var(--code-bg); border: 1px solid var(--split); border-radius: 6px;
   overflow-x: auto;
 }
 .note-md pre:last-child { margin-bottom: 0; }
 .note-md pre code { font-family: Consolas, 'Courier New', monospace; font-size: 12px; line-height: 1.6; color: var(--text-1); white-space: pre; }
 /* 代码块语法高亮（highlight.js token 配色；github-light 色系对齐 Trace 纸面——不用 hljs 整包主题防背景冲突） */
-.note-md .hljs-keyword, .note-md .hljs-selector-tag, .note-md .hljs-literal, .note-md .hljs-section { color: #cf222e; }
-.note-md .hljs-string, .note-md .hljs-attr, .note-md .hljs-symbol, .note-md .hljs-bullet, .note-md .hljs-addition { color: #0a3069; }
-.note-md .hljs-comment, .note-md .hljs-quote, .note-md .hljs-deletion, .note-md .hljs-meta { color: #6e7781; font-style: italic; }
-.note-md .hljs-number, .note-md .hljs-regexp, .note-md .hljs-link { color: #0550ae; }
-.note-md .hljs-title, .note-md .hljs-title.function_, .note-md .hljs-name, .note-md .hljs-selector-id, .note-md .hljs-selector-class { color: #8250df; }
-.note-md .hljs-built_in, .note-md .hljs-class .hljs-title, .note-md .hljs-type, .note-md .hljs-template-variable, .note-md .hljs-variable { color: #953800; }
+.note-md .hljs-keyword, .note-md .hljs-selector-tag, .note-md .hljs-literal, .note-md .hljs-section { color: var(--hl-keyword); }
+.note-md .hljs-string, .note-md .hljs-attr, .note-md .hljs-symbol, .note-md .hljs-bullet, .note-md .hljs-addition { color: var(--hl-string); }
+.note-md .hljs-comment, .note-md .hljs-quote, .note-md .hljs-deletion, .note-md .hljs-meta { color: var(--hl-comment); font-style: italic; }
+.note-md .hljs-number, .note-md .hljs-regexp, .note-md .hljs-link { color: var(--hl-number); }
+.note-md .hljs-title, .note-md .hljs-title.function_, .note-md .hljs-name, .note-md .hljs-selector-id, .note-md .hljs-selector-class { color: var(--hl-title); }
+.note-md .hljs-built_in, .note-md .hljs-class .hljs-title, .note-md .hljs-type, .note-md .hljs-template-variable, .note-md .hljs-variable { color: var(--hl-type); }
 .note-md .hljs-emphasis { font-style: italic; }
 .note-md .hljs-strong { font-weight: 600; }
 .note-md :not(pre) > code {
   font-family: Consolas, 'Courier New', monospace; font-size: 12px;
-  background: #f0f0f0; border-radius: 3px; padding: 1px 4px;
+  background: var(--fill); border-radius: 3px; padding: 1px 4px;
 }
-.note-md a { color: #1677ff; text-decoration: none; cursor: pointer; }
+.note-md a { color: var(--trace-500); text-decoration: none; cursor: pointer; }
 .note-md a:hover { text-decoration: underline; }
 .note-md strong { color: var(--text-1); }
 /* 引用/分隔线/表格（2026-09-10 渲染器扩展——用户命名设计文档截图修复） */
@@ -355,9 +413,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .folder-item:hover { border-color: var(--trace-500); }
 
 /* ---------- 溯源浮层（§3.6）——进入动画（@starting-style 挂载过渡；关闭为卸载，数据态可缓） ---------- */
-.search-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.08); z-index: 30; transition: opacity var(--t-ui) var(--ease-out); }
+.search-mask { position: fixed; inset: 0; background: var(--mask); z-index: 30; transition: opacity var(--t-ui) var(--ease-out); }
 @starting-style { .search-mask { opacity: 0; } }
-.search-overlay { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); width: 560px; max-width: calc(100vw - 48px); background: var(--paper); border-radius: var(--r-card); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); z-index: 31; overflow: hidden; display: flex; flex-direction: column; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
+.search-overlay { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); width: 560px; max-width: calc(100vw - 48px); background: var(--paper); border-radius: var(--r-card); box-shadow: 0 4px 16px var(--shadow-overlay); z-index: 31; overflow: hidden; display: flex; flex-direction: column; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
 @starting-style { .search-overlay { opacity: 0; transform: translateX(-50%) translateY(-8px); } }
 .search-overlay .o-input { width: 100%; height: 44px; border: none; border-bottom: 1px solid var(--split); outline: none; padding: 0 16px; font-size: 14px; font-family: inherit; }
 .search-overlay .o-body { max-height: 380px; overflow: auto; padding: 6px; }
@@ -376,7 +434,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .status-saved { color: var(--text-2); }
 
 /* ---------- 引导页（§3.7 空即是信任） ---------- */
-.onboard { height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #ffffff 0%, #f5f9ff 100%); position: relative; }
+.onboard { height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, var(--onboard-grad-a) 0%, var(--onboard-grad-b) 100%); position: relative; }
 .onboard-titlebar { position: fixed; top: 0; left: 0; right: 0; height: 40px; display: flex; align-items: center; padding-left: 16px; -webkit-app-region: drag; user-select: none; }
 .onboard-titlebar .win-controls { margin-left: auto; }
 .onboard-inner { width: 520px; text-align: center; }
@@ -384,7 +442,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .onboard-inner h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
 .onboard-inner h1 em { font-style: normal; color: var(--trace-500); }
 .onboard-inner .slogan { color: var(--text-2); margin-bottom: 28px; }
-.onboard-inner .desc { font-size: 13px; color: var(--text-2); background: #fff; border: 1px solid var(--split); border-radius: var(--r-card); padding: 16px 20px; margin-bottom: 20px; text-align: left; }
+.onboard-inner .desc { font-size: 13px; color: var(--text-2); background: var(--paper); border: 1px solid var(--split); border-radius: var(--r-card); padding: 16px 20px; margin-bottom: 20px; text-align: left; }
 
 @media (prefers-reduced-motion: reduce) {
   .card.pulse { animation-duration: 0.05s; }
