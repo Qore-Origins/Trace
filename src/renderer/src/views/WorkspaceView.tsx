@@ -46,7 +46,8 @@ export default function WorkspaceView(): React.JSX.Element {
       }
       if (e.key === 'Delete' && selectedPath) {
         e.preventDefault()
-        confirmRemoveTree(selectedPath, selectedKind ?? 'plan')
+        // 动画删除：经 store 请求通道由树面板执行收拢动画（与右键删除一致）
+        confirmRemoveTree(selectedPath, selectedKind ?? 'plan', (p) => useTreeStore.getState().requestAnimRemove(p))
         return
       }
     }

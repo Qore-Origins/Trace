@@ -14,6 +14,8 @@ interface TreeState {
   expandedKeys: string[]
   selectedPath: string | null
   selectedKind: 'plan' | 'folder' | null
+  animRemove: { path: string; seq: number } | null // 删除动画请求（面板订阅执行收拢动画；seq 保同路径重复触发）
+  requestAnimRemove: (path: string) => void
   loadChildren: (parentPath: string) => Promise<void>
   select: (path: string | null, kind?: 'plan' | 'folder' | null) => void
   setExpanded: (keys: string[]) => void
@@ -86,6 +88,9 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   expandedKeys: [],
   selectedPath: null,
   selectedKind: null,
+  animRemove: null,
+  // Delete 快捷键等面板外入口请求动画删除：面板 effect 收到后走 removeWithAnimation（收拢波次）
+  requestAnimRemove: (path) => set({ animRemove: { path, seq: Date.now() } }),
 
   loadChildren: async (parentPath) => {
     await refreshInto(set, get, parentPath)

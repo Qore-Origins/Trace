@@ -492,6 +492,15 @@ export default function PlanTreePanel(): React.JSX.Element {
     removeTimers.current.set(path, timer)
   }
 
+  // Delete 快捷键等面板外入口的动画删除请求（seq 变化即触发；同路径重复删除也生效）
+  const animRemove = useTreeStore((s) => s.animRemove)
+  const animSeq = animRemove?.seq ?? 0
+  const animPath = animRemove?.path ?? null
+  useEffect(() => {
+    if (animSeq > 0 && animPath) removeWithAnimation(animPath)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animSeq])
+
   // 碰撞：指针所在行命中；剔除被拖项自身（文件夹行自身也是落点，须排除）
   const treeCollision: CollisionDetection = (args) =>
     pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter((c) => c.id !== args.active.id) })
