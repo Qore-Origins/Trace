@@ -67,6 +67,22 @@
       "targetPath": "D:\\Code\\Project\\Qore\\Trace\\builds\\windows\\Trace_0.11.0_beta_20260910_01.exe",
       "platform": "win32-x64",
       "verificationPassed": true
+    },
+    {
+      "version": "0.11.1+1",
+      "status": "beta",
+      "statusLabel": "公测版 Beta 3 修订",
+      "date": "20260912",
+      "sequence": 1,
+      "filename": "Trace_0.11.1_beta_20260912_01.exe",
+      "timestamp": "2026-09-12T13:50:00",
+      "fileSize": 124280835,
+      "fileSizeFormatted": "118.55 MB",
+      "sha256": "18FEE0FC6D796B70DE3A745A5681E9DF0CAD3F3C9DF6DA93711E9FBCE98EB702",
+      "sourcePath": "D:\\Code\\Project\\Qore\\Trace\\release\\溯源 Trace-0.11.1-setup.exe",
+      "targetPath": "D:\\Code\\Project\\Qore\\Trace\\builds\\windows\\Trace_0.11.1_beta_20260912_01.exe",
+      "platform": "win32-x64",
+      "verificationPassed": true
     }
   ]
 }
