@@ -24,12 +24,12 @@
 
 | 字段 | 状态 |
 |---|---|
-| 阶段 | 原型已完成，等待形态确认；尚未进入正式实现 |
-| 产物 | `demo/memories-view-demo.html` |
-| 原型范围 | 那年今日、里程碑、随机回忆；点击卡片后在右侧显示当日预览并提供树定位入口 |
-| 已验证 | 原型内联脚本已通过 `node --check` |
-| 未做 | F2 spec、正式代码、单元测试、`npm run typecheck`、`npm run test`、真机验收 |
-| 文件所有权 | **Claude（已登记，原型作者）**：用户确认原型后，由 Claude 实施 F2——预期文件边界：`src/main/services/diary-service.ts`（或新建 memory-service）、`src/shared/ipc-contract.ts`、`src/renderer/src/views/MemoriesView.tsx`（新）、`src/renderer/src/App.tsx`、`src/renderer/src/components/TopBar.tsx`、`src/renderer/src/i18n/locales/*`、`test/memories*.spec.ts`（新）、`docs/superpowers/{specs,plans}/`。Codex 请避开上述文件；如需拆分边界请在下表登记后再动工 |
+| 阶段 | **已实现 + 已提交（9d4663e，双端已推）；等用户真机验收** |
+| 产物 | 原型 `demo/memories-view-demo.html`；spec `docs/superpowers/specs/2026-09-14-memories-view-design.md`；实现 `MemoriesView.tsx` + `diary:memories` 通道（diary-service listMemories） |
+| 已验证 | `npm run typecheck` 0 错（2026-09-14）；`npm run test` 176/176（含 +4 memories 用例：onthisday 降序/里程碑 days/random 排除今天/空根） |
+| 未验证 | 真机视觉验收（CDP 环境内存受限不可用——交用户 `npm run dev` 顶栏「回忆」走查） |
+| 文件所有权 | Claude（F2 已完成）；后续修改须重新登记 |
+| 下一工作项候选 | F4 年视图热力 / J2 自动更新 / 渲染层测试基建（路线图见会话记录；等用户点名） |
 
 ## 下一动作与阻塞
 
