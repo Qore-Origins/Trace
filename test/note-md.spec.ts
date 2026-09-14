@@ -131,4 +131,19 @@ describe('note-md renderText（React 片段结构）', () => {
   it('普通文本原样、无 React 实体', () => {
     expect(renderText('a <b> & c', 'k').join('')).toBe('a <b> & c')
   })
+
+  it('删除线 ~~text~~ → del', () => {
+    const nodes = renderText('~~废弃~~', 'k')
+    const del = nodes.find((n) => typeof n === 'object' && (n as { type: unknown }).type === 'del')
+    expect(del).toBeDefined()
+  })
+
+  it('下划线 <u>text</u> → u（安全：非配对标签不解析）', () => {
+    const nodes = renderText('<u>重点</u>', 'k')
+    const u = nodes.find((n) => typeof n === 'object' && (n as { type: unknown }).type === 'u')
+    expect(u).toBeDefined()
+    // 非配对/恶意形态不解析为 u
+    const bad = renderText('<u>未闭合', 'k').join('')
+    expect(bad).toContain('<u>')
+  })
 })

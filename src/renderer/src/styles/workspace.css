@@ -469,6 +469,16 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .note-md th, .note-md td { border: 1px solid var(--split); padding: 4px 8px; text-align: left; }
 .note-md th { background: var(--paper-dim); font-weight: 600; color: var(--text-1); }
 .note-actions { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+/* 编辑态格式工具栏（marktext/word 式一键样式；按钮字母按所代表样式渲染） */
+.note-fmt-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+.fmt-btn { border: 1px solid var(--border); background: var(--paper); border-radius: 4px; color: var(--text-2); font-size: 12px; padding: 1px 7px; cursor: pointer; line-height: 1.6; transition: background-color var(--t-ui) var(--ease-out), color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out); }
+.fmt-btn:hover { border-color: var(--trace-500); color: var(--trace-500); background: var(--trace-bg); }
+.fmt-btn.b { font-weight: 700; }
+.fmt-btn.i { font-style: italic; }
+.fmt-btn.s { text-decoration: line-through; }
+.fmt-btn.u { text-decoration: underline; }
+/* 渲染态自动换行开关（卡内局部状态）：wrap 时代码块/超长行折行显示 */
+.note-md.wrap pre { white-space: pre-wrap; word-break: break-word; }
 .note-actions-end { justify-content: flex-end; }
 .note-actions-end .ant-btn { color: var(--text-3); }
 .note-hint { font-size: 11px; color: var(--text-4); }

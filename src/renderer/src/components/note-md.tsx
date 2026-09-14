@@ -208,7 +208,7 @@ export function highlightCode(code: string, lang: string): string {
 
 // ---------- 行内解析 ----------
 
-const INLINE_SPLIT = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/
+const INLINE_SPLIT = /(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|<u>[^<]+<\/u>|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/
 
 export function renderText(text: string, keyBase: string, onLink?: (url: string) => void): ReactNode[] {
   const out: ReactNode[] = []
@@ -232,6 +232,16 @@ export function renderText(text: string, keyBase: string, onLink?: (url: string)
       out.push(<em key={key}>{italic[1]}</em>)
       continue
     }
+    const del = /^~~([^~]+)~~$/.exec(part)
+    if (del) {
+      out.push(<del key={key}>{del[1]}</del>)
+      continue
+    }
+    const underline = /^<u>([^<]+)<\/u>$/.exec(part)
+    if (underline) {
+      out.push(<u key={key}>{underline[1]}</u>)
+      continue
+    }
     const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part)
     if (link) {
       out.push(
@@ -248,10 +258,10 @@ export function renderText(text: string, keyBase: string, onLink?: (url: string)
 
 // ---------- 组件 ----------
 
-export function NoteMarkdown({ content, onLink }: { content: string; onLink?: (url: string) => void }): React.JSX.Element {
+export function NoteMarkdown({ content, onLink, wrap }: { content: string; onLink?: (url: string) => void; wrap?: boolean }): React.JSX.Element {
   const blocks = useMemo(() => parseBlocks(content), [content])
   return (
-    <div className="note-md">
+    <div className={wrap ? 'note-md wrap' : 'note-md'}>
       {blocks.map((b, bi) => {
         const key = `b-${bi}`
         if (b.kind === 'code') {
