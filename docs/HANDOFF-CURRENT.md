@@ -16,7 +16,7 @@
 |---|---|
 | 分支 | `main` |
 | 代码基线 | `b5fea55` — 回忆视图审查缺陷修复；已由 `git log` 实测 |
-| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态、缺陷修复与 Muya 设计规格，领先 5 个提交，尚未推送 |
+| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态、缺陷修复、Muya 规格与实施计划，领先 6 个提交，尚未推送 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
@@ -63,8 +63,8 @@
 
 ## 下一动作与阻塞
 
-- 下一动作：用户复核 Muya 完整移植规格；确认后 Codex 编写实施计划，先做 `demo/muya-note-editor/` 真实 Muya Demo，再集成 NoteCard。Claude 避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
-- 等待：用户对设计规格的最终复核。
+- 下一动作：规格已获用户复核通过；Codex 按 `docs/superpowers/plans/2026-09-15-muya-note-editor.md` 执行 Task 1-3，先交付 `demo/muya-note-editor/` 真实 Muya Demo。Claude 避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
+- 等待：真实 Muya Demo 完成后的用户验收；验收前不进入正式 NoteCard 集成。
 - F2 已闭环，不再构成阻塞或并行边界。
 - 待推送：无；`5058037` 已与 GitHub/Gitee 对齐。
 
