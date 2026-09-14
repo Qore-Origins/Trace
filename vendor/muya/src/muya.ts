@@ -41,14 +41,14 @@ import './assets/styles/prismjs/light.theme.css';
 // shape: a class with a static `pluginName` and a constructor that takes
 // `(muya: Muya, options: object)`. `Muya.use` records the constructor + an
 // arbitrary options object; `init()` instantiates each plugin.
-export interface IMuyaPluginConstructor {
+export interface IMuyaPluginConstructor<TOptions extends object = Record<string, unknown>> {
     pluginName: string;
-    new(muya: Muya, options: Record<string, unknown>): unknown;
+    new(muya: Muya, options?: TOptions): unknown;
 }
 
 interface IPlugin {
-    plugin: IMuyaPluginConstructor;
-    options: Record<string, unknown>;
+    plugin: IMuyaPluginConstructor<object>;
+    options: object;
 }
 
 // A selection reduced to document paths + offsets, with block references
@@ -129,9 +129,9 @@ function endpointPair(
 export class Muya {
     static plugins: IPlugin[] = [];
 
-    static use(plugin: IMuyaPluginConstructor, options: Record<string, unknown> = {}) {
+    static use<TOptions extends object>(plugin: IMuyaPluginConstructor<TOptions>, options: TOptions = {} as TOptions) {
         this.plugins.push({
-            plugin,
+            plugin: plugin as IMuyaPluginConstructor<object>,
             options,
         });
     }

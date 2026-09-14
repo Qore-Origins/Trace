@@ -1,3 +1,6 @@
+/// <reference path="./types/global.d.ts" />
+/// <reference path="./types/index.d.ts" />
+
 export type { ILocale } from './i18n/types';
 export { de, en, es, fr, ja, ko, pt, tr, zhCN, zhTW } from './locales';
 

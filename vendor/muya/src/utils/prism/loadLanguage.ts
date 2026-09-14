@@ -109,7 +109,8 @@ function initLoadLanguage(Prism: IPrismLike) {
         await getLoader(components, langs, loaded).load(loadComponent, {
             series: (before: Promise<void>, after: () => Promise<void>) =>
                 before.then(after),
-            parallel: (values: Promise<void>[]) => Promise.all(values),
+            parallel: (values: readonly Promise<void>[]) =>
+                Promise.all(values).then(() => undefined),
         });
 
         return statuses;

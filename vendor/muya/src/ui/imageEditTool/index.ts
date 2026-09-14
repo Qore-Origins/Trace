@@ -29,7 +29,7 @@ interface IState {
 /**
  * Image edit tool options
  */
-type Options = {
+type ImageHostOptions = {
     /** Custom image path picker function (one-shot native file dialog) */
     imagePathPicker?: () => Promise<string>;
     /**
@@ -41,7 +41,10 @@ type Options = {
     imagePathAutoComplete?: (src: string) => Promise<IImagePathSuggestion[]>;
     /** Image upload action handler */
     imageAction?: (state: IState) => Promise<string>;
-} & IBaseOptions;
+};
+
+type Options = ImageHostOptions & Partial<IBaseOptions>;
+type ResolvedOptions = ImageHostOptions & IBaseOptions;
 
 /** Default float options for image edit tool */
 const defaultOptions = {
@@ -64,7 +67,7 @@ const FILE_PROTOCOL_LENGTH = 7;
  * Provides a float UI to edit image properties with optional file picker and upload support
  */
 export class ImageEditTool extends BaseFloat {
-    public override options: Options;
+    public override options: ResolvedOptions;
     static pluginName = 'imageSelector';
     public override capturesContentKeydown = true;
 
@@ -107,8 +110,9 @@ export class ImageEditTool extends BaseFloat {
      */
     constructor(muya: Muya, options: Options = { ...defaultOptions }) {
         const name = 'mu-image-selector';
-        super(muya, name, Object.assign({}, defaultOptions, options));
-        this.options = Object.assign({}, defaultOptions, options);
+        const resolvedOptions: ResolvedOptions = Object.assign({}, defaultOptions, options);
+        super(muya, name, resolvedOptions);
+        this.options = resolvedOptions;
         this.container!.appendChild(this._imageSelectorContainer);
         this.floatBox!.classList.add('mu-image-selector-wrapper');
         this.listen();
