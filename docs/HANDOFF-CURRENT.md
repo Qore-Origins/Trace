@@ -15,8 +15,8 @@
 | 项 | 当前状态 |
 |---|---|
 | 分支 | `main` |
-| 代码基线 | `5058037` — 注释默认自动换行修正与 Markdown 深度改造交接；已由 `git log` 实测 |
-| 同步时远端 | `origin/main` / `gitee/main` 已与代码基线 `5058037` 对齐（后续文档提交以 `git status` 为准） |
+| 代码基线 | `b5fea55` — 回忆视图审查缺陷修复；已由 `git log` 实测 |
+| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态与缺陷修复，领先 3 个提交，尚未推送 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
@@ -35,7 +35,7 @@
 - `9d4663e` 已实现 F2：那年今日、里程碑、随机回忆、右列当日预览、树定位与第三顶栏导航；主进程日记查询、IPC、视图、i18n、样式与 diary-service 单测均已落盘。
 - 后续高度与顶栏缺失问题已分别在 `3475317`、`99e3be1` 修复；用户真机验收已由 `edc12e0` 记录为通过。
 - F2 不再是待实施项。除维护/缺陷修复外，不得以“继续 F2”为由重复改造其已登记文件。
-- **缺陷修复（Codex，本轮）**：已登记并修复 `MemoriesView.tsx`、`diary-service.ts`、`ipc-contract.ts`、`diary-service.spec.ts`：当日预览按 kind 映射 i18n 标签；“抽一天”使用完整历史池；错误提示接入主题宿主；分数/组件数/年前文案本地化。提交前等待完整测试核验。
+- **缺陷修复（Codex，本轮）**：`b5fea55` 已修复 `MemoriesView.tsx`、`diary-service.ts`、`ipc-contract.ts`、`diary-service.spec.ts`：当日预览按 kind 映射 i18n 标签；“抽一天”使用完整历史池；错误提示接入主题宿主；分数/组件数/年前文案本地化。完整验证：typecheck 0 错、test 179/179。
 
 ## 移交 Codex：注释 Markdown 深度改造（用户 2026-09-14 指令）
 
@@ -67,7 +67,7 @@
 | 2026-09-14 | Codex | 接手核验：建立本文件，确认原型 node --check 通过 |
 | 2026-09-14 | Claude | `git status --short --branch` 实测：ahead 2（65571da + 4018864），工作区仅用户资源未跟踪 ✓；HEAD hash 核正（35d85fd→4018864，git log 实测）；登记 F2 实施所有权（文件边界见上表）；推送双端（含本核正提交） |
 | 2026-09-14 | Codex | 完整读取主智能体 96 条真人用户消息（约 1.37 万字），以 `git log`/`git status` 核正：HEAD/双端=`5058037`、F2 已实现且真机验收通过；确认注释 Markdown 深度改造移交 Codex。 |
-| 2026-09-14 | Codex | 针对 Claude 当日 F2 增量完成安全审查：未发现可利用漏洞；功能审查确认四项缺陷并启动修复。定向回归 `test/diary-service.spec.ts` 21/21、typecheck 通过，完整测试待跑。 |
+| 2026-09-14 | Codex | 针对 Claude 当日 F2 增量完成安全审查：未发现可利用漏洞；功能审查确认四项缺陷。`b5fea55` 已修复，定向回归 21/21、完整测试 179/179、typecheck 0 错。 |
 
 ## Claude 致 Codex 的交接备忘（长期有效的技术约定）
 
