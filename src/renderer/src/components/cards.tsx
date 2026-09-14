@@ -383,7 +383,7 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as NotePayload
   const [editing, setEditing] = useState(p.content.trim() === '')
-  const [wrap, setWrap] = useState(false)
+  const [wrap, setWrap] = useState(true) // 默认折行：注释卡固定宽度、不出现横向滚动条（用户澄清 2026-09-12）；开关切回原始排版
   const taRef = useRef<HTMLTextAreaElement | null>(null)
   const openLink = (url: string): void => {
     if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer')
