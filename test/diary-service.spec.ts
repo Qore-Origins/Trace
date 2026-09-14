@@ -266,6 +266,7 @@ describe('listMemories（F2 回忆视图）', () => {
   it('日记根不存在 → 全空结构', async () => {
     expect(await listMemories(root)).toEqual({
       today: todayDateStr(),
+      history: [],
       onthisday: [],
       milestones: [],
       random: null
@@ -297,6 +298,16 @@ describe('listMemories（F2 回忆视图）', () => {
     await writeDayPlan(d, moodDoc(48, d))
     const r = await listMemories(root)
     expect(r.random?.date).toBe(d)
+  })
+
+  it('history：保留普通历史日，供“抽一天”覆盖全部过去记录', async () => {
+    const ordinaryDay = shiftDays(-3)
+    await writeDayPlan(ordinaryDay, moodDoc(48, ordinaryDay))
+
+    const result = await listMemories(root)
+    expect('history' in result).toBe(true)
+    const history = (result as unknown as { history?: Array<{ date: string }> }).history
+    expect(history?.map((entry) => entry.date)).toContain(ordinaryDay)
   })
 })
 

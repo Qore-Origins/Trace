@@ -126,6 +126,7 @@ function aggregateDay(date: string, doc: PlanDocument): DiaryMonthEntry {
 // 里程碑通式：n%100===0（百天）∪ n%365===0（周年），n ∈ [100, 3650]；今天由 main 侧取（与 diary:ensure 一致）
 export async function listMemories(planRoot: string): Promise<{
   today: string
+  history: DiaryMemoryEntry[]
   onthisday: DiaryMemoryEntry[]
   milestones: DiaryMemoryMilestone[]
   random: DiaryMemoryEntry | null
@@ -138,7 +139,7 @@ export async function listMemories(planRoot: string): Promise<{
     dirents = await fs.readdir(diaryAbs, { withFileTypes: true })
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { today, onthisday: [], milestones: [], random: null } // 日记根尚不存在 → 全空
+      return { today, history: [], onthisday: [], milestones: [], random: null } // 日记根尚不存在 → 全空
     }
     throw e
   }
@@ -179,7 +180,7 @@ export async function listMemories(planRoot: string): Promise<{
   onthisday.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)) // 近年在前
   milestones.sort((a, b) => a.days - b.days)
   const random = all.length > 0 ? all[Math.floor(Math.random() * all.length)] : null
-  return { today, onthisday, milestones, random }
+  return { today, history: all, onthisday, milestones, random }
 }
 
 // 单日摘要：读 Diary/<date>/plan.json → 组件映射（缺失/坏 JSON 沿用既有 plan 读取错误语义）

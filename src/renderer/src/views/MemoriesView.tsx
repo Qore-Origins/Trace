@@ -1,7 +1,9 @@
 // MemoriesView（F2 回忆视图）：独立页三区块——那年今日 / 里程碑 / 随机回忆 + 右列当日预览
 // 形态照 demo/memories-view-demo.html 定稿；数据走 diary:memories / diary:day；样式走语义 token（双主题）
 import { useEffect, useRef, useState } from 'react'
-import { Spin, message } from 'antd'
+import { Spin } from 'antd'
+import type { TFunction } from 'i18next'
+import { getMessage } from '../antd-host'
 import { invoke } from '../ipc-client'
 import { ClientError } from '../ipc-client'
 import { useTranslation } from '../i18n'
@@ -12,9 +14,24 @@ import TopBar from '../components/TopBar'
 
 interface MemoriesPayload {
   today: string
+  history: DiaryMemoryEntry[]
   onthisday: DiaryMemoryEntry[]
   milestones: DiaryMemoryMilestone[]
   random: DiaryMemoryEntry | null
+}
+
+function kindLabel(t: TFunction, kind: string, label: string): string {
+  switch (kind) {
+    case 'mood': return t('diary.moodLabel')
+    case 'note': return t('diary.summaryLabel')
+    case 'heading': return t('content.insertHeading')
+    case 'task_list': return t('cards.kindTaskList')
+    case 'task_detail': return t('cards.kindTaskDetail')
+    case 'single_plan': return t('cards.kindSinglePlan')
+    case 'multi_plan': return t('cards.kindMultiPlan')
+    case 'custom': return t('cards.customLabel')
+    default: return label || t('diary.componentLabel')
+  }
 }
 
 function MemoryCard(props: {
@@ -24,6 +41,7 @@ function MemoryCard(props: {
   onSelect: (date: string) => void
 }): React.JSX.Element {
   const { entry, badge, selected, onSelect } = props
+  const { t } = useTranslation()
   return (
     <div
       className={`mem-card${selected ? ' selected' : ''}`}
@@ -44,13 +62,39 @@ function MemoryCard(props: {
       {entry.score !== null ? (
         <div className="mem-score" style={{ color: scoreColor(entry.score) }}>
           {entry.score}
-          <small>{' 分'}</small>
+          <small>{t('diary.scoreUnit')}</small>
         </div>
       ) : (
         <div className="mem-score none">–</div>
       )}
       {entry.notePreview && <div className="mem-note">{entry.notePreview}</div>}
-      <div className="mem-days">{entry.compCount} 组件</div>
+      <div className="mem-days">{t('diary.compsCount', { count: entry.compCount })}</div>
+    </div>
+  )
+}
+
+function MemoryDayComponentCard({ comp }: { comp: DiaryDaySummary['components'][number] }): React.JSX.Element {
+  const { t } = useTranslation()
+  const label = kindLabel(t, comp.kind, comp.label)
+  if (comp.kind === 'mood') {
+    const score = comp.excerpt === '' ? Number.NaN : Number(comp.excerpt)
+    const color = Number.isFinite(score) ? scoreColor(score) : undefined
+    return (
+      <div className="mem-pv-card">
+        <div className="k">{label}</div>
+        <div className="t" style={color ? { color } : undefined}>
+          {comp.excerpt ? `${comp.excerpt} ${t('diary.scoreUnit')}` : '–'}
+        </div>
+      </div>
+    )
+  }
+  if (comp.kind === 'heading') {
+    return <div className="mem-pv-card"><div className="k">{label}</div></div>
+  }
+  return (
+    <div className="mem-pv-card">
+      <div className="k">{label}</div>
+      {comp.excerpt && <div className="t">{comp.excerpt}</div>}
     </div>
   )
 }
@@ -73,12 +117,12 @@ export default function MemoriesView({ onOpenInTree }: { onOpenInTree: (date: st
         setRandomCard(r.random)
       })
       .catch((e: unknown) => {
-        if (alive) message.error(e instanceof ClientError ? e.message : '回忆加载失败')
+        if (alive) getMessage().error(e instanceof ClientError ? e.message : t('errors.opFailed'))
       })
     return () => {
       alive = false
     }
-  }, [])
+  }, [t])
 
   const selectDay = (date: string): void => {
     const id = ++dayReq.current
@@ -95,12 +139,14 @@ export default function MemoriesView({ onOpenInTree }: { onOpenInTree: (date: st
 
   const roll = (): void => {
     if (!data) return
-    const pool: DiaryMemoryEntry[] = [...data.onthisday, ...data.milestones]
+    const pool = data.history
     if (pool.length === 0) return
     setRandomCard(pool[Math.floor(Math.random() * pool.length)])
   }
 
-  const yearsAgo = (date: string): string => `${Number(todayDateStr().slice(0, 4)) - Number(date.slice(0, 4))} 年前`
+  const yearsAgo = (date: string): string => t('memories.yearsAgo', {
+    years: Number(todayDateStr().slice(0, 4)) - Number(date.slice(0, 4))
+  })
 
   return (
     <div className="memories">
@@ -190,10 +236,7 @@ export default function MemoriesView({ onOpenInTree }: { onOpenInTree: (date: st
           ) : (
             <>
               {daySummary.components.map((c, i) => (
-                <div key={`${c.kind}-${i}`} className="mem-pv-card">
-                  <div className="k">{c.label}</div>
-                  <div className="t">{c.excerpt}</div>
-                </div>
+                <MemoryDayComponentCard key={`${c.kind}-${i}`} comp={c} />
               ))}
               <button type="button" className="mem-pv-open" onClick={() => onOpenInTree(selected)}>
                 {t('diary.openInTree')}

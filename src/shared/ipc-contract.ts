@@ -134,7 +134,13 @@ export interface Channels {
   'diary:day': { req: { date: string }; res: DiaryDaySummary }
   'diary:memories': {
     req: {}
-    res: { today: string; onthisday: DiaryMemoryEntry[]; milestones: DiaryMemoryMilestone[]; random: DiaryMemoryEntry | null }
+    res: {
+      today: string
+      history: DiaryMemoryEntry[] // 全部过去记录；供随机回忆重复抽取，排除今天
+      onthisday: DiaryMemoryEntry[]
+      milestones: DiaryMemoryMilestone[]
+      random: DiaryMemoryEntry | null
+    }
   }
 }
 
