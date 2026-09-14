@@ -24,11 +24,11 @@
 
 | 字段 | 状态 |
 |---|---|
-| 阶段 | **已实现 + 已提交（9d4663e，双端已推）；等用户真机验收** |
+| 阶段 | **已完成 + 用户真机验收通过（2026-09-14 截图确认：随机回忆命中真实日记数据、暗色适配正常、空态文案正确）** |
 | 产物 | 原型 `demo/memories-view-demo.html`；spec `docs/superpowers/specs/2026-09-14-memories-view-design.md`；实现 `MemoriesView.tsx` + `diary:memories` 通道（diary-service listMemories） |
-| 已验证 | `npm run typecheck` 0 错（2026-09-14）；`npm run test` 176/176（含 +4 memories 用例：onthisday 降序/里程碑 days/random 排除今天/空根） |
-| 未验证 | 真机视觉验收（CDP 环境内存受限不可用——交用户 `npm run dev` 顶栏「回忆」走查） |
-| 文件所有权 | Claude（F2 已完成）；后续修改须重新登记 |
+| 已验证 | typecheck 0 错；test 176/176（含 +4 memories 用例）；用户真机截图验收（暗色 + 随机真实数据命中） |
+| 未做 | 无（F2 闭环） |
+| 文件所有权 | F2 已完成；后续修改须重新登记 |
 | 下一工作项候选 | F4 年视图热力 / J2 自动更新 / 渲染层测试基建（路线图见会话记录；等用户点名） |
 
 ## 下一动作与阻塞
