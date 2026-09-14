@@ -140,7 +140,8 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .export-root .task-title input { border: none; background: transparent; }
 
 /* ---------- 回忆视图（F2 · 独立页，demo/memories-view-demo.html 定稿移植） ---------- */
-.memories { flex: 1; display: flex; min-height: 0; }
+/* height:100% 必须——App 分支顶层非 flex 容器，仅 flex:1 会导致根高度塌陷（右列截断，2026-09-12 用户截图实证） */
+.memories { height: 100%; display: flex; min-height: 0; }
 .memories-main { flex: 1; overflow: auto; padding: 16px 24px 32px; }
 .memories-inner { max-width: 860px; margin: 0 auto; }
 .mem-section { margin-bottom: 26px; }
