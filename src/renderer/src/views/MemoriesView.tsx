@@ -8,6 +8,7 @@ import { useTranslation } from '../i18n'
 import { todayDateStr } from '@shared/validation'
 import type { DiaryDaySummary, DiaryMemoryEntry, DiaryMemoryMilestone } from '@shared/ipc-contract'
 import { scoreColor } from '../components/cards'
+import TopBar from '../components/TopBar'
 
 interface MemoriesPayload {
   today: string
@@ -103,6 +104,8 @@ export default function MemoriesView({ onOpenInTree }: { onOpenInTree: (date: st
 
   return (
     <div className="memories">
+      <TopBar />
+      <div className="memories-body">
       <div className="memories-main">
         <div className="memories-inner">
           <div className="mem-section">
@@ -200,6 +203,7 @@ export default function MemoriesView({ onOpenInTree }: { onOpenInTree: (date: st
         ) : (
           <div className="mem-pv-empty">{t('memories.previewHint')}</div>
         )}
+      </div>
       </div>
     </div>
   )
