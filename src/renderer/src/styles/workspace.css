@@ -368,6 +368,9 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .card .head h3 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
 /* 卡片操作钮（升/降/删）：overlay 淡入+下移入场——原先 display 瞬切（2026-09-09 禁止瞬切） */
 .card .actions { position: absolute; top: 6px; right: 8px; display: flex; gap: 0; align-items: center; background: var(--paper); border-radius: 6px; opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
+/* 暗色专项：actions 底色换 --fill（比两类卡面都亮一档）+ 描边 + 投影——亮色的"白底浮起"在暗色下是黑团（2026-09-12 用户红框反馈） */
+html.theme-dark .card .actions { background: var(--fill); border: 1px solid var(--border); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); }
+html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .card:hover .actions { opacity: 1; transform: none; pointer-events: auto; }
 .card .actions .lite-btn { padding: 2px 6px; }
 
