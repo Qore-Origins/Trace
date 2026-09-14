@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>回忆视图 Demo · 迹 Trace</title>
+<!--
+  回忆视图（F2 · 独立页定案）原型
+  顶栏第三导航「回忆」；页面三区块：
+    1. 那年今日：往年同月同日（去年/前年…）——年份标签+心情色分数+摘要首行，点击进当日预览（模拟）
+    2. 里程碑：整数天前（100/365/500/1000 天…）从日记根全部日期推算
+    3. 随机回忆：抽一天按钮，随机展示过去某天（可重复抽）
+  交互：点卡片=当日预览（右列切换，与日记视图同款交互）；「在树中打开」模拟跳转
+  数据为模拟值（今天=2026-09-12）
+-->
+<style>
+:root {
+  --trace-500: #1677ff;
+  --trace-bg: #e6f4ff;
+  --origin: #1d39c4;
+  --text-1: #262626;
+  --text-2: #595959;
+  --text-3: #8c8c8c;
+  --text-4: #bfbfbf;
+  --split: #f0f0f0;
+  --border: #d9d9d9;
+  --paper: #ffffff;
+  --paper-dim: #fafafa;
+  --ease-out: cubic-bezier(.2, .7, .3, 1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(--paper-dim); color: var(--text-1); font-size: 14px; }
+button { font: inherit; }
+
+.app { display: flex; flex-direction: column; height: 100%; }
+.topbar { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 14px; padding: 0 16px; }
+.topbar .brand { font-weight: 600; font-size: 15px; }
+.nav { display: flex; gap: 2px; }
+.nav-btn { padding: 4px 10px; font-size: 13px; color: var(--text-3); background: transparent; border: none; cursor: pointer; border-radius: 6px; transition: color .18s var(--ease-out); }
+.nav-btn:hover { color: var(--text-1); }
+.nav-btn.active { color: var(--trace-500); font-weight: 500; }
+
+.main { flex: 1; display: flex; min-height: 0; }
+.content { flex: 1; overflow: auto; padding: 16px 24px 32px; }
+.maxw { max-width: 860px; margin: 0 auto; }
+
+.section { margin-bottom: 26px; }
+.sec-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.sec-title h2 { font-size: 16px; font-weight: 600; }
+.sec-title .sub { font-size: 12px; color: var(--text-4); }
+.sec-title .roll { margin-left: auto; }
+
+.mem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.mem-card { background: var(--paper); border: 1px solid var(--split); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: border-color .18s var(--ease-out), box-shadow .18s var(--ease-out); }
+.mem-card:hover { border-color: var(--trace-500); box-shadow: 0 2px 8px rgba(22,119,255,.08); }
+.mem-card.selected { border-color: var(--trace-500); box-shadow: inset 0 0 0 1px var(--trace-500); }
+.mem-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.mem-years { font-size: 12px; color: var(--trace-500); font-weight: 600; background: var(--trace-bg); border-radius: 4px; padding: 1px 6px; }
+.mem-date { font-size: 12px; color: var(--text-4); font-variant-numeric: tabular-nums; }
+.mem-score { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.mem-note { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-days { font-size: 12px; color: var(--text-3); }
+
+.roll-btn { border: 1px solid var(--border); background: var(--paper); border-radius: 6px; padding: 4px 14px; color: var(--text-2); cursor: pointer; font-size: 13px; transition: background-color .18s var(--ease-out), color .18s var(--ease-out); }
+.roll-btn:hover { background: var(--trace-bg); color: var(--trace-500); border-color: var(--trace-500); }
+
+.empty { font-size: 13px; color: var(--text-4); background: var(--paper); border: 1px dashed var(--border); border-radius: 10px; padding: 22px; text-align: center; }
+
+/* 右列：当日预览（与日记视图同款交互语言） */
+.preview { width: 300px; flex: none; background: var(--paper); border-left: 1px solid var(--split); overflow: auto; padding: 14px; }
+.preview .pv-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.pv-card { border: 1px solid var(--split); border-radius: 8px; background: var(--paper-dim); padding: 10px 12px; margin-bottom: 10px; }
+.pv-card .k { font-size: 11px; color: var(--text-4); }
+.pv-card .t { font-size: 13px; color: var(--text-2); }
+.pv-card .t.big { font-size: 22px; font-weight: 700; }
+.pv-open { width: 100%; border: 1px solid var(--border); background: var(--paper); border-radius: 6px; color: var(--text-2); font-size: 12px; padding: 6px; cursor: pointer; transition: background-color .18s var(--ease-out), color .18s var(--ease-out); }
+.pv-open:hover { background: var(--trace-bg); color: var(--trace-500); }
+.pv-empty { font-size: 12px; color: var(--text-4); text-align: center; padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <span class="brand">溯源 Trace</span>
+    <div class="nav">
+      <button type="button" class="nav-btn">计划</button>
+      <button type="button" class="nav-btn">日记</button>
+      <button type="button" class="nav-btn active">回忆</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="content">
+      <div class="maxw">
+        <div class="section">
+          <div class="sec-title">
+            <h2>那年今日</h2>
+            <span class="sub">9 月 12 日 · 往年</span>
+          </div>
+          <div class="mem-grid" id="onthisday"></div>
+        </div>
+
+        <div class="section">
+          <div class="sec-title">
+            <h2>里程碑</h2>
+            <span class="sub">整数天前的今天</span>
+          </div>
+          <div class="mem-grid" id="milestones"></div>
+        </div>
+
+        <div class="section">
+          <div class="sec-title">
+            <h2>随机回忆</h2>
+            <span class="sub">从过去的每一天里抽一页</span>
+            <span class="roll"><button type="button" class="roll-btn" id="btnRoll">抽一天</button></span>
+          </div>
+          <div class="mem-grid" id="randomZone"></div>
+        </div>
+      </div>
+    </div>
+    <div class="preview" id="preview">
+      <div class="pv-title">当日预览</div>
+      <div class="pv-empty" id="pvBody">点左侧回忆卡查看当日内容</div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict'
+// ---------- 模拟数据（Diary/<date>/ 聚合：score/摘要首行） ----------
+const TODAY = '2026-09-12'
+const DATA = {
+  '2024-09-12': { score: 42, note: '项目刚立项，一切都很模糊', comps: 3 },
+  '2025-09-12': { score: 66, note: 'Sprint 计划理顺了，树动效定稿', comps: 5 },
+  '2025-06-08': { score: 58, note: '500 天纪念，坚持中', comps: 4 },
+  '2026-03-30': { score: 71, note: '百日里程碑，习惯已成', comps: 3 },
+  '2026-01-15': { score: 49, note: '年假结束第一天，慢启动', comps: 2 },
+  '2025-12-31': { score: 75, note: '年度收官，复盘写了很久', comps: 6 },
+  '2026-08-01': { score: 53, note: '普通的一天，也记下来', comps: 3 }
+}
+
+const MILESTONE_DAYS = [100, 200, 365, 500, 1000]
+
+function scoreColor(score) {
+  const t = Math.max(0, Math.min(1, (score - 30) / 50))
+  const from = [96, 130, 182], to = [255, 122, 69]
+  const mix = from.map((c, i) => Math.round(c + (to[i] - c) * t))
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`
+}
+
+function daysAgoKey(n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  const p = (x) => String(x).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+function cardHtml(key, badge) {
+  const rec = DATA[key]
+  const years = Number(TODAY.slice(0, 4)) - Number(key.slice(0, 4))
+  const head = badge
+    ? `<span class="mem-years">${badge}</span>`
+    : `<span class="mem-years">${years} 年前</span>`
+  return `
+    <div class="mem-head">${head}<span class="mem-date">${key}</span></div>
+    <div class="mem-score" style="color:${scoreColor(rec.score)}">${rec.score}<small style="font-size:11px;font-weight:400;color:var(--text-3)"> 分</small></div>
+    <div class="mem-note">${rec.note}</div>`
+}
+
+// 那年今日：往年同月同日
+const md = TODAY.slice(5)
+const onthisday = Object.keys(DATA).filter((k) => k.slice(5) === md && k !== TODAY).sort().reverse()
+document.getElementById('onthisday').innerHTML = onthisday.length
+  ? onthisday.map((k) => `<div class="mem-card" data-day="${k}">${cardHtml(k)}</div>`).join('')
+  : '<div class="empty">过去没有这一天的记录——从今天开始写下值得纪念的</div>'
+
+// 里程碑：整数天前且有记录
+const msKeys = MILESTONE_DAYS.map((n) => ({ n, key: daysAgoKey(n) })).filter((x) => DATA[x.key])
+document.getElementById('milestones').innerHTML = msKeys.length
+  ? msKeys.map((x) => `<div class="mem-card" data-day="${x.key}">${cardHtml(x.key, `${x.n} 天前`)}</div>`).join('')
+  : '<div class="empty">还没有整百/整年的里程碑——记录会慢慢长出来</div>'
+
+// 随机回忆
+const allKeys = Object.keys(DATA).filter((k) => k !== TODAY)
+function roll() {
+  const k = allKeys[Math.floor(Math.random() * allKeys.length)]
+  const zone = document.getElementById('randomZone')
+  zone.innerHTML = `<div class="mem-card" data-day="${k}">${cardHtml(k, '随机')}</div>`
+}
+document.getElementById('btnRoll').addEventListener('click', roll)
+
+// 当日预览（右列）
+document.querySelectorAll('.mem-grid').forEach((g) => {
+  g.addEventListener('click', (e) => {
+    const card = e.target.closest('.mem-card')
+    if (!card) return
+    document.querySelectorAll('.mem-card').forEach((c) => c.classList.remove('selected'))
+    card.classList.add('selected')
+    const key = card.dataset.day
+    const rec = DATA[key]
+    document.getElementById('pvBody').outerHTML = `
+      <div id="pvBody">
+        <div class="pv-card"><div class="k">${key}</div><div class="t big" style="color:${scoreColor(rec.score)}">${rec.score} 分</div></div>
+        <div class="pv-card"><div class="k">今日小结</div><div class="t">${rec.note}</div></div>
+        <div class="pv-card"><div class="k">组件</div><div class="t">${rec.comps} 个</div></div>
+        <button class="pv-open">在树中打开（模拟）</button>
+      </div>`
+  })
+})
+
+roll() // 初始随机一页
+</script>
+</body>
+</html>
