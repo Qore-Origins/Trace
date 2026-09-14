@@ -271,6 +271,10 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 /* 拖拽进行中：抑制行 hover 底色与快捷按钮浮现（与浮起跟随/落点高亮反馈叠加会闪烁） */
 .tree-scroll.is-dragging .tree-row:hover { background: transparent; }
 .tree-scroll.is-dragging .tree-row:hover .tree-quick { opacity: 0; pointer-events: none; }
+/* 拖拽进行中：取消行槽裁切（2026-09-12 用户反馈"卡片从纸中裁剪下来/页面出现洞"）——
+   被拖行 transform 跟随指针时不再被 .slot-inner 的 overflow:hidden 裁成残块；
+   拖拽中入场/收拢动画本就不播，放开裁切无副作用 */
+.tree-scroll.is-dragging .slot-inner { overflow: visible; }
 
 /* ---------- 树动效（2026-09-08 卡牌摞 D1-D8；demo 定稿移植） ----------
    行槽结构：.slot（grid 0fr↔1fr 高度槽）> .slot-inner > .deal（发牌动画包装）> .tree-row（dnd transform）
