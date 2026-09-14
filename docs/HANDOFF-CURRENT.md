@@ -2,7 +2,7 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-15（Codex：Muya 完整移植设计已获方向批准，规格落盘待用户复核）
+> 更新：2026-09-15（Codex：用户否决模拟 Demo；Muya 规格按真实实时渲染与局部删除回退修订）
 
 ## 接手前必做
 
@@ -16,7 +16,7 @@
 |---|---|
 | 分支 | `main` |
 | 代码基线 | `b5fea55` — 回忆视图审查缺陷修复；已由 `git log` 实测 |
-| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态、缺陷修复与 Muya 设计规格，领先 4 个提交，尚未推送 |
+| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态、缺陷修复与 Muya 设计规格，领先 5 个提交，尚未推送 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
@@ -41,19 +41,20 @@
 
 | 字段 | 内容 |
 |---|---|
-| 意图 | 把 marktext 的大多数体验搬进注释：注释中的 markdown **像 marktext 一样自动渲染**（编辑即渲染，替代当前"预览/编辑双态"）；设置中可配置「自动渲染」开关 |
+| 意图 | 完整移植 MarkText/Muya 注释编辑体验：同一编辑面实时渲染、自动补全与代码语言选择，替代当前"预览/编辑双态"；设置中只保留「实时渲染」开关 |
 | 设置交互规范 | 设置弹窗中的配置项：**鼠标悬停 2 秒显示该项的描述**（tooltip 延迟 2s；建议对所有配置项补描述文案，统一交互） |
 | 参考源码 | `D:\Code\Project\marktext-develop\packages\muya`（`@muyajs/core 0.2.0`；当前目录不是 Git 工作树，首次快照以版本、锁文件和内容 SHA-256 建立来源基线） |
 | 现状基础 | note-md.tsx 自研渲染器（块：code/list/quote/hr/table/para；行内：粗/斜/删/下划线/行内码/链接；代码高亮 highlight.js lib/common）；NoteCard 双态卡 + 格式工具栏（7 钮选区包裹）+ wrap 折行 |
 | 建议文件边界 | `src/renderer/src/components/note-md.tsx`、`cards.tsx`（NoteCard 段）、`views/WorkspaceView.tsx` 或设置宿主（新配置项）、`i18n/locales/*`、对应新测试。与 Claude 在办工作无重叠 |
-| 验收标准 | 用户真机：注释编辑态所见即所得（或自动渲染开关开启时）、设置「自动渲染」可配、配置项悬停 2s 出描述 |
-| 已确认 | "自动渲染"默认**开启**；使用 Muya 单编辑面实时渲染，关闭时显示完整 Markdown 标记，不退回 textarea 双态。 |
+| 验收标准 | 用户真机：输入即在当前编辑面排版；删除时仅正在删除的格式 token 回退源码；设置「实时渲染」可配；配置项悬停 2s 出描述 |
+| 已确认 | 「实时渲染」默认**开启**，不再并列「自动渲染」概念；关闭时显示完整 Markdown 标记，不退回 textarea 双态。 |
 
 ### 2026-09-15 范围升级
 
 - 用户明确要求完整移植 MarkText/Muya 的实时渲染与自动补全，不接受 textarea/预览切换式模拟。
 - 已批准启用全部 Muya 功能，包括 Mermaid、Vega、PlantUML、Flowchart、Sequence 等重型图表；采用单活动编辑器控制资源占用。
 - 已批准内置 Muya 源码快照；PlantUML 默认不连接公共服务器，配置本地或自有 Server 后才渲染。
+- 用户根据 v3 截图确认模拟 Demo 与 MarkText 差距过大：输入没有真实实时渲染；「实时渲染/自动渲染」语义冲突；删除格式内容时缺少 token 级局部源码回退。该模拟 Demo 作废，后续 Demo 必须运行真实 Muya 内核。
 - 设计规格：`docs/superpowers/specs/2026-09-15-muya-note-editor-design.md`。下一步是用户复核规格，然后编写实施计划并先开发真实 Muya Demo。
 
 ## 结构性待办（地基欠账登记）

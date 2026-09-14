@@ -8,8 +8,8 @@ Markdown 字符串仍是唯一持久化格式。Muya 的 JSON State 仅作为活
 
 ## 2. 已批准的产品决策
 
-- 自动渲染默认开启。
-- 自动渲染关闭时不退回旧 textarea；继续使用 Muya 编辑面，但完整显示 Markdown 标记。
+- 设置中只保留一个「实时渲染」概念，不再并列「自动渲染」状态，避免两套模式互相打架；实时渲染默认开启。
+- 实时渲染关闭时不退回旧 textarea；继续使用 Muya 编辑面，但完整显示 Markdown 标记。
 - 自动换行是独立持久化设置，默认开启。
 - 设置项名称悬停 2 秒后显示描述；键盘聚焦时同样可查看描述。
 - 启用 Muya 全功能：CommonMark、GFM、自动配对、代码块语言选择、表格、数学、脚注、链接、图片、Mermaid、Vega/Vega-Lite、PlantUML、Flowchart、Sequence、快捷插入、格式浮层、撤销重做、搜索替换、剪贴板和 IME。
@@ -78,9 +78,11 @@ Muya markdownToState → 活动 JSON State → contenteditable DOM
 - 外部文件监视导致当前注释内容变化时：未聚焦则立即 `setContent()`；已聚焦则保留本地编辑并显示冲突提示，不静默覆盖。
 - Muya 初始化失败时保留原 Markdown，显示主题兼容的错误提示，并降级到现有 textarea，确保数据仍可编辑。
 
-## 7. 自动渲染与自动补全
+## 7. 实时渲染、局部源码回退与自动补全
 
-自动渲染开启时沿用 Muya 原生规则：格式化内容持续排版；光标进入某一格式 token 时只显示该 token 的灰色 Markdown 标记，离开后收起。标题、列表、引用、代码块、表格和图表均在同一编辑面转换。
+实时渲染开启时沿用 Muya 原生规则：输入事件立即更新块树和当前 DOM，不等待失焦、保存或切换预览。格式化内容持续排版；光标进入某一格式 token 时只显示该 token 的灰色 Markdown 标记，离开后收起。标题、列表、引用、代码块、表格和图表均在同一编辑面转换。
+
+删除必须遵循 token 级局部源码回退：当 `Backspace`、`Delete` 或选区删除将触及已渲染格式时，先展开即将被删除的那个格式 token 的源码标记并恢复正确 selection，再执行本次删除。相邻粗体、链接、行内代码或其他块仍保持渲染，禁止整段、整卡退回源码。删除结束后若 token 仍合法则按光标位置显隐；若标记被破坏则作为普通 Markdown 源码继续编辑，直到再次组成合法语法。
 
 自动补全直接启用 Muya 原生选项：
 
@@ -90,7 +92,7 @@ Muya markdownToState → 活动 JSON State → contenteditable DOM
 - 围栏代码块输入语言时显示 `CodeBlockLanguageSelector`，支持 Prism 语言以及 Mermaid、Vega-Lite、PlantUML、Flowchart、Sequence。
 - `/` 快捷插入使用 `ParagraphQuickInsertMenu`；选区格式使用 `InlineFormatToolbar`。
 
-自动渲染关闭时，通过适配层选项让语法标记保持可见，但不关闭自动配对、代码补全、历史和结构化编辑。
+实时渲染关闭时，通过适配层选项让语法标记保持可见，但不关闭自动配对、代码补全、历史和结构化编辑。
 
 ## 8. 图表与网络安全
 
@@ -105,7 +107,7 @@ Muya markdownToState → 活动 JSON State → contenteditable DOM
 
 `pref-store` 新增：
 
-- `noteAutoRender: boolean`，默认 `true`。
+- `noteLiveRender: boolean`，默认 `true`。
 - `noteWrap: boolean`，默认 `true`。
 - `plantumlServer: string`，默认空字符串。
 
@@ -122,8 +124,10 @@ Muya markdownToState → 活动 JSON State → contenteditable DOM
 3. 输入 Mermaid、Vega-Lite、PlantUML、Flowchart、Sequence 围栏，验证本地图表和 PlantUML 离线占位。
 4. 测试标题、列表、任务列表、引用、表格、数学、脚注、链接和图片。
 5. 测试中文输入法组合输入、撤销重做、复制粘贴和跨块选区。
-6. 切换自动渲染与自动换行，确认没有双态 textarea，设置说明延迟 2 秒出现。
-7. 反复创建/销毁编辑器，确认无残留浮层、监听器或持续增长的实例数。
+6. 连续输入 Markdown，确认每次有效输入都在当前编辑面实时排版，不依赖失焦或预览切换。
+7. 对粗体、链接、行内代码和嵌套格式逐字执行 `Backspace`/`Delete`，确认只展开正在删除的 token，不影响相邻渲染内容。
+8. 切换实时渲染与自动换行，确认只有一套渲染状态、没有双态 textarea，设置说明延迟 2 秒出现。
+9. 反复创建/销毁编辑器，确认无残留浮层、监听器或持续增长的实例数。
 
 用户确认 Demo 后才能进入正式 NoteCard 集成。
 
@@ -140,7 +144,7 @@ Muya markdownToState → 活动 JSON State → contenteditable DOM
 - vendor 快照：许可证、来源指纹、关键导出及依赖完整性检查。
 - 单元测试：偏好默认值/迁移、Markdown 同步防抖、外部更新防回声、URL 校验和降级路径。
 - 真实浏览器测试：selection、IME、自动配对、代码语言选择、剪贴板、图表预览和实例销毁。
-- 集成测试：NoteCard 激活切换、计划切换前 flush、旧 Markdown 无损往返、自动渲染设置实时生效。
+- 集成测试：NoteCard 激活切换、计划切换前 flush、旧 Markdown 无损往返、实时渲染设置立即生效、删除时 token 级局部源码回退。
 - 安全测试：危险 HTML、`javascript:` 链接、图片路径、PlantUML 空 Server 与非法 Server。
 - 项目门槛：`npm run typecheck`、`npm run test`、`npm run build` 全部通过；用户真机验收 Demo 和正式卡片两轮。
 
