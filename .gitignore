@@ -26,5 +26,8 @@ Resource/ico/Wan_*.png
 .idea/
 .vscode/
 
+# 本地可视化设计会话（brainstorming companion 临时产物）
+.superpowers/
+
 # 构建产物归档（二进制不进 git——分发走 GitHub Release 资产；账本 build_history.json 入仓）
 builds/windows/

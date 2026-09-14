@@ -2,7 +2,7 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-14（Codex：F2 审查缺陷修复中；用户已确认 Markdown 自动渲染默认开启）
+> 更新：2026-09-15（Codex：Muya 完整移植设计已获方向批准，规格落盘待用户复核）
 
 ## 接手前必做
 
@@ -16,7 +16,7 @@
 |---|---|
 | 分支 | `main` |
 | 代码基线 | `b5fea55` — 回忆视图审查缺陷修复；已由 `git log` 实测 |
-| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态与缺陷修复，领先 3 个提交，尚未推送 |
+| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态、缺陷修复与 Muya 设计规格，领先 4 个提交，尚未推送 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
@@ -43,11 +43,18 @@
 |---|---|
 | 意图 | 把 marktext 的大多数体验搬进注释：注释中的 markdown **像 marktext 一样自动渲染**（编辑即渲染，替代当前"预览/编辑双态"）；设置中可配置「自动渲染」开关 |
 | 设置交互规范 | 设置弹窗中的配置项：**鼠标悬停 2 秒显示该项的描述**（tooltip 延迟 2s；建议对所有配置项补描述文案，统一交互） |
-| 参考源码 | `D:\Code\Project\marktext`（最新 clone，2026-09-12；其渲染层 muya 包 + prismjs 高亮可借鉴——注意 marktext 是富编辑器，本项目只需"自动渲染"程度，勿过度照搬架构） |
+| 参考源码 | `D:\Code\Project\marktext-develop\packages\muya`（`@muyajs/core 0.2.0`；当前目录不是 Git 工作树，首次快照以版本、锁文件和内容 SHA-256 建立来源基线） |
 | 现状基础 | note-md.tsx 自研渲染器（块：code/list/quote/hr/table/para；行内：粗/斜/删/下划线/行内码/链接；代码高亮 highlight.js lib/common）；NoteCard 双态卡 + 格式工具栏（7 钮选区包裹）+ wrap 折行 |
 | 建议文件边界 | `src/renderer/src/components/note-md.tsx`、`cards.tsx`（NoteCard 段）、`views/WorkspaceView.tsx` 或设置宿主（新配置项）、`i18n/locales/*`、对应新测试。与 Claude 在办工作无重叠 |
 | 验收标准 | 用户真机：注释编辑态所见即所得（或自动渲染开关开启时）、设置「自动渲染」可配、配置项悬停 2s 出描述 |
-| 已确认 | "自动渲染"默认**开启**。手动编辑入口的保留形态仍须在 demo/spec 阶段确认；不得擅自假定。 |
+| 已确认 | "自动渲染"默认**开启**；使用 Muya 单编辑面实时渲染，关闭时显示完整 Markdown 标记，不退回 textarea 双态。 |
+
+### 2026-09-15 范围升级
+
+- 用户明确要求完整移植 MarkText/Muya 的实时渲染与自动补全，不接受 textarea/预览切换式模拟。
+- 已批准启用全部 Muya 功能，包括 Mermaid、Vega、PlantUML、Flowchart、Sequence 等重型图表；采用单活动编辑器控制资源占用。
+- 已批准内置 Muya 源码快照；PlantUML 默认不连接公共服务器，配置本地或自有 Server 后才渲染。
+- 设计规格：`docs/superpowers/specs/2026-09-15-muya-note-editor-design.md`。下一步是用户复核规格，然后编写实施计划并先开发真实 Muya Demo。
 
 ## 结构性待办（地基欠账登记）
 
@@ -55,8 +62,8 @@
 
 ## 下一动作与阻塞
 
-- 下一动作：Codex 对注释 Markdown 深度改造先完成 marktext/现有编辑链调研与 demo/spec；经用户确认后再实施。Claude 避开 `cards.tsx` 的 NoteCard 区段与 `note-md.tsx`。
-- 等待：手动编辑入口形态须在 demo/spec 阶段由用户确认；自动渲染默认开启已确定。
+- 下一动作：用户复核 Muya 完整移植规格；确认后 Codex 编写实施计划，先做 `demo/muya-note-editor/` 真实 Muya Demo，再集成 NoteCard。Claude 避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
+- 等待：用户对设计规格的最终复核。
 - F2 已闭环，不再构成阻塞或并行边界。
 - 待推送：无；`5058037` 已与 GitHub/Gitee 对齐。
 
