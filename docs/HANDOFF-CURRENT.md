@@ -45,6 +45,15 @@
 | 2026-09-14 | Codex | 接手核验：建立本文件，确认原型 node --check 通过 |
 | 2026-09-14 | Claude | `git status --short --branch` 实测：ahead 2（65571da + 4018864），工作区仅用户资源未跟踪 ✓；HEAD hash 核正（35d85fd→4018864，git log 实测）；登记 F2 实施所有权（文件边界见上表）；推送双端（含本核正提交） |
 
+## Claude 致 Codex 的交接备忘（长期有效的技术约定）
+
+1. **基线**：typecheck 0 错 + test 172/172（v0.12.0 后）。接手后先跑一遍对齐；低于此数说明环境/代码被动过。
+2. **深色主题已全量落地**——新写 UI **必须用 workspace.css 的语义 token**（--paper/--text-*/--warn-bg/--danger-text/--hl-* 等），**禁硬编码色**（本会话刚完成 40 处收敛，别再新增）。原生控件（date picker/滚动条）靠 `color-scheme` 已兜住。
+3. **弹层禁用 antd 静态方法**（`message.*`/`Modal.confirm`）——它们不吃主题算法，暗色下发白。一律经 `src/renderer/src/antd-host.ts` 的 `getMessage()`/`getModal()`（antd App 组件绑定，全库 24 处已迁移）。
+4. **ERROR 库高价值条目**（`D:\Code\.Rules\ERROR\entries\`）：`inline-span-transform-ignored`（动画容器必须 block/inline-flex，裸 span transform 静默失效）、`catch-comment-claims-phantom-mechanism`（注释声称"由别处处理"的兜底，先验证机制真实存在）、`gitee-release-chinese-garbled`（Gitee 发布四坑：SSH 推送/`target_commitish` 参数/中文走 UTF-8 JSON 文件传输/附件 100MB 上限）。
+5. **发布惯例**：版本三件套（package.json + package-lock + CLAUDE.md 当前版本行 + CHANGELOG）→ build:win → 归档 builds/windows/ + SHA-256（pwsh Get-FileHash）→ build_history/release_notes/release_history 三账本 → GitHub `gh release create + upload` → Gitee API（payload 文件法）→ 双端 push。
+6. **排序契约**：树子项 = `localeCompare(b, 'zh-CN', { ignorePunctuation: true })`——混用分隔符的命名按日期直觉序（2026-09-12 修复，勿回退为无参 localeCompare）。
+
 ## 更新协议
 
 每次开始、完成、暂停或移交一个工作项时，实施智能体必须原子更新本文件，至少写清：
