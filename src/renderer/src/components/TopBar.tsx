@@ -50,6 +50,9 @@ function ViewNav(): React.JSX.Element {
       <button type="button" className={`nav-btn${view === 'diary' ? ' active' : ''}`} onClick={() => setView('diary')}>
         {t('diary.nav')}
       </button>
+      <button type="button" className={`nav-btn${view === 'memories' ? ' active' : ''}`} onClick={() => setView('memories')}>
+        {t('diary.navMemories')}
+      </button>
     </nav>
   )
 }

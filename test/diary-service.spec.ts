@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import {
   ensureDiaryRoot,
   ensureTodayPage,
+  listMemories,
   listMonthEntries,
   readDaySummary,
   setDiaryRepo
@@ -247,6 +248,55 @@ describe('readDaySummary', () => {
     })
     const s = await readDaySummary(root, '2026-09-04')
     expect(s.components[0]).toEqual({ kind: 'task_list', label: '', excerpt: '0' })
+  })
+})
+
+describe('listMemories（F2 回忆视图）', () => {
+  // n 天前/后的 'YYYY-MM-DD'（里程碑与那年今日用例随日期漂移保持稳定）
+  function shiftDays(n: number): string {
+    const d = new Date()
+    d.setDate(d.getDate() + n)
+    const p = (x: number): string => String(x).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  }
+  function moodDoc(score: number, date: string): PlanDocument {
+    return sampleDoc([{ id: FIXED_ID, type: 'mood', payload: { score, text: '', mood_date: date, created_at: '' } }])
+  }
+
+  it('日记根不存在 → 全空结构', async () => {
+    expect(await listMemories(root)).toEqual({
+      today: todayDateStr(),
+      onthisday: [],
+      milestones: [],
+      random: null
+    })
+  })
+
+  it('onthisday：往年同月同日按年份降序；今年今天排除', async () => {
+    const y1 = shiftDays(-365)
+    const y2 = shiftDays(-730)
+    await writeDayPlan(y1, moodDoc(66, y1))
+    await writeDayPlan(y2, moodDoc(42, y2))
+    await writeDayPlan(todayDateStr(), moodDoc(50, todayDateStr()))
+    const r = await listMemories(root)
+    expect(r.onthisday.map((e) => e.date)).toEqual([y1, y2]) // 近年在前
+    expect(r.onthisday[0].score).toBe(66)
+  })
+
+  it('milestones：100 天前有记录 → 收录且带 days=100；无记录里程碑不出现', async () => {
+    const d100 = shiftDays(-100)
+    await writeDayPlan(d100, moodDoc(55, d100))
+    const r = await listMemories(root)
+    const m = r.milestones.find((x) => x.days === 100)
+    expect(m?.date).toBe(d100)
+    expect(r.milestones.find((x) => x.days === 200)).toBeUndefined()
+  })
+
+  it('random：排除今天，从历史日随机；单条历史日必中该日', async () => {
+    const d = shiftDays(-3)
+    await writeDayPlan(d, moodDoc(48, d))
+    const r = await listMemories(root)
+    expect(r.random?.date).toBe(d)
   })
 })
 

@@ -8,6 +8,7 @@ import { Button, Descriptions, Modal, Radio, Spin } from 'antd'
 import OnboardingView from './views/OnboardingView'
 import WorkspaceView from './views/WorkspaceView'
 import DiaryView from './views/DiaryView'
+import MemoriesView from './views/MemoriesView'
 import ExportView from './views/ExportView'
 import NameDialogModal from './components/NameDialogModal'
 import SearchOverlay from './components/SearchOverlay'
@@ -125,6 +126,8 @@ export default function App(): React.JSX.Element {
     <>
       {view === 'diary' ? (
         <DiaryView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
+      ) : view === 'memories' ? (
+        <MemoriesView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
       ) : (
         <WorkspaceView />
       )}

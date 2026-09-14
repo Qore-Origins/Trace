@@ -263,7 +263,25 @@ const enUS: typeof zhCN = {
     componentLabel: 'Components',
     compsCount: '{{count}} comps',
     scoreUnit: 'pts',
-    calHint: 'Click a date for its preview; "Open in tree" jumps to the plan tree'
+    calHint: 'Click a date for its preview; "Open in tree" jumps to the plan tree',
+    navMemories: 'Memories'
+  },
+  memories: {
+    onthisday: 'On this day',
+    onthisdaySub: '{{month}}/{{day}} · past years',
+    milestones: 'Milestones',
+    milestonesSub: 'Round-number days ago',
+    random: 'Random memory',
+    randomSub: 'Pick a random page from the past',
+    roll: 'Pick one',
+    randomBadge: 'Random',
+    yearsAgo: '{{years}}y ago',
+    daysAgo: '{{days}} days ago',
+    emptyOnthisday: 'No records for this day in past years — start writing something worth remembering',
+    emptyMilestones: 'No round-number milestones yet — they grow as you record',
+    emptyAll: 'No history in the diary root yet',
+    previewHint: 'Click a memory card to preview that day',
+    compsUnit: ' comps'
   }
 }
 

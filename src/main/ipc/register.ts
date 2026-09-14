@@ -11,7 +11,7 @@ import { ConfigService } from '../services/config-service'
 import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
-import { ensureDiaryRoot, ensureTodayPage, listMonthEntries, readDaySummary } from '../services/diary-service'
+import { ensureDiaryRoot, ensureTodayPage, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { bus } from '../services/event-bus'
 
 interface Deps {
@@ -155,6 +155,7 @@ export function registerIpc(deps: Deps): void {
   })
   reg('diary:month', async (p) => ({ entries: await listMonthEntries(diaryRoot(), p.year, p.month) }))
   reg('diary:day', async (p) => readDaySummary(diaryRoot(), p.date))
+  reg('diary:memories', async () => listMemories(diaryRoot()))
 
   // ---------- 事件转发：bus → 渲染器 ----------
   const forward = <K extends keyof TraceEvents>(event: K): void => {

@@ -62,6 +62,16 @@ export interface DiaryDaySummary {
   date: string
   components: DiaryDayComponent[]
 }
+// 回忆视图（F2）：那年今日/里程碑/随机 共用的日条目（与 DiaryMonthEntry 同构——独立命名便于语义区分）
+export interface DiaryMemoryEntry {
+  date: string
+  score: number | null
+  notePreview: string
+  compCount: number
+}
+export interface DiaryMemoryMilestone extends DiaryMemoryEntry {
+  days: number // 距今天数（100/200/365…）
+}
 
 // ---------- 请求/响应载荷 ----------
 
@@ -122,6 +132,10 @@ export interface Channels {
   'diary:ensure': { req: {}; res: null }
   'diary:month': { req: { year: number; month: number }; res: { entries: DiaryMonthEntry[] } }
   'diary:day': { req: { date: string }; res: DiaryDaySummary }
+  'diary:memories': {
+    req: {}
+    res: { today: string; onthisday: DiaryMemoryEntry[]; milestones: DiaryMemoryMilestone[]; random: DiaryMemoryEntry | null }
+  }
 }
 
 export type ChannelName = keyof Channels

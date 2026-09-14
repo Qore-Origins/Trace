@@ -139,6 +139,39 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text
 .export-root input[type='date'] { pointer-events: none; border: none; background: transparent; }
 .export-root .task-title input { border: none; background: transparent; }
 
+/* ---------- 回忆视图（F2 · 独立页，demo/memories-view-demo.html 定稿移植） ---------- */
+.memories { flex: 1; display: flex; min-height: 0; }
+.memories-main { flex: 1; overflow: auto; padding: 16px 24px 32px; }
+.memories-inner { max-width: 860px; margin: 0 auto; }
+.mem-section { margin-bottom: 26px; }
+.mem-sec-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.mem-sec-title h2 { font-size: 16px; font-weight: 600; }
+.mem-sec-title .sub { font-size: 12px; color: var(--text-4); }
+.mem-sec-title .mem-roll { margin-left: auto; }
+.mem-roll { border: 1px solid var(--border); background: var(--paper); border-radius: 6px; padding: 4px 14px; color: var(--text-2); cursor: pointer; font-size: 13px; transition: background-color var(--t-ui) var(--ease-out), color var(--t-ui) var(--ease-out); }
+.mem-roll:hover { background: var(--trace-bg); color: var(--trace-500); border-color: var(--trace-500); }
+.mem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.mem-card { background: var(--paper); border: 1px solid var(--split); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: border-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out); }
+.mem-card:hover { border-color: var(--trace-500); box-shadow: 0 2px 8px rgba(22, 119, 255, 0.08); }
+.mem-card.selected { border-color: var(--trace-500); box-shadow: inset 0 0 0 1px var(--trace-500); }
+.mem-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.mem-years { font-size: 12px; color: var(--trace-500); font-weight: 600; background: var(--trace-bg); border-radius: 4px; padding: 1px 6px; }
+.mem-date { font-size: 12px; color: var(--text-4); font-variant-numeric: tabular-nums; }
+.mem-score { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.mem-score.none { color: var(--text-4); }
+.mem-score small { font-size: 11px; font-weight: 400; color: var(--text-3); }
+.mem-note { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-days { font-size: 12px; color: var(--text-3); }
+.mem-empty { font-size: 13px; color: var(--text-4); background: var(--paper); border: 1px dashed var(--border); border-radius: 10px; padding: 22px; text-align: center; }
+.memories-preview { width: 300px; flex: none; background: var(--paper); border-left: 1px solid var(--split); overflow: auto; padding: 14px; }
+.mem-pv-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.mem-pv-card { border: 1px solid var(--split); border-radius: 8px; background: var(--paper-dim); padding: 10px 12px; margin-bottom: 10px; }
+.mem-pv-card .k { font-size: 11px; color: var(--text-4); }
+.mem-pv-card .t { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-pv-open { width: 100%; border: 1px solid var(--border); background: var(--paper); border-radius: 6px; color: var(--text-2); font-size: 12px; padding: 6px; cursor: pointer; transition: background-color var(--t-ui) var(--ease-out), color var(--t-ui) var(--ease-out); }
+.mem-pv-open:hover { background: var(--trace-bg); color: var(--trace-500); }
+.mem-pv-empty { font-size: 12px; color: var(--text-4); text-align: center; padding: 20px 0; }
+
 /* ---------- 布局骨架（§2.2） ---------- */
 .ws { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }
 .ws-main { flex: 1; display: flex; min-height: 0; }

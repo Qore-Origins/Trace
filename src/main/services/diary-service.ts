@@ -12,7 +12,7 @@ import type {
   TaskDetailPayload,
   TaskListPayload
 } from '../../shared/plan-types'
-import type { DiaryDayComponent, DiaryDaySummary, DiaryMonthEntry } from '../../shared/ipc-contract'
+import type { DiaryDayComponent, DiaryDaySummary, DiaryMemoryEntry, DiaryMemoryMilestone, DiaryMonthEntry } from '../../shared/ipc-contract'
 import { DIARY_DIR } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { todayDateStr, uuid32 } from '../../shared/validation'
@@ -120,6 +120,66 @@ function aggregateDay(date: string, doc: PlanDocument): DiaryMonthEntry {
     notePreview: typeof noteRaw === 'string' ? noteRaw.slice(0, NOTE_PREVIEW_LEN) : '',
     compCount: doc.components.length
   }
+}
+
+// 回忆聚合（F2 回忆视图）：一次枚举 Diary/ 全目录 → 那年今日 / 里程碑 / 随机
+// 里程碑通式：n%100===0（百天）∪ n%365===0（周年），n ∈ [100, 3650]；今天由 main 侧取（与 diary:ensure 一致）
+export async function listMemories(planRoot: string): Promise<{
+  today: string
+  onthisday: DiaryMemoryEntry[]
+  milestones: DiaryMemoryMilestone[]
+  random: DiaryMemoryEntry | null
+}> {
+  const today = todayDateStr()
+  const md = today.slice(5) // MM-DD
+  const { abs: diaryAbs } = resolveWithin(planRoot, DIARY_DIR)
+  let dirents: Dirent[]
+  try {
+    dirents = await fs.readdir(diaryAbs, { withFileTypes: true })
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { today, onthisday: [], milestones: [], random: null } // 日记根尚不存在 → 全空
+    }
+    throw e
+  }
+
+  const msMap = new Map<string, number>()
+  for (let n = 100; n <= 3650; n++) {
+    if (n % 100 === 0 || n % 365 === 0) {
+      const d = new Date()
+      d.setDate(d.getDate() - n)
+      const p = (x: number): string => String(x).padStart(2, '0')
+      msMap.set(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, n)
+    }
+  }
+
+  const names = dirents
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .filter((name) => DATE_RE.exec(name) !== null && name !== today) // 今天不算回忆
+    .sort()
+
+  const onthisday: DiaryMemoryEntry[] = []
+  const milestones: DiaryMemoryMilestone[] = []
+  const all: DiaryMemoryEntry[] = []
+  for (const name of names) {
+    let doc: PlanDocument
+    try {
+      doc = await repo.readPlan(planRoot, `${DIARY_DIR}/${name}`)
+    } catch {
+      continue // 无 plan.json / 坏 JSON 跳过（与 listMonthEntries 同语义）
+    }
+    const entry = aggregateDay(name, doc)
+    all.push(entry)
+    if (name.slice(5) === md) onthisday.push(entry)
+    const days = msMap.get(name)
+    if (days !== undefined) milestones.push({ ...entry, days })
+  }
+
+  onthisday.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)) // 近年在前
+  milestones.sort((a, b) => a.days - b.days)
+  const random = all.length > 0 ? all[Math.floor(Math.random() * all.length)] : null
+  return { today, onthisday, milestones, random }
 }
 
 // 单日摘要：读 Diary/<date>/plan.json → 组件映射（缺失/坏 JSON 沿用既有 plan 读取错误语义）

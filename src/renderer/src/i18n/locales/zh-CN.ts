@@ -260,7 +260,25 @@ const zhCN = {
     componentLabel: '组件',
     compsCount: '{{count}} 组件',
     scoreUnit: '分',
-    calHint: '点击日期=当日预览；「在树中打开」=跳转到计划树'
+    calHint: '点击日期=当日预览；「在树中打开」=跳转到计划树',
+    navMemories: '回忆'
+  },
+  memories: {
+    onthisday: '那年今日',
+    onthisdaySub: '{{month}} 月 {{day}} 日 · 往年',
+    milestones: '里程碑',
+    milestonesSub: '整数天前的今天',
+    random: '随机回忆',
+    randomSub: '从过去的每一天里抽一页',
+    roll: '抽一天',
+    randomBadge: '随机',
+    yearsAgo: '{{years}} 年前',
+    daysAgo: '{{days}} 天前',
+    emptyOnthisday: '过去没有这一天的记录——从今天开始写下值得纪念的',
+    emptyMilestones: '还没有整百/整年的里程碑——记录会慢慢长出来',
+    emptyAll: '日记根还没有任何历史记录',
+    previewHint: '点左侧回忆卡查看当日内容',
+    compsUnit: ' 组件'
   }
 }
 
