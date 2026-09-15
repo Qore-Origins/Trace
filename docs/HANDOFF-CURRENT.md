@@ -2,7 +2,7 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-15（Codex：用户否决模拟 Demo；Muya 规格按真实实时渲染与局部删除回退修订）
+> 更新：2026-09-15（Codex：真实 Muya Demo 已实现并完成自动验收，等待用户体验确认）
 
 ## 接手前必做
 
@@ -15,8 +15,8 @@
 | 项 | 当前状态 |
 |---|---|
 | 分支 | `main` |
-| 代码基线 | `b5fea55` — 回忆视图审查缺陷修复；已由 `git log` 实测 |
-| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态、缺陷修复、Muya 规格与实施计划，领先 6 个提交，尚未推送 |
+| 代码基线 | `e9a38b5` — 真实 Muya 全功能 Demo；已由 `git log` 实测 |
+| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态、缺陷修复、Muya 规格、快照、运行时与 Demo，领先 10 个提交，尚未推送 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
@@ -24,11 +24,11 @@
 
 | 字段 | 状态 |
 |---|---|
-| 阶段 | 工具栏/折行 **已完成（3fa19a1 + 折行默认值修正）**；**深度改造已移交 Codex（见下节）** |
+| 阶段 | 工具栏/折行已完成；Muya 深度改造的真实 Demo 已完成，等待用户验收后进入正式集成 |
 | 产物 | NoteCard 编辑态格式工具栏（7 钮选区包裹）+ 渲染态折行（默认折行、无横向滚动条；开关可切回原始排版）+ 渲染器扩展（~~删除线~~ / <u>下划线</u>） |
-| 已验证 | typecheck 0 错；test 178/178 |
-| 未验证 | 真机：工具栏选区包裹、折行默认观感（交用户随下版验收） |
-| 文件所有权 | **工具栏/渲染器基础 → 移交 Codex 后由 Codex 接手**；在此之前 Claude 不再改动 cards.tsx NoteCard 段与 note-md.tsx |
+| 已验证 | 当前基线：typecheck 0 错；test 185/185；真实 Muya Demo 和项目构建均成功；浏览器自动验收通过 |
+| 未验证 | 用户手动体验：中文输入法、剪贴板、语言选择浮层、连续删除手感与最终视觉 |
+| 文件所有权 | Codex 继续持有 Muya 快照/适配层/Demo，以及后续 `cards.tsx` NoteCard 段、`note-md.tsx`、pref-store 和设置宿主；Claude 避开这些边界 |
 
 ## 已闭环：F2 回忆视图
 
@@ -55,7 +55,9 @@
 - 已批准启用全部 Muya 功能，包括 Mermaid、Vega、PlantUML、Flowchart、Sequence 等重型图表；采用单活动编辑器控制资源占用。
 - 已批准内置 Muya 源码快照；PlantUML 默认不连接公共服务器，配置本地或自有 Server 后才渲染。
 - 用户根据 v3 截图确认模拟 Demo 与 MarkText 差距过大：输入没有真实实时渲染；「实时渲染/自动渲染」语义冲突；删除格式内容时缺少 token 级局部源码回退。该模拟 Demo 作废，后续 Demo 必须运行真实 Muya 内核。
-- 设计规格：`docs/superpowers/specs/2026-09-15-muya-note-editor-design.md`。下一步是用户复核规格，然后编写实施计划并先开发真实 Muya Demo。
+- 设计规格：`docs/superpowers/specs/2026-09-15-muya-note-editor-design.md`；实施计划：`docs/superpowers/plans/2026-09-15-muya-note-editor.md`。
+- `2d87af7` 引入可核验 Muya 0.2.0 源码快照；`330d3df` 建立完整运行依赖、选项、插件注册与语义主题桥；`e9a38b5` 交付 `demo/muya-note-editor/` 真实 Demo。
+- Demo 已自动验证：真实编辑面与 Markdown 真源同步；4 个本地图表生成 SVG；PlantUML 默认离线；实时渲染/自动换行开关生效；输入 `*` 自动配对为 `**`；粗体内 Backspace 后仅当前粗体 token 变为源码标记，紧邻链接仍保持渲染。
 
 ## 结构性待办（地基欠账登记）
 
@@ -63,10 +65,10 @@
 
 ## 下一动作与阻塞
 
-- 下一动作：规格已获用户复核通过；Codex 按 `docs/superpowers/plans/2026-09-15-muya-note-editor.md` 执行 Task 1-3，先交付 `demo/muya-note-editor/` 真实 Muya Demo。Claude 避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
-- 等待：真实 Muya Demo 完成后的用户验收；验收前不进入正式 NoteCard 集成。
+- 下一动作：用户打开真实 Muya Demo，重点验收中文输入法、剪贴板、语言选择浮层、视觉与连续删除手感。Claude 继续避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
+- 等待：用户确认 Demo；确认前不进入正式 NoteCard 集成。确认后 Codex 先编写 NoteCard 集成计划，再实施单活动编辑器、偏好持久化与设置宿主。
 - F2 已闭环，不再构成阻塞或并行边界。
-- 待推送：无；`5058037` 已与 GitHub/Gitee 对齐。
+- 待推送：本地领先 10 个提交；未经用户授权，不推送远端。
 
 ## 核验记录
 
@@ -76,6 +78,7 @@
 | 2026-09-14 | Claude | `git status --short --branch` 实测：ahead 2（65571da + 4018864），工作区仅用户资源未跟踪 ✓；HEAD hash 核正（35d85fd→4018864，git log 实测）；登记 F2 实施所有权（文件边界见上表）；推送双端（含本核正提交） |
 | 2026-09-14 | Codex | 完整读取主智能体 96 条真人用户消息（约 1.37 万字），以 `git log`/`git status` 核正：HEAD/双端=`5058037`、F2 已实现且真机验收通过；确认注释 Markdown 深度改造移交 Codex。 |
 | 2026-09-14 | Codex | 针对 Claude 当日 F2 增量完成安全审查：未发现可利用漏洞；功能审查确认四项缺陷。`b5fea55` 已修复，定向回归 21/21、完整测试 179/179、typecheck 0 错。 |
+| 2026-09-15 | Codex | 真实 Muya Demo 完成：`npm run typecheck` 0 错；`npm run test` 18 文件、185/185；`npm run demo:muya:build` 成功（3998 模块）；`npm run build` 主/预载/渲染三段成功；隔离 Chrome/CDP 自动断言实时编辑、4 类本地图表、PlantUML 离线、开关、自动配对和 token 级删除隔离全部通过。 |
 
 ## Claude 致 Codex 的交接备忘（长期有效的技术约定）
 
