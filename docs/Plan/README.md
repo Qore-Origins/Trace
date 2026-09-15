@@ -32,13 +32,14 @@ docs/Plan/
 | 待实施 | 已确认，尚未开始改代码 |
 | 实施中 | 已在 `HANDOFF-CURRENT.md` 登记执行者和文件边界 |
 | 阻塞 | 已写明阻塞条件、已完成部分和恢复入口 |
+| 暂停 | 用户要求停工；已记录当前完成边界和恢复入口，不自动续跑 |
 | 已完成 | 验收标准全部通过，并记录真实验证命令 |
 
 ## 当前计划索引
 
 | 计划 | 状态 | 创建日期 | 审计/规格 | 当前下一步 |
 |---|---|---|---|---|
-| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | 实施中：第一批 Demo 待用户验收 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 打开 http://127.0.0.1:52820/ 验收；代码位于隔离工作区，不进入正式集成 |
+| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | 暂停：Task 1–3 完成 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 用户恢复后执行 Task 4；Task 3 提交 9478fb9 已集成主目录，未推送 |
 
 ## 更新规则
 

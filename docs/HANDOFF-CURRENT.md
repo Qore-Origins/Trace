@@ -2,9 +2,30 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-16（Codex：第一批动作系统 Demo 已实现/自动验证，待用户体验；正式 src 未改）
+> 更新：2026-09-16（Codex：Task 1–3 完成，正式动作与删除策略已集成；按用户指令暂停，不启动 Task 4）
 
 ## 接手前必做
+
+### 当前暂停交接（2026-09-16，优先于下方历史记录）
+
+- 用户已确认动作 Demo，随后要求“干完最近的一个任务就先停”；本次只完成 Task 3，现在停止自主开发。
+- 记录时主目录/隔离分支代码 HEAD `9478fb9`（git log 实测），main ahead origin/main 15；已快进主目录，未推送。文档收尾提交不改变该代码基线。
+- 暂停文档收尾后已核验 main ahead 16；工作区仅 `Resource/pic/`、`Resource/vid/` 用户资源未跟踪。正式代码基线仍为 `9478fb9`，最新文档提交请用 `git log -1` 核对。
+- 已实现：ActionButton、主题宿主确认、单槽 5 秒 UndoNotice/undo-store；卡片/树/预设确认删除，任务/选项原位撤销；焦点恢复、计时器/订阅清理、切计划/重载/外部变化旧撤销失效、切计划/切库旧确认失效；保留树收拢动画。NoteCard/Muya 编辑逻辑未改。
+- 已验证（隔离）：typecheck 0 错、20 文件 200/200 测试、三段 build 成功（renderer 3164 模块/8.57s）；真实 React/antd Chrome 回归通过任务/选项/预设/Enter/Space/Escape/暗色/焦点/过期/四档宽度/reduced-motion，没有运行时异常。
+- 主目录集成后复验：`npm run typecheck` 0 错；`npm run test` 20 文件 200/200；`npm run build` 三段成功，renderer 3164 模块、8.94s；代码未再改动。
+- `demo/frontend-foundation/` 原型独立实现已移除并吸收，当前为复用正式组件的内存验收宿主；原型可从 `000e48f` 追溯。旧 52820 服务已停止，新验收宿主运行于 `http://127.0.0.1:52822/integration.html`。
+- 尚未验证 Windows Electron 真机/DPI，不把 Chrome 回归称作真机通过。既有分包警告待 Task 8。
+- 所有权：本轮源文件已提交，暂停后释放 Task 3 通用动作边界；后续改动需重新登记。Codex 原有 Muya/NoteCard/pref-store/设置宿主所有权仍保留，Claude 继续避开。
+- 下一步：用户恢复后从 Task 4 继续；等待恢复指令，剩余 Task 4–11 与真机/DPI 验收。不会睡眠期间自动续跑。
+- 收尾沉淀：共享计划/交接已更新，旧确认竞态与解决策略已登记在实施记录；无新的跨项目规则、ERROR 条目或用户习惯记忆需追加。
+
+### Task 3 启动（2026-09-16，Codex）
+
+- 用户“可以，继续”确认动作系统 Demo；Task 2 用户验收通过，进入 Task 3。
+- 主目录 HEAD `eb441e3`、ahead 12；现存三份提交后同步文档与用户资源不覆盖。
+- 实施仍在 `.worktrees/frontend-foundation`，所有权：`components/ui/`、`stores/undo-store.ts`、`components/ContentArea.tsx`、`components/cards.tsx`（仅 CardShell/MultiPlan/TaskList，禁止改 NoteCard）、`stores/ui-store.ts`（树确认入口）、`App.tsx`（仅 UndoNotice 宿主）、`styles/actions.css`、i18n 新动作文案、`test/action-policy.spec.ts`、`test/accessibility-contract.spec.tsx`、vitest include 配置及共享计划文档。Claude 避开上述边界。
+- 使用 TDD：先失败测试，再实现；待三跑和实际交互验证后集成交付。Task 4 暂不实施。
 
 ### 第一批启动（2026-09-16，Codex）
 
@@ -15,6 +36,8 @@
 - 下一检查点：基线三跑与 Demo 构建完成；等待用户体验验收。
 
 #### 第一批完成记录
+
+- 提交后同步：主目录最新 HEAD `eb441e3`（git log 实测），main 领先 origin/main 12；审计/计划/规则/基线记录已提交。Task 1 完成；Task 2 待用户验收。当前未提交项仅本次提交后状态同步的三份文档及用户资源，另一智能体勿覆盖。
 
 - 主目录 HEAD `cfb34eb`，main 领先 origin/main 11；隔离分支 HEAD `000e48f`，工作区干净。Demo 未合并、未推送。
 - 所有权补充：隔离分支 `.gitattributes`，固定 Muya 文本 LF；vendor 逻辑没有改动。初次检出导致 27 个文本 CRLF 指纹漂移，已恢复原字节，临时格式化已清理。
@@ -32,8 +55,8 @@
 | 项 | 当前状态 |
 |---|---|
 | 分支 | `main` |
-| 代码基线 | `e9a38b5` — 真实 Muya 全功能 Demo；已由 `git log` 实测 |
-| 同步时远端 | `origin/main` / `gitee/main`=`5058037`；本地 `main` 含协作状态、缺陷修复、Muya 规格、快照、运行时与 Demo，领先 10 个提交，尚未推送 |
+| 代码基线 | `9478fb9` — Task 3 正式动作与安全删除撤销；已由 `git log` 实测 |
+| 同步时远端 | main 记录时 ahead origin/main 15，尚未推送；其后仅文档收尾，实际 HEAD/领先数以 git status/git log 为准。双端上次记录为 `5058037`，本轮未访问远端 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
@@ -89,8 +112,8 @@
 | 计划索引 | `docs/Plan/README.md` |
 | 执行计划 | `docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md` |
 | Trace 镜像队列 | 同目录 `plan.json`，结构参考 `D:\Desktop\Plan\Future_Plan\Qore\Trace\Plan-260911-01\plan.json` |
-| 当前阶段 | 第一批 Demo 已实现并自动验证，待用户验收；正式实现未开始，计划状态为“实施中” |
-| 本轮文件所有权 | Codex 仅持有上述审计/计划文档、本 HANDOFF 及 `AGENTS.md`/`CLAUDE.md` 的共享计划规则更新；未声明任何正式前端源文件所有权 |
+| 当前阶段 | Task 1–3 完成；Task 3 正式代码已集成；用户要求暂停，Task 4 未开始 |
+| 本轮文件所有权 | Task 3 边界见顶部记录，均已提交；暂停后释放通用动作边界，Muya 既有所有权不变 |
 | 实测证据 | `npm run build` 成功；renderer 3157 modules，JS 2,629,864 B（gzip 547,329 B），CSS 46,358 B，renderer build 8.38s |
 | 高优先问题 | 删除语义不一致、文字对比度/焦点不足、整文档高频 clone + 全卡重渲染、单一 renderer chunk、AppShell/CSS/cards 职责未收口 |
 
@@ -99,10 +122,10 @@
 ## 下一动作与阻塞
 
 - 下一动作 A（Muya 主线）：用户打开真实 Muya Demo，重点验收中文输入法、剪贴板、语言选择浮层、视觉与连续删除手感。Claude 继续避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
-- 下一动作 B（前端地基）：第一批动作系统 Demo 已交付，打开 `http://127.0.0.1:52820/` 验收；确认后登记 Task 3 正式组件文件所有权。
-- 等待：Muya Demo 和动作系统 Demo 用户验收。确认前不进入正式 NoteCard 集成，也不修改审计涉及的正式前端代码。
+- 下一动作 B（前端地基）：Task 3 已交付；按用户指令暂停。用户恢复后登记 Task 4 边界，继续 token/对比度/全局焦点与减弱动效。
+- 等待：用户恢复指令、Muya Demo 用户验收。现在不进入 Task 4 或正式 NoteCard 集成。
 - F2 已闭环，不再构成阻塞或并行边界。
-- 待推送：主目录领先 11 个提交；Demo 独立在 `codex/frontend-foundation`，未经用户授权不推送远端。
+- 待推送：Task 3 已快进主目录；记录时 main ahead 15，未经用户授权不推送远端。
 
 ## 核验记录
 

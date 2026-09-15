@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** 实施中（第一批 Demo 已实现并自动验证，待用户验收）  
+**Status:** 暂停（用户要求睡前停工；Task 1–3 完成，Task 4 未开工）
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -144,7 +144,7 @@ npm run build
 
 Expected: 记录实际测试数、构建时间、renderer JS/CSS 文件名与字节数；不得只写“通过”。
 
-- [ ] **Step 4: 提交基线记录**
+- [x] **Step 4: 提交基线记录**
 
 ```bash
 git add docs/HANDOFF-CURRENT.md docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改
@@ -178,7 +178,7 @@ Expected:
 - 暗色无硬编码白块；
 - reduced-motion 下所有位移、缩放、淡入在 50ms 内完成或关闭。
 
-- [ ] **Step 4: 用户验收 Demo**
+- [x] **Step 4: 用户验收 Demo**
 
 暂停正式集成，记录用户对按钮密度、危险色强度、确认范围、撤销时长和动效的结论。只有“已确认”的结论才可进入 Task 3。
 
@@ -204,11 +204,11 @@ git commit -m "feat(demo): 添加前端动作系统验收原型"
 - Modify: `src/renderer/src/components/PlanTreePanel.tsx`
 - Modify: `src/renderer/src/components/cards.tsx` outside NoteCard-owned range only
 
-- [ ] **Step 1: 写删除策略失败测试**
+- [x] **Step 1: 写删除策略失败测试**
 
 测试必须断言：高价值对象走确认；任务行/选项返回可撤销快照；撤销按原索引恢复；5 秒后快照失效；重复确认不会执行两次删除。
 
-- [ ] **Step 2: 运行定向测试并确认失败**
+- [x] **Step 2: 运行定向测试并确认失败**
 
 ```bash
 npx vitest run test/action-policy.spec.ts test/accessibility-contract.spec.tsx
@@ -216,7 +216,7 @@ npx vitest run test/action-policy.spec.ts test/accessibility-contract.spec.tsx
 
 Expected: FAIL，原因是动作组件和撤销 store 尚不存在。
 
-- [ ] **Step 3: 实现动作类型契约**
+- [x] **Step 3: 实现动作类型契约**
 
 `ActionButton` 对外接口固定为：
 
@@ -235,7 +235,7 @@ interface ActionButtonProps {
 
 `intent='icon'` 必须把 `label` 写入 `aria-label`；非 icon 类型必须显示具体动作文字。
 
-- [ ] **Step 4: 实现确认与撤销**
+- [x] **Step 4: 实现确认与撤销**
 
 `ConfirmAction` 必须通过 `getModal()`，禁止静态 `Modal.confirm`。撤销 store 只保留一个槽位：
 
@@ -250,14 +250,14 @@ interface UndoEntry {
 
 关闭通知、超时和执行撤销都必须清理 timer。
 
-- [ ] **Step 5: 接入删除入口**
+- [x] **Step 5: 接入删除入口**
 
 - 树节点、组件卡、预设：确认后删除；
 - 任务行、选项：立即删除并登记 5 秒撤销；
 - 删除成功后焦点落到同层下一项、上一项或容器；
 - 不修改 NoteCard 的 Muya 行为。
 
-- [ ] **Step 6: 验证并提交**
+- [x] **Step 6: 验证并提交**
 
 ```bash
 npx vitest run test/action-policy.spec.ts test/accessibility-contract.spec.tsx
@@ -649,16 +649,30 @@ flowchart TD
 
 ## 4. 当前下一步、等待与剩余工作
 
+### Task 3 交付与暂停（2026-09-16）
+
+- 用户“可以，继续”确认 Task 2 Demo；随后要求做完当前任务停工，本次仅完成 Task 3，不启动 Task 4。
+- 正式实现提交 `9478fb9`（git log 实测），已快进集成到主目录；未推送。独立原型实现已吸收/清理，`demo/frontend-foundation/` 现在是复用正式 React 组件的内存集成验收宿主。
+- 实际边界补充：`App.tsx` 仅挂 UndoNotice；树确认通过 `ui-store.ts` 收口；新增 `action-policy.ts` 和 `plan-row-actions.ts`、动作 CSS、双语文案；vitest include 增加 `.spec.tsx`。NoteCard/Muya 编辑逻辑未改。
+- ActionButton 保留计划基本契约，并支持原生按钮属性（用于 stopPropagation、aria、className）及 icon 危险语义；默认 32px，卡片浮层采用紧凑 26×28px，避免遮挡计数。`UndoEntry` 增加 focus/dispose 生命周期回调，避免泄漏订阅及过期焦点丢失。
+- TDD：首次两个测试套件因模块尚不存在失败；实现后定向 15/15。浏览器先复现“旧组件确认误删新计划同 ID 组件”与“切库后旧树确认继续执行”，修复后原场景通过。
+- 已验证（隔离工作区）：`npm run typecheck` 0 错；`npm run test` 20 文件 200/200；`npm run build` 三段成功，renderer 3164 模块、8.57s、JS `index-Dnq7iYpT.js` 2,640.23kB、CSS `index-BreaePJw.css` 49.59kB（构建输出舍入值）。原有动态/静态 import 分包警告留待 Task 8，不宣称无警告。
+- `node demo/frontend-foundation/integration-check.mjs`：真实 React 任务/选项原位撤销、后续编辑保留、预设确认且不改已插入内容、Enter/Space、Escape 焦点、暗色 antd 弹层、组件删除后焦点、切计划/切库旧确认失效、5 秒超时焦点、四档宽度和 reduced-motion 均通过，无运行时异常。
+- 尚未做：Windows Electron 真机和 DPI 100/125/150% 人工验收；不能用 Chrome 宿主代替该验收。
+- 主目录快进后再次实际三跑：typecheck 0 错、20 文件 200/200、main/preload/renderer build 成功；renderer 3164 模块、8.94s，JS `index-5HvAw3u4.js` 2,640.23kB、CSS `index-CIhEiwgx.css` 49.01kB（构建输出舍入值）。
+- 恢复入口：读取本计划与 HANDOFF，重新核对 Git 状态、登记 Task 4 文件边界后再开工。当前停止，没有等待中的自主后续开发。
+
 ### 第一批记录（2026-09-16）
 
 - 用户授权直接执行 Task 1–2；隔离工作区 `.worktrees/frontend-foundation`，分支 `codex/frontend-foundation`。
 - 主目录 HEAD `cfb34eb`（忽略隔离目录）；Demo 提交 `000e48f`，未合并主分支、未推送。
+- 基线/审计/计划记录已提交 `eb441e3`；Task 1 完成，Task 2 仅用户验收未完成。
 - 类型检查 0 错；完整测试 18 文件 185/185；main/preload/renderer 构建通过，renderer 3157 模块、9.12s，JS 2,629,864 B。首次测试因 Git 文本行尾转换失败，已恢复来源字节并补 `.gitattributes`/文本 LF 修复；没有放宽指纹断言。
 - Demo build 5 模块、146ms，JS 3.65kB、CSS 36.20kB；Demo 独立 tsc 通过。
 - Chrome/CDP 验收通过：原位撤销、连续删除单槽、5 秒过期、组件确认、Escape 焦点恢复、720/959/960/1200 宽度无水平溢出、暗色与减弱动效。
 - 启动：在隔离工作区执行 `npx vite demo/frontend-foundation --host 127.0.0.1 --port 52820 --strictPort`，浏览器 `http://127.0.0.1:52820/`。
 - 自动测试未替代 Windows DPI、完整 Tab/Enter/Space 动线和视觉手动验收。Task 2 用户验收未完成，Task 3–11 不开工。
 
-- 下一步：用户打开第一批 Demo 验收按钮密度、危险色、删除范围和 5 秒撤销；确认后进入 Task 3。
-- 等待：动作密度、删除确认范围、撤销时长和动效强度的用户体验结论。
-- 还差：所有正式实现任务、Electron 真机视觉验收和真实性能采样均未开始。
+- 下一步：用户恢复开发后执行 Task 4（token、对比度、全局焦点与减弱动效）。
+- 等待：用户恢复指令；正式 Electron 真机视觉/DPI 人工验收仍待补。
+- 还差：Task 4–11、Muya 主线验收/正式集成及真实性能采样；本次不会自动继续。
