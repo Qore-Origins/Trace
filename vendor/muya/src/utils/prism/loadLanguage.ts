@@ -18,6 +18,9 @@ export const loadedLanguages = new Set([
 ]);
 
 const { languages } = components;
+const prismLanguageModules = import.meta.glob(
+    '../../../../../node_modules/prismjs/components/prism-*.js',
+);
 
 // Look for the origin language by alias
 export function transformAliasToOrigin(langs: string[]) {
@@ -91,9 +94,13 @@ function initLoadLanguage(Prism: IPrismLike) {
                 return;
             }
             delete Prism.languages[lang];
-            await import(
-                `../../../node_modules/prismjs/components/prism-${lang}.js`,
+            const modulePath = Object.keys(prismLanguageModules).find(path =>
+                path.endsWith(`/prism-${lang}.js`),
             );
+            const loadModule = modulePath ? prismLanguageModules[modulePath] : undefined;
+            if (!loadModule)
+                throw new Error(`Prism language module is missing: ${lang}`);
+            await loadModule();
             loadedLanguages.add(lang);
             statuses.push({ lang, status: 'loaded' });
         };

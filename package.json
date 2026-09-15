@@ -8,6 +8,8 @@
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
+    "demo:muya": "vite --config demo/muya-note-editor/vite.config.ts",
+    "demo:muya:build": "vite build --config demo/muya-note-editor/vite.config.ts",
     "start": "electron-vite preview",
     "build": "electron-vite build",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

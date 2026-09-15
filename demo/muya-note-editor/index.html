@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trace Muya 实时编辑器 Demo</title>
+  </head>
+  <body>
+    <div class="demo-shell">
+      <header class="demo-header">
+        <div>
+          <p class="eyebrow">TRACE / REAL MUYA 0.2.0 DEMO</p>
+          <h1>同一编辑面，Markdown 随光标显隐</h1>
+          <p class="lead">直接在下方内容中输入、选择或删除。排版和源码标记都由 Muya 内核处理。</p>
+        </div>
+        <div class="engine-state" aria-live="polite">
+          <span class="engine-dot"></span>
+          <span id="engine-state-text">真实内核已启动</span>
+        </div>
+      </header>
+
+      <main class="demo-grid">
+        <section class="editor-card" aria-label="Muya 实时编辑区">
+          <div class="editor-toolbar">
+            <div class="toolbar-group">
+              <button id="undo-button" type="button">撤销</button>
+              <button id="redo-button" type="button">重做</button>
+              <button id="reset-button" type="button">恢复验收样例</button>
+            </div>
+            <span id="document-state" class="document-state">已载入</span>
+          </div>
+          <div class="deletion-guide">
+            <strong>删除验收区在正文第一段：</strong>
+            把光标放进粗体、链接、行内代码或嵌套格式，逐字符按 Backspace / Delete；只应展开当前 token。
+          </div>
+          <div class="editor-scroll">
+            <div id="muya-editor" class="trace-muya" aria-label="Markdown 内容"></div>
+          </div>
+        </section>
+
+        <aside class="settings-card" aria-label="Demo 设置">
+          <div class="settings-heading">
+            <div>
+              <p class="eyebrow">EDITOR SETTINGS</p>
+              <h2>设置</h2>
+            </div>
+            <span id="event-count">0 次事件</span>
+          </div>
+
+          <label class="setting-row" data-description="开启时由 Muya 按光标位置显示当前 Markdown 标记；关闭时在同一编辑面显示全部标记。">
+            <span>
+              <strong>实时渲染</strong>
+              <small id="live-render-detail">开启 · 光标所在标记可见</small>
+            </span>
+            <input id="live-render-toggle" type="checkbox" role="switch" checked />
+          </label>
+
+          <label class="setting-row" data-description="控制长代码行是否在代码块内部折行，不改变 Markdown 原文。">
+            <span>
+              <strong>自动换行</strong>
+              <small id="wrap-detail">开启 · 长代码行折行</small>
+            </span>
+            <input id="wrap-toggle" type="checkbox" role="switch" checked />
+          </label>
+
+          <div class="setting-block" data-description="默认离线。填写本地或自有 HTTP(S) PlantUML Server 后，源码会发送到该服务生成图。">
+            <label for="plantuml-server">PlantUML Server</label>
+            <input id="plantuml-server" type="url" placeholder="http://127.0.0.1:8080/plantuml" />
+            <button id="plantuml-apply" type="button">应用并重新渲染</button>
+            <p id="plantuml-state" class="setting-note">未配置，不联网；PlantUML 样例显示离线提示。</p>
+          </div>
+
+          <details class="diagnostics" open>
+            <summary>内核事件</summary>
+            <ol id="event-log" aria-live="polite"></ol>
+          </details>
+
+          <details class="diagnostics">
+            <summary>当前 Markdown 真源</summary>
+            <textarea id="markdown-output" readonly spellcheck="false"></textarea>
+          </details>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

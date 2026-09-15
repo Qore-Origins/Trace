@@ -14,6 +14,14 @@ export default defineConfig({
     }
   },
   renderer: {
+    esbuild: {
+      tsconfigRaw: {
+        compilerOptions: {
+          experimentalDecorators: true,
+          useDefineForClassFields: true
+        }
+      }
+    },
     resolve: {
       alias: {
         '@renderer': resolve(__dirname, 'src/renderer/src'),
