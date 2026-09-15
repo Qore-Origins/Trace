@@ -1,0 +1,32 @@
+/* 隔离原型：颜色全部继承 workspace.css 的语义 token。 */
+html,body { height:auto; min-height:100%; overflow:auto; }
+body { background:var(--paper-dim); }
+main { max-width:1000px; margin:auto; padding:32px 24px 130px; }
+header,.section-head,.toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+header,.section-head { justify-content:space-between; }
+header p,.intro,section>p,.section-head span { color:var(--text-2); }
+h1 { font-size:28px; margin:6px 0; } h2 { font-size:17px; margin-bottom:12px; }
+.intro { margin:16px 0 24px; }
+section { background:var(--paper); border:1px solid var(--border); border-radius:var(--r-card); box-shadow:var(--shadow-card); padding:20px; margin:16px 0; }
+.action,select,input { font:inherit; }
+.action { min-height:34px; padding:6px 14px; border-radius:6px; border:1px solid transparent; background:transparent; cursor:pointer; color:var(--text-1); transition:background-color var(--t-ui) var(--ease-out),border-color var(--t-ui) var(--ease-out),color var(--t-ui) var(--ease-out); }
+.primary { background:var(--trace-700); color:var(--paper); }
+html.theme-dark .primary { color:var(--text-1); }
+.primary:hover { background:var(--origin); }
+.secondary { border-color:var(--border); background:var(--paper); }
+.secondary:hover,.quiet:hover,.icon:hover { background:var(--trace-bg); border-color:var(--trace-500); }
+.danger { color:var(--danger-text); border-color:var(--danger-text); }
+.danger:hover { background:var(--danger-hover-bg); }
+.icon { width:34px; padding:4px; font-size:20px; }
+.action:disabled { opacity:.5; cursor:not-allowed; }
+:focus-visible { outline:2px solid var(--trace-500); outline-offset:3px; }
+select { padding:5px; background:var(--paper); color:var(--text-1); border:1px solid var(--border); border-radius:6px; }
+#tasks { list-style:none; } #tasks li { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--split); } #tasks li span { flex:1; overflow-wrap:anywhere; }
+ol { padding-left:20px; } li { margin:6px 0; } #feedback { margin:16px 0; } pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; color:var(--text-2); margin-top:12px; }
+dialog { margin:auto; width:min(440px,calc(100% - 32px)); padding:24px; background:var(--paper); color:var(--text-1); border:1px solid var(--border); border-radius:var(--r-card); box-shadow:var(--shadow-overlay); }
+dialog::backdrop { background:var(--mask); } dialog p { margin-bottom:20px; color:var(--text-2); } dialog .toolbar { justify-content:flex-end; }
+#undo { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); width:min(560px,calc(100% - 32px)); background:var(--paper); color:var(--text-1); border:1px solid var(--border); padding:12px 16px; border-radius:var(--r-card); box-shadow:var(--shadow-overlay); display:flex; align-items:center; gap:12px; overflow:hidden; }
+#undo[hidden] { display:none; } #undo-label { flex:1; overflow-wrap:anywhere; } #progress { position:absolute; bottom:0; left:0; height:2px; width:100%; background:var(--trace-500); transform-origin:left; animation:expire 5s linear forwards; }
+@keyframes expire { to { transform:scaleX(0); } }
+@media(max-width:760px) { main { padding:20px 16px 150px; } h1 { font-size:23px; } section { padding:16px; } }
+@media(prefers-reduced-motion:reduce) { .action { transition:none; } #progress { animation:none; } }

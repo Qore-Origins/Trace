@@ -6,3 +6,6 @@
 *.json text eol=lf
 *.ts text eol=lf
 *.tsx text eol=lf
+
+# Muya 来源指纹依赖原始字节；文本统一 LF，二进制保持 auto 检测。
+vendor/muya/src/** text=auto eol=lf
