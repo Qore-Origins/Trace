@@ -250,6 +250,13 @@ npm run icon             # 生成 ico
 - 每项工作必须登记文件所有权。发现另一智能体未提交的相关改动时，不覆盖、不回退、不并行实现同一功能；先拆分文件边界或完成显式交接。
 - 每次记录必须区分“原型/设计”“已实现”“已验证”，并写明实际运行过的验证命令和结果。
 
+### 共享计划目录（强制）
+
+- `docs/Plan/` 是 Codex 与 Claude Code 的共享计划目录；接手先读 `docs/Plan/README.md` 和当前执行计划，再核对 `docs/HANDOFF-CURRENT.md`。
+- 新计划参考 `D:\Desktop\Plan` 的 `Future_Plan/Qore/Trace/Plan-YYMMDD-NN-名称/` 层级；Markdown 为执行真源，`plan.json` 为 Trace 原生镜像队列。
+- 开工、提交后、暂停和完成时及时同步任务复选框、镜像任务状态、提交 hash、真实验证结果、下一步/等待/剩余工作；禁止只更新对话而不更新计划。
+- 本目录记录计划，不替代 HANDOFF 的文件所有权；任何代码任务必须先在 HANDOFF 登记边界。
+
 ## 十、禁止事项
 
 ```yaml

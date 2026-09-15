@@ -2,9 +2,26 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-15（Codex：真实 Muya Demo 已实现并完成自动验收，等待用户体验确认）
+> 更新：2026-09-16（Codex：第一批动作系统 Demo 已实现/自动验证，待用户体验；正式 src 未改）
 
 ## 接手前必做
+
+### 第一批启动（2026-09-16，Codex）
+
+- 用户已授权直接执行第一批：Task 1 基线、Task 2 动作系统 Demo；不越过用户验收进入 Task 3。
+- 实测 HEAD `6113dbc`，main 领先 origin/main 10；已有审计/计划/规则文档改动及用户资源均保留。
+- 所有权：`.gitignore`、`demo/frontend-foundation/`、本文件、共享计划 README/实施 MD/plan.json；正式 src 文件不修改。
+- 隔离位置：`.worktrees/frontend-foundation`，分支 `codex/frontend-foundation`。共享状态继续在主目录维护；Demo 验收后删除或吸收原型，不保留为正式功能。
+- 下一检查点：基线三跑与 Demo 构建完成；等待用户体验验收。
+
+#### 第一批完成记录
+
+- 主目录 HEAD `cfb34eb`，main 领先 origin/main 11；隔离分支 HEAD `000e48f`，工作区干净。Demo 未合并、未推送。
+- 所有权补充：隔离分支 `.gitattributes`，固定 Muya 文本 LF；vendor 逻辑没有改动。初次检出导致 27 个文本 CRLF 指纹漂移，已恢复原字节，临时格式化已清理。
+- 已实现：`demo/frontend-foundation/` 五类动作、原生 dialog 确认、单槽 5 秒撤销、原位恢复、主题、焦点、减弱动效。
+- 已验证：`npm run typecheck` 0 错；`npm run test` 18 文件 185/185；`npm run build` 成功（renderer 3157 模块/9.12s/JS 2,629,864 B）；`npx vite build demo/frontend-foundation --outDir ../../out/demo/frontend-foundation` 成功；独立 Demo tsc 成功；Chrome/CDP 脚本删除/撤销/超时/Escape/四档宽度/暗色/减弱动效通过。
+- 体验入口 `http://127.0.0.1:52820/`，Vite 在隔离工作区运行；README 含一命令启动方法。
+- 下一步：用户验收 Demo；等待按钮密度/危险色/确认范围/5 秒期限结论；剩余 Task 3–11 及 Windows DPI/完整键盘人工验收。正式集成不提前实施。
 
 1. 阅读本文件、仓库根 `AGENTS.md` 或 `CLAUDE.md`。
 2. 执行 `git status --short --branch`，核对本文件的基线提交、分支领先状态与未跟踪文件；不一致时先更新本文件，禁止直接开始实现。
@@ -63,12 +80,29 @@
 
 - **视图骨架提升**：TopBar/StatusBar 目前由各视图自行渲染（WorkspaceView/DiaryView/MemoriesView 三份）——新增视图必漏顶栏（MemoriesView 2026-09-12 实证漏配，已补）。正解 = TopBar（与 StatusBar）提升到 App 层单点渲染，与弹层底座（评审 Important-1 已做）同批；涉及两个已验收视图的骨架调整，实施前须用户确认。
 
+## 2026-09-15 前端综合审计与整改计划
+
+| 字段 | 状态 |
+|---|---|
+| 审计范围 | 前端视觉/UI/排版、同功能组件、动画动效、renderer 性能和前端架构 |
+| 审计报告 | `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md` |
+| 计划索引 | `docs/Plan/README.md` |
+| 执行计划 | `docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md` |
+| Trace 镜像队列 | 同目录 `plan.json`，结构参考 `D:\Desktop\Plan\Future_Plan\Qore\Trace\Plan-260911-01\plan.json` |
+| 当前阶段 | 第一批 Demo 已实现并自动验证，待用户验收；正式实现未开始，计划状态为“实施中” |
+| 本轮文件所有权 | Codex 仅持有上述审计/计划文档、本 HANDOFF 及 `AGENTS.md`/`CLAUDE.md` 的共享计划规则更新；未声明任何正式前端源文件所有权 |
+| 实测证据 | `npm run build` 成功；renderer 3157 modules，JS 2,629,864 B（gzip 547,329 B），CSS 46,358 B，renderer build 8.38s |
+| 高优先问题 | 删除语义不一致、文字对比度/焦点不足、整文档高频 clone + 全卡重渲染、单一 renderer chunk、AppShell/CSS/cards 职责未收口 |
+
+计划执行规则：Codex 与 Claude Code 接手任何 Task 前先读取 `docs/Plan/README.md`、执行计划和本文件；在本文件登记执行者与精确文件边界后，才允许修改正式代码。每个提交后同步 Markdown 复选框、`plan.json` 状态、实际验证结果和提交 hash。
+
 ## 下一动作与阻塞
 
-- 下一动作：用户打开真实 Muya Demo，重点验收中文输入法、剪贴板、语言选择浮层、视觉与连续删除手感。Claude 继续避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
-- 等待：用户确认 Demo；确认前不进入正式 NoteCard 集成。确认后 Codex 先编写 NoteCard 集成计划，再实施单活动编辑器、偏好持久化与设置宿主。
+- 下一动作 A（Muya 主线）：用户打开真实 Muya Demo，重点验收中文输入法、剪贴板、语言选择浮层、视觉与连续删除手感。Claude 继续避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
+- 下一动作 B（前端地基）：第一批动作系统 Demo 已交付，打开 `http://127.0.0.1:52820/` 验收；确认后登记 Task 3 正式组件文件所有权。
+- 等待：Muya Demo 和动作系统 Demo 用户验收。确认前不进入正式 NoteCard 集成，也不修改审计涉及的正式前端代码。
 - F2 已闭环，不再构成阻塞或并行边界。
-- 待推送：本地领先 10 个提交；未经用户授权，不推送远端。
+- 待推送：主目录领先 11 个提交；Demo 独立在 `codex/frontend-foundation`，未经用户授权不推送远端。
 
 ## 核验记录
 
@@ -79,6 +113,8 @@
 | 2026-09-14 | Codex | 完整读取主智能体 96 条真人用户消息（约 1.37 万字），以 `git log`/`git status` 核正：HEAD/双端=`5058037`、F2 已实现且真机验收通过；确认注释 Markdown 深度改造移交 Codex。 |
 | 2026-09-14 | Codex | 针对 Claude 当日 F2 增量完成安全审查：未发现可利用漏洞；功能审查确认四项缺陷。`b5fea55` 已修复，定向回归 21/21、完整测试 179/179、typecheck 0 错。 |
 | 2026-09-15 | Codex | 真实 Muya Demo 完成：`npm run typecheck` 0 错；`npm run test` 18 文件、185/185；`npm run demo:muya:build` 成功（3998 模块）；`npm run build` 主/预载/渲染三段成功；隔离 Chrome/CDP 自动断言实时编辑、4 类本地图表、PlantUML 离线、开关、自动配对和 token 级删除隔离全部通过。 |
+| 2026-09-15 | Codex | 完成前端 UI/视觉/动画、性能、架构综合审计并落盘；按 `D:\Desktop\Plan` 层级建立 `docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/`，同时生成 Markdown 执行真源与 Trace `plan.json` 镜像。实测 `npm run build` 成功：renderer 3157 modules、JS 2,629,864 B、CSS 46,358 B、8.38s。正式代码未修改。 |
+| 2026-09-15 | Codex | 计划落盘校验通过：Node JSON.parse 成功、16 个唯一 32 位 ID、Markdown 与 JSON 均为 11 个有序任务；占位词扫描无命中；`git diff --check` 通过。共享计划读取/更新规则已同步到 `AGENTS.md` 和 `CLAUDE.md`；本轮仅文档变更，未提交、未推送。 |
 
 ## Claude 致 Codex 的交接备忘（长期有效的技术约定）
 
