@@ -31,10 +31,12 @@ import type { PlanTreeNode } from '@shared/ipc-contract'
 import { DIARY_DIR } from '@shared/plan-types'
 import { useTreeStore } from '../stores/tree-store'
 import { usePlanStore } from '../stores/plan-store'
+import { useAppStore } from '../stores/app-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
 import { usePrefStore } from '../stores/pref-store'
 import { useTranslation } from '../i18n'
 import { effStagger } from './tree-utils'
+import { ActionButton } from './ui/ActionButton'
 
 // 行视图（渲染单位；path='' 为根）
 interface RowView {
@@ -269,6 +271,7 @@ function TreeRow(props: { node: RowView }): React.JSX.Element {
         receivable ? ' drop-into' : ''
       }${hasDeck ? ' has-deck' : ''}${pulse ? ` ${pulse}` : ''}`}
       data-path={node.path}
+      tabIndex={-1}
     >
       <RowContent node={node} selected={selectedPath === node.path} handle={node.kind === 'root' ? null : { attributes, listeners }} />
     </div>
@@ -479,6 +482,12 @@ export default function PlanTreePanel(): React.JSX.Element {
   // 动画完执行真删除。此前版本复用 closingPaths 失败：被删行所在父组波次表为 null，
   // 其 Slot 的 closing 恒 false（首版"没看到动画"的根因，2026-09-10）
   const removeWithAnimation = (path: string): void => {
+    if (removeTimers.current.has(path)) return
+    const rootDir = useAppStore.getState().rootDir
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('.tree-row'))
+    const sameLevel = rows.filter(row => parentRel(row.dataset.path ?? '') === parentRel(path) && !isSelfOrDescendant(path, row.dataset.path ?? ''))
+    const index = rows.findIndex(row => row.dataset.path === path)
+    const next = sameLevel.find(row => rows.indexOf(row) > index) ?? sameLevel.at(-1)
     setRemovingPaths((prev) => new Set(prev).add(path))
     const total = Math.max(tokenMs('--t-gather', 260) + 60, 200)
     const timer = setTimeout(() => {
@@ -488,7 +497,11 @@ export default function PlanTreePanel(): React.JSX.Element {
         n.delete(path)
         return n
       })
-      void removePlan(path)
+      if (useAppStore.getState().rootDir !== rootDir) return
+      void removePlan(path).then(() => {
+        const target = next?.isConnected ? next : document.querySelector<HTMLElement>('.tree-scroll')
+        if (target) { target.tabIndex = -1; target.focus() }
+      })
     }, total)
     removeTimers.current.set(path, timer)
   }
@@ -537,7 +550,7 @@ export default function PlanTreePanel(): React.JSX.Element {
 
   return (
     <>
-      <div className={`tree-scroll${activeId ? ' is-dragging' : ''}`}>
+      <div className={`tree-scroll${activeId ? ' is-dragging' : ''}`} tabIndex={-1}>
         <DndContext
           sensors={sensors}
           collisionDetection={treeCollision}
@@ -556,12 +569,8 @@ export default function PlanTreePanel(): React.JSX.Element {
         </DndContext>
       </div>
       <div className="tree-footer">
-        <button type="button" className="dashed-btn" onClick={() => openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })}>
-          <PlusOutlined /> {t('tree.newPlanBtn')}
-        </button>
-        <button type="button" className="dashed-btn" onClick={() => openNameDialog({ mode: 'create-folder', targetPath: '', initialName: '' })}>
-          <FolderAddOutlined /> {t('tree.newFolderBtn')}
-        </button>
+        <ActionButton intent="secondary" label={t('tree.newPlanBtn')} icon={<PlusOutlined />} onClick={() => openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })} />
+        <ActionButton intent="secondary" label={t('tree.newFolderBtn')} icon={<FolderAddOutlined />} onClick={() => openNameDialog({ mode: 'create-folder', targetPath: '', initialName: '' })} />
       </div>
     </>
   )

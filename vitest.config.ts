@@ -6,7 +6,7 @@ export default defineConfig({
     alias: { '@shared': resolve(__dirname, 'src/shared') }
   },
   test: {
-    include: ['test/**/*.spec.ts'],
+    include: ['test/**/*.spec.ts', 'test/**/*.spec.tsx'],
     environment: 'node'
   }
 })

@@ -10,11 +10,15 @@ import { CSS } from '@dnd-kit/utilities'
 import type { Component, HeadingPayload, MoodPayload, MultiPlanPayload, NotePayload, SinglePlanPayload, TaskDetailPayload, TaskItem, TaskListPayload } from '@shared/plan-types'
 import { uuid32, validateNoteText, validateDueDate, validateScore, todayDateStr } from '@shared/validation'
 import { isOverdue } from '@shared/task-state'
-import { usePlanMutations } from '../stores/plan-store'
+import { usePlanStore, usePlanMutations } from '../stores/plan-store'
+import { getMessage } from '../antd-host'
 import { usePrefStore } from '../stores/pref-store'
 import { useTranslation } from '../i18n'
 import { NoteMarkdown } from './note-md'
 import { MoodScoreRoll } from './mood-score-roll'
+import { ActionButton } from './ui/ActionButton'
+import { confirmAction } from './ui/ConfirmAction'
+import { focusNearestCard, removePlanRow } from './ui/plan-row-actions'
 
 function CardShell(props: {
   kind: string
@@ -52,6 +56,7 @@ function CardShell(props: {
       style={{ transform: CSS.Transform.toString(tt), transition }}
       className={`card ${props.extraClass ?? ''}${isDragging ? ' dragging' : ''}`}
       data-component-id={props.componentId}
+      tabIndex={-1}
     >
       <div className="kind">
         <span className="drag-handle" aria-label={t('cards.dragSort')} title={t('cards.dragSortTitle')} {...attributes} {...listeners}>
@@ -62,27 +67,28 @@ function CardShell(props: {
       {props.head}
       {props.children}
       <div className="actions">
-        <button
-          type="button"
-          className="lite-btn"
-          aria-label={t('cards.moveUp')}
+        <ActionButton intent="icon" label={t('cards.moveUp')} icon={<ArrowUpOutlined />}
           onClick={() => moveComponent(props.componentId, props.index - 1)}
           style={{ visibility: props.index > 0 ? 'visible' : 'hidden' }}
-        >
-          <ArrowUpOutlined />
-        </button>
-        <button
-          type="button"
-          className="lite-btn"
-          aria-label={t('cards.moveDown')}
+        />
+        <ActionButton intent="icon" label={t('cards.moveDown')} icon={<ArrowDownOutlined />}
           onClick={() => moveComponent(props.componentId, props.index + 1)}
           style={{ visibility: props.index < props.total - 1 ? 'visible' : 'hidden' }}
-        >
-          <ArrowDownOutlined />
-        </button>
-        <button type="button" className="lite-btn danger" aria-label={t('cards.remove')} onClick={() => removeComponent(props.componentId)}>
-          <DeleteOutlined />
-        </button>
+        />
+        <ActionButton intent="icon" danger label={t('cards.remove')} icon={<DeleteOutlined />} onClick={() => {
+          const opened = usePlanStore.getState()
+          confirmAction({
+            title: t('actions.deleteComponentTitle', { name: kindLabel }), description: t('actions.deleteComponentDesc'),
+            onConfirm: () => {
+              const current = usePlanStore.getState()
+              if (current.currentPath !== opened.currentPath || current.document !== opened.document) {
+                getMessage().warning(t('actions.staleConfirmation'))
+                return
+              }
+              removeComponent(props.componentId)
+            }, afterConfirm: () => focusNearestCard(props.index)
+          })
+        }} />
       </div>
     </div>
   )
@@ -206,18 +212,9 @@ function MultiPlanCard({ comp, index, total }: { comp: Component; index: number;
                 }
               />
             </div>
-            <button
-              type="button"
-              className="task-del lite-btn danger"
-              onClick={() =>
-                patchComponent(comp.id, (payload) => {
-                  const mp = payload as MultiPlanPayload
-                  mp.options = mp.options.filter((x) => x.id !== o.id)
-                })
-              }
-            >
-              {t('cards.deleteRow')}
-            </button>
+            <ActionButton intent="quiet" danger className="task-del" label={t('cards.deleteRow')}
+              aria-label={`${t('common.delete')} ${o.text || t('cards.addOption')}`}
+              onClick={() => removePlanRow(comp.id, 'option', o.id, o.text || t('cards.addOption'))} />
           </div>
         ))}
         <button
@@ -298,18 +295,9 @@ function TaskListCard({ comp, index, total, today }: { comp: Component; index: n
               onChange={(e) => patchItem(item.id, (it) => (it.planned_at = e.target.value || undefined))}
             />
             {isOverdue(item.status, item.planned_at, today) && <span className="tag-overdue">{t('cards.overdue')}</span>}
-            <button
-              type="button"
-              className="task-del lite-btn danger"
-              onClick={() =>
-                patchComponent(comp.id, (payload) => {
-                  const tl = payload as TaskListPayload
-                  tl.items = tl.items.filter((x) => x.id !== item.id)
-                })
-              }
-            >
-              {t('cards.deleteRow')}
-            </button>
+            <ActionButton intent="quiet" danger className="task-del" label={t('cards.deleteRow')}
+              aria-label={`${t('common.delete')} ${item.title || t('cards.addTask')}`}
+              onClick={() => removePlanRow(comp.id, 'task', item.id, item.title || t('cards.addTask'))} />
           </div>
         ))}
         <button

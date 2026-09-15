@@ -12,6 +12,7 @@ import MemoriesView from './views/MemoriesView'
 import ExportView from './views/ExportView'
 import NameDialogModal from './components/NameDialogModal'
 import SearchOverlay from './components/SearchOverlay'
+import { UndoNotice } from './components/ui/UndoNotice'
 import { useAppStore, subscribeAppEvents } from './stores/app-store'
 import { subscribeTreeEvents, useTreeStore } from './stores/tree-store'
 import { subscribePlanEvents } from './stores/plan-store'
@@ -133,6 +134,7 @@ export default function App(): React.JSX.Element {
       )}
       <NameDialogModal />
       <SearchOverlay />
+      <UndoNotice />
       <TopBarSettingsHost />
     </>
   )

@@ -1,0 +1,122 @@
+import assert from 'node:assert/strict'
+import { writeFile } from 'node:fs/promises'
+const targets = await (await fetch('http://127.0.0.1:52821/json')).json()
+const socket = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl)
+await new Promise(resolve => socket.addEventListener('open', resolve, { once: true }))
+let id = 0
+const pending = new Map()
+const errors = []
+socket.addEventListener('message', event => {
+  const response = JSON.parse(event.data)
+  if (response.method === 'Runtime.exceptionThrown') errors.push(response.params.exceptionDetails)
+  if (!response.id) return
+  const done = pending.get(response.id)
+  pending.delete(response.id)
+  done(response)
+})
+function call(method, params = {}) {
+  const requestId = ++id
+  return new Promise((resolve, reject) => {
+    pending.set(requestId, response => response.error ? reject(response.error) : resolve(response.result))
+    socket.send(JSON.stringify({ id: requestId, method, params }))
+  })
+}
+async function evaluate(expression) {
+  const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails))
+  return result.result.value
+}
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
+async function until(expression) {
+  for (let index = 0; index < 100; index++) { if (await evaluate(expression)) return; await pause(100) }
+  throw new Error(`Timed out: ${expression}`)
+}
+async function key(key, code, virtualKey) {
+  await call('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: virtualKey, text: key === 'Enter' ? '\r' : key === ' ' ? ' ' : undefined })
+  await call('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: virtualKey })
+  await pause(150)
+}
+const plan = 'window.integration.plan.getState()'
+try {
+  await call('Runtime.enable')
+  await call('Page.navigate', { url: 'http://127.0.0.1:52822/integration.html' })
+  await call('Page.bringToFront')
+  await until('document.querySelectorAll(".task-del").length===4')
+  await evaluate('document.querySelector(".task-del").focus()')
+  await key('Enter', 'Enter', 13)
+  await until('document.querySelectorAll(".task-del").length===3')
+  await evaluate(`${plan}.mutate(doc=>{doc.components[0].payload.items[0].title="最新编辑"})`)
+  await evaluate('document.querySelector(".trace-undo button").click()')
+  await until('document.querySelectorAll(".task-del").length===4')
+  assert.deepEqual(await evaluate(`${plan}.document.components[0].payload.items.map(item=>item.title)`), ['任务 A', '最新编辑'])
+  await evaluate('document.querySelectorAll(".task-del")[2].focus()')
+  await key(' ', 'Space', 32)
+  await until('document.querySelectorAll(".task-del").length===3')
+  await evaluate('document.querySelector(".trace-undo button").click()')
+  await until('document.querySelectorAll(".task-del").length===4')
+  assert.deepEqual(await evaluate(`${plan}.document.components[1].payload.options.map(item=>item.text)`), ['选项 A', '选项 B'])
+  const insertPosition = await evaluate('(()=>{const r=Array.from(document.querySelectorAll("button")).find(button=>button.textContent.includes("插入组件")).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()')
+  await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...insertPosition })
+  await until('!!document.querySelector(".ant-dropdown-menu-submenu-title")')
+  const menuPosition = await evaluate('(()=>{const r=document.querySelector(".ant-dropdown-menu-submenu-title").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()')
+  await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...menuPosition })
+  await until('!!document.querySelector(".preset-del")')
+  await evaluate('document.querySelector(".preset-del").focus();document.querySelector(".preset-del").click()')
+  await until('!!document.querySelector(".ant-modal-confirm")')
+  assert.equal(await evaluate('window.integration.pref.getState().customPresets.length'), 1)
+  await evaluate('document.querySelector(".ant-modal-confirm .ant-btn-dangerous").click()')
+  await until('window.integration.pref.getState().customPresets.length===0')
+  assert.equal(await evaluate(`${plan}.document.components.length`), 2, '删除预设不插入或改动现有内容')
+  await pause(400)
+  await evaluate('const button=document.querySelector(".card .actions .trace-action--danger");button.focus();button.click()')
+  await until('!!document.querySelector(".ant-modal-confirm")')
+  assert.equal(await evaluate('document.activeElement.textContent.replaceAll(" ", "")'), '取消')
+  await key('Escape', 'Escape', 27)
+  await until('!document.querySelector(".ant-modal-confirm")')
+  assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'), '删除组件')
+  await evaluate('document.querySelector("#toggle-theme").click()')
+  await evaluate('document.querySelector(".card .actions .trace-action--danger").click()')
+  await until('!!document.querySelector(".ant-modal-confirm")')
+  assert.notEqual(await evaluate('getComputedStyle(document.querySelector(".ant-modal-content")).backgroundColor'), 'rgb(255, 255, 255)')
+  await evaluate('document.querySelector(".ant-modal-confirm .ant-btn-dangerous").click()')
+  await until(`${plan}.document.components.length===1`)
+  await pause(400)
+  assert.equal(await evaluate('document.activeElement.hasAttribute("data-component-id")'), true)
+  await evaluate('window.integration.reset()')
+  await until('document.querySelectorAll(".task-del").length===4')
+  await evaluate('document.querySelector(".card .actions .trace-action--danger").click()')
+  await until('!!document.querySelector(".ant-modal-confirm")')
+  await evaluate(`${plan}.close();window.integration.reset();window.integration.plan.setState({currentPath:"other"})`)
+  await evaluate('document.querySelector(".ant-modal-confirm .ant-btn-dangerous").click()')
+  await pause(400)
+  assert.equal(await evaluate(`${plan}.document.components.length`), 2, '旧确认不能删除新计划的同 ID 组件')
+  await evaluate('window.integration.confirmRemoveTree("demo", "plan", ()=>window.integration.treeDeletes++)')
+  await until('!!document.querySelector(".ant-modal-confirm")')
+  await evaluate('window.integration.app.setState({rootDir:"memory://other"});document.querySelector(".ant-modal-confirm .ant-btn-dangerous").click()')
+  await pause(400)
+  assert.equal(await evaluate('window.integration.treeDeletes'), 0, '切库后旧树确认不能继续删除')
+  await evaluate('window.integration.reset()')
+  await until('document.querySelectorAll(".task-del").length===4')
+  await evaluate('document.querySelector(".task-del").click()')
+  await until('!!document.querySelector(".trace-undo")')
+  await evaluate(`${plan}.close()`)
+  await until('!document.querySelector(".trace-undo")')
+  await evaluate('window.integration.reset()')
+  await until('document.querySelectorAll(".task-del").length===4')
+  await evaluate('document.querySelector(".task-del").click()')
+  await until('!!document.querySelector(".trace-undo")')
+  await evaluate('document.querySelector(".trace-undo button").focus()')
+  await pause(5200)
+  assert.equal(await evaluate('!!document.querySelector(".trace-undo")'), false)
+  assert.equal(await evaluate('document.activeElement.classList.contains("task-del")'), true)
+  for (const width of [720, 959, 960, 1200]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false })
+    assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true)
+  }
+  await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+  assert.equal(await evaluate('getComputedStyle(document.querySelector(".trace-action")).transitionDuration'), '0s')
+  const screenshot = await call('Page.captureScreenshot', { format: 'png' })
+  await writeFile('out/demo/frontend-foundation/integration-dark.png', Buffer.from(screenshot.data, 'base64'))
+  assert.deepEqual(errors, [])
+  console.log('PASS: real React cards/task+option undo/latest edits/Enter+Space/Antd Escape focus/dark confirm/card focus/switch invalidation/expiry focus/4 widths/reduced motion; no runtime exceptions')
+} finally { socket.close() }

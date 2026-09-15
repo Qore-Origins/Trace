@@ -2,6 +2,12 @@
 import type zhCN from './zh-CN'
 
 const enUS: typeof zhCN = {
+  actions: {
+    staleConfirmation: 'The plan or content has changed. The old deletion was cancelled.',
+    undo: 'Undo', undoNotice: 'Deletion undo', deleted: 'Deleted: {{name}} (undo within 5 seconds)',
+    deleteComponentTitle: 'Delete the {{name}} component?', deleteComponentDesc: 'The component and its contents will be deleted. This cannot be undone.',
+    deletePresetTitle: 'Delete preset “{{name}}”?', deletePresetDesc: 'Only the preset is removed. Content already inserted into plans is not affected.'
+  },
   common: {
     cancel: 'Cancel',
     delete: 'Delete',

@@ -1,5 +1,11 @@
 // zh-CN 语料（源头语言；en-US 以此为形状约束，键缺失编译期报错）
 const zhCN = {
+  actions: {
+    staleConfirmation: '计划或内容已变化，已取消旧的删除操作。',
+    undo: '撤销', undoNotice: '删除撤销', deleted: '已删除：{{name}}（5 秒内可撤销）',
+    deleteComponentTitle: '删除{{name}}组件？', deleteComponentDesc: '组件及其中内容将一起删除，此操作不可撤销。',
+    deletePresetTitle: '删除预设“{{name}}”？', deletePresetDesc: '仅删除预设，不影响已经插入计划的内容。'
+  },
   common: {
     cancel: '取消',
     delete: '删除',

@@ -1,0 +1,25 @@
+/* 统一动作入口：主题颜色仅消费语义 token。 */
+.trace-action { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:32px; padding:5px 12px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--text-1); font:inherit; font-size:13px; cursor:pointer; transition:background-color var(--t-ui) var(--ease-out),border-color var(--t-ui) var(--ease-out),color var(--t-ui) var(--ease-out); }
+.trace-action--primary { background:var(--trace-700); color:var(--paper); }
+html.theme-dark .trace-action--primary { color:var(--text-1); }
+.trace-action--secondary { background:var(--paper); border-color:var(--border); }
+.trace-action--quiet { color:var(--text-2); }
+.trace-action:hover:not(:disabled) { border-color:var(--trace-500); background:var(--trace-bg); color:var(--trace-700); }
+.trace-action--primary:hover:not(:disabled) { background:var(--origin); color:var(--paper); }
+html.theme-dark .trace-action--primary:hover:not(:disabled) { color:var(--text-1); }
+.trace-action--icon { min-width:32px; width:32px; padding:4px; }
+.trace-action--danger { color:var(--danger-text); }
+.trace-action--danger:hover:not(:disabled) { border-color:var(--danger-text); color:var(--danger-text); background:var(--danger-hover-bg); }
+.trace-action--danger:not(.trace-action--icon):not(.trace-action--quiet) { border-color:var(--danger-text); }
+.trace-action:disabled { opacity:.5; cursor:not-allowed; }
+.trace-action:focus-visible { outline:2px solid var(--trace-500); outline-offset:2px; }
+.trace-action__icon { display:inline-flex; }
+.card .actions .trace-action { min-height:26px; min-width:28px; width:28px; padding:2px 4px; }
+.card:focus-within .actions { opacity:1; transform:none; pointer-events:auto; }
+.task-row:focus-within .task-del { opacity:1; transform:translateY(-50%) translateX(0); pointer-events:auto; }
+.tree-footer .trace-action { flex:1; }
+.card:focus-visible,.tree-row:focus-visible,.tree-scroll:focus-visible,.ws-content:focus-visible { outline:2px solid var(--trace-500); outline-offset:-2px; }
+.trace-undo { position:fixed; z-index:1100; bottom:40px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:12px; width:max-content; max-width:calc(100vw - 32px); padding:10px 14px; border:1px solid var(--border); border-radius:var(--r-card); background:var(--paper); color:var(--text-1); box-shadow:var(--shadow-overlay); }
+.trace-undo>span { overflow-wrap:anywhere; min-width:0; max-width:400px; }
+.trace-undo .trace-action { flex-shrink:0; }
+@media(prefers-reduced-motion:reduce) { .trace-action { transition:none; } }

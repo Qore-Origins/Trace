@@ -1,17 +1,1 @@
-<!doctype html>
-<html lang="zh-CN">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trace 动作系统 Demo</title></head>
-<body>
-<main>
-  <header><div><p>溯源 Trace / 第一批隔离原型</p><h1>动作一致，删除有退路</h1></div><label>主题 <select id="theme"><option value="system">跟随系统</option><option value="light">亮色</option><option value="dark">暗色</option></select></label></header>
-  <p class="intro">仅内存样本，不读取真实计划。验收按钮密度、危险动作、5 秒撤销及键盘焦点；尚未集成正式界面。</p>
-  <section aria-labelledby="actions-title"><h2 id="actions-title">同功能，同语言</h2><div class="toolbar">
-    <button class="action primary" id="save">确认保存</button><button class="action secondary" id="cancel">取消</button><button class="action quiet" id="edit">编辑</button><button class="action danger" id="delete-card">删除组件</button><button class="action icon" id="reset" aria-label="重置内存样本" title="重置内存样本">↻</button><button class="action secondary" disabled>不可用</button>
-  </div><p>Primary 确认 / Secondary 取消 / Quiet 编辑 / Danger 删除 / Icon 工具</p></section>
-  <section id="card" tabindex="-1" aria-labelledby="card-title"><div class="section-head"><h2 id="card-title">今天的计划</h2><span>组件删除须确认；任务行删除可撤销</span></div><ul id="tasks"></ul></section>
-  <section><h2>验收路径</h2><ol><li>Tab、Enter、Space 操作；按钮焦点清晰可见。</li><li>删除组件：取消或 Escape 退出，焦点回到删除按钮。</li><li>删除任务：立即消失，5 秒内撤销回到原位置；连续删除只保留最后一条。</li><li>切换亮暗／系统主题；系统开启减弱动态效果后，原型关闭动画。</li></ol><p id="feedback" role="status" aria-live="polite">等待操作</p><details><summary>当前内存状态</summary><pre id="state"></pre></details></section>
-</main>
-<aside id="undo" aria-label="删除撤销" hidden><span id="undo-label"></span><button class="action secondary" id="undo-button">撤销</button><button class="action icon" id="dismiss" aria-label="关闭撤销提示">×</button><div id="progress"></div></aside>
-<dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-desc"><h2 id="confirm-title">删除今天的计划组件？</h2><p id="confirm-desc">组件和其中的任务将一起删除。此操作在本 Demo 中不可撤销，可重置样本。</p><div class="toolbar"><button class="action secondary" id="confirm-cancel" autofocus>取消</button><button class="action danger" id="confirm-delete">确认删除</button></div></dialog>
-<script type="module" src="./main.ts"></script>
-</body></html>
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url=./integration.html"><title>Trace 集成验收</title></head><body><a href="./integration.html">打开正式组件集成验收</a></body></html>

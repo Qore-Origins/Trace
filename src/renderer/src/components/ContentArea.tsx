@@ -12,6 +12,8 @@ import { uuid32 } from '@shared/validation'
 import { ERR, TraceError } from '@shared/errors'
 import { useTranslation } from '../i18n'
 import type { Component, ComponentType, CustomPayload } from '@shared/plan-types'
+import { ActionButton } from './ui/ActionButton'
+import { confirmAction } from './ui/ConfirmAction'
 
 function newComponent(type: ComponentType): Component {
   const now = new Date().toISOString()
@@ -90,18 +92,19 @@ export default function ContentArea(): React.JSX.Element {
           label: (
             <span className="preset-item">
               <span className="preset-name">{p.name}</span>
-              <button
-                type="button"
-                className="preset-del lite-btn danger"
-                title={t('common.delete')}
-                aria-label={`${t('common.delete')} ${p.name}`}
+              <ActionButton intent="icon" danger className="preset-del" label={`${t('common.delete')} ${p.name}`} icon={<DeleteOutlined />}
                 onClick={(e) => {
                   e.stopPropagation() // 防冒泡触发菜单条目 onClick（插入快照）
-                  removePreset(p.id)
+                  const index = Array.from(document.querySelectorAll('.preset-del')).indexOf(e.currentTarget)
+                  confirmAction({ title: t('actions.deletePresetTitle', { name: p.name }), description: t('actions.deletePresetDesc'), onConfirm: () => removePreset(p.id),
+                    afterConfirm: () => {
+                      const remaining = document.querySelectorAll<HTMLElement>('.preset-del')
+                      const target = remaining[Math.min(index, remaining.length - 1)] ?? document.querySelector<HTMLElement>('.ws-content')
+                      if (target) { target.tabIndex = -1; target.focus() }
+                    }
+                  })
                 }}
-              >
-                <DeleteOutlined />
-              </button>
+              />
             </span>
           )
         }))
@@ -122,10 +125,8 @@ export default function ContentArea(): React.JSX.Element {
         <Empty description={treeEmpty ? t('content.emptyLibrary') : t('content.emptySelect')}>
           {treeEmpty && (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <Button type="primary" onClick={() => useUiStore.getState().openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })}>
-                {t('content.createFirst')}
-              </Button>
-              <Button onClick={() => void useTreeStore.getState().importMarkdown('')}>{t('content.importMd')}</Button>
+              <ActionButton intent="primary" label={t('content.createFirst')} onClick={() => useUiStore.getState().openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })} />
+              <ActionButton intent="secondary" label={t('content.importMd')} onClick={() => void useTreeStore.getState().importMarkdown('')} />
             </div>
           )}
         </Empty>
