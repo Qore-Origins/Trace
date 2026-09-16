@@ -1,0 +1,85 @@
+/* 桌面应用：锁死页面级滚动，只有内容区可滚 */
+* { box-sizing: border-box; margin: 0; padding: 0; } /* 全局 reset：丢此条时 body 默认 margin 8px 把界面顶出窗口 8px（2026-09-06 状态栏切字根因，数字诊断实证） */
+html, body, #root { height: 100%; overflow: hidden; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; color: var(--text-1); font-size: 14px; line-height: 1.5; background: var(--paper-dim); }
+
+/* 滚动条随主题（2026-09-12 用户反馈：暗色下默认亮色滚动条刺眼） */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--sb-thumb); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--sb-thumb-hover); background-clip: content-box; border: 2px solid transparent; }
+::-webkit-scrollbar-track { background: var(--sb-track); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* 主题切换渐变（2026-09-12 用户反馈：亮暗切换希望过渡而非瞬变）——
+   View Transitions API：合成器截新旧两帧整页 cross-fade（GPU 合成，零逐元素重绘）；
+   此前"全元素 * transition"方案每帧全页重绘掉帧严重（用户实测），已弃用 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 450ms;
+  animation-timing-function: cubic-bezier(.2, .7, .3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* 动效无障碍：系统偏好减动效 → 全部禁用（保持即显即用；2026-09-09 交互态过渡一并纳入） */
+@media (prefers-reduced-motion: reduce) {
+  .slot { grid-template-rows: 1fr !important; }
+  .slot, .slot .deal, .slot .guide, .pm-box, .pm-v, .tree-row.has-deck::after,
+  .tag-overdue, .card .actions, .tree-quick, .task-del, .search-mask, .search-overlay,
+  .state-ring::after, .task-row, .tree-row, .task-date, .due-input, .single-due-input,
+  .menu-title, .nav-btn, .tree-switcher, .drag-handle, .o-item, .mood-score, .dot-ok, .task-title input,
+  .diary-cal-nav, .diary-cal-day, .diary-tl-back, .diary-tl-item, .diary-pre-open {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+
+/* 原生输入与复合卡片共享键盘焦点基线；保留输入自身的边框反馈。 */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible:not(:disabled),
+textarea:focus-visible,
+select:focus-visible,
+.single-title:focus-visible,
+.task-title input:focus-visible,
+.search-overlay .o-input:focus-visible,
+.mem-card:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+.search-overlay:focus-within { box-shadow: 0 0 0 2px var(--link), var(--shadow-overlay); }
+/* antd 的实心底色与文字变体分开，避免深色危险文字使用深红底色 token。 */
+button.ant-btn.ant-btn-color-primary.ant-btn-variant-solid:not(:disabled) {
+  color: var(--on-primary);
+  background: var(--trace-700);
+}
+button.ant-btn.ant-btn-color-primary.ant-btn-variant-solid:not(:disabled):hover,
+button.ant-btn.ant-btn-color-primary.ant-btn-variant-solid:not(:disabled):active {
+  background: var(--origin);
+}
+button.ant-btn.ant-btn-color-dangerous.ant-btn-variant-solid:not(:disabled),
+button.ant-btn.ant-btn-color-dangerous.ant-btn-variant-solid:not(:disabled):hover,
+button.ant-btn.ant-btn-color-dangerous.ant-btn-variant-solid:not(:disabled):active {
+  color: var(--on-primary);
+  background: var(--danger-fill);
+}
+.menu-title { border: none; background: transparent; font: inherit; }
+.ant-empty-description { color: var(--text-3); }
+input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
+/* 补齐普通交互的减动效；树的卸载/删除仍由已有定时器执行，正常模式高度动画不变。 */
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-ui: 0ms; --t-roll: 0ms; }
+  .mem-card, .mem-roll, .mem-pv-open, .fmt-btn, .folder-item, .win-btn,
+  .lite-btn, .dashed-btn, .task-row .state-ring, .single-title,
+  .tree-row .node-icon, .card.pulse {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+}

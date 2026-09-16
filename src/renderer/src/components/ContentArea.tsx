@@ -160,6 +160,14 @@ export default function ContentArea(): React.JSX.Element {
             <div
               key={c.path}
               className="card folder-item"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.currentTarget.click()
+                }
+              }}
               onClick={() => {
                 if (c.kind === 'plan') {
                   useTreeStore.getState().select(c.path, 'plan')
@@ -175,7 +183,7 @@ export default function ContentArea(): React.JSX.Element {
                 <ReadOutlined style={{ color: 'var(--trace-500)', opacity: 0.75 }} />
               )}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-4)', flex: 'none' }}>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-3)', flex: 'none' }}>
                 {c.kind === 'folder' ? t('content.folderLabel') : t('content.planLabel')}
               </span>
             </div>

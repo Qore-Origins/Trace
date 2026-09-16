@@ -11,7 +11,7 @@ import { i18n, useTranslation } from '../i18n'
 import type { DiaryDayComponent, DiaryDaySummary, DiaryMonthEntry } from '@shared/ipc-contract'
 import { todayDateStr } from '@shared/validation'
 import { aggregateStats, buildMonthGrid } from './diary-view-utils'
-import { scoreColor } from '../components/cards'
+import { scoreColor, scoreTextColor } from '../components/cards'
 
 const TREND_W = 180
 const TREND_H = 34
@@ -54,7 +54,7 @@ function DayComponentCard({ comp }: { comp: DiaryDayComponent }): React.JSX.Elem
   if (comp.kind === 'mood') {
     // excerpt=分数文本（如 '45'）；空文本不得 Number('')=0 误染冷色
     const score = comp.excerpt === '' ? Number.NaN : Number(comp.excerpt)
-    const color = Number.isFinite(score) ? scoreColor(score) : undefined
+    const color = Number.isFinite(score) ? scoreTextColor(score) : undefined
     return (
       <div className="diary-pre-card">
         <div className="k">{label}</div>
@@ -270,7 +270,7 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
                         >
                           <div className="diary-dnum">{cell.day}</div>
                           {entry && entry.score !== null && (
-                            <div className="diary-score" style={{ color: scoreColor(entry.score) }}>
+                            <div className="diary-score" style={{ color: scoreTextColor(entry.score) }}>
                               {entry.score}
                               <small>{t('diary.scoreUnit')}</small>
                             </div>
@@ -341,7 +341,7 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
                           <span className="d">{e.date.slice(5)}</span>
                           <span
                             className="dot"
-                            style={e.score !== null ? { background: scoreColor(e.score), color: '#fff' } : undefined}
+                            style={e.score !== null ? { background: scoreColor(e.score), color: 'var(--score-badge-ink)' } : undefined}
                           >
                             {e.score ?? '–'}
                           </span>

@@ -136,7 +136,13 @@ function RowContent(props: {
         ) : (
           <span className="tree-switcher placeholder" />
         )}
-        <span className="tree-root-label" onClick={() => onToggle(node)}>
+        <span className="tree-root-label" role="button" tabIndex={0} onClick={() => onToggle(node)}
+          onKeyDown={(e) => {
+            if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault()
+              onToggle(node)
+            }
+          }}>
           <span className="origin-dot" />
           {t('tree.rootLabel')}
         </span>
@@ -175,7 +181,13 @@ function RowContent(props: {
       ) : (
         <span className="tree-switcher placeholder" />
       )}
-      <span className="tree-node-title" onClick={() => onOpen(node)}>
+      <span className="tree-node-title" role="button" tabIndex={0} onClick={() => onOpen(node)}
+        onKeyDown={(e) => {
+          if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault()
+            onOpen(node)
+          }
+        }}>
         {kind === 'folder' ? (
           <FolderOutlined className="node-icon" aria-label={t('common.folder')} />
         ) : (
@@ -185,7 +197,7 @@ function RowContent(props: {
         <span
           className="name"
           style={{
-            ...(selected ? { color: 'var(--trace-500)', fontWeight: 500 } : kind === 'folder' ? { color: 'var(--text-2)' } : undefined)
+            ...(selected ? { color: 'var(--link)', fontWeight: 500 } : kind === 'folder' ? { color: 'var(--text-2)' } : undefined)
           }}
         >
           {isDiaryRoot ? t('diary.name') : node.name}

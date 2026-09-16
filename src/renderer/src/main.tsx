@@ -1,6 +1,7 @@
-import React, { useEffect, useSyncExternalStore } from 'react'
+import React, { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 import ReactDOM from 'react-dom/client'
 import { ConfigProvider, App as AntdApp, theme as antdTheme, unstableSetRender } from 'antd'
+import type { ThemeConfig } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
 import { I18nextProvider } from 'react-i18next'
@@ -8,6 +9,7 @@ import App from './App'
 import { i18n } from './i18n'
 import { usePrefStore, type ThemeMode } from './stores/pref-store'
 import { bindAntdHost } from './antd-host'
+import { readAntdSemanticTheme } from './styles/antd-theme'
 import './styles/workspace.css'
 
 // antd v5 静态方法（Modal.confirm/message 等）默认走 ReactDOM.render，React 19 已移除 → 静默不渲染
@@ -52,15 +54,17 @@ function AntdGate({ children }: { children: React.ReactNode }): React.JSX.Elemen
   const systemDark = useSyncExternalStore(subscribeSystemDark, getSystemDark, getSystemDark)
   // 导出窗口同样跟随用户主题（离屏窗口同源同 localStorage，persist 自动恢复；2026-09-12 用户建议采纳）
   const dark = resolveDark(themeMode, systemDark)
-  useEffect(() => {
+  const [semanticTheme, setSemanticTheme] = useState<ThemeConfig>({})
+  useLayoutEffect(() => {
     document.documentElement.classList.toggle('theme-dark', dark)
+    setSemanticTheme(readAntdSemanticTheme())
   }, [dark])
   return (
     <ConfigProvider
       locale={language === 'en-US' ? enUS : zhCN}
       theme={{
-        algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        token: { colorPrimary: '#1677ff' }
+        ...semanticTheme,
+        algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm
       }}
     >
       <AntdApp>

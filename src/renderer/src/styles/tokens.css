@@ -1,0 +1,107 @@
+/* 主题「迹 · Trace Mark」（前端详细设计 §1/§2；token 同 UI 规范 §2）
+   UI 整顿基线（2026-09-06）：禁止页面级滚动；控件风格三源合一（antd / 统一样式类，禁裸 button） */
+:root {
+  color-scheme: light; /* 原生控件（date picker 日历弹层/表单）跟随主题——dark 映射见 .theme-dark */
+  --trace-500: #1677ff;
+  --trace-700: #0958d9;
+  --link: #0958d9;
+  --on-primary: #ffffff;
+  --score-badge-ink: #111111;
+  --danger-fill: #b5121b;
+  --trace-bg: #e6f4ff;
+  --origin: #1d39c4;
+  --success: #52c41a;
+  --warning: #faad14;
+  --danger: #ff4d4f;
+  --text-1: #262626;
+  --text-2: #595959;
+  --text-3: #666666;
+  --text-4: #bfbfbf;
+  --split: #f0f0f0;
+  --border: #d9d9d9;
+  --paper: #ffffff;
+  --paper-dim: #fafafa;
+  --fill: #f5f5f5;
+  --r-card: 8px;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
+  /* 树动效时序（2026-09-08 卡牌摞定稿；demo: docs/prototype/tree-animation-demo.html） */
+  --stagger: 32ms;   /* 交错间隔（D8：>10 子项自动压缩） */
+  --t-deal: 320ms;   /* D2 发牌时长 */
+  --t-gather: 260ms; /* D3 收牌时长 */
+  --t-slot: 220ms;   /* D1 槽位开合 */
+  /* 心情分数轮带时序（2026-09-09 定稿；demo: demo/mood-score-roll-demo.html） */
+  --t-roll: 260ms;   /* 单格滚动时长 */
+  /* 交互态基线（2026-09-09 禁止瞬切整顿：hover/active/状态切换统一此档） */
+  --t-ui: 180ms;     /* 颜色/透明度/位置类交互过渡 */
+  --ease-spring: cubic-bezier(.3, 1.46, .4, 1);
+  --ease-out: cubic-bezier(.2, .7, .3, 1);
+  --ease-in: cubic-bezier(.55, .04, .7, .3);
+  /* 语义 token（2026-09-12 深色主题收敛：散落硬编码色归口；.theme-dark 见上方映射块） */
+  --hover-active: #bae0ff;
+  --danger-hover-bg: #fff2f0;
+  --warn-bg: #fffbe6;
+  --warn-text: #8a5700;
+  --danger-text: #cf1322;
+  --code-bg: #f6f8fa;
+  --input-hover-bg: #fff;
+  --mask: rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-pop: rgba(0, 0, 0, 0.18);
+  --pulse-strong: rgba(22, 119, 255, 0.55);
+  --pulse-weak: rgba(22, 119, 255, 0.15);
+  --resizer-hover: rgba(22, 119, 255, 0.25);
+  --onboard-grad-a: #ffffff;
+  --onboard-grad-b: #f5f9ff;
+  /* 滚动条（webkit；暗色映射见 .theme-dark） */
+  --sb-thumb: #d0d0d0;
+  --sb-thumb-hover: #b0b0b0;
+  --sb-track: transparent;
+  /* hljs 代码高亮（github-light 系；暗色映射见 .theme-dark） */
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-comment: #636c76;
+  --hl-number: #0550ae;
+  --hl-title: #8250df;
+  --hl-type: #953800;
+}
+
+/* ---------- 暗色主题（html.theme-dark，main.tsx ThemeGate 驱动；antd 走 darkAlgorithm 双轨） ---------- */
+html.theme-dark {
+  color-scheme: dark; /* 原生 date picker 日历弹层等 UA 组件转暗（2026-09-12 用户截图反馈） */
+  --link: #85baff;
+  --on-primary: #ffffff;
+  --paper: #1f1f1f;
+  --paper-dim: #2b2b2b;
+  --fill: #303030;
+  --text-1: #e6e6e6;
+  --text-2: #bfbfbf;
+  --text-3: #ababab;
+  --text-4: #5c5c5c;
+  --split: #333333;
+  --border: #434343;
+  --trace-bg: #112a45;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --hover-active: #11305c;
+  --danger-hover-bg: #2c1315;
+  --warn-bg: #2b2411;
+  --warn-text: #d89614;
+  --danger-text: #ff7875;
+  --code-bg: #161616;
+  --input-hover-bg: #252525;
+  --mask: rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-pop: rgba(0, 0, 0, 0.5);
+  --resizer-hover: rgba(22, 119, 255, 0.35);
+  --onboard-grad-a: #1f1f1f;
+  --onboard-grad-b: #111d2c;
+  --sb-thumb: #4b4b4b;
+  --sb-thumb-hover: #5e5e5e;
+  --sb-track: transparent;
+  /* hljs 代码高亮换 github-dark 系 */
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-comment: #8b949e;
+  --hl-number: #79c0ff;
+  --hl-title: #d2a8ff;
+  --hl-type: #ffa657;
+}

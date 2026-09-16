@@ -20,7 +20,7 @@ export default function StatusBar(): React.JSX.Element {
           : t('status.idle')
 
   return (
-    <div className="ws-status">
+    <div className="ws-status" role="status" aria-live="polite" aria-atomic="true">
       <span>
         <span className={`dot-ok ${indexState === 'building' ? 'dot-building' : ''} ${indexState === 'error' ? 'dot-error' : ''}`} />
         {indexState === 'building' ? t('status.indexBuilding') : indexState === 'error' ? t('status.indexError') : t('status.indexReady')}

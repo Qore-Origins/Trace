@@ -1,12 +1,10 @@
 /* 统一动作入口：主题颜色仅消费语义 token。 */
 .trace-action { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:32px; padding:5px 12px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--text-1); font:inherit; font-size:13px; cursor:pointer; transition:background-color var(--t-ui) var(--ease-out),border-color var(--t-ui) var(--ease-out),color var(--t-ui) var(--ease-out); }
-.trace-action--primary { background:var(--trace-700); color:var(--paper); }
-html.theme-dark .trace-action--primary { color:var(--text-1); }
+.trace-action--primary { background:var(--trace-700); color:var(--on-primary); }
 .trace-action--secondary { background:var(--paper); border-color:var(--border); }
 .trace-action--quiet { color:var(--text-2); }
-.trace-action:hover:not(:disabled) { border-color:var(--trace-500); background:var(--trace-bg); color:var(--trace-700); }
-.trace-action--primary:hover:not(:disabled) { background:var(--origin); color:var(--paper); }
-html.theme-dark .trace-action--primary:hover:not(:disabled) { color:var(--text-1); }
+.trace-action:hover:not(:disabled) { border-color:var(--trace-500); background:var(--trace-bg); color:var(--link); }
+.trace-action--primary:hover:not(:disabled) { background:var(--origin); color:var(--on-primary); }
 .trace-action--icon { min-width:32px; width:32px; padding:4px; }
 .trace-action--danger { color:var(--danger-text); }
 .trace-action--danger:hover:not(:disabled) { border-color:var(--danger-text); color:var(--danger-text); background:var(--danger-hover-bg); }

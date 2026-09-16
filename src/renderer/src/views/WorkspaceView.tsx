@@ -68,7 +68,7 @@ export default function WorkspaceView(): React.JSX.Element {
               className="lite-btn"
               aria-label={t('tree.openTree')}
               onClick={() => setDrawerOpen(true)}
-              style={{ border: '1px solid var(--split)', borderRadius: 6, padding: '6px 10px', background: '#fff' }}
+              style={{ border: '1px solid var(--split)', borderRadius: 6, padding: '6px 10px', background: 'var(--paper)' }}
             >
               <MenuOutlined /> {t('tree.panelTitle')}
             </button>

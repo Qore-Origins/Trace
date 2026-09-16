@@ -9,7 +9,7 @@ import { ClientError } from '../ipc-client'
 import { useTranslation } from '../i18n'
 import { todayDateStr } from '@shared/validation'
 import type { DiaryDaySummary, DiaryMemoryEntry, DiaryMemoryMilestone } from '@shared/ipc-contract'
-import { scoreColor } from '../components/cards'
+import { scoreTextColor } from '../components/cards'
 import TopBar from '../components/TopBar'
 
 interface MemoriesPayload {
@@ -60,7 +60,7 @@ function MemoryCard(props: {
         <span className="mem-date">{entry.date}</span>
       </div>
       {entry.score !== null ? (
-        <div className="mem-score" style={{ color: scoreColor(entry.score) }}>
+        <div className="mem-score" style={{ color: scoreTextColor(entry.score) }}>
           {entry.score}
           <small>{t('diary.scoreUnit')}</small>
         </div>
@@ -78,7 +78,7 @@ function MemoryDayComponentCard({ comp }: { comp: DiaryDaySummary['components'][
   const label = kindLabel(t, comp.kind, comp.label)
   if (comp.kind === 'mood') {
     const score = comp.excerpt === '' ? Number.NaN : Number(comp.excerpt)
-    const color = Number.isFinite(score) ? scoreColor(score) : undefined
+    const color = Number.isFinite(score) ? scoreTextColor(score) : undefined
     return (
       <div className="mem-pv-card">
         <div className="k">{label}</div>

@@ -161,9 +161,9 @@ function MenuBar(): React.JSX.Element {
 
   const item = (label: string, items: MenuProps['items']): React.JSX.Element => (
     <Dropdown menu={{ items }} trigger={['click']}>
-      <span className="menu-title" role="button" tabIndex={0}>
+      <button type="button" className="menu-title">
         {label}
-      </span>
+      </button>
     </Dropdown>
   )
 

@@ -356,7 +356,7 @@ function TaskDetailCard({ comp, index, total, today }: { comp: Component; index:
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
         <input type="date" className="task-date" value={p.planned_at ?? ''} onChange={(e) => patch((pl) => (pl.planned_at = e.target.value || undefined))} />
         <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('cards.statusLabel', { value: statusText })}</span>
-        {p.status === 'done' && p.completed_at && <span style={{ fontSize: 12, color: 'var(--text-4)' }}>{p.completed_at.slice(0, 10)}</span>}
+        {p.status === 'done' && p.completed_at && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{p.completed_at.slice(0, 10)}</span>}
       </div>
     </CardShell>
   )
@@ -481,6 +481,12 @@ export function scoreColor(score: number): string {
   return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`
 }
 
+// 信息数字保留连续冷暖变化，同时混入主题正文色；装饰仍消费原色阶。
+export function scoreTextColor(score: number): string {
+  const scoreColorPercent = 50
+  return `color-mix(in srgb, ${scoreColor(score)} ${scoreColorPercent}%, var(--text-1))`
+}
+
 function MoodCard({ comp, index, total }: { comp: Component; index: number; total: number }): React.JSX.Element {
   const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
@@ -489,7 +495,7 @@ function MoodCard({ comp, index, total }: { comp: Component; index: number; tota
   return (
     <CardShell kind="mood" componentId={comp.id} index={index} total={total} extraClass="mood">
       <div className="mood-row">
-        <div className="mood-score" style={{ color: scoreColor(p.score) }}>
+        <div className="mood-score" style={{ color: scoreTextColor(p.score) }}>
           {scoreAnim === 'roll' ? <MoodScoreRoll value={p.score} /> : p.score}
         </div>
         <InputNumber

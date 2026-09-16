@@ -32,7 +32,7 @@ function highlight(text: string, keywords: string[]): React.ReactNode[] {
   merged.forEach(([s, e], i) => {
     if (s > pos) out.push(text.slice(pos, s))
     out.push(
-      <mark key={i} style={{ background: 'var(--trace-bg)', color: 'var(--trace-700)', borderRadius: 2, padding: '0 1px' }}>
+      <mark key={i} style={{ background: 'var(--trace-bg)', color: 'var(--link)', borderRadius: 2, padding: '0 1px' }}>
         {text.slice(s, e)}
       </mark>
     )
@@ -72,7 +72,12 @@ export default function SearchOverlay(): React.JSX.Element {
   return (
     <>
       <div className="search-mask" onClick={() => setOpen(false)} />
-      <div className="search-overlay">
+      <div className="search-overlay" onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          setOpen(false)
+        }
+      }}>
         <input
           ref={inputRef}
           className="o-input"
@@ -99,7 +104,14 @@ export default function SearchOverlay(): React.JSX.Element {
                       {scopeLabel(scope)}（{grouped[scope].length}）
                     </div>
                     {grouped[scope].map((h, i) => (
-                      <div key={`${h.path}:${h.component_id ?? ''}:${i}`} className="o-item" onClick={() => void locate(h)}>
+                      <div key={`${h.path}:${h.component_id ?? ''}:${i}`} className="o-item" role="button" tabIndex={0}
+                        onClick={() => void locate(h)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            void locate(h)
+                          }
+                        }}>
                         <div className="o-title">{highlight(h.snippet, kws)}</div>
                         <div className="o-path">{h.path.split('/').join(' › ')}</div>
                       </div>

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 const targets = await (await fetch('http://127.0.0.1:52821/json')).json()
 const socket = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl)
 await new Promise(resolve => socket.addEventListener('open', resolve, { once: true }))
@@ -29,6 +29,10 @@ async function evaluate(expression) {
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function until(expression) {
   for (let index = 0; index < 100; index++) { if (await evaluate(expression)) return; await pause(100) }
+  console.log('DIAGNOSTIC timeout', expression, await evaluate('Array.from(document.querySelectorAll(".ant-dropdown,.ant-dropdown-menu-submenu-title")).map(e=>({text:e.textContent,classes:e.className,rect:e.getBoundingClientRect().toJSON(),opacity:getComputedStyle(e).opacity,transform:getComputedStyle(e).transform}))'))
+  await mkdir('out/demo/frontend-foundation', { recursive: true })
+  const failureScreenshot = await call('Page.captureScreenshot', { format: 'png' })
+  await writeFile('out/demo/frontend-foundation/integration-hover-failure.png', Buffer.from(failureScreenshot.data, 'base64'))
   throw new Error(`Timed out: ${expression}`)
 }
 async function key(key, code, virtualKey) {
@@ -36,9 +40,16 @@ async function key(key, code, virtualKey) {
   await call('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: virtualKey })
   await pause(150)
 }
+async function hoverSettled(selector) {
+  const quoted = JSON.stringify(selector)
+  await until(`(()=>{const e=document.querySelector(${quoted});if(!e)return false;const r=e.getBoundingClientRect(),menu=e.closest('.ant-dropdown');return r.width>0&&r.height>0&&(!menu||menu.getAnimations().every(a=>a.playState!=='running'))&&e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()`)
+  const position = await evaluate(`(()=>{const r=document.querySelector(${quoted}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`)
+  await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...position })
+}
 const plan = 'window.integration.plan.getState()'
 try {
   await call('Runtime.enable')
+  await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
   await call('Page.navigate', { url: 'http://127.0.0.1:52822/integration.html' })
   await call('Page.bringToFront')
   await until('document.querySelectorAll(".task-del").length===4')
@@ -58,8 +69,7 @@ try {
   const insertPosition = await evaluate('(()=>{const r=Array.from(document.querySelectorAll("button")).find(button=>button.textContent.includes("插入组件")).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()')
   await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...insertPosition })
   await until('!!document.querySelector(".ant-dropdown-menu-submenu-title")')
-  const menuPosition = await evaluate('(()=>{const r=document.querySelector(".ant-dropdown-menu-submenu-title").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()')
-  await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...menuPosition })
+  await hoverSettled('.ant-dropdown-menu-submenu-title')
   await until('!!document.querySelector(".preset-del")')
   await evaluate('document.querySelector(".preset-del").focus();document.querySelector(".preset-del").click()')
   await until('!!document.querySelector(".ant-modal-confirm")')
@@ -116,7 +126,11 @@ try {
   await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
   assert.equal(await evaluate('getComputedStyle(document.querySelector(".trace-action")).transitionDuration'), '0s')
   const screenshot = await call('Page.captureScreenshot', { format: 'png' })
+  await mkdir('out/demo/frontend-foundation', { recursive: true })
   await writeFile('out/demo/frontend-foundation/integration-dark.png', Buffer.from(screenshot.data, 'base64'))
   assert.deepEqual(errors, [])
   console.log('PASS: real React cards/task+option undo/latest edits/Enter+Space/Antd Escape focus/dark confirm/card focus/switch invalidation/expiry focus/4 widths/reduced motion; no runtime exceptions')
-} finally { socket.close() }
+} finally {
+  await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
+  socket.close()
+}
