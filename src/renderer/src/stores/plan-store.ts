@@ -24,6 +24,8 @@ interface PlanState {
   close: () => void
   // 渲染即编辑入口：mutator 在文档副本上执行，自动调度防抖保存
   mutate: (mutator: (doc: PlanDocument) => void) => void
+  // 高频卡片编辑入口：只替换目标组件链路，保持其余组件引用稳定
+  patchComponent: (componentId: string, patch: (component: Component) => Component) => void
   // 计划截止日期：赋值 ''/undefined 时删键（同 mutate 防抖保存路径）
   setDueDate: (due?: string) => void
   flush: () => Promise<void>
@@ -31,7 +33,38 @@ interface PlanState {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let saving = false
-let pendingMutate = false
+let sessionRevision = 0
+let editRevision = 0
+let persistedRevision = 0
+
+interface PendingOperation {
+  revision: number
+  apply: (document: PlanDocument) => PlanDocument
+}
+
+let pendingOperations: PendingOperation[] = []
+
+function resetEditingSession(): number {
+  sessionRevision += 1
+  editRevision = 0
+  persistedRevision = 0
+  pendingOperations = []
+  return sessionRevision
+}
+
+function patchDocumentComponent(
+  document: PlanDocument,
+  componentId: string,
+  patch: (component: Component) => Component
+): PlanDocument {
+  const index = document.components.findIndex((component) => component.id === componentId)
+  if (index === -1) return document
+  const current = document.components[index]
+  const draft = { ...current, payload: structuredClone(current.payload) } as Component
+  const components = document.components.slice()
+  components[index] = patch(draft)
+  return { ...document, components }
+}
 
 export const usePlanStore = create<PlanState>()((set, get) => ({
   currentPath: null,
@@ -44,10 +77,14 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   open: async (path) => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
+    const openingSession = resetEditingSession()
+    set({ currentPath: path, document: null, saveState: 'idle', lastError: null, externalAlert: false })
     try {
       const doc = await invoke('storage:readPlan', { path })
+      if (sessionRevision !== openingSession) return
       set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
     } catch (e) {
+      if (sessionRevision !== openingSession) return
       getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
       set({ currentPath: path, document: null })
     }
@@ -56,18 +93,44 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   close: () => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
-    pendingMutate = false
+    resetEditingSession()
     set({ currentPath: null, document: null, saveState: 'idle', externalAlert: false })
   },
 
   mutate: (mutator) => {
     const { document, currentPath } = get()
     if (!document || !currentPath) return
-    // 结构化克隆副本上执行变更（保持不可变更新语义）
-    const draft = structuredClone(document) as PlanDocument
-    mutator(draft)
-    set({ document: draft, saveState: 'editing' })
-    pendingMutate = true
+    const apply = (source: PlanDocument): PlanDocument => {
+      const draft = structuredClone(source) as PlanDocument
+      mutator(draft)
+      return draft
+    }
+    editRevision += 1
+    pendingOperations.push({ revision: editRevision, apply })
+    set({ document: apply(document), saveState: 'editing' })
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      void get().flush()
+    }, DEBOUNCE_MS)
+  },
+
+  patchComponent: (componentId, patch) => {
+    const { document, currentPath } = get()
+    if (!document || !currentPath) return
+    const componentIndex = document.components.findIndex((component) => component.id === componentId)
+    if (componentIndex === -1) return
+    const next = patchDocumentComponent(document, componentId, patch)
+    const patchedComponent = structuredClone(next.components[componentIndex]) as Component
+    const apply = (source: PlanDocument): PlanDocument => {
+      const index = source.components.findIndex((component) => component.id === componentId)
+      if (index === -1) return source
+      const components = source.components.slice()
+      components[index] = structuredClone(patchedComponent) as Component
+      return { ...source, components }
+    }
+    editRevision += 1
+    pendingOperations.push({ revision: editRevision, apply })
+    set({ document: next, saveState: 'editing' })
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
       void get().flush()
@@ -92,9 +155,11 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
 
   flush: async () => {
     const { document, currentPath, serverUpdatedAt } = get()
-    if (!document || !currentPath || !pendingMutate || saving) return
+    if (!document || !currentPath || editRevision <= persistedRevision || saving) return
+    const flushingSession = sessionRevision
+    const flushingRevision = editRevision
+    let scheduleNext = false
     saving = true
-    pendingMutate = false
     try {
       const r = await invoke('storage:savePlan', {
         path: currentPath,
@@ -102,26 +167,34 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         expected_updated_at: serverUpdatedAt
       })
       // IPC 往返期间计划被删除/关闭/切换：丢弃结果（防污染新状态）
-      if (get().currentPath !== currentPath) return
-      set({ serverUpdatedAt: r.updated_at, saveState: 'saved', lastError: null })
+      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
+      persistedRevision = flushingRevision
+      pendingOperations = pendingOperations.filter((operation) => operation.revision > flushingRevision)
+      scheduleNext = editRevision > flushingRevision
+      set({ serverUpdatedAt: r.updated_at, saveState: scheduleNext ? 'editing' : 'saved', lastError: null })
     } catch (e) {
       // 同上：目标已不在（如被删除）属正常竞态，静默丢弃，不误报
-      if (get().currentPath !== currentPath) return
+      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
       if (e instanceof ClientError && e.code === ERR.CONFLICT) {
-        // CAS 冲突：静默重拉（提示一次）
+        // CAS 冲突：以服务端新版本为基底重放尚未落盘的操作，避免覆盖外部改动或丢失本地输入。
         const fresh = await invoke('storage:readPlan', { path: currentPath })
-        if (get().currentPath !== currentPath) return
-        set({ document: fresh, serverUpdatedAt: fresh.updated_at, saveState: 'idle' })
+        if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
+        const rebased = pendingOperations.reduce((next, operation) => operation.apply(next), fresh)
+        persistedRevision = 0
+        scheduleNext = pendingOperations.length > 0
+        set({ document: rebased, serverUpdatedAt: fresh.updated_at, saveState: scheduleNext ? 'editing' : 'idle' })
         getMessage().warning(i18n.t('errors.contentRefreshed'))
       } else {
         const msg = e instanceof ClientError ? e.message : i18n.t('errors.saveFailed')
         set({ saveState: 'error', lastError: msg })
         getMessage().error(msg)
+        scheduleNext = editRevision > flushingRevision
       }
     } finally {
       saving = false
-      // 保存期间又有编辑 → 继续排程
-      if (pendingMutate) {
+      const activeSessionChanged = sessionRevision !== flushingSession
+      const activeSessionHasPendingEdits = editRevision > persistedRevision
+      if ((scheduleNext || activeSessionChanged) && activeSessionHasPendingEdits) {
         if (saveTimer) clearTimeout(saveTimer)
         saveTimer = setTimeout(() => void get().flush(), DEBOUNCE_MS)
       }
@@ -132,6 +205,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
 // 常用变更便捷方法（组件层调用）
 export function usePlanMutations() {
   const mutate = usePlanStore((s) => s.mutate)
+  const patchComponentState = usePlanStore((s) => s.patchComponent)
   return {
     appendComponent: (component: Component) =>
       mutate((doc) => {
@@ -154,9 +228,9 @@ export function usePlanMutations() {
         if (idx !== -1) doc.components[idx] = next
       }),
     patchComponent: (componentId: string, patch: (payload: Component['payload']) => void) =>
-      mutate((doc) => {
-        const c = doc.components.find((x) => x.id === componentId)
-        if (c) patch(c.payload)
+      patchComponentState(componentId, (component) => {
+        patch(component.payload)
+        return component
       })
   }
 }

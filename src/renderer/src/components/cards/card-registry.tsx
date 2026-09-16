@@ -1,4 +1,4 @@
-import type React from 'react'
+import { memo, type ComponentType as ReactComponentType } from 'react'
 import type { ComponentType } from '@shared/plan-types'
 import type { CardRenderProps } from './CardShell'
 import { FallbackBlock } from './FallbackBlock'
@@ -9,19 +9,19 @@ import { SinglePlanCard } from './SinglePlanCard'
 import { TaskDetailCard } from './TaskDetailCard'
 import { TaskListCard } from './TaskListCard'
 
-export type CardRenderer = React.ComponentType<CardRenderProps>
+export type CardRenderer = ReactComponentType<CardRenderProps>
 export type CardRegistry = Record<ComponentType, CardRenderer>
 
 export function createCardRegistry(noteRenderer: CardRenderer): CardRegistry {
   return {
-    single_plan: SinglePlanCard,
-    multi_plan: MultiPlanCard,
-    task_list: TaskListCard,
-    task_detail: TaskDetailCard,
-    note: noteRenderer,
-    mood: MoodCard,
-    heading: HeadingCard,
-    custom: FallbackBlock
+    single_plan: memo(SinglePlanCard),
+    multi_plan: memo(MultiPlanCard),
+    task_list: memo(TaskListCard),
+    task_detail: memo(TaskDetailCard),
+    note: memo(noteRenderer),
+    mood: memo(MoodCard),
+    heading: memo(HeadingCard),
+    custom: memo(FallbackBlock)
   }
 }
 
