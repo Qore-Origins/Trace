@@ -1,7 +1,7 @@
 {
   "format_version": "1",
   "created_at": "2026-09-15T11:50:34.882+08:00",
-  "updated_at": "2026-09-16T08:18:32+08:00",
+  "updated_at": "2026-09-16T14:20:51+08:00",
   "components": [
     {
       "id": "5d2bbf6eb85d4af0b377b8aeb96b7411",
@@ -15,7 +15,7 @@
       "id": "eaaef1be94204da2af120a6284386c42",
       "type": "note",
       "payload": {
-        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–4 完成，Task 4 正式提交 5275a26 已快进主目录，未推送；typecheck 0 错、22 文件 210/210、build 三段成功，规格/质量审查及 Chrome 双脚本串行回归通过。下一批 Task 5 AppShell 骨架提升待确认，实施前重新登记文件所有权；Muya Demo 用户验收、真实 Electron/DPI 仍待补。不提前正式 NoteCard 集成。",
+        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–5 完成；Task 5 代码提交 5659fe4 已集成 main，typecheck 0、23 文件 216/216、build 与四档浏览器 QA 通过。Task 6 待确认；Muya Demo 用户验收、真实 Electron/DPI 与真实性能采样仍待补。",
         "created_at": "2026-09-15T11:50:34.882+08:00"
       }
     },
@@ -38,7 +38,7 @@
       "payload": {
         "title": "第二阶段：前端结构收口",
         "items": [
-          { "id": "5a665d37af3a4e97ad7f756616dd9080", "title": "提升 AppShell 并统一三视图响应式骨架", "status": "not_started" },
+          { "id": "5a665d37af3a4e97ad7f756616dd9080", "title": "提升 AppShell 并统一三视图响应式骨架", "status": "done", "completed_at": "2026-09-16T14:20:51+08:00" },
           { "id": "ab29b553f83f482ebca0ee5244cc4e76", "title": "拆分 workspace.css 与 cards.tsx 职责", "status": "not_started" },
           { "id": "004349091c594ad68bd62c151843f2b0", "title": "将高频编辑收敛到组件级更新", "status": "not_started" }
         ]

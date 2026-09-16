@@ -2,9 +2,20 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-16（Codex：Task 1–4 完成并集成主目录；下一步 Task 5 骨架提升待确认）
+> 更新：2026-09-16（Codex：Task 1–5 完成并集成主目录；下一步 Task 6 待确认）
 
 ## 接手前必做
+
+### Task 5 完成交接（2026-09-16，Codex；优先于下方历史快照）
+
+- 用户“继续”确认后完成 Task 5；代码提交 `5659fe4`（`refactor(ui): 统一应用壳与三视图响应式骨架`）已 fast-forward 到 main。实测代码集成后 main HEAD `5659fe4`；本交接文档提交后须再次以 `git log` 为准。
+- 已实现：`AppShell` 单点编排 TopBar、主内容与可选 StatusBar；仅 workspace 显式显示状态栏。三个 view 只返回内容，App 级 NameDialog/Search/Undo/Settings 位于 active view 外。窄于 960px 时日记时间线/回忆预览排到主内容后，960px 起保持双栏。
+- TDD：首轮 AppShell 5 项测试按预期全红；720px 顶栏回归也先红后修。最终新增 6 项契约测试。`TopBar.tsx`、`StatusBar.tsx` 经检查无需修改，未为满足计划机械改动。
+- 主智能体最终实测：typecheck 0 错；23 文件 216/216；main/preload/renderer build 成功，renderer 3166 模块、8.30s，JS 2642.81kB、CSS 52.39kB。既有三条 store 混合导入警告未扩大，留待 Task 8。
+- Chrome/CDP 内存 IPC 宿主实测 720/959/960/1200：无横向溢出；单一 TopBar；StatusBar 仅 workspace；中英文顶栏不换行；日记/回忆次级内容临界布局正确；全局宿主 DOM 身份保持；runtime exception 0。独立规格审查、质量审查均通过。
+- 限制：浏览器宿主不等于完整 Electron 真机，Windows 标题栏拖拽、窗口控制、100%/125%/150% DPI 与真实计划库仍待后续验收。源码/CSS 正则契约测试及“宿主身份而非逐浮层身份”属于非阻塞测试债务。
+- 所有权：Task 5 源码与 QA 已提交，通用边界释放；用户 `Resource/pic/`、`Resource/vid/` 保留未跟踪且未触碰。Muya/NoteCard/pref-store/设置宿主既有所有权不变。
+- 下一步：Task 6 拆分 `workspace.css` 与 `cards.tsx` 职责，开工前需重新登记精确文件边界；等待 Task 6 确认与 Muya Demo 用户验收。剩余 Task 6–11、Electron 真机/DPI 与真实数据视觉/性能验收。
 
 ### Task 4 完成交接（2026-09-16；优先于下方启动/暂停快照）
 
@@ -134,9 +145,9 @@
 | 计划索引 | `docs/Plan/README.md` |
 | 执行计划 | `docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md` |
 | Trace 镜像队列 | 同目录 `plan.json`，结构参考 `D:\Desktop\Plan\Future_Plan\Qore\Trace\Plan-260911-01\plan.json` |
-| 当前阶段 | Task 1–4 完成；Task 5 骨架提升待确认 |
-| 本轮文件所有权 | Task 4 全部提交，通用边界已释放；Muya 既有所有权不变 |
-| 实测证据 | `npm run build` 成功；renderer 3157 modules，JS 2,629,864 B（gzip 547,329 B），CSS 46,358 B，renderer build 8.38s |
+| 当前阶段 | Task 1–5 完成；Task 6 样式与卡片职责拆分待确认 |
+| 本轮文件所有权 | Task 5 全部提交，通用边界已释放；Muya 既有所有权不变 |
+| 实测证据 | typecheck 0；23 文件 216/216；build 成功（renderer 3166 modules、8.30s、JS 2642.81kB、CSS 52.39kB）；四档 Chrome/CDP QA 通过 |
 | 高优先问题 | 删除语义不一致、文字对比度/焦点不足、整文档高频 clone + 全卡重渲染、单一 renderer chunk、AppShell/CSS/cards 职责未收口 |
 
 计划执行规则：Codex 与 Claude Code 接手任何 Task 前先读取 `docs/Plan/README.md`、执行计划和本文件；在本文件登记执行者与精确文件边界后，才允许修改正式代码。每个提交后同步 Markdown 复选框、`plan.json` 状态、实际验证结果和提交 hash。
@@ -144,10 +155,10 @@
 ## 下一动作与阻塞
 
 - 下一动作 A（Muya 主线）：用户打开真实 Muya Demo，重点验收中文输入法、剪贴板、语言选择浮层、视觉与连续删除手感。Claude 继续避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
-- 下一动作 B（前端地基）：Task 4 已交付；下一批 Task 5 AppShell 骨架提升，实施前确认已验收视图的结构变更。
-- 等待：Task 5 确认与 Muya Demo 用户验收，不提前正式 NoteCard 集成。
+- 下一动作 B（前端地基）：Task 5 已交付；下一批 Task 6 拆分 `workspace.css` 与 `cards.tsx`，实施前重新登记文件边界。
+- 等待：Task 6 确认与 Muya Demo 用户验收，不提前正式 NoteCard 集成。
 - F2 已闭环，不再构成阻塞或并行边界。
-- 待推送：Task 4 已快进主目录；代码集成时 main ahead 17，未经用户授权不推送远端。
+- 待推送：Task 5 已快进主目录；未经用户授权不推送远端，ahead 数以最终 `git status` 实测为准。
 
 ## 核验记录
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–4 完成（5275a26 已集成；Task 5 骨架提升待确认）
+**Status:** Task 1–5 完成；Task 6 待确认
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -316,6 +316,10 @@ git commit -m "refactor(ui): 收敛主题焦点与减弱动效"
 
 ### Task 5: 提升 AppShell 并统一响应式骨架
 
+> 2026-09-16 启动：main HEAD `352912a`、ahead 18；窄窗口采用右列下移，保留全部功能，不新增 Drawer 状态。精确所有权与验证状态见 HANDOFF。
+
+> 2026-09-16 完成：代码提交 `5659fe4` 已快进 main。最终 typecheck 0 错、23 文件 216/216、build 成功（renderer 3166 modules、8.30s、JS 2642.81kB、CSS 52.39kB）；720/959/960/1200 Chrome/CDP 真实组件回归通过，规格与质量双审查通过。Electron 真机/DPI 仍待后续验收。
+
 **Files:**
 - Create: `src/renderer/src/components/AppShell.tsx`
 - Create: `src/renderer/src/styles/shell.css`
@@ -326,11 +330,11 @@ git commit -m "refactor(ui): 收敛主题焦点与减弱动效"
 - Modify: `src/renderer/src/components/TopBar.tsx`
 - Modify: `src/renderer/src/components/StatusBar.tsx`
 
-- [ ] **Step 1: 写 AppShell 结构测试**
+- [x] **Step 1: 写 AppShell 结构测试**
 
 断言 workspace/diary/memories 切换时 TopBar 只存在一个；StatusBar 的显示规则由 AppShell 属性决定；全局弹层不随视图切换卸载。
 
-- [ ] **Step 2: 实现 AppShell 契约**
+- [x] **Step 2: 实现 AppShell 契约**
 
 ```ts
 interface AppShellProps {
@@ -342,15 +346,15 @@ interface AppShellProps {
 
 AppShell 单点渲染 TopBar；`showStatus` 默认 false，由 App 对 workspace 显式传 true，保持当前日记/回忆不显示 StatusBar 的行为。若用户要求三视图常驻状态栏，再单独记录产品确认后变更。
 
-- [ ] **Step 3: 迁移三个视图**
+- [x] **Step 3: 迁移三个视图**
 
 视图组件只返回页面内容，不再自行创建 `100vh` 根、TopBar 或 StatusBar。AppShell 提供统一的 `min-height: 0`、滚动边界和窄窗口容器。
 
-- [ ] **Step 4: 增加日记/回忆窄窗口降级**
+- [x] **Step 4: 增加日记/回忆窄窗口降级**
 
 在 `<960px` 时将 300px 预览区切换为 Drawer 或内容下方区域；不得通过简单隐藏导致功能消失。
 
-- [ ] **Step 5: 验证并提交**
+- [x] **Step 5: 验证并提交**
 
 ```bash
 npm run typecheck
@@ -653,6 +657,14 @@ flowchart TD
 - Task 11 只能在实际实现和验证完成后执行，禁止提前把计划写成已实现。
 
 ## 4. 当前下一步、等待与剩余工作
+
+### Task 5 完成交付（2026-09-16）
+
+- `AppShell` 统一承载 TopBar、主内容和 workspace 专属 StatusBar；三个视图移除自有外壳，全局 NameDialog/Search/Undo/Settings 保持在 active view 外。
+- `<960px` 的日记时间线与回忆预览下移到主内容之后，960px 起保持双栏；720/959/960/1200 无横向溢出，中英文顶栏均保持单行。
+- 代码提交 `5659fe4`；主智能体最终复验 typecheck 0、23 文件 216/216、build 成功（renderer 3166 modules、8.30s、JS 2642.81kB、CSS 52.39kB），浏览器 runtime exception 0；既有三条分包警告留待 Task 8。
+- 独立规格/质量审查均通过。非阻塞债务：部分契约测试依赖源码/CSS 正则；QA 证明全局宿主身份保持但未逐个检查每个浮层 DOM 身份。
+- 下一步：Task 6 拆分 `workspace.css` 与 `cards.tsx`；等待用户确认、Muya Demo 用户验收。剩余 Task 6–11、完整 Electron/DPI、真实数据视觉与真实性能验收。
 
 ### Task 4 完成交付（2026-09-16）
 

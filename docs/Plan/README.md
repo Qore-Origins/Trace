@@ -39,7 +39,7 @@ docs/Plan/
 
 | 计划 | 状态 | 创建日期 | 审计/规格 | 当前下一步 |
 |---|---|---|---|---|
-| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | Task 1–4 完成；Task 5 待确认 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 5275a26 已集成，三跑与浏览器回归通过；下一批 AppShell 骨架提升，先确认已验收视图结构变更 |
+| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | Task 5 完成；Task 6 待确认 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | AppShell 与三视图响应式骨架已交付；下一批拆分样式与卡片职责，开工前登记边界 |
 
 ## 更新规则
 
