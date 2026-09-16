@@ -2,9 +2,30 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-16（Codex：Task 1–6 完成；下一步 Task 7）
+> 更新：2026-09-16（Codex：Task 1–7 完成；下一步 Task 8）
 
 ## 接手前必做
+
+### Task 7 完成交接（2026-09-16，Codex；优先于下方启动快照）
+
+- 用户选择本地合并；代码提交 `0590671`（`perf(editor): 隔离组件级编辑更新`）已 fast-forward 到 main。代码集成后实测 main HEAD `0590671`、ahead origin/main 23；本文档提交后须再次以 `git log` 为准，未推送。
+- 已实现：高频卡片编辑仅复制 PlanDocument、components 数组、目标组件及 payload，其余组件引用保持稳定；卡片注册表统一提供 React.memo 包装。结构变更仍保留完整文档更新路径，500ms 防抖和 IPC/CAS 合约不变。
+- 保存地基：用计划会话代次和编辑修订号隔离旧异步结果；保存中继续输入保持 editing 并自动续存；切换/删除计划不会被旧保存污染；CAS 冲突以服务端新文档为基底重放未落盘操作，且冻结组件快照，避免 uuid 等非确定 patch 回调执行第二次。
+- TDD 证据：引用稳定性与 memo 首轮 2 项按预期全红；保存中输入、切计划、CAS 三项按预期全红；加载期旧文档与非确定 patch 各自先红后绿。最终主目录复验 typecheck 0 错、26 文件 230/230、build 成功（renderer 3174 模块、9.09s、JS 2645.44kB、CSS 53.21kB）。既有三组 store 混合导入警告未扩大，留待 Task 8。
+- 实际文件：仅 `plan-store.ts`、`card-registry.tsx`、`test/plan-editing.spec.ts`、`test/card-registry.spec.tsx`；ContentArea 与六个卡片文件经审查无需为清单机械改动。NoteCard/Muya/pref/settings 未改。
+- 所有权：Task 7 文件边界释放；用户 `Resource/pic/`、`Resource/vid/` 保持未跟踪且未触碰。完成收尾后删除已合并隔离 worktree/分支。
+- 下一步：Task 8 页面与 Muya 懒加载、构建预算；开工前必须与 Muya 正式集成边界协调。等待 Muya Demo 用户验收；剩余 Task 8–11、Electron 真机/DPI、真实数据视觉与真实性能验收。
+
+### Task 7 启动（2026-09-16，Codex；优先于下方完成快照）
+
+- 隔离分支实现已提交为 `0590671`（`perf(editor): 隔离组件级编辑更新`），尚未合并 main，等待完成分支选项。实际改动仅 `plan-store.ts`、`card-registry.tsx`、`test/plan-editing.spec.ts`、`test/card-registry.spec.tsx`；计划列出的 ContentArea/六个卡片文件经审查无需机械改动。
+- 已验证：引用稳定性、memo 契约、连续输入、保存中继续输入、切换/删除计划、外部变更、CAS 重放和非确定 patch 单次执行均覆盖；最终 typecheck 0 错、26 文件 230/230、build 成功（renderer 3174 模块、9.71s、JS 2645.44kB、CSS 52.99kB）。既有三组 store 混合导入警告留待 Task 8。
+- 用户“继续”确认 Task 7；实测 main/worktree HEAD 均为 `95339dc`，main ahead origin/main 22；main 仅用户 `Resource/pic/`、`Resource/vid/` 未跟踪，隔离 worktree 干净，基线 25 文件 221/221。
+- 在 `.worktrees/frontend-foundation` / `codex/frontend-foundation` 实施。Codex 所有权：`src/renderer/src/stores/plan-store.ts`、`src/renderer/src/components/ContentArea.tsx`、`src/renderer/src/components/cards/card-registry.tsx`、`SinglePlanCard.tsx`、`MultiPlanCard.tsx`、`TaskListCard.tsx`、`TaskDetailCard.tsx`、`MoodCard.tsx`、`HeadingCard.tsx`、新建 `test/plan-editing.spec.ts`；全量回归要求同步更新 `test/card-registry.spec.tsx` 的组件身份断言为 memo 包装内层身份。若实测无需修改计划列出的组件文件，不为满足清单机械改动。
+- 实现契约：组件编辑只复制 PlanDocument、components 数组、目标 Component 与目标 payload，其他组件引用保持稳定；完整文档快照仍走 500ms 防抖保存和既有 CAS 锚点。卡片注册表统一提供 React.memo 包装，稳定 comp/index/total/today 时跳过无关卡片重渲染。
+- 竞态范围：测试至少 100 个组件引用稳定性，并覆盖连续输入、保存中继续输入、切计划/关闭、外部变更和 CAS 冲突；最后一次输入不得被旧保存结果覆盖。Muya/NoteCard 编辑体、pref-store、设置宿主继续冻结。
+- TDD：先新增失败测试并确认当前完整 `structuredClone(document)` 导致 100 个组件引用全部变化，再做最小实现；最终执行 focused test、typecheck、全量 test、build 与自审。
+- 下一步：Task 7 红灯测试；等待 Muya Demo 用户验收。剩余 Task 7–11、Electron 真机/DPI 与真实数据视觉/性能验收。
 
 ### Task 6 完成交接（2026-09-16，Codex；优先于下方启动快照）
 

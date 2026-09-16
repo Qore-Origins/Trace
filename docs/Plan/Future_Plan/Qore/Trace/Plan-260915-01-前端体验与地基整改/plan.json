@@ -1,7 +1,7 @@
 {
   "format_version": "1",
   "created_at": "2026-09-15T11:50:34.882+08:00",
-  "updated_at": "2026-09-16T21:55:04+08:00",
+  "updated_at": "2026-09-16T22:28:29+08:00",
   "components": [
     {
       "id": "5d2bbf6eb85d4af0b377b8aeb96b7411",
@@ -15,7 +15,7 @@
       "id": "eaaef1be94204da2af120a6284386c42",
       "type": "note",
       "payload": {
-        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–6 完成；Task 6 代码提交 1483d6e 已快进 main，NoteCard/Muya/pref/settings 行为边界未改。下一步 Task 7 组件级编辑更新；真实 Electron/DPI 与真实性能采样仍待补。",
+        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–7 完成；Task 7 代码提交 0590671 已快进 main，组件级更新、卡片 memo 与保存竞态均完成验证。下一步 Task 8 页面与 Muya 懒加载、构建预算；真实 Electron/DPI 与真实性能采样仍待补。",
         "created_at": "2026-09-15T11:50:34.882+08:00"
       }
     },
@@ -40,7 +40,7 @@
         "items": [
           { "id": "5a665d37af3a4e97ad7f756616dd9080", "title": "提升 AppShell 并统一三视图响应式骨架", "status": "done", "completed_at": "2026-09-16T14:20:51+08:00" },
           { "id": "ab29b553f83f482ebca0ee5244cc4e76", "title": "拆分 workspace.css 与 cards.tsx 职责", "status": "done", "completed_at": "2026-09-16T21:55:04+08:00" },
-          { "id": "004349091c594ad68bd62c151843f2b0", "title": "将高频编辑收敛到组件级更新", "status": "not_started" }
+          { "id": "004349091c594ad68bd62c151843f2b0", "title": "将高频编辑收敛到组件级更新", "status": "done", "completed_at": "2026-09-16T22:28:29+08:00" }
         ]
       }
     },

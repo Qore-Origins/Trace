@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–6 完成；下一步 Task 7（尚未启动）
+**Status:** Task 1–7 完成；下一步 Task 8（尚未启动）
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -18,64 +18,64 @@
 
 ### 新建文件
 
-| 文件 | 单一职责 |
-|---|---|
-| `demo/frontend-foundation/index.html` | 动作语义、删除确认/撤销、焦点和减弱动效的用户验收 Demo |
-| `demo/frontend-foundation/style.css` | Demo 独立样式，不进入正式应用 |
-| `demo/frontend-foundation/main.ts` | Demo 交互，不读真实计划数据 |
-| `src/renderer/src/components/ui/ActionButton.tsx` | Primary/Secondary/Quiet/Danger/Icon 五类动作入口 |
-| `src/renderer/src/components/ui/ConfirmAction.ts` | 上下文化确认弹层的统一配置入口 |
-| `src/renderer/src/components/ui/UndoNotice.tsx` | 低粒度删除的 5 秒撤销提示与焦点恢复 |
-| `src/renderer/src/components/AppShell.tsx` | TopBar、可选 StatusBar、页面主区域的统一骨架 |
-| `src/renderer/src/components/cards/CardShell.tsx` | 卡片外壳、排序手柄、升降、删除动作 |
-| `src/renderer/src/components/cards/card-registry.tsx` | Component type 到卡片组件的唯一映射 |
-| `src/renderer/src/components/cards/SinglePlanCard.tsx` | 单选计划卡 |
-| `src/renderer/src/components/cards/MultiPlanCard.tsx` | 多选计划卡 |
-| `src/renderer/src/components/cards/TaskListCard.tsx` | 任务列表卡与任务行 |
-| `src/renderer/src/components/cards/TaskDetailCard.tsx` | 任务详情卡 |
-| `src/renderer/src/components/cards/MoodCard.tsx` | 心情卡与颜色展示 |
-| `src/renderer/src/components/cards/HeadingCard.tsx` | 标题卡 |
-| `src/renderer/src/components/cards/FallbackBlock.tsx` | 未知类型降级展示 |
-| `src/renderer/src/styles/tokens.css` | 亮暗主题、文字、间距、圆角、阴影和动效 token |
-| `src/renderer/src/styles/base.css` | reset、字体、滚动条、全局 focus-visible 和 reduced-motion 基线 |
-| `src/renderer/src/styles/actions.css` | 五类动作组件视觉与状态 |
-| `src/renderer/src/styles/shell.css` | AppShell、顶栏、状态栏、响应式页面容器 |
-| `src/renderer/src/styles/tree.css` | 计划树、拖拽、展开/收拢动效 |
-| `src/renderer/src/styles/cards.css` | 卡片、任务、心情、标题、注释宿主 |
-| `src/renderer/src/styles/diary.css` | 日记页和窄窗口降级 |
-| `src/renderer/src/styles/memories.css` | 回忆页和窄窗口降级 |
-| `src/renderer/src/styles/search.css` | 搜索浮层、结果和焦点样式 |
-| `src/renderer/src/stores/undo-store.ts` | 可撤销动作的单槽状态与 5 秒生命周期 |
-| `src/renderer/src/perf/marks.ts` | 冷启动、编辑、树动画和 Muya 激活性能标记 |
-| `test/action-policy.spec.ts` | 删除策略、撤销时限和危险动作规则 |
-| `test/plan-editing.spec.ts` | 组件级编辑不影响无关组件引用的回归测试 |
-| `test/bundle-budget.spec.ts` | 构建产物 chunk 和体积预算检查 |
-| `test/accessibility-contract.spec.tsx` | 动作按钮 aria、键盘和焦点契约 |
+| 文件                                                   | 单一职责                                                       |
+| ------------------------------------------------------ | -------------------------------------------------------------- |
+| `demo/frontend-foundation/index.html`                  | 动作语义、删除确认/撤销、焦点和减弱动效的用户验收 Demo         |
+| `demo/frontend-foundation/style.css`                   | Demo 独立样式，不进入正式应用                                  |
+| `demo/frontend-foundation/main.ts`                     | Demo 交互，不读真实计划数据                                    |
+| `src/renderer/src/components/ui/ActionButton.tsx`      | Primary/Secondary/Quiet/Danger/Icon 五类动作入口               |
+| `src/renderer/src/components/ui/ConfirmAction.ts`      | 上下文化确认弹层的统一配置入口                                 |
+| `src/renderer/src/components/ui/UndoNotice.tsx`        | 低粒度删除的 5 秒撤销提示与焦点恢复                            |
+| `src/renderer/src/components/AppShell.tsx`             | TopBar、可选 StatusBar、页面主区域的统一骨架                   |
+| `src/renderer/src/components/cards/CardShell.tsx`      | 卡片外壳、排序手柄、升降、删除动作                             |
+| `src/renderer/src/components/cards/card-registry.tsx`  | Component type 到卡片组件的唯一映射                            |
+| `src/renderer/src/components/cards/SinglePlanCard.tsx` | 单选计划卡                                                     |
+| `src/renderer/src/components/cards/MultiPlanCard.tsx`  | 多选计划卡                                                     |
+| `src/renderer/src/components/cards/TaskListCard.tsx`   | 任务列表卡与任务行                                             |
+| `src/renderer/src/components/cards/TaskDetailCard.tsx` | 任务详情卡                                                     |
+| `src/renderer/src/components/cards/MoodCard.tsx`       | 心情卡与颜色展示                                               |
+| `src/renderer/src/components/cards/HeadingCard.tsx`    | 标题卡                                                         |
+| `src/renderer/src/components/cards/FallbackBlock.tsx`  | 未知类型降级展示                                               |
+| `src/renderer/src/styles/tokens.css`                   | 亮暗主题、文字、间距、圆角、阴影和动效 token                   |
+| `src/renderer/src/styles/base.css`                     | reset、字体、滚动条、全局 focus-visible 和 reduced-motion 基线 |
+| `src/renderer/src/styles/actions.css`                  | 五类动作组件视觉与状态                                         |
+| `src/renderer/src/styles/shell.css`                    | AppShell、顶栏、状态栏、响应式页面容器                         |
+| `src/renderer/src/styles/tree.css`                     | 计划树、拖拽、展开/收拢动效                                    |
+| `src/renderer/src/styles/cards.css`                    | 卡片、任务、心情、标题、注释宿主                               |
+| `src/renderer/src/styles/diary.css`                    | 日记页和窄窗口降级                                             |
+| `src/renderer/src/styles/memories.css`                 | 回忆页和窄窗口降级                                             |
+| `src/renderer/src/styles/search.css`                   | 搜索浮层、结果和焦点样式                                       |
+| `src/renderer/src/stores/undo-store.ts`                | 可撤销动作的单槽状态与 5 秒生命周期                            |
+| `src/renderer/src/perf/marks.ts`                       | 冷启动、编辑、树动画和 Muya 激活性能标记                       |
+| `test/action-policy.spec.ts`                           | 删除策略、撤销时限和危险动作规则                               |
+| `test/plan-editing.spec.ts`                            | 组件级编辑不影响无关组件引用的回归测试                         |
+| `test/bundle-budget.spec.ts`                           | 构建产物 chunk 和体积预算检查                                  |
+| `test/accessibility-contract.spec.tsx`                 | 动作按钮 aria、键盘和焦点契约                                  |
 
 ### 修改文件
 
-| 文件 | 修改职责 |
-|---|---|
-| `src/renderer/src/App.tsx` | 只保留阶段/视图分发、全局底座和懒加载边界；移出设置主体 |
-| `src/renderer/src/main.tsx` | 导入拆分后的样式入口和统一主题 token |
-| `src/renderer/src/views/WorkspaceView.tsx` | 接入 AppShell，移除硬编码白底和重复 TopBar/StatusBar |
-| `src/renderer/src/views/DiaryView.tsx` | 接入 AppShell 和窄窗口预览布局 |
-| `src/renderer/src/views/MemoriesView.tsx` | 接入 AppShell 和窄窗口预览布局 |
-| `src/renderer/src/components/TopBar.tsx` | 使用细粒度 store selector 和统一 ActionButton |
-| `src/renderer/src/components/ContentArea.tsx` | 使用细粒度 selector、语义按钮、确认/撤销策略 |
-| `src/renderer/src/components/PlanTreePanel.tsx` | 收窄订阅、统一按钮与键盘节点，保留当前树动效语义 |
-| `src/renderer/src/components/cards.tsx` | 分批迁出 CardShell/卡片注册表；不得与 Muya NoteCard 所有权重叠 |
-| `src/renderer/src/components/SearchOverlay.tsx` | 语义结果按钮、结果上限和焦点管理 |
-| `src/renderer/src/components/NameDialogModal.tsx` | loading、防重复提交、输入标签和焦点回归 |
-| `src/renderer/src/stores/plan-store.ts` | 组件级编辑接口、持久化快照和防抖保存 |
-| `src/renderer/src/stores/tree-store.ts` | 为按路径 selector 提供稳定引用，避免无关树节点重渲染 |
-| `src/renderer/src/stores/pref-store.ts` | 仅在 Muya 所有权显式交接后补设置描述/实时渲染偏好 |
-| `src/renderer/src/components/muya-note/muya-runtime.ts` | 仅在正式集成任务中改为懒加载插件组；本计划不得提前改 Muya 行为 |
-| `electron.vite.config.ts` | renderer manualChunks 与构建分析开关 |
-| `docs/lifecycle/02-系统设计 Design/UI设计规范 UI Guidelines.md` | 以最终验收结果更新动作、动效、暗色和响应式规范 |
-| `docs/lifecycle/02-系统设计 Design/前端详细设计 Frontend Design.md` | 更新 AppShell、Diary、Memories、Muya 和状态结构 |
-| `docs/lifecycle/02-系统设计 Design/架构设计文档 Architecture.md` | 更新前端模块边界和性能策略 |
-| `docs/lifecycle/04-测试阶段 Testing/性能测试报告 Performance Test.md` | 替换无关的服务器/订单模板，写入 Electron 实测结果 |
+| 文件                                                                  | 修改职责                                                       |
+| --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `src/renderer/src/App.tsx`                                            | 只保留阶段/视图分发、全局底座和懒加载边界；移出设置主体        |
+| `src/renderer/src/main.tsx`                                           | 导入拆分后的样式入口和统一主题 token                           |
+| `src/renderer/src/views/WorkspaceView.tsx`                            | 接入 AppShell，移除硬编码白底和重复 TopBar/StatusBar           |
+| `src/renderer/src/views/DiaryView.tsx`                                | 接入 AppShell 和窄窗口预览布局                                 |
+| `src/renderer/src/views/MemoriesView.tsx`                             | 接入 AppShell 和窄窗口预览布局                                 |
+| `src/renderer/src/components/TopBar.tsx`                              | 使用细粒度 store selector 和统一 ActionButton                  |
+| `src/renderer/src/components/ContentArea.tsx`                         | 使用细粒度 selector、语义按钮、确认/撤销策略                   |
+| `src/renderer/src/components/PlanTreePanel.tsx`                       | 收窄订阅、统一按钮与键盘节点，保留当前树动效语义               |
+| `src/renderer/src/components/cards.tsx`                               | 分批迁出 CardShell/卡片注册表；不得与 Muya NoteCard 所有权重叠 |
+| `src/renderer/src/components/SearchOverlay.tsx`                       | 语义结果按钮、结果上限和焦点管理                               |
+| `src/renderer/src/components/NameDialogModal.tsx`                     | loading、防重复提交、输入标签和焦点回归                        |
+| `src/renderer/src/stores/plan-store.ts`                               | 组件级编辑接口、持久化快照和防抖保存                           |
+| `src/renderer/src/stores/tree-store.ts`                               | 为按路径 selector 提供稳定引用，避免无关树节点重渲染           |
+| `src/renderer/src/stores/pref-store.ts`                               | 仅在 Muya 所有权显式交接后补设置描述/实时渲染偏好              |
+| `src/renderer/src/components/muya-note/muya-runtime.ts`               | 仅在正式集成任务中改为懒加载插件组；本计划不得提前改 Muya 行为 |
+| `electron.vite.config.ts`                                             | renderer manualChunks 与构建分析开关                           |
+| `docs/lifecycle/02-系统设计 Design/UI设计规范 UI Guidelines.md`       | 以最终验收结果更新动作、动效、暗色和响应式规范                 |
+| `docs/lifecycle/02-系统设计 Design/前端详细设计 Frontend Design.md`   | 更新 AppShell、Diary、Memories、Muya 和状态结构                |
+| `docs/lifecycle/02-系统设计 Design/架构设计文档 Architecture.md`      | 更新前端模块边界和性能策略                                     |
+| `docs/lifecycle/04-测试阶段 Testing/性能测试报告 Performance Test.md` | 替换无关的服务器/订单模板，写入 Electron 实测结果              |
 
 ### 所有权约束
 
@@ -113,8 +113,11 @@ npm run build
 ### Task 1: 建立可复现基线与计划所有权
 
 **Files:**
+
 - Modify: `docs/HANDOFF-CURRENT.md`
+
 - Modify: `docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md`
+
 - Modify: `docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/plan.json`
 
 - [x] **Step 1: 核对协作基线**
@@ -156,8 +159,11 @@ git commit -m "docs(plan): 启动前端体验与地基整改"
 ### Task 2: 先做动作系统与删除语义 Demo
 
 **Files:**
+
 - Create: `demo/frontend-foundation/index.html`
+
 - Create: `demo/frontend-foundation/style.css`
+
 - Create: `demo/frontend-foundation/main.ts`
 
 - [x] **Step 1: 编写 Demo 验收矩阵**
@@ -173,9 +179,13 @@ Demo 只使用内存样本，不访问 IPC、真实计划目录或 localStorage�
 Expected:
 
 - Enter/Space 能触发按钮；
+
 - Escape 关闭确认层并恢复触发按钮焦点；
+
 - Icon 按钮均有可访问名称；
+
 - 暗色无硬编码白块；
+
 - reduced-motion 下所有位移、缩放、淡入在 50ms 内完成或关闭。
 
 - [x] **Step 4: 用户验收 Demo**
@@ -194,14 +204,23 @@ git commit -m "feat(demo): 添加前端动作系统验收原型"
 ### Task 3: 建立共享动作组件与删除策略
 
 **Files:**
+
 - Create: `src/renderer/src/components/ui/ActionButton.tsx`
+
 - Create: `src/renderer/src/components/ui/ConfirmAction.ts`
+
 - Create: `src/renderer/src/components/ui/UndoNotice.tsx`
+
 - Create: `src/renderer/src/stores/undo-store.ts`
+
 - Create: `test/action-policy.spec.ts`
+
 - Create: `test/accessibility-contract.spec.tsx`
+
 - Modify: `src/renderer/src/components/ContentArea.tsx`
+
 - Modify: `src/renderer/src/components/PlanTreePanel.tsx`
+
 - Modify: `src/renderer/src/components/cards.tsx` outside NoteCard-owned range only
 
 - [x] **Step 1: 写删除策略失败测试**
@@ -253,8 +272,11 @@ interface UndoEntry {
 - [x] **Step 5: 接入删除入口**
 
 - 树节点、组件卡、预设：确认后删除；
+
 - 任务行、选项：立即删除并登记 5 秒撤销；
+
 - 删除成功后焦点落到同层下一项、上一项或容器；
+
 - 不修改 NoteCard 的 Muya 行为。
 
 - [x] **Step 6: 验证并提交**
@@ -273,14 +295,23 @@ git commit -m "feat(ui): 统一动作组件与删除策略"
 > 2026-09-16 恢复：代码基线 `9478fb9`、文档 HEAD `c51c3a5`；执行者 Codex，精确文件边界见 HANDOFF 顶部。先补失败回归，再实施及三跑，不进入 Task 5 或 Muya 集成。
 
 **Files:**
+
 - Create: `src/renderer/src/styles/tokens.css`
+
 - Create: `src/renderer/src/styles/base.css`
+
 - Modify: `src/renderer/src/styles/actions.css`（Task 3 已创建）
+
 - Create: `src/renderer/src/styles/antd-theme.ts`（正式与 QA 共用语义桥）
+
 - Create: `test/frontend-foundation-css.spec.ts`、`test/score-accessibility.spec.ts`
+
 - Modify: `src/renderer/src/styles/workspace.css`
+
 - Modify: `src/renderer/src/main.tsx`
+
 - Modify: `src/renderer/src/views/WorkspaceView.tsx`
+
 - Modify: `components/StatusBar.tsx`、`TopBar.tsx`、`SearchOverlay.tsx`、`ContentArea.tsx`、`PlanTreePanel.tsx`、`cards.tsx`（非 NoteCard）、`views/DiaryView.tsx`、`MemoriesView.tsx`、`demo/frontend-foundation/`（以上均相对 renderer/src，Demo 除外；见 HANDOFF 精确边界）
 
 - [x] **Step 1: 建立颜色对比测试数据**
@@ -294,8 +325,11 @@ git commit -m "feat(ui): 统一动作组件与删除策略"
 - [x] **Step 3: 修复硬编码与焦点**
 
 - 将 `WorkspaceView.tsx` 的 `#fff` 替换为语义 token；
+
 - 所有移除 outline 的输入必须有 `:focus-visible` 或 `:focus-within` 替代；
+
 - 所有可点击 `span/div` 改为原生 button，或补齐 role、tabIndex、Enter/Space；
+
 - 状态栏异步保存/索引状态增加 `aria-live="polite"`。
 
 - [x] **Step 4: 清除全属性动画**
@@ -321,13 +355,21 @@ git commit -m "refactor(ui): 收敛主题焦点与减弱动效"
 > 2026-09-16 完成：代码提交 `5659fe4` 已快进 main。最终 typecheck 0 错、23 文件 216/216、build 成功（renderer 3166 modules、8.30s、JS 2642.81kB、CSS 52.39kB）；720/959/960/1200 Chrome/CDP 真实组件回归通过，规格与质量双审查通过。Electron 真机/DPI 仍待后续验收。
 
 **Files:**
+
 - Create: `src/renderer/src/components/AppShell.tsx`
+
 - Create: `src/renderer/src/styles/shell.css`
+
 - Modify: `src/renderer/src/App.tsx`
+
 - Modify: `src/renderer/src/views/WorkspaceView.tsx`
+
 - Modify: `src/renderer/src/views/DiaryView.tsx`
+
 - Modify: `src/renderer/src/views/MemoriesView.tsx`
+
 - Modify: `src/renderer/src/components/TopBar.tsx`
+
 - Modify: `src/renderer/src/components/StatusBar.tsx`
 
 - [x] **Step 1: 写 AppShell 结构测试**
@@ -371,21 +413,37 @@ git commit -m "refactor(shell): 统一多视图应用骨架"
 > 2026-09-16 完成：代码提交 `1483d6e` 已快进 main。只做机械迁移；NoteCard 函数体与 Muya/pref/settings 边界保持冻结。精确验证与限制见 HANDOFF。
 
 **Files:**
+
 - Create: `src/renderer/src/styles/tree.css`
+
 - Create: `src/renderer/src/styles/cards.css`
+
 - Create: `src/renderer/src/styles/diary.css`
+
 - Create: `src/renderer/src/styles/memories.css`
+
 - Create: `src/renderer/src/styles/search.css`
+
 - Create: `src/renderer/src/components/cards/CardShell.tsx`
+
 - Create: `src/renderer/src/components/cards/card-registry.tsx`
+
 - Create: `src/renderer/src/components/cards/SinglePlanCard.tsx`
+
 - Create: `src/renderer/src/components/cards/MultiPlanCard.tsx`
+
 - Create: `src/renderer/src/components/cards/TaskListCard.tsx`
+
 - Create: `src/renderer/src/components/cards/TaskDetailCard.tsx`
+
 - Create: `src/renderer/src/components/cards/MoodCard.tsx`
+
 - Create: `src/renderer/src/components/cards/HeadingCard.tsx`
+
 - Create: `src/renderer/src/components/cards/FallbackBlock.tsx`
+
 - Modify: `src/renderer/src/styles/workspace.css`
+
 - Modify: `src/renderer/src/components/cards.tsx`
 
 - [x] **Step 1: 按职责机械迁移 CSS**
@@ -418,23 +476,35 @@ git commit -m "refactor(renderer): 拆分样式与卡片职责"
 
 ### Task 7: 将高频编辑收敛到组件级更新
 
+> 2026-09-16 完成：代码提交 `0590671` 已快进 main；组件引用稳定、memo 隔离与保存竞态均有红绿测试。精确验证与限制见 HANDOFF。
+
 **Files:**
+
 - Create: `test/plan-editing.spec.ts`
+
 - Modify: `src/renderer/src/stores/plan-store.ts`
+
 - Modify: `src/renderer/src/components/ContentArea.tsx`
+
 - Modify: `src/renderer/src/components/cards/card-registry.tsx`
+
 - Modify: `src/renderer/src/components/cards/SinglePlanCard.tsx`
+
 - Modify: `src/renderer/src/components/cards/MultiPlanCard.tsx`
+
 - Modify: `src/renderer/src/components/cards/TaskListCard.tsx`
+
 - Modify: `src/renderer/src/components/cards/TaskDetailCard.tsx`
+
 - Modify: `src/renderer/src/components/cards/MoodCard.tsx`
+
 - Modify: `src/renderer/src/components/cards/HeadingCard.tsx`
 
-- [ ] **Step 1: 写引用稳定性失败测试**
+- [x] **Step 1: 写引用稳定性失败测试**
 
 测试必须构造至少 100 个组件，编辑第 50 个组件后断言：被编辑组件引用变化；其他 99 个组件引用保持不变；保存快照包含最新内容；CAS 锚点语义不变。
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 ```bash
 npx vitest run test/plan-editing.spec.ts
@@ -442,7 +512,7 @@ npx vitest run test/plan-editing.spec.ts
 
 Expected: FAIL，当前 `structuredClone(document)` 会使全部组件引用变化。
 
-- [ ] **Step 3: 实现组件级不可变更新**
+- [x] **Step 3: 实现组件级不可变更新**
 
 新增动作：
 
@@ -452,15 +522,15 @@ patchComponent(componentId: string, patch: (component: Component) => Component):
 
 只复制 `PlanDocument`、`components` 数组和目标组件/目标 payload；禁止每次按键完整 `structuredClone`。防抖保存仍以当前完整文档快照写盘，CAS 冲突处理不变。
 
-- [ ] **Step 4: 隔离卡片重渲染**
+- [x] **Step 4: 隔离卡片重渲染**
 
 卡片组件使用 `React.memo`；传入稳定的 component 引用、index、total 和动作引用。编辑目标卡时，无关卡片不得重渲染。
 
-- [ ] **Step 5: 验证输入与保存竞态**
+- [x] **Step 5: 验证输入与保存竞态**
 
 覆盖连续输入、保存中继续输入、切计划、删除当前计划、外部变更和 CAS 冲突；不得丢最后一次输入。
 
-- [ ] **Step 6: 验证并提交**
+- [x] **Step 6: 验证并提交**
 
 ```bash
 npx vitest run test/plan-editing.spec.ts
@@ -475,9 +545,13 @@ git commit -m "perf(editor): 隔离组件级编辑更新"
 ### Task 8: 页面与 Muya 懒加载、构建预算
 
 **Files:**
+
 - Create: `test/bundle-budget.spec.ts`
+
 - Modify: `src/renderer/src/App.tsx`
+
 - Modify: `src/renderer/src/components/muya-note/muya-runtime.ts`
+
 - Modify: `electron.vite.config.ts`
 
 - [ ] **Step 1: 写构建预算测试**
@@ -517,10 +591,15 @@ git commit -m "perf(bundle): 延迟加载页面与 Muya 运行时"
 ### Task 9: 优化计划树订阅与长列表
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PlanTreePanel.tsx`
+
 - Modify: `src/renderer/src/stores/tree-store.ts`
+
 - Modify: `src/renderer/src/components/SearchOverlay.tsx`
+
 - Modify: search IPC/service contract only if result limit cannot stay renderer-local
+
 - Test: corresponding tree/search specs
 
 - [ ] **Step 1: 添加树渲染计数诊断测试**
@@ -553,8 +632,11 @@ git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 ### Task 10: 建立真实 Electron 性能报告
 
 **Files:**
+
 - Create: `src/renderer/src/perf/marks.ts`
+
 - Modify: `docs/lifecycle/04-测试阶段 Testing/性能测试报告 Performance Test.md`
+
 - Modify: performance scripts under `scripts/` with a Trace-specific filename
 
 - [ ] **Step 1: 定义本地桌面指标**
@@ -576,7 +658,9 @@ git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 - [ ] **Step 3: 建立两档样本库**
 
 - 标准：100 计划、1000 任务；
+
 - 上限：1000 计划、10000 任务；
+
 - 样本写入临时目录，不读取或污染用户真实计划库。
 
 - [ ] **Step 4: 替换无关性能模板**
@@ -595,11 +679,17 @@ git commit -m "test(perf): 建立 Electron 性能基线"
 ### Task 11: 同步设计与架构文档
 
 **Files:**
+
 - Modify: `docs/lifecycle/02-系统设计 Design/UI设计规范 UI Guidelines.md`
+
 - Modify: `docs/lifecycle/02-系统设计 Design/前端详细设计 Frontend Design.md`
+
 - Modify: `docs/lifecycle/02-系统设计 Design/架构设计文档 Architecture.md`
+
 - Modify: `docs/Plan/README.md`
+
 - Modify: this plan
+
 - Modify: `docs/HANDOFF-CURRENT.md`
 
 - [ ] **Step 1: 更新 UI 真源**
@@ -660,6 +750,14 @@ flowchart TD
 
 ## 4. 当前下一步、等待与剩余工作
 
+### Task 7 完成交付（2026-09-16）
+
+- 正式提交 `0590671` 已快进 main：组件级更新只替换目标引用链，注册表统一 memo 卡片；结构变更和 IPC 保存合约保持原路径。
+- 会话代次、编辑修订号与待保存操作重放共同解决保存中继续输入、切换/删除计划及 CAS 竞态；组件 patch 冻结首次结果，避免生成 ID 等回调在冲突重放时二次执行。
+- TDD 多轮红绿覆盖 100 组件引用稳定、完整保存快照、CAS 锚点、memo、连续输入、旧保存隔离、外部变更、冲突重放与非确定回调。主目录最终复验 typecheck 0、26 文件 230/230、build 成功（renderer 3174 modules、9.09s、JS 2645.44kB、CSS 53.21kB）。
+- 实际只改四个必要文件；ContentArea、六个卡片与 NoteCard/Muya/pref/settings 均未机械修改。既有三组分包警告留待 Task 8。
+- 下一步：Task 8 页面与 Muya 懒加载、构建预算；等待 Muya Demo 用户验收。剩余 Task 8–11、真实 Electron/DPI、真实数据视觉与真实性能验收。
+
 ### Task 6 完成交付（2026-09-16）
 
 - 正式提交 `1483d6e` 已快进 main：CSS 按 shell/tree/cards/search/diary/memories 拆域，卡片外壳、七类卡片、FallbackBlock 与穷尽注册表完成拆分；未知/`custom` 回退行为保留。
@@ -712,14 +810,23 @@ flowchart TD
 ### 第一批记录（2026-09-16）
 
 - 用户授权直接执行 Task 1–2；隔离工作区 `.worktrees/frontend-foundation`，分支 `codex/frontend-foundation`。
+
 - 主目录 HEAD `cfb34eb`（忽略隔离目录）；Demo 提交 `000e48f`，未合并主分支、未推送。
+
 - 基线/审计/计划记录已提交 `eb441e3`；Task 1 完成，Task 2 仅用户验收未完成。
+
 - 类型检查 0 错；完整测试 18 文件 185/185；main/preload/renderer 构建通过，renderer 3157 模块、9.12s，JS 2,629,864 B。首次测试因 Git 文本行尾转换失败，已恢复来源字节并补 `.gitattributes`/文本 LF 修复；没有放宽指纹断言。
+
 - Demo build 5 模块、146ms，JS 3.65kB、CSS 36.20kB；Demo 独立 tsc 通过。
+
 - Chrome/CDP 验收通过：原位撤销、连续删除单槽、5 秒过期、组件确认、Escape 焦点恢复、720/959/960/1200 宽度无水平溢出、暗色与减弱动效。
+
 - 启动：在隔离工作区执行 `npx vite demo/frontend-foundation --host 127.0.0.1 --port 52820 --strictPort`，浏览器 `http://127.0.0.1:52820/`。
+
 - 自动测试未替代 Windows DPI、完整 Tab/Enter/Space 动线和视觉手动验收。Task 2 用户验收未完成，Task 3–11 不开工。
 
 - 当前下一步：Task 5 AppShell 骨架提升（Task 4 已完成）。
+
 - 当前等待：已验收视图骨架变更确认、Muya Demo 用户验收；Electron 真机视觉/DPI 验收仍待补。
+
 - 当前剩余：Task 5–11、Muya 主线验收/正式集成及真实性能采样；本轮未启动 Task 5。
