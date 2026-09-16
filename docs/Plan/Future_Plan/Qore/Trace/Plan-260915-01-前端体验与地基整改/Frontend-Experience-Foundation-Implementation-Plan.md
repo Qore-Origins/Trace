@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–5 完成；Task 6 待确认
+**Status:** Task 1–6 完成；下一步 Task 7（尚未启动）
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -368,6 +368,8 @@ git commit -m "refactor(shell): 统一多视图应用骨架"
 
 ### Task 6: 拆分全局样式与卡片职责
 
+> 2026-09-16 完成：代码提交 `1483d6e` 已快进 main。只做机械迁移；NoteCard 函数体与 Muya/pref/settings 边界保持冻结。精确验证与限制见 HANDOFF。
+
 **Files:**
 - Create: `src/renderer/src/styles/tree.css`
 - Create: `src/renderer/src/styles/cards.css`
@@ -386,23 +388,23 @@ git commit -m "refactor(shell): 统一多视图应用骨架"
 - Modify: `src/renderer/src/styles/workspace.css`
 - Modify: `src/renderer/src/components/cards.tsx`
 
-- [ ] **Step 1: 按职责机械迁移 CSS**
+- [x] **Step 1: 按职责机械迁移 CSS**
 
 先只移动规则，不改选择器和值；每移动一组即运行构建，确保 cascade 顺序不变。`workspace.css` 最终仅按固定顺序导入 token、base、actions、shell、tree、cards、search、diary、memories 和 Muya bridge。
 
-- [ ] **Step 2: 抽出 CardShell**
+- [x] **Step 2: 抽出 CardShell**
 
 迁移卡片外壳、排序手柄、升降和删除动作；保持 `data-component-id`、dnd transform、拖动 class 和导出隐藏选择器不变。
 
-- [ ] **Step 3: 抽出卡片注册表**
+- [x] **Step 3: 抽出卡片注册表**
 
 将上述七类卡片迁入精确列出的文件，使用穷尽映射替代 `ComponentRenderer` 内的大 switch；未知类型仍进入 FallbackBlock，不得丢数据。NoteCard 暂留其既有所有权文件，通过注册表导出接入，不在此任务迁移。
 
-- [ ] **Step 4: 保持 NoteCard 所有权边界**
+- [x] **Step 4: 保持 NoteCard 所有权边界**
 
 若 Muya 正式集成仍在进行，只移动 NoteCard 外围注册，不改编辑逻辑、偏好或主题桥；冲突时暂停并更新 HANDOFF，不得自行合并覆盖。
 
-- [ ] **Step 5: 验证并提交**
+- [x] **Step 5: 验证并提交**
 
 ```bash
 npm run typecheck
@@ -657,6 +659,14 @@ flowchart TD
 - Task 11 只能在实际实现和验证完成后执行，禁止提前把计划写成已实现。
 
 ## 4. 当前下一步、等待与剩余工作
+
+### Task 6 完成交付（2026-09-16）
+
+- 正式提交 `1483d6e` 已快进 main：CSS 按 shell/tree/cards/search/diary/memories 拆域，卡片外壳、七类卡片、FallbackBlock 与穷尽注册表完成拆分；未知/`custom` 回退行为保留。
+- NoteCard 函数体与基线逐字符一致，Muya、偏好与设置边界未改；删除 ActionButton 重复样式导入前先补失败测试，最终构建产物 `.trace-action` 根规则仅一份。
+- 最终复验：typecheck 0 错，25 文件 221/221，build 成功（renderer 3174 modules、10.00s、JS 2642.17kB、CSS 52.99kB）；既有三组 store 混合导入警告留待 Task 8。
+- 浏览器验收受本机 Chrome/Edge GPU/CDP 异常影响未形成新的完整通过证据；同一 Electron 宿主对新旧基线在相同固定等待断言处表现一致，稳定后 DOM 正确，未发现本批独有回归，但 Electron/DPI 仍待真机验证。
+- 下一步：Task 7 组件级编辑更新；等待 Muya Demo 用户验收。剩余 Task 7–11、真实 Electron/DPI、真实数据视觉与真实性能验收。
 
 ### Task 5 完成交付（2026-09-16）
 

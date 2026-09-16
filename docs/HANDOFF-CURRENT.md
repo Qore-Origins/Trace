@@ -2,9 +2,28 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-16（Codex：Task 1–5 完成并集成主目录；下一步 Task 6 待确认）
+> 更新：2026-09-16（Codex：Task 1–6 完成；下一步 Task 7）
 
 ## 接手前必做
+
+### Task 6 完成交接（2026-09-16，Codex；优先于下方启动快照）
+
+- 代码提交 `1483d6e`（`refactor(renderer): 拆分样式与卡片职责`）已 fast-forward 到 main；代码集成后实测 main HEAD `1483d6e`、ahead origin/main 21。本文档提交后须再次以 `git log` 为准，未推送。
+- 已实现：`workspace.css` 收敛为九个有序领域入口；tree/cards/search/diary/memories 样式独立；CardShell、七类业务卡片和 FallbackBlock 分文件；ComponentRenderer 通过穷尽注册表分发，未知/`custom` 仍保留内容回退。
+- 边界验证：NoteCard 函数体与基线逐字符一致；Muya、`note-md.tsx`、pref-store、设置宿主未改。CSS 除媒体查询因分文件增加闭合边界外为机械迁移；ActionButton 旧局部 `actions.css` 导入通过先红后绿测试删除，最终构建产物 `.trace-action` 根规则仅一份。
+- 主智能体最终实测：`npm run typecheck` 0 错；25 文件 221/221；`npm run build` 成功，renderer 3174 模块、10.00s、JS 2642.17kB、CSS 52.99kB；`git diff --check` 无内容错误。既有三组 store 混合导入警告未扩大，留待 Task 8。
+- 浏览器限制：本机 Chrome/Edge GPU/CDP 启动异常，现有浏览器脚本未能形成新的完整通过证据；同一隐藏 Electron 宿主对 Task 6 与基线在相同固定等待断言处均失败，稳定后 DOM 布局与焦点终态正确，因此没有发现 Task 6 独有回归，但不得写成真实 Electron/DPI 验收通过。
+- 协作：Claude Code 近期无新增工作，未发生并行文件冲突；Task 6 文件所有权现释放。用户 `Resource/pic/`、`Resource/vid/` 保持未跟踪且未触碰。
+- 下一步：Task 7 将高频编辑收敛到组件级更新；开工前重新登记 `plan-store.ts`、`ContentArea.tsx` 等精确边界。等待 Muya Demo 用户验收；剩余 Task 7–11、Electron 真机/DPI、真实数据视觉与真实性能验收。
+
+### Task 6 启动（2026-09-16，Codex；优先于下方完成快照）
+
+- 用户“继续”确认 Task 6；实测 main/worktree HEAD 均为 `645e0cd`，main ahead 20，工作区仅用户 `Resource/pic/`、`Resource/vid/` 未跟踪。
+- 在 `.worktrees/frontend-foundation` / `codex/frontend-foundation` 实施。Codex 所有权：新建 `styles/tree.css`、`styles/cards.css`、`styles/diary.css`、`styles/memories.css`、`styles/search.css`、`components/cards/{CardShell,card-registry,SinglePlanCard,MultiPlanCard,TaskListCard,TaskDetailCard,MoodCard,HeadingCard,FallbackBlock}.tsx` 及对应结构/注册表测试；修改 `styles/workspace.css`、`styles/shell.css`、`components/cards.tsx`；为消除统一入口后的重复样式，仅删除 `components/ui/ActionButton.tsx` 旧的 `actions.css` 局部导入。必要时只读复用 `demo/frontend-foundation/` 回归，不先改 QA。
+- CSS 契约：只机械移动既有规则，不改选择器和值；`workspace.css` 最终仅保留有序 `@import` 入口。shell/tree/cards/search/diary/memories 各自承担单一职责，保持既有 cascade 与 720/959/960/1200 行为。
+- 卡片契约：抽出 CardShell、七类精确命名卡片与穷尽注册表；未知/`custom` 仍走 FallbackBlock 且数据不丢。`NoteCard` 函数体留在 `cards.tsx`，通过注册表工厂注入，避免循环依赖；Muya、`note-md.tsx`、pref-store、设置宿主和编辑行为不改。
+- TDD：先写文件边界/注册表失败测试并确认因拆分尚不存在而红，再实现。完成后 typecheck/test/build、现有真实组件浏览器回归、规格审查与质量审查。
+- 下一步：Task 6 实施；等待 Muya Demo 用户验收。剩余 Task 6–11、Electron 真机/DPI 与真实数据视觉/性能验收。
 
 ### Task 5 完成交接（2026-09-16，Codex；优先于下方历史快照）
 
