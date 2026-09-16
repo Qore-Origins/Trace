@@ -13,6 +13,7 @@ import ExportView from './views/ExportView'
 import NameDialogModal from './components/NameDialogModal'
 import SearchOverlay from './components/SearchOverlay'
 import { UndoNotice } from './components/ui/UndoNotice'
+import AppShell from './components/AppShell'
 import { useAppStore, subscribeAppEvents } from './stores/app-store'
 import { subscribeTreeEvents, useTreeStore } from './stores/tree-store'
 import { subscribePlanEvents } from './stores/plan-store'
@@ -125,13 +126,15 @@ export default function App(): React.JSX.Element {
     <OnboardingView />
   ) : (
     <>
-      {view === 'diary' ? (
-        <DiaryView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
-      ) : view === 'memories' ? (
-        <MemoriesView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
-      ) : (
-        <WorkspaceView />
-      )}
+      <AppShell showStatus={view === 'workspace'} className={`app-shell--${view}`}>
+        {view === 'diary' ? (
+          <DiaryView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
+        ) : view === 'memories' ? (
+          <MemoriesView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
+        ) : (
+          <WorkspaceView />
+        )}
+      </AppShell>
       <NameDialogModal />
       <SearchOverlay />
       <UndoNotice />

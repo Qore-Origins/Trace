@@ -5,7 +5,6 @@ import { getMessage, getModal } from '../antd-host'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Spin } from 'antd'
 import type { TFunction } from 'i18next'
-import TopBar from '../components/TopBar'
 import { invoke, ClientError } from '../ipc-client'
 import { i18n, useTranslation } from '../i18n'
 import type { DiaryDayComponent, DiaryDaySummary, DiaryMonthEntry } from '@shared/ipc-contract'
@@ -162,16 +161,14 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
   const trend = stats.trend
 
   return (
-    <div className="diary">
-      <TopBar />
-      <div className="diary-main">
-        <div className="diary-content">
-          {loading ? (
-            <div className="diary-loading">
-              <Spin />
-            </div>
-          ) : (
-            <>
+    <div className="diary-main">
+      <div className="diary-content">
+        {loading ? (
+          <div className="diary-loading">
+            <Spin />
+          </div>
+        ) : (
+          <>
               <div className="diary-stats">
                 <div className="diary-stat">
                   <span className="k">{t('diary.statsAvg')}</span>
@@ -352,9 +349,8 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
                   </div>
                 </div>
               </div>
-            </>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   )

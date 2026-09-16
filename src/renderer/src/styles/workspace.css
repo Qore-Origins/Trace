@@ -1,6 +1,7 @@
 /* 兼容入口：主题与全局基础保持单一来源。 */
 @import "./tokens.css";
 @import "./base.css";
+@import "./shell.css";
 
 /* 导出物阅读态（BR-008 离屏窗口 .export-root）：隐藏纯交互控件，保留内容与数据 */
 .export-root .drag-handle,
@@ -15,9 +16,6 @@
 .export-root .task-title input { border: none; background: transparent; }
 
 /* ---------- 回忆视图（F2 · 独立页，demo/memories-view-demo.html 定稿移植） ---------- */
-/* 结构与 .diary 同构：column + 100vh（TopBar 在视图内——三视图各自渲染顶栏的现状骨架）；
-   height:100vh 必须——App 分支顶层非 flex 容器，仅 flex:1 会导致根高度塌陷（用户截图实证） */
-.memories { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }
 .memories-body { flex: 1; display: flex; min-height: 0; }
 .memories-main { flex: 1; overflow: auto; padding: 16px 24px 32px; }
 .memories-inner { max-width: 860px; margin: 0 auto; }
@@ -50,8 +48,7 @@
 .mem-pv-open:hover { background: var(--trace-bg); color: var(--link); }
 .mem-pv-empty { font-size: 12px; color: var(--text-3); text-align: center; padding: 20px 0; }
 
-/* ---------- 布局骨架（§2.2） ---------- */
-.ws { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }
+/* ---------- 工作台内容骨架（应用壳见 shell.css） ---------- */
 .ws-main { flex: 1; display: flex; min-height: 0; }
 .ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); display: flex; flex-direction: column; min-height: 0; position: relative; }
 /* 拖拽调宽手柄（VS Code 参考行为）：右缘 6px 命中带，跨在分界线上；hover/拖动亮蓝提示 */
@@ -405,7 +402,6 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 
 
 /* ---------- 日记视图（日记深化 2026-09-10；布局抄 demo/diary-view-demo.html，颜色全 token） ---------- */
-.diary { display: flex; flex-direction: column; height: 100vh; background: var(--paper-dim); }
 .diary-main { flex: 1; display: flex; min-height: 0; }
 .diary-content { flex: 1; overflow: auto; padding: 14px 24px 32px; }
 .diary-loading { height: 100%; display: flex; align-items: center; justify-content: center; }
