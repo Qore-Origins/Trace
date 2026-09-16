@@ -1,0 +1,168 @@
+/* 导出物阅读态（BR-008 离屏窗口 .export-root）：隐藏纯交互控件，保留内容与数据 */
+.export-root .drag-handle,
+.export-root .heading-tools,
+.export-root .note-actions,
+.export-root .lite-btn,
+.export-root .dashed-btn,
+.export-root .state-ring,
+.export-root .card .actions { display: none !important; }
+/* 日期输入退化为文本观感（去 hover 边框/背景） */
+.export-root input[type='date'] { pointer-events: none; border: none; background: transparent; }
+.export-root .task-title input { border: none; background: transparent; }
+
+.ws-content { flex: 1; overflow: auto; padding: 14px 24px 32px; }
+
+/* ---------- 内容区（§2.3 纸感） ---------- */
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin-bottom: 12px; flex-wrap: wrap; }
+.crumbs .origin-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--origin); }
+.crumbs .here { color: var(--text-1); font-weight: 500; }
+
+/* 计划头部截止日期行（未设=添加按钮；已设=date 输入+清除；过期红警示） */
+.due-date { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 13px; color: var(--text-3); }
+/* focus/过期换色变速过渡；底线恒占（transparent 基线）防 1px 布局跳变 */
+.due-input { font: inherit; color: var(--text-2); border: none; background: transparent; border-bottom: 1px solid transparent; transition: color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out); }
+.due-input:focus { outline: none; border-bottom-color: var(--link); }
+.due-date.overdue .due-input { color: var(--danger-text); }
+.due-overdue { font-size: 12px; color: var(--danger-text); }
+
+.card { background: var(--paper); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 12px 16px; margin-bottom: 12px; position: relative; }
+.card .kind { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); margin-bottom: 4px; user-select: none; }
+.card .head { display: flex; align-items: center; gap: 8px; }
+.card .head h3 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* 卡片操作钮（升/降/删）：overlay 淡入+下移入场——原先 display 瞬切（2026-09-09 禁止瞬切） */
+.card .actions { position: absolute; top: 6px; right: 8px; display: flex; gap: 0; align-items: center; background: var(--paper); border-radius: 6px; opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
+/* 暗色专项：actions 底色换 --fill（比两类卡面都亮一档）+ 描边 + 投影——亮色的"白底浮起"在暗色下是黑团（2026-09-12 用户红框反馈） */
+html.theme-dark .card .actions { background: var(--fill); border: 1px solid var(--border); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); }
+html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
+.card:hover .actions { opacity: 1; transform: none; pointer-events: auto; }
+.card .actions .lite-btn { padding: 2px 6px; }
+
+/* 组件卡拖拽排序（@dnd-kit，同款 AI Resource Hub：实时让位 + 被拖卡浮起） */
+.drag-handle { display: inline-flex; flex: none; padding: 1px; border-radius: 4px; cursor: grab; color: var(--text-3); transition: color var(--t-ui) var(--ease-out); }
+.drag-handle:hover { color: var(--link); }
+.drag-handle:active { cursor: grabbing; }
+.card.dragging { z-index: 10; scale: 1.02; box-shadow: 0 0 0 2px var(--trace-500), 0 10px 28px var(--shadow-pop); }
+
+.card.pulse { animation: card-pulse 2s ease-out; }
+@keyframes card-pulse {
+  0% { box-shadow: 0 0 0 3px var(--pulse-strong), var(--shadow-card); }
+  70% { box-shadow: 0 0 0 3px var(--pulse-weak), var(--shadow-card); }
+  100% { box-shadow: var(--shadow-card); }
+}
+
+/* 单选计划（§3.3 有重量的卡） */
+.single-title { border: none; outline: none; font-size: 16px; font-weight: 600; flex: 1; min-width: 0; color: var(--text-1); background: transparent; }
+.card.single-done .single-title { text-decoration: line-through; color: var(--text-3); }
+.single-summary { margin-top: 6px; margin-left: 28px; }
+.card.single-done .single-summary textarea { color: var(--text-3); }
+/* 左缘 28px 与 .single-summary 对齐（2026-09-09 ledger 对齐项——meas 320 vs 348 差此值） */
+.single-due { margin-top: 4px; margin-left: 28px; display: flex; align-items: center; gap: 8px; }
+.single-due-input { font-size: 12px; border: none; background: transparent; color: var(--text-3); font-family: inherit; padding: 0; transition: color var(--t-ui) var(--ease-out); }
+.single-due-input.overdue { color: var(--danger-text); }
+.single-due-overdue { font-size: 12px; color: var(--danger-text); }
+
+/* 任务行（§3.2 足迹三态）——交互态统一过渡（2026-09-09 禁止瞬切：B 方案 overlay 删除钮） */
+.task-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 5px 60px 5px 4px; border-radius: 6px; transition: background-color var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out); }
+.task-row:hover { background: var(--paper-dim); }
+.task-row .state-ring { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--text-4); cursor: pointer; position: relative; transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out); background: transparent; padding: 0; }
+.task-row.doing .state-ring { border-color: var(--link); background: var(--trace-500); box-shadow: 0 0 0 3px var(--trace-bg); }
+.task-row.doing .task-title input { color: var(--link); }
+.task-row.done .state-ring { border-color: var(--text-3); background: var(--fill); }
+/* 勾号常驻（opacity 切换）——content 不可过渡，改为恒有 + 淡入缩放入场 */
+.task-row .state-ring::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-3); opacity: 0; scale: 0.6; transition: opacity var(--t-ui) var(--ease-out), scale 0.22s var(--ease-spring); }
+.task-row.done .state-ring::after { opacity: 1; scale: 1; }
+.task-row.done .task-title input { text-decoration: line-through; color: var(--text-3); }
+.task-row.done { opacity: 1; }
+.task-title { flex: 1; min-width: 0; }
+.task-title input { border: none; outline: none; width: 100%; font-size: 14px; background: transparent; color: var(--text-1); transition: color var(--t-ui) var(--ease-out); }
+.task-date { font-size: 12px; color: var(--text-3); border: 1px solid transparent; border-radius: 4px; padding: 2px; background: transparent; transition: border-color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out); }
+.task-date:hover { border-color: var(--border); background: var(--input-hover-bg); }
+/* 逾期标：max-width+opacity 平滑展开（@starting-style 入场，不顶动布局）；
+   离开为 React 卸载（数据态低频，无 leave 钩子，可缓） */
+.tag-overdue { font-size: 11px; color: var(--warn-text); background: var(--warn-bg); border-radius: 4px; padding: 1px 6px; flex: none; max-width: 52px; overflow: hidden; transition: max-width var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out), padding var(--t-ui) var(--ease-out); }
+@starting-style { .tag-overdue { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; } }
+/* 删除钮 B 方案（demo/del-hover-demo.html 定稿）：overlay 不占位——hover 淡入+右滑入，内容永不被顶；
+   行右 padding 60px 为悬浮缓冲（防盖死日期）；按钮在行内，移出即离场无间隙 */
+.task-del { position: absolute; right: 8px; top: 50%; flex: none; transform: translateY(-50%) translateX(6px); opacity: 0; pointer-events: none; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
+.task-row:hover .task-del { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
+
+/* 注释旁批（§3.5） */
+.card.note { background: var(--paper-dim); border-left: 4px solid var(--split); border-radius: 0 var(--r-card) var(--r-card) 0; }
+.card.note textarea { font-size: 13px; color: var(--text-2); }
+.note-time { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+
+/* 注释组件 Markdown 渲染态（view） */
+.note-md { font-size: 13px; line-height: 1.7; color: var(--text-2); user-select: text; }
+.note-md p { margin: 0 0 8px; }
+.note-md p:last-child { margin-bottom: 0; }
+.note-md ul, .note-md ol { margin: 4px 0 8px; padding-left: 20px; }
+.note-md li { margin-bottom: 2px; }
+.note-md pre {
+  margin: 0 0 8px; padding: 8px 10px;
+  background: var(--code-bg); border: 1px solid var(--split); border-radius: 6px;
+  overflow-x: auto;
+}
+.note-md pre:last-child { margin-bottom: 0; }
+.note-md pre code { font-family: Consolas, 'Courier New', monospace; font-size: 12px; line-height: 1.6; color: var(--text-1); white-space: pre; }
+/* 代码块语法高亮（highlight.js token 配色；github-light 色系对齐 Trace 纸面——不用 hljs 整包主题防背景冲突） */
+.note-md .hljs-keyword, .note-md .hljs-selector-tag, .note-md .hljs-literal, .note-md .hljs-section { color: var(--hl-keyword); }
+.note-md .hljs-string, .note-md .hljs-attr, .note-md .hljs-symbol, .note-md .hljs-bullet, .note-md .hljs-addition { color: var(--hl-string); }
+.note-md .hljs-comment, .note-md .hljs-quote, .note-md .hljs-deletion, .note-md .hljs-meta { color: var(--hl-comment); font-style: italic; }
+.note-md .hljs-number, .note-md .hljs-regexp, .note-md .hljs-link { color: var(--hl-number); }
+.note-md .hljs-title, .note-md .hljs-title.function_, .note-md .hljs-name, .note-md .hljs-selector-id, .note-md .hljs-selector-class { color: var(--hl-title); }
+.note-md .hljs-built_in, .note-md .hljs-class .hljs-title, .note-md .hljs-type, .note-md .hljs-template-variable, .note-md .hljs-variable { color: var(--hl-type); }
+.note-md .hljs-emphasis { font-style: italic; }
+.note-md .hljs-strong { font-weight: 600; }
+.note-md :not(pre) > code {
+  font-family: Consolas, 'Courier New', monospace; font-size: 12px;
+  background: var(--fill); border-radius: 3px; padding: 1px 4px;
+}
+.note-md a { color: var(--link); text-decoration: none; cursor: pointer; }
+.note-md a:hover { text-decoration: underline; }
+.note-md strong { color: var(--text-1); }
+/* 引用/分隔线/表格（2026-09-10 渲染器扩展——用户命名设计文档截图修复） */
+.note-md blockquote { margin: 0 0 8px; padding: 2px 10px; border-left: 3px solid var(--split); color: var(--text-3); }
+.note-md blockquote:last-child { margin-bottom: 0; }
+.note-md hr { border: none; border-top: 1px solid var(--split); margin: 10px 0; }
+.note-md table { border-collapse: collapse; margin: 0 0 8px; font-size: 12px; }
+.note-md th, .note-md td { border: 1px solid var(--split); padding: 4px 8px; text-align: left; }
+.note-md th { background: var(--paper-dim); font-weight: 600; color: var(--text-1); }
+.note-actions { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+/* 编辑态格式工具栏（marktext/word 式一键样式；按钮字母按所代表样式渲染） */
+.note-fmt-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+.fmt-btn { border: 1px solid var(--border); background: var(--paper); border-radius: 4px; color: var(--text-2); font-size: 12px; padding: 1px 7px; cursor: pointer; line-height: 1.6; transition: background-color var(--t-ui) var(--ease-out), color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out); }
+.fmt-btn:hover { border-color: var(--link); color: var(--link); background: var(--trace-bg); }
+.fmt-btn.b { font-weight: 700; }
+.fmt-btn.i { font-style: italic; }
+.fmt-btn.s { text-decoration: line-through; }
+.fmt-btn.u { text-decoration: underline; }
+/* 渲染态自动换行开关（卡内局部状态）：wrap 时代码块/超长行折行显示 */
+.note-md.wrap pre { white-space: pre-wrap; word-break: break-word; }
+.note-actions-end { justify-content: flex-end; }
+.note-actions-end .ant-btn { color: var(--text-3); }
+.note-hint { font-size: 11px; color: var(--text-3); }
+
+/* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
+.card.mood { border-left: 4px solid var(--split); }
+.mood-row { display: flex; align-items: center; gap: 12px; }
+.mood-score { font-size: 28px; font-weight: 700; min-width: 56px; text-align: right; display: flex; align-items: center; justify-content: flex-end; transition: color var(--t-roll) var(--ease-out); }
+/* 心情分数轮带（V1 定稿移植）：每列 0-9 循环带，strip 逐列 transition；
+   列容器须 flex（非替换 inline 不可变换，隐式失败无报错——ERROR 库 inline-span-transform-ignored） */
+.mood-score-roll { display: inline-flex; align-items: center; font-variant-numeric: tabular-nums; }
+.mood-score-roll .roll-col { display: inline-flex; flex-direction: column; overflow: hidden; height: 32px; }
+.mood-score-roll .roll-strip { transition: transform var(--t-roll) var(--ease-out); will-change: transform; }
+.mood-score-roll .roll-strip span { display: block; height: 32px; line-height: 32px; }
+.mood-score-roll .roll-point { height: 32px; line-height: 32px; }
+.mood-input { width: 120px; }
+.mood-meta { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.mood-date { font: inherit; border: none; background: transparent; color: var(--text-3); }
+.card.heading { padding-top: 4px; padding-bottom: 4px; }
+.heading-input { font-weight: 600; color: var(--text-1); }
+.heading-tools { display: flex; align-items: center; gap: 8px; }
+.heading-tools .ant-slider { flex: 1; }
+.heading-size { font-size: 12px; color: var(--text-3); min-width: 36px; text-align: right; }
+
+/* 文件夹容器视图 */
+.folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.folder-item { display: flex; align-items: center; gap: 8px; cursor: pointer; transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out); }
+.folder-item:hover { border-color: var(--link); }

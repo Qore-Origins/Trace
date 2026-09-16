@@ -3,10 +3,13 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const root = resolve('src/renderer/src')
-const css = readFileSync(resolve(root, 'styles/workspace.css'), 'utf8')
+const workspace = readFileSync(resolve(root, 'styles/workspace.css'), 'utf8')
+const css = ['shell.css', 'tree.css', 'cards.css', 'search.css', 'diary.css', 'memories.css']
+  .map((file) => readFileSync(resolve(root, 'styles', file), 'utf8'))
+  .join('\n')
 const tokensPath = resolve(root, 'styles/tokens.css')
 const basePath = resolve(root, 'styles/base.css')
-const tokens = existsSync(tokensPath) ? readFileSync(tokensPath, 'utf8') : css
+const tokens = existsSync(tokensPath) ? readFileSync(tokensPath, 'utf8') : workspace
 const base = existsSync(basePath) ? readFileSync(basePath, 'utf8') : css
 function luminance(hex: string): number {
   const channels = hex.match(/[a-f\d]{2}/gi)!.map((channel) => {
@@ -33,9 +36,9 @@ describe('frontend information and interaction foundation', () => {
     }
   })
   it('keeps tokens and global rules behind the compatible workspace entry', () => {
-    expect(css).toContain('@import "./tokens.css"')
-    expect(css).toContain('@import "./base.css"')
-    expect(css).not.toMatch(/--[\w-]+:\s*#/)
+    expect(workspace).toContain('@import "./tokens.css"')
+    expect(workspace).toContain('@import "./base.css"')
+    expect(workspace).not.toMatch(/--[\w-]+:\s*#/)
     expect(base).toContain('::view-transition-old(root)')
   })
   it('reserves muted decoration for non-information elements', () => {

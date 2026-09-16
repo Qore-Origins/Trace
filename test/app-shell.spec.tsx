@@ -44,15 +44,12 @@ describe('AppShell structure contract', () => {
   })
 
   it('stacks diary and memories secondary content below 960px', () => {
-    const shellCssPath = resolve(rendererRoot, 'styles/shell.css')
-    expect(existsSync(shellCssPath), 'shell.css must own the responsive ready-state frame').toBe(true)
-    if (!existsSync(shellCssPath)) return
-
-    const css = readFileSync(shellCssPath, 'utf8')
-    expect(css).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.diary-layout\s*\{[^}]*flex-direction:\s*column/)
-    expect(css).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.diary-tl\s*\{[^}]*width:\s*100%/)
-    expect(css).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.memories-body\s*\{[^}]*flex-direction:\s*column/)
-    expect(css).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.memories-preview\s*\{[^}]*width:\s*auto/)
+    const diary = readFileSync(resolve(rendererRoot, 'styles/diary.css'), 'utf8')
+    const memories = readFileSync(resolve(rendererRoot, 'styles/memories.css'), 'utf8')
+    expect(diary).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.diary-layout\s*\{[^}]*flex-direction:\s*column/)
+    expect(diary).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.diary-tl\s*\{[^}]*width:\s*100%/)
+    expect(memories).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.memories-body\s*\{[^}]*flex-direction:\s*column/)
+    expect(memories).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.memories-preview\s*\{[^}]*width:\s*auto/)
   })
 
   it('keeps compact top-bar labels on one line at narrow widths', () => {

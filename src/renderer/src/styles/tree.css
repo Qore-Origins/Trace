@@ -1,0 +1,106 @@
+.ws-tree { width: 280px; flex: none; background: var(--paper); border-right: 1px solid var(--split); display: flex; flex-direction: column; min-height: 0; position: relative; }
+/* 拖拽调宽手柄（VS Code 参考行为）：右缘 6px 命中带，跨在分界线上；hover/拖动亮蓝提示 */
+.tree-resizer { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; z-index: 5; background: transparent; }
+.tree-resizer:hover, .tree-resizer:active { background: var(--resizer-hover); }
+.ws-tree .tree-scroll { flex: 1; overflow: auto; padding: 8px 6px 4px; }
+.ws-tree .tree-footer { flex: none; display: flex; gap: 6px; padding: 8px 6px 10px; border-top: 1px solid var(--split); }
+
+@media (max-width: 959px) {
+  .ws-tree { display: none; }
+}
+
+/* ---------- 计划树（§3.1 连接线=迹的骨架；源头圆点） ---------- */
+.tree-root-label { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-weight: 500; }
+.tree-root-label .origin-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--origin); }
+/* 日记根蓝标（仅显示层标记；磁盘目录名仍为 Diary，永不改名） */
+.diary-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--trace-500); flex: none; }
+.tree-node-title { display: flex; align-items: center; gap: 4px; overflow: hidden; flex: 1; min-width: 0; }
+.tree-node-title .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 树行快捷钮：overlay 淡入+右滑入——原 display 瞬切会推动节点标题宽度（2026-09-09 禁止瞬切） */
+.tree-quick { position: absolute; right: 8px; top: 50%; display: flex; gap: 0; opacity: 0; transform: translateY(-50%) translateX(6px); pointer-events: none; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out), right var(--t-ui) var(--ease-out); }
+.tree-row:hover .tree-quick { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
+.tree-row:focus-within .tree-quick { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
+.tree-quick .lite-btn { padding: 2px 5px; }
+
+/* 自渲染树行（2026-09-07 dnd-kit 版，视觉对齐 antd 时代基线） */
+.tree-row { position: relative; display: flex; align-items: center; min-height: 28px; border-radius: 6px; padding: 0 4px 0 2px; user-select: none; transition: background-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out); }
+.tree-row:hover { background: var(--paper-dim); }
+.tree-row.drop-into { background: var(--trace-bg); box-shadow: inset 0 0 0 1px var(--trace-500); }
+.tree-row.dragging { z-index: 10; background: var(--paper); box-shadow: 0 0 0 2px var(--trace-500), 0 10px 28px var(--shadow-pop); }
+.tree-guides { display: flex; flex: none; align-self: stretch; }
+.tree-guides .guide { width: 18px; flex: none; border-left: 1px solid var(--split); }
+.tree-switcher { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-3); cursor: pointer; padding: 0; font-size: 10px; border-radius: 4px; transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out); }
+.tree-switcher:hover { color: var(--text-1); background: var(--fill); }
+.tree-switcher.placeholder { visibility: hidden; }
+.tree-row .drag-handle { margin-right: -2px; }
+/* 拖拽进行中：抑制行 hover 底色与快捷按钮浮现（与浮起跟随/落点高亮反馈叠加会闪烁） */
+.tree-scroll.is-dragging .tree-row:hover { background: transparent; }
+.tree-scroll.is-dragging .tree-row:hover .tree-quick { opacity: 0; pointer-events: none; }
+/* 拖拽进行中：取消行槽裁切（2026-09-12 用户反馈"卡片从纸中裁剪下来/页面出现洞"）——
+   被拖行 transform 跟随指针时不再被 .slot-inner 的 overflow:hidden 裁成残块；
+   拖拽中入场/收拢动画本就不播，放开裁切无副作用 */
+.tree-scroll.is-dragging .slot-inner { overflow: visible; }
+
+/* ---------- 树动效（2026-09-08 卡牌摞 D1-D8；demo 定稿移植） ----------
+   行槽结构：.slot（grid 0fr↔1fr 高度槽）> .slot-inner > .deal（发牌动画包装）> .tree-row（dnd transform）
+   动画放 .deal 而非 .tree-row：dnd-kit 拖拽的 inline transform 会被 CSS 动画 fill 覆盖 */
+.slot { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--t-slot) var(--ease-out); transition-delay: var(--enter-delay, 0ms); }
+@starting-style { .slot { grid-template-rows: 0fr; } } /* 挂载即从收拢态展开（入场零 JS） */
+.slot > .slot-inner { overflow: hidden; min-height: 0; }
+/* D3 收拢：槽位 zipper 合拢（跟随收牌波次，反向 delay） */
+.slot.closing { grid-template-rows: 0fr; transition: grid-template-rows calc(var(--t-gather) * .72) var(--ease-in); transition-delay: var(--exit-delay, 0ms); }
+/* 删除收拢：行槽平滑收合（独立于 closing 通道——被删行自身收合消失不弹回；2026-09-10） */
+.slot.removing { grid-template-rows: 0fr; transition: grid-template-rows var(--t-gather) var(--ease-in); transition-delay: 0ms; }
+.slot.removing .deal { animation: gather-out var(--t-gather) var(--ease-in) both; }
+
+/* D2 发牌：卡牌从父行方向（上·左）抽出落位，spring 回弹 */
+.slot .deal { animation: deal-in var(--t-deal) var(--ease-spring) both; animation-delay: var(--enter-delay, 0ms); }
+@keyframes deal-in {
+  from { opacity: 0; transform: translate(-7px, -9px) scale(.94); }
+  55% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+/* D3 收牌：原路吸回父行，ease-in 加速 */
+.slot.closing .deal { animation: gather-out var(--t-gather) var(--ease-in) both; animation-delay: var(--exit-delay, 0ms); }
+@keyframes gather-out { to { opacity: 0; transform: translate(-7px, -9px) scale(.94); } }
+
+/* D6 连接线生长：缩进竖线段锚顶 scaleY 随行画出；收拢被槽位裁切自然回缩 */
+.slot .guide { animation: guide-draw var(--t-slot) var(--ease-out) both; animation-delay: var(--enter-delay, 0ms); transform-origin: top; }
+@keyframes guide-draw { from { transform: scaleY(0); } }
+
+/* 已落位钉住：取消收拢回弹时禁止重播发牌动画（animation 名切换会重启） */
+.slot.settled:not(.closing) .deal,
+.slot.settled:not(.closing) .guide { animation: none; }
+
+/* D4 折叠按钮（方框 +/- 变号）：点击方框整体旋转 180°，旋转途中竖杠消长完成变号；
+   旋转放 .pm-box、按压缩放放 .tree-switcher（transform 分层，互不覆盖） */
+.pm-box { width: 12px; height: 12px; flex: none; border: 1.1px solid currentColor; border-radius: 3.5px; display: grid; place-items: center; transition: transform .3s var(--ease-spring); }
+.tree-switcher.open .pm-box { transform: rotate(180deg); }
+.pm-sign { position: relative; width: 6px; height: 6px; }
+.pm-bar { position: absolute; background: currentColor; border-radius: 1px; }
+.pm-h { left: 0; right: 0; top: 50%; height: 1.4px; transform: translateY(-50%); }
+.pm-v { top: 0; bottom: 0; left: 50%; width: 1.4px; transform: translateX(-50%) scaleY(1); transition: transform .13s linear .07s; }
+.tree-switcher.open .pm-v { transform: translateX(-50%) scaleY(0); }
+
+/* D7 持牌暗示：折叠文件夹 hover 露出两道卡牌边缘（这里有一摞牌） */
+.tree-row.has-deck { position: relative; }
+.tree-row.has-deck::after {
+  content: ''; position: absolute; right: 10px; top: 50%;
+  width: 13px; height: 2px; border-radius: 1px;
+  background: var(--trace-500); box-shadow: 0 3px 0 -0.5px var(--trace-500);
+  opacity: 0; transform: translate(0, -50%);
+  transition: opacity .18s var(--ease-out), transform .22s var(--ease-spring);
+}
+.tree-row.has-deck:hover::after { opacity: .38; transform: translate(4px, -50%); }
+/* 拖拽进行中不露牌边（与落点高亮叠加会闪） */
+.tree-scroll.is-dragging .tree-row.has-deck:hover::after { opacity: 0; }
+/* 牌边让位：持牌行 hover 时快钮右移让出牌边区（overlay 化后改 right 过渡；牌边 right:10px，快钮让到 34px） */
+.tree-row.has-deck:hover .tree-quick { right: 34px; }
+
+/* D5 父行脉冲：展开一闪 + 图标 pop；收拢图标 squish */
+.tree-row.dealt { animation: parent-pulse .5s var(--ease-out); }
+@keyframes parent-pulse { 30% { background: var(--trace-bg); } }
+.tree-row.dealt .node-icon { animation: icon-pop .45s var(--ease-spring); }
+@keyframes icon-pop { 40% { transform: scale(1.18); } }
+.tree-row.gathered .node-icon { animation: icon-squish .4s var(--ease-spring); }
+@keyframes icon-squish { 40% { transform: scale(.86); } }

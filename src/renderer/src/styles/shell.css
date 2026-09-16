@@ -51,31 +51,80 @@
     padding-right: 6px;
     padding-left: 6px;
   }
-
-  .app-shell-main .diary-layout {
-    flex-direction: column;
-  }
-
-  .app-shell-main .diary-tl {
-    width: 100%;
-    max-height: none;
-  }
-
-  .app-shell-main .memories-body {
-    flex-direction: column;
-    overflow: auto;
-  }
-
-  .app-shell-main .memories-main {
-    flex: none;
-    overflow: visible;
-  }
-
-  .app-shell-main .memories-preview {
-    width: auto;
-    flex: none;
-    overflow: visible;
-    border-top: 1px solid var(--split);
-    border-left: none;
-  }
 }
+
+/* ---------- 工作台内容骨架（应用壳见 shell.css） ---------- */
+.ws-main { flex: 1; display: flex; min-height: 0; }
+
+/* 状态栏：弹性高度（min-height + 垂直 padding），固定 28px 在 DPI 缩放下会切字（2026-09-06 用户截图实证） */
+.ws-status { flex: none; min-height: 28px; background: var(--paper); border-top: 1px solid var(--split); display: flex; align-items: center; gap: 20px; padding: 5px 14px; font-size: 12px; line-height: 1.4; color: var(--text-3); box-sizing: border-box; }
+
+/* ---------- 统一轻量按钮（树/卡片内联操作；与 antd 同气质） ---------- */
+.lite-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-3); font-size: 12px; padding: 3px 8px; border-radius: 6px;
+  transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out);
+}
+.lite-btn:hover { background: var(--trace-bg); color: var(--link); }
+.lite-btn:active { background: var(--hover-active); }
+.lite-btn.danger:hover { background: var(--danger-hover-bg); color: var(--danger); }
+.lite-btn:disabled { opacity: 0.35; cursor: default; }
+.lite-btn:disabled:hover { background: transparent; color: var(--text-3); }
+
+/* 虚线创建按钮（树底/插入组件） */
+.dashed-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+  border: 1px dashed var(--border); background: transparent; cursor: pointer;
+  color: var(--text-3); font-size: 12px; padding: 5px 8px; border-radius: 6px;
+  transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out);
+}
+.dashed-btn:hover { color: var(--link); border-color: var(--link); background: var(--trace-bg); }
+
+/* 顶栏：无边框标题栏——整体为拖拽区，交互控件 no-drag（双击空白=最大化/还原 系统行为）
+   注意：新增顶栏交互元素必须加进 no-drag 白名单，否则点击被拖拽区吞掉（menu-title 2026-09-06 实证） */
+.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; -webkit-app-region: drag; user-select: none; }
+.ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input, .ws-top .menu-title, .ws-top .menubar, .ws-top .view-nav { -webkit-app-region: no-drag; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+.brand-dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #3b5bdb, var(--origin)); }
+.ws-top .search { flex: 0 1 400px; }
+.ws-top .spacer { flex: 1; }
+
+/* VS Code 式菜单栏：极简文字，无底色，悬停变色（与窗口控制同语言） */
+.menubar { display: flex; align-items: center; gap: 2px; }
+.menu-title { padding: 4px 10px; font-size: 13px; color: var(--text-2); cursor: pointer; border-radius: 6px; user-select: none; transition: color var(--t-ui) var(--ease-out); }
+.menu-title:hover { color: var(--text-1); background: transparent; }
+.menu-title:focus-visible { outline: 2px solid var(--link); }
+
+/* 视图导航（计划/日记，2026-09-10 日记深化 Task 5）：与菜单栏同语言的文字钮；激活态=主色 */
+.view-nav { display: flex; align-items: center; gap: 2px; }
+.nav-btn { padding: 4px 10px; font-size: 13px; color: var(--text-2); background: transparent; border: none; cursor: pointer; border-radius: 6px; transition: color var(--t-ui) var(--ease-out); }
+.nav-btn:hover { color: var(--text-1); }
+.nav-btn.active { color: var(--link); font-weight: 500; }
+.nav-btn:focus-visible { outline: 2px solid var(--link); }
+
+/* 自绘窗口控制：极简裸图标——无底色无边框无圆角视觉，悬停仅图标变色（2026-09-06 三次定稿）
+   no-drag 在组件级全局生效（而非每个标题栏手动白名单）：引导页标题栏曾漏配致按钮点不开
+   （2026-09-12 用户截图实证；同 menu-title 2026-09-06 病根——拖拽区吞点击） */
+.win-controls, .win-controls .win-btn { -webkit-app-region: no-drag; }
+.win-controls { display: flex; align-items: center; gap: 2px; margin-left: 4px; margin-right: 8px; }
+.win-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); background: transparent; border: none; transition: color 0.15s; }
+.win-btn:hover, .win-btn:active { background: transparent; color: var(--text-1); }
+.win-btn.win-close:hover, .win-btn.win-close:active { background: transparent; color: var(--danger); }
+
+/* 状态栏（§3.8） */
+.dot-ok { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 4px; transition: background-color var(--t-ui) var(--ease-out); }
+.dot-building { background: var(--trace-500); }
+.dot-error { background: var(--warning); }
+.status-saved { color: var(--text-2); }
+
+/* ---------- 引导页（§3.7 空即是信任） ---------- */
+.onboard { height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, var(--onboard-grad-a) 0%, var(--onboard-grad-b) 100%); position: relative; }
+.onboard-titlebar { position: fixed; top: 0; left: 0; right: 0; height: 40px; display: flex; align-items: center; padding-left: 16px; -webkit-app-region: drag; user-select: none; }
+.onboard-titlebar .win-controls { margin-left: auto; }
+.onboard-inner { width: 520px; text-align: center; }
+.onboard-inner .logo-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--origin); margin: 0 auto 16px; }
+.onboard-inner h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
+.onboard-inner h1 em { font-style: normal; color: var(--link); }
+.onboard-inner .slogan { color: var(--text-2); margin-bottom: 28px; }
+.onboard-inner .desc { font-size: 13px; color: var(--text-2); background: var(--paper); border: 1px solid var(--split); border-radius: var(--r-card); padding: 16px 20px; margin-bottom: 20px; text-align: left; }

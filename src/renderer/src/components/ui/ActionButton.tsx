@@ -1,5 +1,4 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import '../../styles/actions.css'
 
 export type ActionIntent = 'primary' | 'secondary' | 'quiet' | 'danger' | 'icon'
 export interface ActionButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
