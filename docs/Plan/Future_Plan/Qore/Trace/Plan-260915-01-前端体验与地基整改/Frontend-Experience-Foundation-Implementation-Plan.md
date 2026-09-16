@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** 暂停（用户要求睡前停工；Task 1–3 完成，Task 4 未开工）
+**Status:** Task 1–4 完成（5275a26 已集成；Task 5 骨架提升待确认）
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -270,34 +270,39 @@ git commit -m "feat(ui): 统一动作组件与删除策略"
 
 ### Task 4: 收敛 token、对比度、焦点与减弱动效
 
+> 2026-09-16 恢复：代码基线 `9478fb9`、文档 HEAD `c51c3a5`；执行者 Codex，精确文件边界见 HANDOFF 顶部。先补失败回归，再实施及三跑，不进入 Task 5 或 Muya 集成。
+
 **Files:**
 - Create: `src/renderer/src/styles/tokens.css`
 - Create: `src/renderer/src/styles/base.css`
-- Create: `src/renderer/src/styles/actions.css`
+- Modify: `src/renderer/src/styles/actions.css`（Task 3 已创建）
+- Create: `src/renderer/src/styles/antd-theme.ts`（正式与 QA 共用语义桥）
+- Create: `test/frontend-foundation-css.spec.ts`、`test/score-accessibility.spec.ts`
 - Modify: `src/renderer/src/styles/workspace.css`
 - Modify: `src/renderer/src/main.tsx`
 - Modify: `src/renderer/src/views/WorkspaceView.tsx`
+- Modify: `components/StatusBar.tsx`、`TopBar.tsx`、`SearchOverlay.tsx`、`ContentArea.tsx`、`PlanTreePanel.tsx`、`cards.tsx`（非 NoteCard）、`views/DiaryView.tsx`、`MemoriesView.tsx`、`demo/frontend-foundation/`（以上均相对 renderer/src，Demo 除外；见 HANDOFF 精确边界）
 
-- [ ] **Step 1: 建立颜色对比测试数据**
+- [x] **Step 1: 建立颜色对比测试数据**
 
 将普通 11–14px 文字目标设为至少 4.5:1；纯装饰和禁用文本可使用 `text-4`，但不得承载日期、状态、类型和空态说明。
 
-- [ ] **Step 2: 拆出 token 与基础样式**
+- [x] **Step 2: 拆出 token 与基础样式**
 
 `tokens.css` 保留全部主题值；`base.css` 保留 reset、字体、滚动条、全局 focus-visible、View Transition 和 reduced-motion。`workspace.css` 在拆分完成前只作为兼容入口导入子文件，避免一次性大改选择器。
 
-- [ ] **Step 3: 修复硬编码与焦点**
+- [x] **Step 3: 修复硬编码与焦点**
 
 - 将 `WorkspaceView.tsx` 的 `#fff` 替换为语义 token；
 - 所有移除 outline 的输入必须有 `:focus-visible` 或 `:focus-within` 替代；
 - 所有可点击 `span/div` 改为原生 button，或补齐 role、tabIndex、Enter/Space；
 - 状态栏异步保存/索引状态增加 `aria-live="polite"`。
 
-- [ ] **Step 4: 清除全属性动画**
+- [x] **Step 4: 清除全属性动画**
 
 将 `transition: all` 改成明确属性；把 memories、fmt、folder、window controls 纳入 reduced-motion；树高度动画暂时保留，等待 Task 9 FPS 数据决定是否更换。
 
-- [ ] **Step 5: 验证并提交**
+- [x] **Step 5: 验证并提交**
 
 ```bash
 npm run typecheck
@@ -649,6 +654,26 @@ flowchart TD
 
 ## 4. 当前下一步、等待与剩余工作
 
+### Task 4 完成交付（2026-09-16）
+
+- 正式提交 `5275a26`，21 文件已快进主目录，未推送；Task 4 全部步骤完成。测试先红后绿，规格复核退回的动态分数与搜索 Escape 已修复，复核通过；质量审查无阻塞项。
+- 主目录实际复验：typecheck 0 错，22 文件 210/210，build main/preload/renderer 成功；renderer 3165 模块、8.54s，JS 2643.18kB、CSS 52.18kB（舍入值）。既有三条混合导入分包警告未掩盖，待 Task 8。
+- 浏览器：实现者修后双脚本连续两轮串行通过，主智能体另独立串行通过；信息/动态读数/antd 按钮样本最低 4.82497:1，真实 focus、菜单/搜索 Enter/Space、结果 Escape、状态播报属性、减动效下任务撤销/树删除一次及焦点终态、树快捷按钮键盘可见、四档宽度、暗色确认和旧撤销均通过，无运行时异常。
+- hover 同步根因已清理：脚本曾在 submenu 尺寸为零时误发坐标；现等待非零尺寸、父动画结束与命中后 hover。生产逻辑未改，诊断仅留忽略的截图产物。
+- 下一步 Task 5 AppShell；等待已验收三视图骨架提升确认与 Muya Demo 用户验收；剩余 Task 5–11、真实 Electron/DPI 性能和完整回忆页视觉验收。本轮不提前实施 Task 5。
+- 收尾自检：改动/缺陷/解决方案已落共享实施记录；无新增独立 ERROR、跨项目方案或新习惯记忆需写。
+
+### Task 4 恢复与验收范围（2026-09-16）
+
+- 用户“继续吧”恢复；实测 main HEAD `c51c3a5`，ahead 16，仅用户资源未跟踪。隔离分支已快进同一基线，基线 typecheck 0 错、20 文件 200/200。
+- 本轮只收敛既有主题、文字、键盘焦点与减弱动效，不改变三视图骨架或 Muya 编辑逻辑。以下暂停记录仅作历史追溯。
+- 验收：普通信息文字在亮暗 paper/paper-dim/fill/trace-bg 底色的对比；输入真实键盘焦点；非原生动作的 Enter/Space；异步状态播报；减少动效的计算样式及树删除终态；四档宽度、暗色确认与已有撤销回归。
+- Chrome 内存宿主是交互回归，不替代 Windows Electron 真机及 DPI 验收；实际结果与提交待完成后写入。
+- 第一轮独立复验：typecheck 0 错、21 文件 208/208、build 三段成功（renderer 3164 模块/8.43s）；基础 Chrome 回归通过，但随后旧动作回归的预设子菜单 hover 超时，正在修正 QA 时序，未宣称稳定通过。
+- 规格复核退回两项：回忆 13px 动态心情文字对比不足（冷色亮/暗底 3.75/3.62、暖色亮底 2.48）；搜索结果焦点下 Escape 没有关闭出口。同时处理同根因的日记读数/时间线数字，保留连续冷暖色装饰和数字滚动语义。未提交，待失败回归与修复后再次复核。
+- 修订后规格复核通过：新增 `scoreTextColor`、徽标墨色、浮层 Escape、高亮注释色及正式/QA 共用 `antd-theme.ts` 语义桥；antd 实心填充与文字色分离。0–100 每 0.01 分、双主题四底色及徽标、高亮色均达到 4.5:1。原装饰色阶及滚动逻辑未改。
+- 代码冻结后的主智能体独立复验：typecheck 0 错、22 文件 210/210；实现者最终 build 成功（renderer 11.35s，既有分包警告），两套浏览器脚本修复后连续两轮串行通过。独立质量审查及主目录集成复验尚未完成，不宣称 Task 4 全部交付。
+
 ### Task 3 交付与暂停（2026-09-16）
 
 - 用户“可以，继续”确认 Task 2 Demo；随后要求做完当前任务停工，本次仅完成 Task 3，不启动 Task 4。
@@ -673,6 +698,6 @@ flowchart TD
 - 启动：在隔离工作区执行 `npx vite demo/frontend-foundation --host 127.0.0.1 --port 52820 --strictPort`，浏览器 `http://127.0.0.1:52820/`。
 - 自动测试未替代 Windows DPI、完整 Tab/Enter/Space 动线和视觉手动验收。Task 2 用户验收未完成，Task 3–11 不开工。
 
-- 下一步：用户恢复开发后执行 Task 4（token、对比度、全局焦点与减弱动效）。
-- 等待：用户恢复指令；正式 Electron 真机视觉/DPI 人工验收仍待补。
-- 还差：Task 4–11、Muya 主线验收/正式集成及真实性能采样；本次不会自动继续。
+- 当前下一步：Task 5 AppShell 骨架提升（Task 4 已完成）。
+- 当前等待：已验收视图骨架变更确认、Muya Demo 用户验收；Electron 真机视觉/DPI 验收仍待补。
+- 当前剩余：Task 5–11、Muya 主线验收/正式集成及真实性能采样；本轮未启动 Task 5。

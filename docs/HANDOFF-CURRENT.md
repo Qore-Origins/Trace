@@ -2,11 +2,33 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-16（Codex：Task 1–3 完成，正式动作与删除策略已集成；按用户指令暂停，不启动 Task 4）
+> 更新：2026-09-16（Codex：Task 1–4 完成并集成主目录；下一步 Task 5 骨架提升待确认）
 
 ## 接手前必做
 
-### 当前暂停交接（2026-09-16，优先于下方历史记录）
+### Task 4 完成交接（2026-09-16；优先于下方启动/暂停快照）
+
+- 正式代码提交 `5275a26`（git log 实测），已从隔离分支快进 main；代码集成时 main ahead origin/main 17，未推送。之后仅共享文档收尾，最终文档 HEAD/领先数用 git log/git status 核对。
+- 已实现：token/base 拆分与兼容入口、可读信息/链接/高亮色、动态分数主题文字色与徽标墨色、antd 文字/实心填充分离；输入/菜单/树/文件夹/搜索键盘焦点，树快捷操作聚焦可见，结果 Escape 关闭，状态 polite，明确过渡属性及减弱动效。普通树高度动画、原分数装饰色阶/滚动、Muya/NoteCard 业务未改。
+- 已验证：主智能体隔离复验 typecheck 0 错、22 文件 210/210；规格复核通过，质量审查无 Critical/Important/Minor；两套 Chrome 内存宿主回归修后连续两轮串行通过，主智能体另独立串行通过，运行时异常为空。
+- 主目录快进后实际三跑：typecheck 0 错；22 文件 210/210；main/preload/renderer build 成功，renderer 3165 模块、8.54s，JS 2643.18kB、CSS 52.18kB（构建输出舍入值）。既有三条 store 混合导入警告留待 Task 8。
+- 对比度：静态信息/高亮 token、动态分数 0–100 每 0.01 分在双主题四底色与徽标均达到 4.5:1；浏览器实际按钮/读数样本最低 4.82497:1，不称全页面真机覆盖。
+- QA 根因已修：子菜单 DOM 存在但尺寸为零时误发 hover；脚本现等待可见尺寸、动画结束与坐标命中。生产 hover 未改，临时诊断没有进入正式功能。
+- 工作区保留用户 `Resource/pic/`、`Resource/vid/`，不暂存/改名/删除。21 个源/测试/QA 文件全部提交，Task 4 通用边界释放，未来任务先重新登记；原 Muya/NoteCard/pref-store/设置宿主所有权仍由 Codex 保留。
+- 下一步：Task 5 AppShell 统一三视图顶栏/可选状态栏，依既有规则实施前须确认已验收视图骨架变更；本轮不提前启动。等待 Muya Demo 用户验收及 Task 5 确认；剩余 Task 5–11、Electron 真机/DPI 与完整回忆页视觉验收。
+- 收尾沉淀：共享计划、镜像与交接已更新；本轮缺陷及 hover 解决方案已记实施记录，无新的独立 ERROR/跨项目方案/规则/习惯记忆条目需追加。
+
+### Task 4 恢复（2026-09-16，Codex；优先于下方暂停快照）
+
+- 用户“继续吧”恢复开发；实测 main HEAD `c51c3a5`、ahead 16，仅用户 `Resource/pic/`、`Resource/vid/` 未跟踪。
+- 在 `.worktrees/frontend-foundation` / `codex/frontend-foundation` 实施 Task 4，不启动 Task 5 或 Muya 正式集成。
+- Codex 所有权：`styles/tokens.css`、`styles/base.css`、`styles/workspace.css`、`styles/actions.css`、`main.tsx`、`views/WorkspaceView.tsx`、`components/StatusBar.tsx`；为补键盘语义可改 `components/TopBar.tsx`、`components/SearchOverlay.tsx`、`components/ContentArea.tsx`、`components/PlanTreePanel.tsx`、`components/cards.tsx`（仅非 NoteCard 段）、`views/DiaryView.tsx`、`views/MemoriesView.tsx`；对应新增测试及 `demo/frontend-foundation/` 回归脚本。Claude 避开上述边界。
+- 本任务代码由 Codex 子智能体实施，主智能体只维护本文件及共享计划；既有 Muya/NoteCard/pref-store/设置逻辑不动。
+- 同根因可读性复核补充所有权：`styles/antd-theme.ts`（必要时抽取主题语义色读取桥，供正式 main 与 QA 共用），相应动态颜色测试；仅调整颜色，不改弹层宿主或设置逻辑。
+- 阶段：实施中；隔离基线已复验 typecheck 0 错、20 文件 200/200。先补失败测试与实现，最后三跑和浏览器验收。
+- 下一步：主题/可读性/焦点/reduced-motion 收敛；等待 Muya Demo 用户体验验收；剩余 Task 4–11 及 Electron 真机/DPI。
+
+### Task 3 暂停历史交接（2026-09-16；仅作追溯）
 
 - 用户已确认动作 Demo，随后要求“干完最近的一个任务就先停”；本次只完成 Task 3，现在停止自主开发。
 - 记录时主目录/隔离分支代码 HEAD `9478fb9`（git log 实测），main ahead origin/main 15；已快进主目录，未推送。文档收尾提交不改变该代码基线。
@@ -55,8 +77,8 @@
 | 项 | 当前状态 |
 |---|---|
 | 分支 | `main` |
-| 代码基线 | `9478fb9` — Task 3 正式动作与安全删除撤销；已由 `git log` 实测 |
-| 同步时远端 | main 记录时 ahead origin/main 15，尚未推送；其后仅文档收尾，实际 HEAD/领先数以 git status/git log 为准。双端上次记录为 `5058037`，本轮未访问远端 |
+| 代码基线 | `5275a26` — Task 4 主题/对比度/焦点/减弱动效；已由 `git log` 实测 |
+| 同步时远端 | Task 4 集成时 main ahead origin/main 17，未推送；其后仅文档收尾，实际 HEAD/领先数以 git status/git log 为准。双端上次记录为 `5058037`，本轮未访问远端 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
@@ -112,8 +134,8 @@
 | 计划索引 | `docs/Plan/README.md` |
 | 执行计划 | `docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md` |
 | Trace 镜像队列 | 同目录 `plan.json`，结构参考 `D:\Desktop\Plan\Future_Plan\Qore\Trace\Plan-260911-01\plan.json` |
-| 当前阶段 | Task 1–3 完成；Task 3 正式代码已集成；用户要求暂停，Task 4 未开始 |
-| 本轮文件所有权 | Task 3 边界见顶部记录，均已提交；暂停后释放通用动作边界，Muya 既有所有权不变 |
+| 当前阶段 | Task 1–4 完成；Task 5 骨架提升待确认 |
+| 本轮文件所有权 | Task 4 全部提交，通用边界已释放；Muya 既有所有权不变 |
 | 实测证据 | `npm run build` 成功；renderer 3157 modules，JS 2,629,864 B（gzip 547,329 B），CSS 46,358 B，renderer build 8.38s |
 | 高优先问题 | 删除语义不一致、文字对比度/焦点不足、整文档高频 clone + 全卡重渲染、单一 renderer chunk、AppShell/CSS/cards 职责未收口 |
 
@@ -122,10 +144,10 @@
 ## 下一动作与阻塞
 
 - 下一动作 A（Muya 主线）：用户打开真实 Muya Demo，重点验收中文输入法、剪贴板、语言选择浮层、视觉与连续删除手感。Claude 继续避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
-- 下一动作 B（前端地基）：Task 3 已交付；按用户指令暂停。用户恢复后登记 Task 4 边界，继续 token/对比度/全局焦点与减弱动效。
-- 等待：用户恢复指令、Muya Demo 用户验收。现在不进入 Task 4 或正式 NoteCard 集成。
+- 下一动作 B（前端地基）：Task 4 已交付；下一批 Task 5 AppShell 骨架提升，实施前确认已验收视图的结构变更。
+- 等待：Task 5 确认与 Muya Demo 用户验收，不提前正式 NoteCard 集成。
 - F2 已闭环，不再构成阻塞或并行边界。
-- 待推送：Task 3 已快进主目录；记录时 main ahead 15，未经用户授权不推送远端。
+- 待推送：Task 4 已快进主目录；代码集成时 main ahead 17，未经用户授权不推送远端。
 
 ## 核验记录
 

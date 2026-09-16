@@ -39,7 +39,7 @@ docs/Plan/
 
 | 计划 | 状态 | 创建日期 | 审计/规格 | 当前下一步 |
 |---|---|---|---|---|
-| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | 暂停：Task 1–3 完成 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 用户恢复后执行 Task 4；Task 3 提交 9478fb9 已集成主目录，未推送 |
+| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | Task 1–4 完成；Task 5 待确认 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 5275a26 已集成，三跑与浏览器回归通过；下一批 AppShell 骨架提升，先确认已验收视图结构变更 |
 
 ## 更新规则
 
