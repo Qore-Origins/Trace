@@ -2,9 +2,25 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-16（Codex：Task 1–7 完成；下一步 Task 8）
+> 更新：2026-09-17（Codex：Task 8 已启动）
 
 ## 接手前必做
+
+### Task 8 启动（2026-09-17，Codex；优先于下方完成快照）
+
+- 隔离实现 `14cef79`（`perf(bundle): 延迟加载页面与 Muya 运行时`）已按用户选项 1 fast-forward 到 main；集成时实测 main HEAD `14cef79`、ahead origin/main 25，未推送。本文档提交后最新 HEAD/领先数以 `git log`、`git status` 为准。Task 8 本批完成，验收门槛内的正式 NoteCard/Muya 激活仍未实施。
+- 已实现：Diary/Memories 使用 React.lazy + Suspense，Workspace 保持首屏；fallback 使用 `--paper`/`--text-2`；React/Antd/dnd 稳定分包；Muya 适配层改为动态 import，真实 Demo 入口只在启动编辑器时加载运行时，退出仍 destroy；vendor Mermaid/Vega/PlantUML 边界未改。
+- 构建结果：renderer 从单一 2,645,435 B 入口拆为入口 634.15 kB、React 555.79 kB、Antd 1,315.45 kB、dnd 116.05 kB、Diary 14.98 kB、Memories 9.44 kB；Task 4–7 遗留的三条 store 混合导入警告已清零，无循环 chunk 警告。Muya Demo 入口 4.86 kB，Muya 核心 1,492.52 kB 为异步块，Mermaid/Vega 继续独立延迟加载。
+- TDD/验证：预算、懒页面、Muya 边界及 store 导入测试均先红后绿；最终 `npm run typecheck` 0 错，`npm run test` 27 文件 234/234，`npm run build` 成功且 renderer 无警告，`npm run demo:muya:build` 3998 模块成功。Demo 大块警告仍来自获准启用的完整 Muya/图表能力，不等同正式首屏回归。
+- 基线异常记录：新 worktree 首次检出把 Muya 源码换行为 LF，导致字节指纹测试误报；同步主目录已验证的快照字节后 230/230 基线恢复且 Git 内容无差异。该换行/指纹一致性债务未用改指纹掩盖，后续应独立修正检出策略。
+- 主目录合并后复验：`npm run typecheck` 0 错；`npm run test` 27 文件 234/234；`npm run build` 成功且 renderer 3174 模块、10.14s、零警告；`npm run demo:muya:build` 3998 模块、18.82s 成功，完整 Muya/图表异步块仍有预期的大块提示。
+- 下一步：正式 NoteCard/Muya 接入继续等待真实 Demo 中文输入法、剪贴板、语言选择和连续删除手感的用户验收；若暂不验收，可先推进不占用 Muya 边界的 Task 9。剩余 Task 8 验收门槛、Task 9–11、Electron 真机/DPI 与真实性能验收。
+
+- 用户“继续”确认进入 Task 8；实测 main HEAD `3b98bb8`、ahead origin/main 24，工作区仅用户 `Resource/pic/`、`Resource/vid/` 未跟踪，保留且不触碰。
+- 隔离位置：`.worktrees/frontend-foundation-task8`，分支 `codex/frontend-foundation-task8`。Codex 所有权：`src/renderer/src/App.tsx`、`src/renderer/src/components/muya-note/muya-runtime.ts`、`src/renderer/src/stores/app-store.ts`、`src/renderer/src/components/TopBar.tsx`、`electron.vite.config.ts`、`demo/muya-note-editor/main.ts`、`test/app-shell.spec.tsx`、`test/muya-demo.spec.ts`、新建 `test/bundle-budget.spec.ts`；Claude Code 避开这些边界。补充两个文件仅用于清除 Task 4–7 持续登记给 Task 8 的三条无效混合导入警告，不改变 store 行为。
+- 实施契约：Workspace 保持首屏，Diary/Memories 采用 React.lazy + Suspense；Muya 适配层改为显式异步加载并由真实 Demo 验证，保留 vendor 图表动态 import。正式 NoteCard/Muya 接入仍以真实 Demo 用户体验验收为门槛，本任务不修改 `cards.tsx`、`note-md.tsx`、`pref-store.ts` 或设置宿主，也不把 Demo 当正式集成。
+- 构建策略：先以失败预算测试复现单一约 2.63MB renderer chunk，再评估自然动态 import；仅在无循环 chunk 警告且确有收益时稳定拆分 React/Antd/dnd，不拆散 Muya 内部依赖。
+- 下一步：建立 Task 8 隔离 worktree、跑基线并写红灯测试。等待 Muya Demo 用户体验验收；剩余 Task 8–11、Electron 真机/DPI 与真实性能验收。
 
 ### Task 7 完成交接（2026-09-16，Codex；优先于下方启动快照）
 

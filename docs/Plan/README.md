@@ -39,7 +39,7 @@ docs/Plan/
 
 | 计划 | 状态 | 创建日期 | 审计/规格 | 当前下一步 |
 |---|---|---|---|---|
-| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | 实施中：Task 1–7 已完成 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 下一步 Task 8：页面与 Muya 懒加载、构建预算；先协调 Muya 文件边界 |
+| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | 实施中：Task 8 验收门槛 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | `14cef79` 已集成页面分包、Muya 异步运行时边界与构建预算；正式 NoteCard 集成仍等待 Demo 体验验收，可错峰推进 Task 9 |
 
 ## 更新规则
 

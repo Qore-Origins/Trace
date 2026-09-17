@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–7 完成；下一步 Task 8（尚未启动）
+**Status:** Task 1–7 完成；Task 8 实施中
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -544,6 +544,8 @@ git commit -m "perf(editor): 隔离组件级编辑更新"
 
 ### Task 8: 页面与 Muya 懒加载、构建预算
 
+> 2026-09-17 已启动。正式 NoteCard 的 Muya 接入仍受真实 Demo 用户体验验收门槛约束；本任务先完成页面分包、Muya 适配层异步加载边界、Demo 回归与可复现构建预算，不修改 NoteCard/偏好/设置宿主。
+
 **Files:**
 
 - Create: `test/bundle-budget.spec.ts`
@@ -554,11 +556,11 @@ git commit -m "perf(editor): 隔离组件级编辑更新"
 
 - Modify: `electron.vite.config.ts`
 
-- [ ] **Step 1: 写构建预算测试**
+- [x] **Step 1: 写构建预算测试**
 
 预算以当前实测为起点：入口 JS 不得继续维持 2.63MB 单 chunk；Muya、Mermaid/Vega/PlantUML 等重型功能不得进入不含编辑器的初始 chunk。
 
-- [ ] **Step 2: 懒加载非工作台页面**
+- [x] **Step 2: 懒加载非工作台页面**
 
 使用 `React.lazy` + `Suspense` 加载 DiaryView、MemoriesView；Workspace 保持首屏。loading fallback 使用语义 token，不能出现全白闪屏。
 
@@ -566,11 +568,13 @@ git commit -m "perf(editor): 隔离组件级编辑更新"
 
 仅当注释进入编辑态时动态导入 Muya runtime；先核对 vendor 内已有的图表动态 import，保留现有 Mermaid/Vega 等延迟加载边界，不为分包目的重写上游插件行为。退出编辑时销毁实例和事件监听，但保留 Markdown 真源。
 
-- [ ] **Step 4: 配置稳定 manualChunks**
+当前完成：适配层异步 loader、真实 Demo 按编辑器启动加载、退出 destroy、vendor 图表边界回归均已完成；正式 NoteCard 激活仍等待 Demo 用户体验验收，因此本步骤保持未完成。
+
+- [x] **Step 4: 配置稳定 manualChunks**
 
 优先使用页面和 Muya 的自然动态 import 边界。仅在构建分析确认有收益且没有循环 chunk 警告时，使用稳定 manualChunks 分离 React、Antd 和 dnd；不得强行把有共享运行时依赖的 Muya 模块拆散。
 
-- [ ] **Step 5: 验证构建产物**
+- [x] **Step 5: 验证构建产物**
 
 ```bash
 npm run build
@@ -579,12 +583,19 @@ npx vitest run test/bundle-budget.spec.ts
 
 Expected: 生成多个职责明确的 chunk；不进入注释编辑时不请求 Muya 与图表 chunk；构建预算测试通过。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/renderer/src/App.tsx src/renderer/src/components/muya-note/muya-runtime.ts electron.vite.config.ts test/bundle-budget.spec.ts
 git commit -m "perf(bundle): 延迟加载页面与 Muya 运行时"
 ```
+
+#### Task 8 本批交付（2026-09-17）
+
+- `14cef79` 已 fast-forward 到 main：Diary/Memories 懒加载与语义 fallback、React/Antd/dnd 稳定分包、Muya 动态运行时 loader、真实 Demo 异步启动，以及可复现构建预算。
+- renderer 入口由单一 2,645,435 B 降为 634.15 kB，并拆出 React 555.79 kB、Antd 1,315.45 kB、dnd 116.05 kB、Diary 14.98 kB、Memories 9.44 kB；无循环 chunk 警告，既有三条 store 混合导入警告已清零。
+- Muya Demo 入口 4.86 kB；Muya 核心 1,492.52 kB 为异步块，Mermaid/Vega 等继续按需拆分。没有修改 vendor 行为、NoteCard、偏好或设置宿主。
+- 主目录最终验证：typecheck 0 错；27 文件 234/234；正式 build 成功且 renderer 3174 模块、10.14s、无警告；Demo build 3998 模块、18.82s 成功。正式 NoteCard 激活仍等待 Demo 用户体验验收，Task 8 不标记全部完成。
 
 ---
 
