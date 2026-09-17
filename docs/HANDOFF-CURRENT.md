@@ -2,9 +2,18 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-17（Codex：Task 8 已启动）
+> 更新：2026-09-17（Codex：Muya Demo 已验收，正式集成启动）
 
 ## 接手前必做
+
+### Muya 正式集成启动（2026-09-17，Codex；当前最高优先级）
+
+- 用户明确反馈“Demo 手感可以”，真实 Muya Demo 体验门槛通过；这解锁正式 NoteCard 集成，不代表正式卡片已实现或已验收。
+- 新执行真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260917-02-注释Muya正式集成/Muya-Note-Formal-Integration-Implementation-Plan.md`；Trace 镜像为同目录 `plan.json`。
+- 实测 main HEAD `406e453`、ahead origin/main 26，工作区仅用户 `Resource/pic/`、`Resource/vid/` 未跟踪。计划使用 `.worktrees/muya-note-formal-integration` / `codex/muya-note-formal-integration`。
+- Codex 所有权：新建 `components/muya-note/MuyaNoteEditor.tsx`、`stores/note-editor-store.ts`、`test/muya-note-integration.spec.tsx`；修改 `components/cards.tsx` 的 NoteCard 段、`stores/pref-store.ts`、`App.tsx` 设置宿主、双语 i18n、`styles/cards.css`、`components/muya-note/muya-theme.css`、共享计划/HANDOFF。Claude Code 避开这些文件与 Muya/vendor 边界。
+- 实施约束：Markdown 字符串仍是唯一持久化真源；单活动 Muya；实时渲染和自动换行默认开启；PlantUML 默认离线；非活动态保留 NoteMarkdown；加载失败必须保留 textarea；不改 IPC、计划格式或 vendor 行为。
+- 下一步：创建隔离 worktree、复验 234/234 基线，从偏好与设置 UI 红灯测试开始。等待：无；正式卡片完成后仍需用户第二轮真机验收。
 
 ### Task 8 启动（2026-09-17，Codex；优先于下方完成快照）
 

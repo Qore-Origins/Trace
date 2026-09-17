@@ -1,0 +1,34 @@
+{
+  "id": "1bb4a9af09344fbcaf7717d112ad72d3",
+  "name": "注释 Muya 正式集成",
+  "created_at": "2026-09-17T12:20:00+08:00",
+  "updated_at": "2026-09-17T12:20:00+08:00",
+  "components": [
+    {
+      "id": "e5067a535a1c4ab8a41654e5eeff224c",
+      "type": "heading",
+      "payload": { "title": "注释 Muya 正式集成", "size": 25 }
+    },
+    {
+      "id": "194894e4f05b4eb8bcb0feb6904cf9da",
+      "type": "note",
+      "payload": {
+        "content": "真实 Muya Demo 已于 2026-09-17 获用户确认手感可以。正式集成保持 Markdown 字符串真源、单活动编辑器、默认实时渲染与自动换行、PlantUML 默认离线。",
+        "created_at": "2026-09-17T12:20:00+08:00"
+      }
+    },
+    {
+      "id": "d283dd05abce4afda03ee0f6cb47003e",
+      "type": "task_list",
+      "payload": {
+        "title": "正式集成任务",
+        "items": [
+          { "id": "9df30dfef0ab449f9a459ad8202fbdf0", "title": "持久化偏好与设置 UI", "status": "in_progress" },
+          { "id": "78247f640fad45dfbec29dd086a50a18", "title": "Muya React 生命周期适配器", "status": "not_started" },
+          { "id": "623f6baec29a4573bf77c890b4d7db04", "title": "NoteCard 单活动编辑器接线", "status": "not_started" },
+          { "id": "4d906265d2f046888a0c0e26f80f9628", "title": "完整验证与正式卡片验收", "status": "not_started" }
+        ]
+      }
+    }
+  ]
+}
