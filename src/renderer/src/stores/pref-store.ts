@@ -30,12 +30,18 @@ interface PrefState {
   scoreAnim: ScoreAnim // 心情分数动画（默认轮带式）
   theme: ThemeMode // 界面主题（默认亮色）
   treeWidth: number // 树侧边栏宽度（拖拽持久化；clamp 于 [TREE_WIDTH_MIN, TREE_WIDTH_MAX]）
+  noteLiveRender: boolean // 注释同面实时渲染，默认开启
+  noteWrap: boolean // 注释代码块自动换行，默认开启
+  plantumlServer: string // 空字符串表示 PlantUML 离线
   customPresets: CustomPreset[] // 自定义组件预设（插入即快照：插入时复制 content，改预设不影响已插入卡）
   setLanguage: (language: Language) => void
   setDealDirection: (dealDirection: DealDirection) => void
   setScoreAnim: (scoreAnim: ScoreAnim) => void
   setTheme: (theme: ThemeMode) => void
   setTreeWidth: (treeWidth: number) => void
+  setNoteLiveRender: (noteLiveRender: boolean) => void
+  setNoteWrap: (noteWrap: boolean) => void
+  setPlantumlServer: (plantumlServer: string) => void
   addPreset: (name: string, content: string) => void
   removePreset: (id: string) => void
 }
@@ -48,6 +54,9 @@ export const usePrefStore = create<PrefState>()(
       scoreAnim: 'roll',
       theme: 'light',
       treeWidth: TREE_WIDTH_DEFAULT,
+      noteLiveRender: true,
+      noteWrap: true,
+      plantumlServer: '',
       // 旧持久化数据（trace-prefs 无此键）经 persist 浅合并取默认 []，不破坏既有契约
       customPresets: [],
       setLanguage: (language) => {
@@ -59,6 +68,9 @@ export const usePrefStore = create<PrefState>()(
       setTheme: (theme) => set({ theme }),
       // store 侧同样 clamp（持久化数据可能来自手改/旧版本）
       setTreeWidth: (treeWidth) => set({ treeWidth: clampTreeWidth(treeWidth) }),
+      setNoteLiveRender: (noteLiveRender) => set({ noteLiveRender }),
+      setNoteWrap: (noteWrap) => set({ noteWrap }),
+      setPlantumlServer: (plantumlServer) => set({ plantumlServer }),
       addPreset: (name, content) =>
         set((s) => ({ customPresets: [...s.customPresets, { id: crypto.randomUUID(), name, content }] })),
       removePreset: (id) => set((s) => ({ customPresets: s.customPresets.filter((p) => p.id !== id) }))

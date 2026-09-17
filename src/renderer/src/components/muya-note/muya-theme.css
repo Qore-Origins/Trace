@@ -1,4 +1,8 @@
 .trace-muya {
+  --mu-font-size: 13px;
+  --mu-font-family: inherit;
+  --mu-line-height: 1.7;
+  --editor-area-width: none;
   --theme-color: var(--trace-500);
   --highlight-color: var(--pulse-weak);
   --selection-color: var(--resizer-hover);
@@ -39,6 +43,14 @@
   --em-color: var(--text-2);
   --list-marker-color: var(--text-3);
   --hr-color: var(--border);
+}
+
+.trace-muya.mu-container {
+  max-width: none;
+  min-height: 42px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .trace-muya-source-mode .mu-hide,

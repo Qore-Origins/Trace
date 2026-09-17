@@ -210,6 +210,15 @@ export function highlightCode(code: string, lang: string): string {
 
 const INLINE_SPLIT = /(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|<u>[^<]+<\/u>|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/
 
+function isSafeExternalLink(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export function renderText(text: string, keyBase: string, onLink?: (url: string) => void): ReactNode[] {
   const out: ReactNode[] = []
   const parts = text.split(INLINE_SPLIT)
@@ -244,6 +253,10 @@ export function renderText(text: string, keyBase: string, onLink?: (url: string)
     }
     const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part)
     if (link) {
+      if (!isSafeExternalLink(link[2])) {
+        out.push(link[1])
+        continue
+      }
       out.push(
         <a key={key} href={link[2]} onClick={(e) => { e.preventDefault(); onLink?.(link[2]) }}>
           {link[1]}

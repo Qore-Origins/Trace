@@ -4,7 +4,7 @@
 // （修复：日记视图下 Ctrl+F 搜索 / Ctrl+N 新建计划 / 文件→设置 全部无效）
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { Button, Descriptions, Modal, Radio, Spin } from 'antd'
+import { Button, Descriptions, Input, Modal, Radio, Spin, Switch, Tooltip } from 'antd'
 import OnboardingView from './views/OnboardingView'
 import WorkspaceView from './views/WorkspaceView'
 import ExportView from './views/ExportView'
@@ -21,6 +21,8 @@ import { usePrefStore, type DealDirection, type Language, type ScoreAnim, type T
 import { invoke } from './ipc-client'
 import { DIARY_DIR } from '@shared/plan-types'
 import { useTranslation } from './i18n'
+import { getMessage } from './antd-host'
+import { validatePlantumlServer } from './components/muya-note/muya-config'
 
 const DiaryView = lazy(() => import('./views/DiaryView'))
 const MemoriesView = lazy(() => import('./views/MemoriesView'))
@@ -171,7 +173,23 @@ function TopBarSettingsHost(): React.JSX.Element {
   const open = useUiStore((s) => s.settingsOpen)
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
   const { rootDir, switchRootDir } = useAppStore()
-  const { language, dealDirection, scoreAnim, theme: themeMode, setLanguage, setDealDirection, setScoreAnim, setTheme } = usePrefStore()
+  const {
+    language,
+    dealDirection,
+    scoreAnim,
+    theme: themeMode,
+    noteLiveRender,
+    noteWrap,
+    plantumlServer,
+    setLanguage,
+    setDealDirection,
+    setScoreAnim,
+    setTheme,
+    setNoteLiveRender,
+    setNoteWrap,
+    setPlantumlServer
+  } = usePrefStore()
+  const [plantumlDraft, setPlantumlDraft] = useState(plantumlServer)
 
   // 主题切换经 View Transitions（合成器整页 cross-fade，替代掉帧的全元素 transition）；
   // flushSync 把 antd 重渲染（algorithm 切换 + cssinjs）压进快照回调内同步完成
@@ -195,6 +213,10 @@ function TopBarSettingsHost(): React.JSX.Element {
     }
   }, [open, version, t])
 
+  useEffect(() => {
+    if (open) setPlantumlDraft(plantumlServer)
+  }, [open, plantumlServer])
+
   const shortcuts: Array<[string, string]> = [
     ['Ctrl + F', t('settings.scSearch')],
     ['Ctrl + N', t('settings.scNewPlan')],
@@ -206,6 +228,23 @@ function TopBarSettingsHost(): React.JSX.Element {
   ]
 
   const prefLabel = (text: string): React.CSSProperties => ({ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 })
+  const settingLabel = (label: string, description: string): React.JSX.Element => (
+    <Tooltip title={description} mouseEnterDelay={2}>
+      <span tabIndex={0} style={prefLabel(label)}>
+        {label}
+      </span>
+    </Tooltip>
+  )
+  const commitPlantumlServer = (): void => {
+    try {
+      const validatedServer = validatePlantumlServer(plantumlDraft)
+      setPlantumlServer(validatedServer)
+      setPlantumlDraft(validatedServer)
+    } catch {
+      getMessage().error(t('settings.plantumlInvalid'))
+      setPlantumlDraft(plantumlServer)
+    }
+  }
 
   return (
     <Modal title={t('settings.title')} open={open} onCancel={() => setSettingsOpen(false)} footer={<Button onClick={() => setSettingsOpen(false)}>{t('common.close')}</Button>}>
@@ -213,7 +252,7 @@ function TopBarSettingsHost(): React.JSX.Element {
         <Descriptions.Item label={t('settings.prefs')}>
           <div style={{ display: 'grid', gap: 12, minWidth: 260 }}>
             <div>
-              <div style={prefLabel(t('settings.language'))}>{t('settings.language')}</div>
+              {settingLabel(t('settings.language'), t('settings.languageDesc'))}
               <Radio.Group
                 optionType="button"
                 buttonStyle="solid"
@@ -226,7 +265,7 @@ function TopBarSettingsHost(): React.JSX.Element {
               </Radio.Group>
             </div>
             <div>
-              <div style={prefLabel(t('settings.dealDirection'))}>{t('settings.dealDirection')}</div>
+              {settingLabel(t('settings.dealDirection'), t('settings.dealDirectionDesc'))}
               <Radio.Group
                 optionType="button"
                 buttonStyle="solid"
@@ -239,7 +278,7 @@ function TopBarSettingsHost(): React.JSX.Element {
               </Radio.Group>
             </div>
             <div>
-              <div style={prefLabel(t('settings.scoreAnim'))}>{t('settings.scoreAnim')}</div>
+              {settingLabel(t('settings.scoreAnim'), t('settings.scoreAnimDesc'))}
               <Radio.Group
                 optionType="button"
                 buttonStyle="solid"
@@ -252,7 +291,7 @@ function TopBarSettingsHost(): React.JSX.Element {
               </Radio.Group>
             </div>
             <div>
-              <div style={prefLabel(t('settings.theme'))}>{t('settings.theme')}</div>
+              {settingLabel(t('settings.theme'), t('settings.themeDesc'))}
               <Radio.Group
                 optionType="button"
                 buttonStyle="solid"
@@ -264,6 +303,25 @@ function TopBarSettingsHost(): React.JSX.Element {
                 <Radio.Button value="dark">{t('settings.themeDark')}</Radio.Button>
                 <Radio.Button value="system">{t('settings.themeSystem')}</Radio.Button>
               </Radio.Group>
+            </div>
+            <div>
+              {settingLabel(t('settings.noteLiveRender'), t('settings.noteLiveRenderDesc'))}
+              <Switch size="small" checked={noteLiveRender} onChange={setNoteLiveRender} />
+            </div>
+            <div>
+              {settingLabel(t('settings.noteWrap'), t('settings.noteWrapDesc'))}
+              <Switch size="small" checked={noteWrap} onChange={setNoteWrap} />
+            </div>
+            <div>
+              {settingLabel(t('settings.plantumlServer'), t('settings.plantumlServerDesc'))}
+              <Input
+                size="small"
+                value={plantumlDraft}
+                placeholder={t('settings.plantumlPlaceholder')}
+                onChange={(event) => setPlantumlDraft(event.target.value)}
+                onBlur={commitPlantumlServer}
+                onPressEnter={commitPlantumlServer}
+              />
             </div>
           </div>
         </Descriptions.Item>

@@ -128,6 +128,15 @@ describe('note-md renderText（React 片段结构）', () => {
     expect(a.props.children).toBe('这里')
   })
 
+  it('危险或非外部协议不生成可导航链接', () => {
+    for (const target of ['javascript:alert(1)', 'data:text/html,x', '../relative']) {
+      const nodes = renderText(`[不可导航](${target})`, 'k')
+      const link = nodes.find((node) => typeof node === 'object' && (node as { type: unknown }).type === 'a')
+      expect(link).toBeUndefined()
+      expect(nodes).toContain('不可导航')
+    }
+  })
+
   it('普通文本原样、无 React 实体', () => {
     expect(renderText('a <b> & c', 'k').join('')).toBe('a <b> & c')
   })

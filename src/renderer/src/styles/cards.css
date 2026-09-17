@@ -90,6 +90,21 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .card.note { background: var(--paper-dim); border-left: 4px solid var(--split); border-radius: 0 var(--r-card) var(--r-card) 0; }
 .card.note textarea { font-size: 13px; color: var(--text-2); }
 .note-time { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.note-static {
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: text;
+  outline: none;
+  transition: background-color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out);
+}
+.note-static:hover { background: var(--input-hover-bg); }
+.note-static:focus-visible { border-color: var(--link); box-shadow: 0 0 0 2px var(--trace-bg); }
+.note-empty { color: var(--text-3); font-size: 13px; line-height: 1.7; padding: 2px 0; }
+.note-muya-shell { position: relative; min-height: 42px; }
+.note-muya-host { min-height: 42px; }
+.note-muya-loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--paper-dim); }
+.note-muya-fallback { min-height: 42px; }
 
 /* 注释组件 Markdown 渲染态（view） */
 .note-md { font-size: 13px; line-height: 1.7; color: var(--text-2); user-select: text; }
@@ -127,20 +142,7 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .note-md table { border-collapse: collapse; margin: 0 0 8px; font-size: 12px; }
 .note-md th, .note-md td { border: 1px solid var(--split); padding: 4px 8px; text-align: left; }
 .note-md th { background: var(--paper-dim); font-weight: 600; color: var(--text-1); }
-.note-actions { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
-/* 编辑态格式工具栏（marktext/word 式一键样式；按钮字母按所代表样式渲染） */
-.note-fmt-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
-.fmt-btn { border: 1px solid var(--border); background: var(--paper); border-radius: 4px; color: var(--text-2); font-size: 12px; padding: 1px 7px; cursor: pointer; line-height: 1.6; transition: background-color var(--t-ui) var(--ease-out), color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out); }
-.fmt-btn:hover { border-color: var(--link); color: var(--link); background: var(--trace-bg); }
-.fmt-btn.b { font-weight: 700; }
-.fmt-btn.i { font-style: italic; }
-.fmt-btn.s { text-decoration: line-through; }
-.fmt-btn.u { text-decoration: underline; }
-/* 渲染态自动换行开关（卡内局部状态）：wrap 时代码块/超长行折行显示 */
 .note-md.wrap pre { white-space: pre-wrap; word-break: break-word; }
-.note-actions-end { justify-content: flex-end; }
-.note-actions-end .ant-btn { color: var(--text-3); }
-.note-hint { font-size: 11px; color: var(--text-3); }
 
 /* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
 .card.mood { border-left: 4px solid var(--split); }
