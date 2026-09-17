@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–7 完成；Task 8 实施中
+**Status:** Task 1–8 完成；Task 9 待实施
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -564,11 +564,11 @@ git commit -m "perf(editor): 隔离组件级编辑更新"
 
 使用 `React.lazy` + `Suspense` 加载 DiaryView、MemoriesView；Workspace 保持首屏。loading fallback 使用语义 token，不能出现全白闪屏。
 
-- [ ] **Step 3: 建立 Muya 独立边界**
+- [x] **Step 3: 建立 Muya 独立边界**
 
 仅当注释进入编辑态时动态导入 Muya runtime；先核对 vendor 内已有的图表动态 import，保留现有 Mermaid/Vega 等延迟加载边界，不为分包目的重写上游插件行为。退出编辑时销毁实例和事件监听，但保留 Markdown 真源。
 
-当前完成：适配层异步 loader、真实 Demo 按编辑器启动加载、退出 destroy、vendor 图表边界回归均已完成；正式 NoteCard 激活仍等待 Demo 用户体验验收，因此本步骤保持未完成。
+完成：`d0acd3b` 将动态 Muya 适配器接入正式 NoteCard；同一时刻仅一个实例活动，退出时 flush 最终 Markdown 并 destroy，非活动卡保持静态渲染，vendor 图表继续按需加载。正式卡片的人机体验验收由独立 Muya 集成计划继续跟踪。
 
 - [x] **Step 4: 配置稳定 manualChunks**
 

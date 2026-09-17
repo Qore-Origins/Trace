@@ -2,18 +2,19 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-17（Codex：Muya Demo 已验收，正式集成启动）
+> 更新：2026-09-17（Codex：Muya 正式集成代码完成，等待正式卡片验收）
 
 ## 接手前必做
 
-### Muya 正式集成启动（2026-09-17，Codex；当前最高优先级）
+### Muya 正式集成代码完成（2026-09-17，Codex；当前最高优先级）
 
-- 用户明确反馈“Demo 手感可以”，真实 Muya Demo 体验门槛通过；这解锁正式 NoteCard 集成，不代表正式卡片已实现或已验收。
-- 新执行真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260917-02-注释Muya正式集成/Muya-Note-Formal-Integration-Implementation-Plan.md`；Trace 镜像为同目录 `plan.json`。
-- 实测 main HEAD `406e453`、ahead origin/main 26，工作区仅用户 `Resource/pic/`、`Resource/vid/` 未跟踪。计划使用 `.worktrees/muya-note-formal-integration` / `codex/muya-note-formal-integration`。
-- Codex 所有权：新建 `components/muya-note/MuyaNoteEditor.tsx`、`stores/note-editor-store.ts`、`test/muya-note-integration.spec.tsx`；修改 `components/cards.tsx` 的 NoteCard 段、`stores/pref-store.ts`、`App.tsx` 设置宿主、双语 i18n、`styles/cards.css`、`components/muya-note/muya-theme.css`、共享计划/HANDOFF。Claude Code 避开这些文件与 Muya/vendor 边界。
-- 实施约束：Markdown 字符串仍是唯一持久化真源；单活动 Muya；实时渲染和自动换行默认开启；PlantUML 默认离线；非活动态保留 NoteMarkdown；加载失败必须保留 textarea；不改 IPC、计划格式或 vendor 行为。
-- 下一步：创建隔离 worktree、复验 234/234 基线，从偏好与设置 UI 红灯测试开始。等待：无；正式卡片完成后仍需用户第二轮真机验收。
+- 用户“Demo 手感可以”已解锁正式集成；隔离分支 `codex/muya-note-formal-integration`、worktree `.worktrees/muya-note-formal-integration` 上完成代码提交 `d0acd3b`（`feat(note): 集成 Muya 实时注释编辑器`），尚未合并 main、未推送。main 实测 HEAD `56ea4bc`、ahead origin/main 27，仍只有用户 `Resource/pic/`、`Resource/vid/` 未跟踪。
+- 已实现：NoteCard 移除旧 textarea/七按钮/预览编辑双态；点击静态 Markdown 激活真实 Muya；独立 store 保证单活动实例；150ms Markdown 桥接且切卡/卸载 flush 最终内容并 destroy；加载失败保留 textarea；非活动卡继续轻量 `NoteMarkdown`。
+- 设置：实时渲染、自动换行默认开启；PlantUML 默认空 Server 离线；三项持久化且所有设置标签悬停 2 秒显示描述；错误提示走 `getMessage()`。Muya 异步加载期间读取最新设置，主题类使用语义 token。
+- 安全自审：Muya 链接回调仅放行 HTTP(S)；阅读态旧 `NoteMarkdown` 的 `javascript:`、`data:` 和相对目标不再生成 `<a>`，代码高亮继续转义；renderer 未引入文件系统访问，IPC/计划格式/vendor 未改。
+- TDD/验证：三批正式集成测试均先红后绿；危险链接测试先红后绿。最终 `npm run typecheck` 0 错，`npm run test` 28 文件 244/244，`npm run build` 成功（renderer 7151 模块；入口 644.91 kB；Muya 2,548.81 kB 与 190.61 kB CSS 保持异步），`npm run demo:muya:build` 3998 模块成功。全量并行测试曾因测试内动态 import 超过 5 秒出现 1 次超时，改为顶层导入后重新全量 244/244。
+- 文件所有权继续由 Codex 持有直至正式卡片验收/合并：`MuyaNoteEditor.tsx`、`note-editor-store.ts`、`muya-note-integration.spec.tsx`、`cards.tsx` NoteCard、`note-md.tsx`/测试、pref-store、App 设置宿主、双语 i18n、cards/Muya CSS、共享计划/HANDOFF。Claude Code 继续避开这些边界。
+- 下一步：用户在正式 NoteCard 验收 IME、剪贴板、语言选择、连续删除、切卡 flush、亮暗主题和窄窗口；等待该结论后选择合并或修正。剩余：正式卡片真机验收、前端地基 Task 9–11、Electron 真机/DPI 与真实性能验收。
 
 ### Task 8 启动（2026-09-17，Codex；优先于下方完成快照）
 
@@ -152,21 +153,21 @@
 
 | 项 | 当前状态 |
 |---|---|
-| 分支 | `main` |
-| 代码基线 | `5275a26` — Task 4 主题/对比度/焦点/减弱动效；已由 `git log` 实测 |
-| 同步时远端 | Task 4 集成时 main ahead origin/main 17，未推送；其后仅文档收尾，实际 HEAD/领先数以 git status/git log 为准。双端上次记录为 `5058037`，本轮未访问远端 |
+| 分支 | main 为 `56ea4bc`；Muya 实现在 `codex/muya-note-formal-integration` 的 `d0acd3b` |
+| 代码基线 | `d0acd3b` — Muya 正式 NoteCard 集成；已由 `git log` 实测，尚未合并 main |
+| 同步时远端 | main ahead origin/main 27，未推送；本轮未访问远端 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
-## 当前工作项：注释格式工具栏 + 自动换行（已完成）＋ 注释 Markdown 深度改造（移交 Codex）
+## 当前工作项：注释 Muya 正式集成（代码完成，待正式卡片验收）
 
 | 字段 | 状态 |
 |---|---|
-| 阶段 | 工具栏/折行已完成；Muya 深度改造的真实 Demo 已完成，等待用户验收后进入正式集成 |
-| 产物 | NoteCard 编辑态格式工具栏（7 钮选区包裹）+ 渲染态折行（默认折行、无横向滚动条；开关可切回原始排版）+ 渲染器扩展（~~删除线~~ / <u>下划线</u>） |
-| 已验证 | 当前基线：typecheck 0 错；test 185/185；真实 Muya Demo 和项目构建均成功；浏览器自动验收通过 |
-| 未验证 | 用户手动体验：中文输入法、剪贴板、语言选择浮层、连续删除手感与最终视觉 |
-| 文件所有权 | Codex 继续持有 Muya 快照/适配层/Demo，以及后续 `cards.tsx` NoteCard 段、`note-md.tsx`、pref-store 和设置宿主；Claude 避开这些边界 |
+| 阶段 | Demo 已验收；正式 NoteCard 代码 `d0acd3b` 已完成并通过自动验证，尚未合并 main |
+| 产物 | 单活动真实 Muya、Markdown 字符串真源、实时渲染/自动换行/PlantUML 设置、静态安全预览与 textarea 降级 |
+| 已验证 | typecheck 0 错；28 文件 244/244；正式项目与真实 Muya Demo 均构建成功；首屏仍不预载 Muya |
+| 未验证 | 正式 NoteCard 真机：中文输入法、剪贴板、语言选择浮层、连续删除、切卡 flush、亮暗主题、窄窗口 |
+| 文件所有权 | Codex 保持本轮精确边界至用户验收与合并；Claude 避开这些文件及 Muya/vendor 边界 |
 
 ## 已闭环：F2 回忆视图
 
@@ -219,9 +220,9 @@
 
 ## 下一动作与阻塞
 
-- 下一动作 A（Muya 主线）：用户打开真实 Muya Demo，重点验收中文输入法、剪贴板、语言选择浮层、视觉与连续删除手感。Claude 继续避开 vendor/muya、Muya 适配层、`cards.tsx` NoteCard 区段、`note-md.tsx`、pref-store 和设置宿主。
-- 下一动作 B（前端地基）：Task 5 已交付；下一批 Task 6 拆分 `workspace.css` 与 `cards.tsx`，实施前重新登记文件边界。
-- 等待：Task 6 确认与 Muya Demo 用户验收，不提前正式 NoteCard 集成。
+- 下一动作 A（Muya 主线）：用户在正式 NoteCard 验收 IME、剪贴板、语言选择、连续删除、切卡 flush、亮暗主题和窄窗口；通过后将 `d0acd3b` 合并 main。
+- 下一动作 B（前端地基）：Task 1–8 已完成；Task 9 搜索性能可在避开 Muya 所有权边界的前提下错峰推进。
+- 等待：正式 NoteCard 真机验收；不把 Demo 通过写成正式卡片通过。
 - F2 已闭环，不再构成阻塞或并行边界。
 - 待推送：Task 5 已快进主目录；未经用户授权不推送远端，ahead 数以最终 `git status` 实测为准。
 

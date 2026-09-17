@@ -15,7 +15,7 @@
       "id": "eaaef1be94204da2af120a6284386c42",
       "type": "note",
       "payload": {
-        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–7 完成；Task 8 本批提交 14cef79 已快进 main，完成页面分包、Muya 适配层异步加载边界与构建预算。主目录验证 typecheck 0 错、27 文件 234/234、正式 build 3174 模块且 renderer 无警告、Demo build 3998 模块。正式 NoteCard/Muya 激活仍等待真实 Demo 用户体验验收，因此 Task 8 保持 in_progress；可错峰推进 Task 9，真实 Electron/DPI 与真实性能采样仍待补。",
+        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–8 完成。14cef79 完成页面分包和 Muya 异步运行时边界；d0acd3b 将单活动 Muya 接入正式 NoteCard，保持 Markdown 真源与图表按需加载。最终 typecheck 0 错、28 文件 244/244、正式 build 7151 模块成功。下一步 Task 9；正式卡片真机体验验收由独立 Muya 集成计划跟踪。",
         "created_at": "2026-09-15T11:50:34.882+08:00"
       }
     },
@@ -50,7 +50,7 @@
       "payload": {
         "title": "第三阶段：性能与文档闭环",
         "items": [
-          { "id": "aa83b03c24744f33815f6b51512292ee", "title": "实施页面与 Muya 懒加载及构建预算", "status": "in_progress" },
+          { "id": "aa83b03c24744f33815f6b51512292ee", "title": "实施页面与 Muya 懒加载及构建预算", "status": "done" },
           { "id": "475587919f3d463581491a086e54b760", "title": "优化计划树订阅与搜索长列表", "status": "not_started" },
           { "id": "c2aeb06efe3641dcb36964a06a6edce2", "title": "建立真实 Electron 性能报告", "status": "not_started" },
           { "id": "1f22035c936749079315e73fbf52d4d1", "title": "同步 UI、前端设计、架构、计划与 HANDOFF 文档", "status": "not_started" }
