@@ -1,7 +1,5 @@
-import { Muya, zhCN } from '@muyajs/core'
-
 import { createMuyaOptions, validatePlantumlServer } from '../../src/renderer/src/components/muya-note/muya-config'
-import { registerMuyaPlugins } from '../../src/renderer/src/components/muya-note/muya-runtime'
+import { loadMuyaRuntime } from '../../src/renderer/src/components/muya-note/muya-runtime'
 import '../../src/renderer/src/components/muya-note/muya-theme.css'
 import './style.css'
 
@@ -81,8 +79,6 @@ const query = <T extends HTMLElement>(selector: string): T => {
   return element
 }
 
-registerMuyaPlugins()
-
 const editorHost = query<HTMLElement>('#muya-editor')
 const markdownOutput = query<HTMLTextAreaElement>('#markdown-output')
 const eventLog = query<HTMLOListElement>('#event-log')
@@ -95,85 +91,90 @@ const wrapDetail = query<HTMLElement>('#wrap-detail')
 const plantumlInput = query<HTMLInputElement>('#plantuml-server')
 const plantumlState = query<HTMLElement>('#plantuml-state')
 
-const muya = new Muya(editorHost, {
-  ...createMuyaOptions(''),
-  markdown: INITIAL_MARKDOWN
-})
-muya.locale(zhCN)
-muya.init()
+async function startDemo(): Promise<void> {
+  const { Muya, zhCN } = await loadMuyaRuntime()
+  const muya = new Muya(editorHost, {
+    ...createMuyaOptions(''),
+    markdown: INITIAL_MARKDOWN
+  })
+  muya.locale(zhCN)
+  muya.init()
 
-let recordedEventCount = 0
+  let recordedEventCount = 0
 
-function updateMarkdownSnapshot(): void {
-  markdownOutput.value = muya.getMarkdown()
+  function updateMarkdownSnapshot(): void {
+    markdownOutput.value = muya.getMarkdown()
+  }
+
+  function recordEvent(label: string, detail: string): void {
+    recordedEventCount += 1
+    eventCount.textContent = `${recordedEventCount} 次事件`
+
+    const item = document.createElement('li')
+    const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+    item.textContent = `${timestamp} · ${label} · ${detail}`
+    eventLog.prepend(item)
+
+    while (eventLog.children.length > 8) eventLog.lastElementChild?.remove()
+  }
+
+  muya.on('json-change', (change: { source?: string }) => {
+    updateMarkdownSnapshot()
+    documentState.textContent = '内容已更新'
+    recordEvent('json-change', `${change.source ?? 'unknown'} · ${muya.getMarkdown().length} 字符`)
+  })
+
+  muya.on(
+    'selection-change',
+    (selection: { kind?: string; isCollapsed?: boolean; formats?: string[] }) => {
+      const formatSummary = selection.formats?.length ? selection.formats.join(', ') : '无格式'
+      const selectionState = selection.isCollapsed === false ? '范围选择' : '光标'
+      recordEvent('selection-change', `${selection.kind ?? 'text'} · ${selectionState} · ${formatSummary}`)
+    }
+  )
+
+  liveRenderToggle.addEventListener('change', () => {
+    const enabled = liveRenderToggle.checked
+    muya.domNode.classList.toggle('trace-muya-source-mode', !enabled)
+    liveRenderDetail.textContent = enabled ? '开启 · 光标所在标记可见' : '关闭 · 全部标记可见'
+    recordEvent('setting-change', `实时渲染${enabled ? '开启' : '关闭'}`)
+  })
+
+  wrapToggle.addEventListener('change', () => {
+    const enabled = wrapToggle.checked
+    muya.setOptions({ wrapCodeBlocks: enabled })
+    wrapDetail.textContent = enabled ? '开启 · 长代码行折行' : '关闭 · 长代码行横向滚动'
+    recordEvent('setting-change', `自动换行${enabled ? '开启' : '关闭'}`)
+  })
+
+  query<HTMLButtonElement>('#plantuml-apply').addEventListener('click', () => {
+    try {
+      const server = validatePlantumlServer(plantumlInput.value)
+      muya.setOptions({ plantumlServer: server }, true)
+      plantumlInput.setAttribute('aria-invalid', 'false')
+      plantumlState.classList.remove('setting-error')
+      plantumlState.textContent = server
+        ? `已启用 ${server}；PlantUML 源码会发送到该服务。`
+        : '未配置，不联网；PlantUML 样例显示离线提示。'
+      recordEvent('setting-change', server ? 'PlantUML Server 已启用' : 'PlantUML 保持离线')
+    } catch (error) {
+      plantumlInput.setAttribute('aria-invalid', 'true')
+      plantumlState.classList.add('setting-error')
+      plantumlState.textContent = error instanceof Error ? error.message : String(error)
+    }
+  })
+
+  query<HTMLButtonElement>('#undo-button').addEventListener('click', () => muya.undo())
+  query<HTMLButtonElement>('#redo-button').addEventListener('click', () => muya.redo())
+  query<HTMLButtonElement>('#reset-button').addEventListener('click', () => {
+    muya.setContent(INITIAL_MARKDOWN, true)
+    updateMarkdownSnapshot()
+    documentState.textContent = '验收样例已恢复'
+    recordEvent('content-reset', '恢复初始 Markdown')
+  })
+
+  updateMarkdownSnapshot()
+  window.addEventListener('beforeunload', () => muya.destroy(), { once: true })
 }
 
-function recordEvent(label: string, detail: string): void {
-  recordedEventCount += 1
-  eventCount.textContent = `${recordedEventCount} 次事件`
-
-  const item = document.createElement('li')
-  const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-  item.textContent = `${timestamp} · ${label} · ${detail}`
-  eventLog.prepend(item)
-
-  while (eventLog.children.length > 8) eventLog.lastElementChild?.remove()
-}
-
-muya.on('json-change', (change: { source?: string }) => {
-  updateMarkdownSnapshot()
-  documentState.textContent = '内容已更新'
-  recordEvent('json-change', `${change.source ?? 'unknown'} · ${muya.getMarkdown().length} 字符`)
-})
-
-muya.on(
-  'selection-change',
-  (selection: { kind?: string; isCollapsed?: boolean; formats?: string[] }) => {
-    const formatSummary = selection.formats?.length ? selection.formats.join(', ') : '无格式'
-    const selectionState = selection.isCollapsed === false ? '范围选择' : '光标'
-    recordEvent('selection-change', `${selection.kind ?? 'text'} · ${selectionState} · ${formatSummary}`)
-  }
-)
-
-liveRenderToggle.addEventListener('change', () => {
-  const enabled = liveRenderToggle.checked
-  muya.domNode.classList.toggle('trace-muya-source-mode', !enabled)
-  liveRenderDetail.textContent = enabled ? '开启 · 光标所在标记可见' : '关闭 · 全部标记可见'
-  recordEvent('setting-change', `实时渲染${enabled ? '开启' : '关闭'}`)
-})
-
-wrapToggle.addEventListener('change', () => {
-  const enabled = wrapToggle.checked
-  muya.setOptions({ wrapCodeBlocks: enabled })
-  wrapDetail.textContent = enabled ? '开启 · 长代码行折行' : '关闭 · 长代码行横向滚动'
-  recordEvent('setting-change', `自动换行${enabled ? '开启' : '关闭'}`)
-})
-
-query<HTMLButtonElement>('#plantuml-apply').addEventListener('click', () => {
-  try {
-    const server = validatePlantumlServer(plantumlInput.value)
-    muya.setOptions({ plantumlServer: server }, true)
-    plantumlInput.setAttribute('aria-invalid', 'false')
-    plantumlState.classList.remove('setting-error')
-    plantumlState.textContent = server
-      ? `已启用 ${server}；PlantUML 源码会发送到该服务。`
-      : '未配置，不联网；PlantUML 样例显示离线提示。'
-    recordEvent('setting-change', server ? 'PlantUML Server 已启用' : 'PlantUML 保持离线')
-  } catch (error) {
-    plantumlInput.setAttribute('aria-invalid', 'true')
-    plantumlState.classList.add('setting-error')
-    plantumlState.textContent = error instanceof Error ? error.message : String(error)
-  }
-})
-
-query<HTMLButtonElement>('#undo-button').addEventListener('click', () => muya.undo())
-query<HTMLButtonElement>('#redo-button').addEventListener('click', () => muya.redo())
-query<HTMLButtonElement>('#reset-button').addEventListener('click', () => {
-  muya.setContent(INITIAL_MARKDOWN, true)
-  updateMarkdownSnapshot()
-  documentState.textContent = '验收样例已恢复'
-  recordEvent('content-reset', '恢复初始 Markdown')
-})
-
-updateMarkdownSnapshot()
-window.addEventListener('beforeunload', () => muya.destroy())
+void startDemo()

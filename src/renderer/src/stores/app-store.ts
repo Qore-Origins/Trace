@@ -4,6 +4,8 @@ import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
 
 import { i18n } from '../i18n'
+import { usePlanStore } from './plan-store'
+import { useTreeStore } from './tree-store'
 
 export type AppPhase = 'checking' | 'onboarding' | 'ready'
 export type IndexState = 'building' | 'ready' | 'error'
@@ -53,8 +55,6 @@ export const useAppStore = create<AppState>()((set) => ({
   switchRootDir: async () => {
     const picked = await invoke('app:chooseDirectory')
     if (!picked.dirPath) return
-    const { useTreeStore } = await import('./tree-store')
-    const { usePlanStore } = await import('./plan-store')
     getModal().confirm({
       title: i18n.t('confirm.switchRootTitle'),
       content: i18n.t('confirm.switchRootDesc', { dir: picked.dirPath }),

@@ -6,7 +6,7 @@ import type { MenuProps } from 'antd'
 import WindowControls from './WindowControls'
 import { useTreeStore } from '../stores/tree-store'
 import { useAppStore } from '../stores/app-store'
-import { useUiStore } from '../stores/ui-store'
+import { confirmRemoveTree, useUiStore } from '../stores/ui-store'
 import { useSearchStore } from '../stores/search-store'
 import { invoke, ClientError } from '../ipc-client'
 import { i18n, useTranslation } from '../i18n'
@@ -127,7 +127,7 @@ function MenuBar(): React.JSX.Element {
       label: t('menu.deleteSelected'),
       extra: 'Del',
       disabled: !selectedPath,
-      onClick: () => selectedPath && import('../stores/ui-store').then((m) => m.confirmRemoveTree(selectedPath, useTreeStore.getState().selectedKind ?? 'plan'))
+      onClick: () => selectedPath && confirmRemoveTree(selectedPath, useTreeStore.getState().selectedKind ?? 'plan')
     }
   ]
 

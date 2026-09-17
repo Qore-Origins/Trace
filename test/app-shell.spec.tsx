@@ -30,8 +30,20 @@ describe('AppShell structure contract', () => {
   it('keeps global overlays outside the keyed active view', () => {
     const app = readFileSync(resolve(rendererRoot, 'App.tsx'), 'utf8')
     expect(app).toContain("import AppShell from './components/AppShell'")
-    expect(app).toMatch(/<AppShell[\s\S]*?<DiaryView key=\{rootDir[\s\S]*?<MemoriesView key=\{rootDir[\s\S]*?<WorkspaceView \/>[\s\S]*?<\/AppShell>\s*<NameDialogModal \/>\s*<SearchOverlay \/>\s*<UndoNotice \/>\s*<TopBarSettingsHost \/>/)
+    expect(app).toMatch(/<AppShell[\s\S]*?<Suspense[\s\S]*?<DiaryView key=\{rootDir[\s\S]*?<MemoriesView key=\{rootDir[\s\S]*?<WorkspaceView \/>[\s\S]*?<\/Suspense>[\s\S]*?<\/AppShell>\s*<NameDialogModal \/>\s*<SearchOverlay \/>\s*<UndoNotice \/>\s*<TopBarSettingsHost \/>/)
     expect(app).toContain("showStatus={view === 'workspace'}")
+  })
+
+  it('lazy-loads secondary views while keeping the workspace in the initial graph', () => {
+    const app = readFileSync(resolve(rendererRoot, 'App.tsx'), 'utf8')
+
+    expect(app).toContain("const DiaryView = lazy(() => import('./views/DiaryView'))")
+    expect(app).toContain("const MemoriesView = lazy(() => import('./views/MemoriesView'))")
+    expect(app).toContain("import WorkspaceView from './views/WorkspaceView'")
+    expect(app).not.toContain("import DiaryView from './views/DiaryView'")
+    expect(app).not.toContain("import MemoriesView from './views/MemoriesView'")
+    expect(app).toContain("background: 'var(--paper)'")
+    expect(app).toContain("color: 'var(--text-2)'")
   })
 
   it('leaves each ready view as content without its own app chrome', () => {

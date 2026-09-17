@@ -2,13 +2,11 @@
 // 全局交互底座（评审 Important-1）：搜索浮层/命名对话框/设置弹窗 + 全局快捷键在此单点挂载，
 // 工作台与日记两视图共用——view 路由切换不再使底座随 WorkspaceView 卸载而静默失效
 // （修复：日记视图下 Ctrl+F 搜索 / Ctrl+N 新建计划 / 文件→设置 全部无效）
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Button, Descriptions, Modal, Radio, Spin } from 'antd'
 import OnboardingView from './views/OnboardingView'
 import WorkspaceView from './views/WorkspaceView'
-import DiaryView from './views/DiaryView'
-import MemoriesView from './views/MemoriesView'
 import ExportView from './views/ExportView'
 import NameDialogModal from './components/NameDialogModal'
 import SearchOverlay from './components/SearchOverlay'
@@ -23,6 +21,9 @@ import { usePrefStore, type DealDirection, type Language, type ScoreAnim, type T
 import { invoke } from './ipc-client'
 import { DIARY_DIR } from '@shared/plan-types'
 import { useTranslation } from './i18n'
+
+const DiaryView = lazy(() => import('./views/DiaryView'))
+const MemoriesView = lazy(() => import('./views/MemoriesView'))
 
 // 输入控件内不劫持快捷键（Ctrl+N/F5 等不作用于输入框；Ctrl+F 例外——输入框内也应打开溯源）
 function isTypingTarget(e: KeyboardEvent): boolean {
@@ -127,13 +128,34 @@ export default function App(): React.JSX.Element {
   ) : (
     <>
       <AppShell showStatus={view === 'workspace'} className={`app-shell--${view}`}>
-        {view === 'diary' ? (
-          <DiaryView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
-        ) : view === 'memories' ? (
-          <MemoriesView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
-        ) : (
-          <WorkspaceView />
-        )}
+        <Suspense
+          fallback={
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                background: 'var(--paper)',
+                color: 'var(--text-2)'
+              }}
+            >
+              <Spin size="small" />
+              <span>{t('common.loading')}</span>
+            </div>
+          }
+        >
+          {view === 'diary' ? (
+            <DiaryView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
+          ) : view === 'memories' ? (
+            <MemoriesView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
+          ) : (
+            <WorkspaceView />
+          )}
+        </Suspense>
       </AppShell>
       <NameDialogModal />
       <SearchOverlay />

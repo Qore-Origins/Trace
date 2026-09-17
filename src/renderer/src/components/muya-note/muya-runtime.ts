@@ -1,31 +1,13 @@
-import {
-  CodeBlockLanguageSelector,
-  EmojiSelector,
-  FootnoteTool,
-  ImageEditTool,
-  ImagePathPicker,
-  ImageResizeBar,
-  ImageToolBar,
-  InlineFormatToolbar,
-  LinkTools,
-  Muya,
-  ParagraphFrontButton,
-  ParagraphFrontMenu,
-  ParagraphQuickInsertMenu,
-  PreviewToolBar,
-  TableChessboard,
-  TableColumnToolbar,
-  TableDragBar,
-  TableRowColumMenu
-} from '@muyajs/core'
-
 export interface MuyaPluginCallbacks {
   openLink?: (href: string) => void
   pickImage?: () => Promise<string>
   persistImage?: (image: { src: string; alt: string; title: string }) => Promise<string>
 }
 
+type MuyaRuntime = typeof import('@muyajs/core')
+
 let pluginsRegistered = false
+let runtimePromise: Promise<MuyaRuntime> | null = null
 
 function openBrowserLink(href: string): void {
   let url: URL
@@ -41,9 +23,30 @@ function openBrowserLink(href: string): void {
   if (openedWindow) openedWindow.opener = null
 }
 
-export function registerMuyaPlugins(callbacks: MuyaPluginCallbacks = {}): void {
+function registerMuyaPlugins(runtime: MuyaRuntime, callbacks: MuyaPluginCallbacks): void {
   if (pluginsRegistered) return
   pluginsRegistered = true
+
+  const {
+    CodeBlockLanguageSelector,
+    EmojiSelector,
+    FootnoteTool,
+    ImageEditTool,
+    ImagePathPicker,
+    ImageResizeBar,
+    ImageToolBar,
+    InlineFormatToolbar,
+    LinkTools,
+    Muya,
+    ParagraphFrontButton,
+    ParagraphFrontMenu,
+    ParagraphQuickInsertMenu,
+    PreviewToolBar,
+    TableChessboard,
+    TableColumnToolbar,
+    TableDragBar,
+    TableRowColumMenu
+  } = runtime
 
   const openLink = callbacks.openLink ?? openBrowserLink
   const pickImage = callbacks.pickImage ?? (async () => '')
@@ -74,4 +77,11 @@ export function registerMuyaPlugins(callbacks: MuyaPluginCallbacks = {}): void {
   Muya.use(TableColumnToolbar)
   Muya.use(TableDragBar)
   Muya.use(TableRowColumMenu)
+}
+
+export async function loadMuyaRuntime(callbacks: MuyaPluginCallbacks = {}): Promise<MuyaRuntime> {
+  runtimePromise ??= import('@muyajs/core')
+  const runtime = await runtimePromise
+  registerMuyaPlugins(runtime, callbacks)
+  return runtime
 }
