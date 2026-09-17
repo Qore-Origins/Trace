@@ -8,7 +8,7 @@
 
 ### Muya 正式集成代码完成（2026-09-17，Codex；当前最高优先级）
 
-- 用户“Demo 手感可以”已解锁正式集成；隔离分支 `codex/muya-note-formal-integration`、worktree `.worktrees/muya-note-formal-integration` 上完成代码提交 `d0acd3b`（`feat(note): 集成 Muya 实时注释编辑器`），尚未合并 main、未推送。main 实测 HEAD `56ea4bc`、ahead origin/main 27，仍只有用户 `Resource/pic/`、`Resource/vid/` 未跟踪。
+- 用户“Demo 手感可以”已解锁正式集成；代码提交 `d0acd3b`（`feat(note): 集成 Muya 实时注释编辑器`）及计划提交 `1a33af6` 已按用户选择 1 fast-forward 到本地 main，合并时 main HEAD `1a33af6`、ahead origin/main 29，未推送，仍只有用户 `Resource/pic/`、`Resource/vid/` 未跟踪。
 - 已实现：NoteCard 移除旧 textarea/七按钮/预览编辑双态；点击静态 Markdown 激活真实 Muya；独立 store 保证单活动实例；150ms Markdown 桥接且切卡/卸载 flush 最终内容并 destroy；加载失败保留 textarea；非活动卡继续轻量 `NoteMarkdown`。
 - 设置：实时渲染、自动换行默认开启；PlantUML 默认空 Server 离线；三项持久化且所有设置标签悬停 2 秒显示描述；错误提示走 `getMessage()`。Muya 异步加载期间读取最新设置，主题类使用语义 token。
 - 安全自审：Muya 链接回调仅放行 HTTP(S)；阅读态旧 `NoteMarkdown` 的 `javascript:`、`data:` 和相对目标不再生成 `<a>`，代码高亮继续转义；renderer 未引入文件系统访问，IPC/计划格式/vendor 未改。
@@ -153,9 +153,9 @@
 
 | 项 | 当前状态 |
 |---|---|
-| 分支 | main 为 `56ea4bc`；Muya 实现在 `codex/muya-note-formal-integration` 的 `d0acd3b` |
-| 代码基线 | `d0acd3b` — Muya 正式 NoteCard 集成；已由 `git log` 实测，尚未合并 main |
-| 同步时远端 | main ahead origin/main 27，未推送；本轮未访问远端 |
+| 分支 | `main`；Muya 正式集成已 fast-forward |
+| 代码基线 | `d0acd3b` — Muya 正式 NoteCard 集成；计划交接提交 `1a33af6` |
+| 同步时远端 | 合并时 main ahead origin/main 29，未推送；本轮未访问远端 |
 | 已发布版本 | v0.12.0 Beta 4（2026-09-12） |
 | 工作区非代码文件 | `Resource/pic/`、`Resource/vid/` 未跟踪，属用户资源，禁止暂存、删除或重命名 |
 
@@ -163,7 +163,7 @@
 
 | 字段 | 状态 |
 |---|---|
-| 阶段 | Demo 已验收；正式 NoteCard 代码 `d0acd3b` 已完成并通过自动验证，尚未合并 main |
+| 阶段 | Demo 已验收；正式 NoteCard 代码 `d0acd3b` 已完成自动验证并合入本地 main，等待正式卡片体验验收 |
 | 产物 | 单活动真实 Muya、Markdown 字符串真源、实时渲染/自动换行/PlantUML 设置、静态安全预览与 textarea 降级 |
 | 已验证 | typecheck 0 错；28 文件 244/244；正式项目与真实 Muya Demo 均构建成功；首屏仍不预载 Muya |
 | 未验证 | 正式 NoteCard 真机：中文输入法、剪贴板、语言选择浮层、连续删除、切卡 flush、亮暗主题、窄窗口 |
@@ -220,7 +220,7 @@
 
 ## 下一动作与阻塞
 
-- 下一动作 A（Muya 主线）：用户在正式 NoteCard 验收 IME、剪贴板、语言选择、连续删除、切卡 flush、亮暗主题和窄窗口；通过后将 `d0acd3b` 合并 main。
+- 下一动作 A（Muya 主线）：用户在正式 NoteCard 验收 IME、剪贴板、语言选择、连续删除、切卡 flush、亮暗主题和窄窗口；通过后关闭该独立计划。
 - 下一动作 B（前端地基）：Task 1–8 已完成；Task 9 搜索性能可在避开 Muya 所有权边界的前提下错峰推进。
 - 等待：正式 NoteCard 真机验收；不把 Demo 通过写成正式卡片通过。
 - F2 已闭环，不再构成阻塞或并行边界。

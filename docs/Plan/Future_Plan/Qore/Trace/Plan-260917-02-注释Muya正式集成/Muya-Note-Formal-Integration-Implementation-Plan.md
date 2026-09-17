@@ -50,7 +50,7 @@
 
 ## 实施记录（2026-09-17）
 
-- 代码提交：`d0acd3b`（`feat(note): 集成 Muya 实时注释编辑器`），位于 `codex/muya-note-formal-integration`，尚未合并 main、未推送。
+- 代码提交：`d0acd3b`（`feat(note): 集成 Muya 实时注释编辑器`），连同计划提交 `1a33af6` 已按用户选择 1 fast-forward 到本地 main，未推送。
 - TDD：偏好、生命周期与 NoteCard 三批测试均先红后绿；安全自审额外复现并修复阅读态 `javascript:`/`data:`/相对链接仍生成可导航锚点的问题。
 - 最终验证：`npm run typecheck` 0 错；`npm run test` 28 文件 244/244；`npm run build` 成功（renderer 7151 模块，入口 644.91 kB，Muya 核心 2,548.81 kB 与 190.61 kB 样式保持异步）；`npm run demo:muya:build` 3998 模块成功，重型图表大块提示为已批准能力。
 - 当前状态：代码与自动验证完成，等待用户在正式 NoteCard 做第二轮真机体验验收；不把 Demo 验收等同正式卡片验收。
