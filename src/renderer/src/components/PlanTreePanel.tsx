@@ -3,7 +3,7 @@
 // 2026-09-08 卡牌摞动效（D1-D8，demo: docs/prototype/tree-animation-demo.html 定稿移植）：
 //   递归 TreeGroup + 行槽（.slot grid 0fr↔1fr）渲染；展开=发牌入场（方向=用户偏好），收拢=延迟卸载+可取消；
 //   折叠按钮=方框 +/- 旋转变号（D4）；父行脉冲（D5）；连接线生长（D6）；持牌暗示（D7）；大文件夹节奏压缩（D8）
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Dropdown } from 'antd'
 import {
   FolderAddOutlined,
@@ -38,6 +38,8 @@ import { useTranslation } from '../i18n'
 import { effStagger } from './tree-utils'
 import { ActionButton } from './ui/ActionButton'
 
+const LARGE_TREE_ROW_THRESHOLD = 300
+
 // 行视图（渲染单位；path='' 为根）
 interface RowView {
   path: string
@@ -55,7 +57,6 @@ interface TreeUiCtxValue {
   onOpen: (node: RowView) => void
   activeId: string | null // 拖拽中的行 path
   canReceive: (dragPath: string, target: string) => boolean
-  selectedPath: string | null
   removeWithAnimation: (path: string) => void // 删除先播收拢波次再真删（面板持有 closingPaths 态）
 }
 const TreeUiCtx = createContext<TreeUiCtxValue>({
@@ -63,7 +64,6 @@ const TreeUiCtx = createContext<TreeUiCtxValue>({
   onOpen: () => undefined,
   activeId: null,
   canReceive: () => false,
-  selectedPath: null,
   removeWithAnimation: () => undefined
 })
 
@@ -250,7 +250,12 @@ function PmBox(): React.JSX.Element {
 // 操作菜单改为右键整行呼出（桌面惯例），快捷新建 + / 文件夹按钮保留
 function TreeRow(props: { node: RowView }): React.JSX.Element {
   const { node } = props
-  const { activeId, canReceive, selectedPath, removeWithAnimation } = useContext(TreeUiCtx)
+  if (import.meta.env.DEV) {
+    const counts = (window as Window & { __traceTreeRowRenderCounts?: Record<string, number> }).__traceTreeRowRenderCounts
+    if (counts) counts[node.path] = (counts[node.path] ?? 0) + 1
+  }
+  const { activeId, canReceive, removeWithAnimation } = useContext(TreeUiCtx)
+  const selected = useTreeStore((s) => s.selectedPath === node.path)
   const { t } = useTranslation()
   const openNameDialog = useUiStore((s) => s.openNameDialog)
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
@@ -285,7 +290,7 @@ function TreeRow(props: { node: RowView }): React.JSX.Element {
       data-path={node.path}
       tabIndex={-1}
     >
-      <RowContent node={node} selected={selectedPath === node.path} handle={node.kind === 'root' ? null : { attributes, listeners }} />
+      <RowContent node={node} selected={selected} handle={node.kind === 'root' ? null : { attributes, listeners }} />
     </div>
   )
   if (node.kind === 'root') return row
@@ -314,14 +319,24 @@ function TreeRow(props: { node: RowView }): React.JSX.Element {
 }
 
 // ---------- 行槽（D1 高度槽 + D2/D3 出入场动画） ----------
-function Slot(props: { node: RowView; enterDelay: number; removing?: boolean }): React.JSX.Element {
-  const { node } = props
+function Slot(props: { item: PlanTreeNode; depth: number; enterDelay: number; removing?: boolean }): React.JSX.Element {
+  const { item, depth } = props
+  const expanded = useTreeStore((s) => s.expandedKeys.includes(item.path))
+  const loaded = useTreeStore((s) => s.loaded[item.path] === true)
+  const node: RowView = {
+    path: item.path,
+    name: item.name,
+    kind: item.kind,
+    hasChildren: item.has_children,
+    depth,
+    expanded,
+    loaded
+  }
   const delays = useContext(ClosingDelaysCtx) // 非 null = 处于收拢子树
   const closing = delays !== null
   const exitDelay = delays?.get(node.path) ?? 0
-  const expandedKeys = useTreeStore((s) => s.expandedKeys)
   const closingPaths = useContext(ClosingPathsCtx)
-  const childOpen = node.hasChildren && (expandedKeys.includes(node.path) || closingPaths.has(node.path))
+  const childOpen = node.hasChildren && (expanded || closingPaths.has(node.path))
 
   // 取消收拢回弹：closing true→false 时钉住（禁止 deal-in 重播，CSS .slot.settled）
   const [settled, setSettled] = useState(false)
@@ -351,15 +366,14 @@ function Slot(props: { node: RowView; enterDelay: number; removing?: boolean }):
 function TreeGroup(props: { parentPath: string; depth: number }): React.JSX.Element | null {
   const { parentPath, depth } = props
   const children = useTreeStore((s) => s.childrenMap[parentPath])
-  const loaded = useTreeStore((s) => s.loaded)
-  const expandedKeys = useTreeStore((s) => s.expandedKeys)
+  const expanded = useTreeStore((s) => s.expandedKeys.includes(parentPath))
   const closingPaths = useContext(ClosingPathsCtx)
   const removingPaths = useContext(RemovingPathsCtx)
   const dealDirection = usePrefStore((s) => s.dealDirection)
   const inheritedDelays = useContext(ClosingDelaysCtx) // 祖先收拢中 → 波次沿用祖先的表
 
-  const open = expandedKeys.includes(parentPath) || closingPaths.has(parentPath)
-  const ownClosing = closingPaths.has(parentPath) && !expandedKeys.includes(parentPath)
+  const open = expanded || closingPaths.has(parentPath)
+  const ownClosing = closingPaths.has(parentPath) && !expanded
 
   // 自身发起收拢：构建「全部揭示行槽 → 出场延迟」波次表（收拢方向=发牌方向的反向）
   const ownDelays = useMemo(() => {
@@ -385,23 +399,34 @@ function TreeGroup(props: { parentPath: string; depth: number }): React.JSX.Elem
     <ClosingDelaysCtx.Provider value={delays}>
       {kids.map((c, i) => {
         const enterIdx = dealDirection === 'top' ? i : kids.length - 1 - i
-        const node: RowView = {
-          path: c.path,
-          name: c.name,
-          kind: c.kind,
-          hasChildren: c.has_children,
-          depth,
-          expanded: expandedKeys.includes(c.path),
-          loaded: loaded[c.path] === true
-        }
-        return <Slot key={c.path} node={node} enterDelay={Math.round(enterIdx * s)} removing={removingPaths.has(c.path)} />
+        return <Slot key={c.path} item={c} depth={depth} enterDelay={Math.round(enterIdx * s)} removing={removingPaths.has(c.path)} />
       })}
     </ClosingDelaysCtx.Provider>
   )
 }
 
+function TreeRoot(): React.JSX.Element {
+  const children = useTreeStore((s) => s.childrenMap[''])
+  const loaded = useTreeStore((s) => s.loaded[''] === true)
+  const expanded = useTreeStore((s) => s.expandedKeys.includes(''))
+  const root: RowView = {
+    path: '',
+    name: 'root',
+    kind: 'root',
+    hasChildren: loaded ? (children ?? []).length > 0 : true,
+    depth: 0,
+    expanded,
+    loaded
+  }
+  return <TreeRow node={root} />
+}
+
 export default function PlanTreePanel(): React.JSX.Element {
-  const { childrenMap, loaded, expandedKeys, selectedPath, loadChildren, select, setExpanded, movePlan, removePlan } = useTreeStore()
+  const loadChildren = useTreeStore((s) => s.loadChildren)
+  const select = useTreeStore((s) => s.select)
+  const setExpanded = useTreeStore((s) => s.setExpanded)
+  const movePlan = useTreeStore((s) => s.movePlan)
+  const removePlan = useTreeStore((s) => s.removePlan)
   const openPlan = usePlanStore((s) => s.open)
   const closePlan = usePlanStore((s) => s.close)
   const openNameDialog = useUiStore((s) => s.openNameDialog)
@@ -430,10 +455,10 @@ export default function PlanTreePanel(): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
 
   // 目标可接收判定：非被拖项自身/子孙（防循环嵌套）、非现父（已在其中=无意义移动）
-  const canReceive = (dragPath: string, target: string): boolean =>
-    dragPath !== target && !isSelfOrDescendant(dragPath, target) && parentRel(dragPath) !== target
+  const canReceive = useCallback((dragPath: string, target: string): boolean =>
+    dragPath !== target && !isSelfOrDescendant(dragPath, target) && parentRel(dragPath) !== target, [])
 
-  const onToggle = (node: RowView): void => {
+  const onToggle = useCallback((node: RowView): void => {
     if (!node.hasChildren) return
     const p = node.path
     if (closingPaths.has(p)) {
@@ -458,6 +483,8 @@ export default function PlanTreePanel(): React.JSX.Element {
       // 收拢：状态立即翻转 + 延迟卸载（播完收牌波次）
       const nextExpanded = st.expandedKeys.filter((k) => k !== p)
       setExpanded(nextExpanded)
+      // 大树广播 closingPaths 会令所有行槽参与一次渲染；直接卸载子组，避免长帧。
+      if (document.querySelectorAll('.tree-scroll .tree-row').length > LARGE_TREE_ROW_THRESHOLD) return
       const nextClosing = new Set(closingPaths)
       nextClosing.add(p)
       const revealed = collectRevealedSlots(p, st.childrenMap, nextExpanded, nextClosing)
@@ -478,9 +505,9 @@ export default function PlanTreePanel(): React.JSX.Element {
     // 展开：组随 expandedKeys 挂载（发牌入场）；未加载则懒加载
     setExpanded([...st.expandedKeys, p])
     if (!st.loaded[p]) void loadChildren(p)
-  }
+  }, [closingPaths, loadChildren, setExpanded])
 
-  const onOpen = (node: RowView): void => {
+  const onOpen = useCallback((node: RowView): void => {
     if (node.kind === 'folder') {
       select(node.path, 'folder')
       closePlan()
@@ -488,12 +515,12 @@ export default function PlanTreePanel(): React.JSX.Element {
       select(node.path, 'plan')
       void openPlan(node.path)
     }
-  }
+  }, [closePlan, openPlan, select])
 
   // 删除=行槽平滑收拢（.slot.removing，独立于折叠 closing 通道——被删行自身收合不弹回），
   // 动画完执行真删除。此前版本复用 closingPaths 失败：被删行所在父组波次表为 null，
   // 其 Slot 的 closing 恒 false（首版"没看到动画"的根因，2026-09-10）
-  const removeWithAnimation = (path: string): void => {
+  const removeWithAnimation = useCallback((path: string): void => {
     if (removeTimers.current.has(path)) return
     const rootDir = useAppStore.getState().rootDir
     const rows = Array.from(document.querySelectorAll<HTMLElement>('.tree-row'))
@@ -516,7 +543,7 @@ export default function PlanTreePanel(): React.JSX.Element {
       })
     }, total)
     removeTimers.current.set(path, timer)
-  }
+  }, [removePlan])
 
   // Delete 快捷键等面板外入口的动画删除请求（seq 变化即触发；同路径重复删除也生效）
   const animRemove = useTreeStore((s) => s.animRemove)
@@ -548,17 +575,10 @@ export default function PlanTreePanel(): React.JSX.Element {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  const root: RowView = {
-    path: '',
-    name: 'root',
-    kind: 'root',
-    hasChildren: loaded[''] === true ? (childrenMap[''] ?? []).length > 0 : true,
-    depth: 0,
-    expanded: expandedKeys.includes(''),
-    loaded: loaded[''] === true
-  }
-
-  const uiCtx: TreeUiCtxValue = { onToggle, onOpen, activeId, canReceive, selectedPath, removeWithAnimation }
+  const uiCtx = useMemo<TreeUiCtxValue>(
+    () => ({ onToggle, onOpen, activeId, canReceive, removeWithAnimation }),
+    [onToggle, onOpen, activeId, canReceive, removeWithAnimation]
+  )
 
   return (
     <>
@@ -573,7 +593,7 @@ export default function PlanTreePanel(): React.JSX.Element {
           <ClosingPathsCtx.Provider value={closingPaths}>
           <RemovingPathsCtx.Provider value={removingPaths}>
             <TreeUiCtx.Provider value={uiCtx}>
-              <TreeRow node={root} />
+              <TreeRoot />
               <TreeGroup parentPath="" depth={1} />
             </TreeUiCtx.Provider>
           </RemovingPathsCtx.Provider>

@@ -1,10 +1,12 @@
 // SearchOverlay（§3.6 溯源浮层）：输入即查（300ms 防抖）→ 分段结果 → 点击回溯（树展开+组件脉冲）
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Empty, Spin } from 'antd'
 import { useSearchStore } from '../stores/search-store'
 import { useAppStore } from '../stores/app-store'
 import { useTranslation } from '../i18n'
 import type { SearchHit } from '@shared/ipc-contract'
+
+const SEARCH_PAGE_SIZE = 100
 
 function highlight(text: string, keywords: string[]): React.ReactNode[] {
   if (!text) return []
@@ -44,9 +46,17 @@ function highlight(text: string, keywords: string[]): React.ReactNode[] {
 
 export default function SearchOverlay(): React.JSX.Element {
   const { t } = useTranslation()
-  const { open, keywords, hits, querying, setOpen, setKeywords, locate } = useSearchStore()
+  const open = useSearchStore((s) => s.open)
+  const keywords = useSearchStore((s) => s.keywords)
+  const hits = useSearchStore((s) => s.hits)
+  const querying = useSearchStore((s) => s.querying)
+  const setOpen = useSearchStore((s) => s.setOpen)
+  const setKeywords = useSearchStore((s) => s.setKeywords)
+  const locate = useSearchStore((s) => s.locate)
   const indexState = useAppStore((s) => s.indexState)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [page, setPage] = useState<{ hits: SearchHit[]; count: number } | null>(null)
+  const visibleCount = page?.hits === hits ? page.count : SEARCH_PAGE_SIZE
 
   useEffect(() => {
     if (open) {
@@ -56,17 +66,21 @@ export default function SearchOverlay(): React.JSX.Element {
   }, [open])
 
   const kws = useMemo(() => keywords.trim().split(/\s+/).filter(Boolean), [keywords])
+  const { grouped, totals } = useMemo(() => {
+    const grouped: Record<SearchHit['scope'], SearchHit[]> = { plan: [], task: [], note: [] }
+    const totals: Record<SearchHit['scope'], number> = { plan: 0, task: 0, note: 0 }
+    hits.forEach((hit, index) => {
+      totals[hit.scope]++
+      if (index < visibleCount) grouped[hit.scope].push(hit)
+    })
+    return { grouped, totals }
+  }, [hits, visibleCount])
 
   if (!open) return <></>
 
   const scopeLabel = (scope: SearchHit['scope']): string =>
     scope === 'plan' ? t('search.scopePlan') : scope === 'task' ? t('search.scopeTask') : t('search.scopeNote')
 
-  const grouped = {
-    plan: hits.filter((h) => h.scope === 'plan'),
-    task: hits.filter((h) => h.scope === 'task'),
-    note: hits.filter((h) => h.scope === 'note')
-  }
   const empty = !querying && keywords.trim() !== '' && hits.length === 0
 
   return (
@@ -83,7 +97,10 @@ export default function SearchOverlay(): React.JSX.Element {
           className="o-input"
           placeholder={t('search.inputPlaceholder')}
           value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
+          onChange={(e) => {
+            setPage(null)
+            setKeywords(e.target.value)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOpen(false)
             if (e.key === 'Enter' && hits.length > 0) void locate(hits[0])
@@ -101,23 +118,23 @@ export default function SearchOverlay(): React.JSX.Element {
                 grouped[scope].length === 0 ? null : (
                   <div key={scope}>
                     <div className="o-section">
-                      {scopeLabel(scope)}（{grouped[scope].length}）
+                      {scopeLabel(scope)}（{totals[scope]}）
                     </div>
                     {grouped[scope].map((h, i) => (
-                      <div key={`${h.path}:${h.component_id ?? ''}:${i}`} className="o-item" role="button" tabIndex={0}
-                        onClick={() => void locate(h)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            void locate(h)
-                          }
-                        }}>
+                      <button key={`${h.path}:${h.component_id ?? ''}:${i}`} type="button" className="o-item"
+                        onClick={() => void locate(h)}>
                         <div className="o-title">{highlight(h.snippet, kws)}</div>
                         <div className="o-path">{h.path.split('/').join(' › ')}</div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )
+              )}
+              {hits.length > SEARCH_PAGE_SIZE && (
+                <div className="o-pagination">
+                  <span>{t('search.resultCount', { visible: Math.min(visibleCount, hits.length), total: hits.length })}</span>
+                  {visibleCount < hits.length && <button type="button" className="o-more" onClick={() => setPage({ hits, count: visibleCount + SEARCH_PAGE_SIZE })}>{t('search.loadMore')}</button>}
+                </div>
               )}
             </>
           )}

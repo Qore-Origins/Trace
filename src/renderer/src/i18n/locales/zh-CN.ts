@@ -74,7 +74,9 @@ const zhCN = {
     buildingHint: '索引构建中，结果可能不全…',
     scopePlan: '计划',
     scopeTask: '任务',
-    scopeNote: '注释'
+    scopeNote: '注释',
+    resultCount: '已显示 {{visible}} / {{total}} 条',
+    loadMore: '加载更多'
   },
   tree: {
     rootLabel: '计划库（源头）',

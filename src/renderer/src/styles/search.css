@@ -6,9 +6,13 @@
 .search-overlay .o-input { width: 100%; height: 44px; border: none; border-bottom: 1px solid var(--split); outline: none; padding: 0 16px; font-size: 14px; font-family: inherit; background: var(--paper); color: var(--text-1); }
 .search-overlay .o-body { max-height: 380px; overflow: auto; padding: 6px; }
 .o-section { font-size: 12px; color: var(--text-3); padding: 8px 8px 4px; }
-.o-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background-color var(--t-ui) var(--ease-out); }
+.o-item { display: block; width: 100%; padding: 8px 10px; border: 0; background: transparent; text-align: left; font: inherit; border-radius: 6px; cursor: pointer; transition: background-color var(--t-ui) var(--ease-out); }
 .o-item:hover { background: var(--paper-dim); }
+.o-item:focus-visible, .o-more:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
 .o-item .o-title { font-size: 13px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .o-item .o-path { font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .o-empty { padding: 32px; text-align: center; color: var(--text-3); font-size: 13px; }
 .o-building { padding: 6px 10px; font-size: 12px; color: var(--text-3); }
+.o-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; color: var(--text-3); font-size: 12px; }
+.o-more { border: 0; border-radius: 6px; padding: 5px 8px; color: var(--link); background: transparent; font: inherit; cursor: pointer; }
+.o-more:hover { background: var(--paper-dim); }

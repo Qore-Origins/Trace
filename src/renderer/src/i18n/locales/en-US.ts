@@ -77,7 +77,9 @@ const enUS: typeof zhCN = {
     buildingHint: 'Index is building, results may be incomplete…',
     scopePlan: 'Plans',
     scopeTask: 'Tasks',
-    scopeNote: 'Notes'
+    scopeNote: 'Notes',
+    resultCount: 'Showing {{visible}} of {{total}}',
+    loadMore: 'Load more'
   },
   tree: {
     rootLabel: 'Library (Origin)',

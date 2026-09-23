@@ -70,7 +70,7 @@ describe('frontend information and interaction foundation', () => {
   it('uses native keyboard activation for menus and explicit activation for search results', () => {
     expect(readFileSync(resolve(root, 'components/TopBar.tsx'), 'utf8')).toContain('<button type="button" className="menu-title"')
     const search = readFileSync(resolve(root, 'components/SearchOverlay.tsx'), 'utf8')
-    expect(search).toMatch(/className="o-item"[\s\S]*?role="button"[\s\S]*?tabIndex=\{0\}/)
-    expect(search).toContain("e.key === ' '")
+    expect(search).toMatch(/<button[\s\S]*?className="o-item"/)
+    expect(search).toContain('SEARCH_PAGE_SIZE')
   })
 })
