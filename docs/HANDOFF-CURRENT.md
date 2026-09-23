@@ -2,9 +2,17 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-17（Codex：Muya 正式集成代码完成，等待正式卡片验收）
+> 更新：2026-09-23（Codex：Task 9 计划树与搜索长列表启动）
 
 ## 接手前必做
+
+### Task 9 启动（2026-09-23，Codex；当前执行项）
+
+- 实测 main HEAD `edd7176`、ahead origin/main 30；工作区仅用户资源 `Resource/pic/`、`Resource/vid/` 未跟踪，另无在用 worktree。正式 Muya NoteCard 已合入 main，人工体验验收仍待用户反馈，不把该门槛写为通过。
+- 执行真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md` Task 9；镜像为同目录 `plan.json`。
+- Codex 所有权：`src/renderer/src/components/PlanTreePanel.tsx`、`src/renderer/src/stores/tree-store.ts`（若需新增局部 selector）、`src/renderer/src/components/SearchOverlay.tsx`、`src/renderer/src/styles/search.css`、`src/renderer/src/i18n/locales/zh-CN.ts` 与 `en-US.ts` 的 search 文案、对应新测试和 `demo/frontend-foundation/` 的性能验收脚本、共享计划/HANDOFF。Claude Code 避开这些精确文件或先显式交接；Muya/NoteCard 不在本任务范围。
+- 实施目标：1000 可见节点展开叶级父节点时，无关树行不因全量 `expandedKeys` 订阅重渲染；搜索结果首批至多 100 条，可逐批查看更多并展示总数，结果项使用原生 button；保留发牌/收牌交互并据实际 100/1000 节点采样决定大树动画降级。
+- 下一步：建立隔离 worktree、复验基线、先做计数诊断，再按测试先行实施。等待：正式 Muya 卡片的用户体验结论；剩余 Task 9–11 与 Electron 真机/DPI 验收。
 
 ### Muya 正式集成代码完成（2026-09-17，Codex；当前最高优先级）
 

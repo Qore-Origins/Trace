@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–8 完成；Task 9 待实施
+**Status:** Task 1–8 完成；Task 9 实施中（2026-09-23）
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -600,6 +600,8 @@ git commit -m "perf(bundle): 延迟加载页面与 Muya 运行时"
 ---
 
 ### Task 9: 优化计划树订阅与长列表
+
+> 2026-09-23 Codex 接手；当前 main `edd7176`，文件边界与等待项见 HANDOFF 顶部。先计数诊断与失败测试，再实施订阅收窄、分段搜索与动画采样。
 
 **Files:**
 

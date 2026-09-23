@@ -51,7 +51,7 @@
         "title": "第三阶段：性能与文档闭环",
         "items": [
           { "id": "aa83b03c24744f33815f6b51512292ee", "title": "实施页面与 Muya 懒加载及构建预算", "status": "done" },
-          { "id": "475587919f3d463581491a086e54b760", "title": "优化计划树订阅与搜索长列表", "status": "not_started" },
+          { "id": "475587919f3d463581491a086e54b760", "title": "优化计划树订阅与搜索长列表", "status": "in_progress" },
           { "id": "c2aeb06efe3641dcb36964a06a6edce2", "title": "建立真实 Electron 性能报告", "status": "not_started" },
           { "id": "1f22035c936749079315e73fbf52d4d1", "title": "同步 UI、前端设计、架构、计划与 HANDOFF 文档", "status": "not_started" }
         ]
