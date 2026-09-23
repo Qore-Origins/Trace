@@ -12,6 +12,7 @@ import hljs from 'highlight.js/lib/common'
 
 type Block =
   | { kind: 'para'; lines: string[] }
+  | { kind: 'heading'; level: number; text: string }
   | { kind: 'list'; ordered: boolean; items: string[] }
   | { kind: 'code'; lang: string; code: string }
   | { kind: 'quote'; lines: string[] }
@@ -34,6 +35,7 @@ function isFenceEnd(line: string): boolean {
 const HR_RE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/
 const QUOTE_RE = /^\s*>\s?(.*)$/
 const TABLE_ROW_RE = /^\s*\|.*\|\s*$/
+const HEADING_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/
 
 // HTML 注释剥除（<!-- ... -->，单行/跨行；代码块内原样保留）
 // 2026-09-10 用户截图修复：命名设计文档内含注释，原实现把注释字面泄漏进正文
@@ -117,6 +119,13 @@ export function parseBlocks(text: string): Block[] {
       continue
     }
 
+    const heading = HEADING_RE.exec(line)
+    if (heading) {
+      blocks.push({ kind: 'heading', level: heading[1].length, text: (heading[2] ?? '').trim() })
+      i++
+      continue
+    }
+
     // 2.5 分隔线
     if (HR_RE.test(line)) {
       blocks.push({ kind: 'hr' })
@@ -175,6 +184,7 @@ export function parseBlocks(text: string): Block[] {
       i < lines.length &&
       lines[i].trim() !== '' &&
       !isFence(lines[i]) &&
+      !HEADING_RE.test(lines[i]) &&
       !HR_RE.test(lines[i]) &&
       !QUOTE_RE.test(lines[i]) &&
       !TABLE_ROW_RE.test(lines[i]) &&
@@ -277,6 +287,10 @@ export function NoteMarkdown({ content, onLink, wrap }: { content: string; onLin
     <div className={wrap ? 'note-md wrap' : 'note-md'}>
       {blocks.map((b, bi) => {
         const key = `b-${bi}`
+        if (b.kind === 'heading') {
+          const Heading = `h${b.level}` as keyof React.JSX.IntrinsicElements
+          return <Heading key={key}>{renderText(b.text, key, onLink)}</Heading>
+        }
         if (b.kind === 'code') {
           return (
             <pre key={key} data-lang={b.lang}>

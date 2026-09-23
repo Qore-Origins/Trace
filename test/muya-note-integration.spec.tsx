@@ -100,6 +100,15 @@ describe('Muya note React adapter', () => {
 })
 
 describe('NoteCard Muya integration', () => {
+  it('exits edit mode on outside pointer or keyboard focus without closing Muya floating controls', () => {
+    const cards = readFileSync(resolve('src/renderer/src/components/cards.tsx'), 'utf8')
+
+    expect(cards).toContain("document.addEventListener('pointerdown'")
+    expect(cards).toContain("document.addEventListener('focusin'")
+    expect(cards).toContain("closest('.mu-float-wrapper')")
+    expect(cards).toContain('deactivate(comp.id)')
+  })
+
   it('keeps at most one active note component', async () => {
     const { useNoteEditorStore } = await import('../src/renderer/src/stores/note-editor-store')
 

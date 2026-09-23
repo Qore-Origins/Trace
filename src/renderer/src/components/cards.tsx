@@ -1,7 +1,7 @@
 // 计划单片组件卡（前端详细设计 §3.3-3.5 / LLD §2.3）：渲染即编辑；payload 直改 + 防抖保存
 // 组件卡拖拽排序（2026-09-07，@dnd-kit 同款 AI Resource Hub）：手柄发起（distance 8 防误触），
 // 拖动中被拖卡放大投影置顶、其余卡 transform 实时让位，落点 arrayMove 语义换序
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type { Component, NotePayload } from '@shared/plan-types'
@@ -27,8 +27,28 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
   const { noteLiveRender, noteWrap, plantumlServer, language } = usePrefStore()
   const p = comp.payload as NotePayload
   const active = activeComponentId === comp.id
+  const editorBoundaryRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => () => deactivate(comp.id), [comp.id, deactivate])
+
+  useLayoutEffect(() => {
+    if (!active) return
+
+    const leaveEditor = (event: Event): void => {
+      const target = event.target
+      if (!(target instanceof Node) || editorBoundaryRef.current?.contains(target)) return
+      // Muya 的语言选择等浮层挂在 document.body，而非编辑器 DOM 子树。
+      if (target instanceof Element && target.closest('.mu-float-wrapper')) return
+      deactivate(comp.id)
+    }
+
+    document.addEventListener('pointerdown', leaveEditor, true)
+    document.addEventListener('focusin', leaveEditor, true)
+    return () => {
+      document.removeEventListener('pointerdown', leaveEditor, true)
+      document.removeEventListener('focusin', leaveEditor, true)
+    }
+  }, [active, comp.id, deactivate])
 
   const openLink = (url: string): void => {
     if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer')
@@ -50,15 +70,17 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
   return (
     <CardShell kind="note" componentId={comp.id} index={index} total={total} extraClass="note">
       {active ? (
-        <MuyaNoteEditor
-          value={p.content}
-          onChange={updateMarkdown}
-          liveRender={noteLiveRender}
-          wrap={noteWrap}
-          plantumlServer={plantumlServer}
-          language={language}
-          placeholder={t('cards.notePlaceholder')}
-        />
+        <div ref={editorBoundaryRef}>
+          <MuyaNoteEditor
+            value={p.content}
+            onChange={updateMarkdown}
+            liveRender={noteLiveRender}
+            wrap={noteWrap}
+            plantumlServer={plantumlServer}
+            language={language}
+            placeholder={t('cards.notePlaceholder')}
+          />
+        </div>
       ) : (
         <div
           className="note-static"

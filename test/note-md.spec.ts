@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { highlightCode, parseBlocks, renderText } from '../src/renderer/src/components/note-md'
 
 describe('note-md parseBlocks', () => {
+  it('将 ATX 标题解析为独立块，不把井号留在阅读态正文', () => {
+    expect(parseBlocks('# 123\n## 二级 **标题**\n正文')).toEqual([
+      { kind: 'heading', level: 1, text: '123' },
+      { kind: 'heading', level: 2, text: '二级 **标题**' },
+      { kind: 'para', lines: ['正文'] }
+    ])
+    expect(parseBlocks('####### 不是标题')).toEqual([{ kind: 'para', lines: ['####### 不是标题'] }])
+  })
+
   it('代码块：闭合围栏转为 code 块，内容原样', () => {
     const blocks = parseBlocks('```python\ndef main():\n    print(1)\n```')
     expect(blocks).toHaveLength(1)
