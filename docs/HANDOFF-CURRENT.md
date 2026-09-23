@@ -2,11 +2,17 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-23（Codex：Task 9 隔离实现与验证完成，待本地集成）
+> 更新：2026-09-23（Codex：Task 9 已按用户选项 1 合入本地 main）
 
 ## 接手前必做
 
-### Task 9 启动（2026-09-23，Codex；当前执行项）
+### Task 9 本地集成完成（2026-09-23，Codex；当前状态）
+
+- 用户选择选项 1；实测 main 从 `ac0623c` fast-forward 到 `29305f6`，其中代码提交 `0fe64f2`、隔离计划提交 `29305f6`。合并后 main ahead origin/main 33，未 pull、未 push；工作区只有用户 `Resource/pic/` 与 `Resource/vid/` 未跟踪，未触碰。
+- main 合并后实跑 `npm run typecheck` 0 错、`npm run test` 28 文件 244/244、`npm run build` 成功。Task 9 功能边界与 CDP 单轮性能证据见下方隔离快照和共享计划；真实 Electron/DPI 仍未验收，小树收拢 P95 约 50ms 不标为达标。
+- Task 9 源码与测试文件所有权释放；接下来可登记 Task 10 真实 Electron 性能报告。等待正式 Muya NoteCard 人工体验结论；剩余 Task 10、Task 11、真实 Electron/DPI 验收。
+
+### Task 9 隔离实施快照（2026-09-23，Codex；历史）
 
 - 最新隔离代码提交经 `git log` 实测为 `0fe64f2`（`perf(tree): 收窄树订阅与搜索渲染`），位于 `.worktrees/frontend-foundation-task9` / `codex/frontend-foundation-task9`，尚未合入 main、未推送；本段以下启动时 main `edd7176` 是历史基点而非当前分支 HEAD。共享计划 MD 五步已勾选，原生 `plan.json` 因待集成仍标 `in_progress`。
 - 已实现：行节点仅订阅自身选中、展开、加载，组只订阅自身展开及直接子项；Panel 不再订阅全量树状态，交互 Context 使用稳定 callback + memo。1000 行展开局部子树时无关行重渲染由诊断红灯 999 次降到 0。300 行以上折叠跳过全树收牌广播、直接卸载子组，小树发牌/收牌保留。搜索首批最多 100 条、逐批加载、显示已显示/总数，结果改原生 button；`tree-store.ts`、IPC、Muya 均未修改。

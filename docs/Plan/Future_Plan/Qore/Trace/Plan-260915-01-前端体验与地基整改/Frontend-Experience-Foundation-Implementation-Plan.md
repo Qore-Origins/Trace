@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–8 完成；Task 9 代码与隔离验证完成，待本地集成（2026-09-23）
+**Status:** Task 1–9 完成；下一步 Task 10 真实 Electron 性能报告（2026-09-23）
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -641,6 +641,8 @@ git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 ```
 
 2026-09-23 隔离验收记录：`demo/frontend-foundation/tree-perf-check.mjs` 在 Chromium CDP 内存宿主构造 1000 行，展开一个含 4 个子项的中间文件夹，优化前无关行重渲染 999 次，优化后 0 次；`search-paging-check.mjs` 注入 250 条，验收首批 100、再次 200、最终 250、换查询恢复 1 条及原生 button。100/1000 行展开与收拢各采样约 700ms；优化前 1000 行收拢曾见 P95 帧间隔约 548ms，300 行以上跳过收牌波次并直接卸载后，最新 1000 行展开/收拢 P95 为 16.7/16.8ms；100 行展开/收拢为 16.8/50.1ms，保留原动画。Tracing `AnimationFrame::StyleAndLayout` 累计约 0.59–0.68ms；CDP `LayoutDuration` 始终报 0，不作为真实布局耗时。以上仅浏览器宿主单轮诊断，不代表 Electron 真机或稳定帧率。最终 typecheck 0 错、28 文件 244/244、`npm run build` 成功；正式真机性能与 DPI 留给 Task 10。
+
+2026-09-23 本地集成：用户选项 1；main 经 `git merge --ff-only` 从 `ac0623c` 前进到实测 `29305f6`，未拉取或推送远端。合并后在 main 重跑 `npm run typecheck` 0 错、`npm run test` 28 文件 244/244、`npm run build` 成功。Task 9 已完成；下一个执行项为 Task 10，须先登记新文件所有权。正式 Muya 卡片人工体验验收仍独立待反馈。
 
 ---
 
