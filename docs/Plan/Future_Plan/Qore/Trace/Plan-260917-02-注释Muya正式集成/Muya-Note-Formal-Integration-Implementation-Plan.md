@@ -57,7 +57,7 @@
 - [x] 定向回归与 `npm run typecheck`、`npm run test`、`npm run build`；记录实际结果和提交 hash。
 - 用户真机复验仍待进行，不提前标通过。
 
-自动验证：标题与焦点契约测试先红后绿；typecheck 0 错，28 文件 246/246，build 成功。正式组件内存宿主 Chrome/CDP 验证外部点击、合成 focusin、Muya 浮层、上移/下移与 `# 123` 阅读态 h1。此验证不等同 Electron 真机，也未覆盖 IME、剪贴板、真实 Tab 操作。代码提交 hash 待本地提交后填写。
+自动验证：标题与焦点契约测试先红后绿；typecheck 0 错，28 文件 246/246，build 成功。正式组件内存宿主 Chrome/CDP 验证外部点击、合成 focusin、Muya 浮层、上移/下移与 `# 123` 阅读态 h1。此验证不等同 Electron 真机，也未覆盖 IME、剪贴板、真实 Tab 操作。代码提交 `d03d0ea`，未推送。首次加载 >1 秒和可能重载的反馈仍待单独复验，不并入本次完成项。
 
 - 代码提交：`d0acd3b`（`feat(note): 集成 Muya 实时注释编辑器`），连同计划提交 `1a33af6` 已按用户选择 1 fast-forward 到本地 main，未推送。
 - TDD：偏好、生命周期与 NoteCard 三批测试均先红后绿；安全自审额外复现并修复阅读态 `javascript:`/`data:`/相对链接仍生成可导航锚点的问题。

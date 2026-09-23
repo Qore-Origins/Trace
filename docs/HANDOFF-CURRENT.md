@@ -2,14 +2,14 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-23（Codex：注释失焦与标题阅读态修复，待提交与用户真机复验）
+> 更新：2026-09-23（Codex：注释失焦与标题阅读态修复已提交，待用户真机复验）
 
 ## 当前在办：注释失焦与标题渲染缺陷（2026-09-23，Codex）
 
-- 接手实测：`main` HEAD `ea17254`、ahead origin/main 34；仅 `Resource/pic/`、`Resource/vid/` 为用户未跟踪资源。基线 `npm run typecheck` 0 错，`npm run test` 28 文件 244/244。
+- 接手实测：`main` HEAD `ea17254`、ahead origin/main 34；仅 `Resource/pic/`、`Resource/vid/` 为用户未跟踪资源。基线 `npm run typecheck` 0 错，`npm run test` 28 文件 244/244。代码与首轮记录已提交为 `d03d0ea`，提交后 main ahead origin/main 35，工作区仅用户资源未跟踪。
 - 用户真机反馈：注释点击外部不退出编辑；上/下移时失焦不一致；失焦后 `# 123` 仍显示源码。代码审查确认 NoteCard 仅卸载时 deactivate，静态解析器无 heading 分支。
 - 本轮 Codex 所有权：`src/renderer/src/components/cards.tsx` 的 NoteCard、`src/renderer/src/components/note-md.tsx`、`src/renderer/src/styles/cards.css` 的 note-md 样式、`test/note-md.spec.ts`、`test/muya-note-integration.spec.tsx`、`demo/frontend-foundation/note-focus-check.mjs` 与 `vite.config.ts`、本文件及 Muya 正式集成计划 MD/plan.json。Claude Code 避开这些精确边界，不改 vendor Muya。
-- 阶段：代码已实现并自动验证，待本地提交。定向测试先红后绿；`npm run typecheck` 0 错、`npm run test` 28 文件 246/246、`npm run build` 成功；Chrome/CDP 正式组件内存宿主通过点外部、焦点迁移、Muya 浮层、上/下移与标题阅读态。验收宿主原先缺少正式项目的装饰器编译选项，曾使 Muya 标题初始化落入降级 textarea，已对齐宿主配置；正式 `electron.vite.config.ts` 原本已具备该选项，未改 Muya/vendor。下一步：提交并让用户在 Electron 真机复验；剩余 IME、剪贴板、语言选择、连续删除等正式验收。
+- 阶段：修复代码 `d03d0ea` 已本地提交并自动验证。定向测试先红后绿；`npm run typecheck` 0 错、`npm run test` 28 文件 246/246、`npm run build` 成功；Chrome/CDP 正式组件内存宿主通过点外部、焦点迁移、Muya 浮层、上/下移与标题阅读态。验收宿主原先缺少正式项目的装饰器编译选项，曾使 Muya 标题初始化落入降级 textarea，已对齐宿主配置；正式 `electron.vite.config.ts` 原本已具备该选项，未改 Muya/vendor。下一步：用户在 Electron 真机复验；剩余首开编辑 >1 秒/可能重载现象及 IME、剪贴板、语言选择、连续删除等正式验收。首次加载问题未由本提交宣称修复。
 
 ## 接手前必做
 
