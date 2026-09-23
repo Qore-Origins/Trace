@@ -1,7 +1,7 @@
 {
   "format_version": "1",
   "created_at": "2026-09-15T11:50:34.882+08:00",
-  "updated_at": "2026-09-16T22:28:29+08:00",
+  "updated_at": "2026-09-23T18:09:35+08:00",
   "components": [
     {
       "id": "5d2bbf6eb85d4af0b377b8aeb96b7411",
@@ -15,7 +15,7 @@
       "id": "eaaef1be94204da2af120a6284386c42",
       "type": "note",
       "payload": {
-        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–8 完成。14cef79 完成页面分包和 Muya 异步运行时边界；d0acd3b 将单活动 Muya 接入正式 NoteCard，保持 Markdown 真源与图表按需加载。最终 typecheck 0 错、28 文件 244/244、正式 build 7151 模块成功。下一步 Task 9；正式卡片真机体验验收由独立 Muya 集成计划跟踪。",
+        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–8 完成；Task 9 代码与隔离验证完成，0fe64f2 尚未合入 main。1000 行展开无关行重渲染从 999 降到 0；搜索首批 100 条并支持加载更多；大树收拢降级。隔离验证 typecheck 0 错、28 文件 244/244、build 成功。下一步本地集成后启动 Task 10 真实 Electron 性能报告；正式 Muya 卡片人工体验验收独立跟踪。",
         "created_at": "2026-09-15T11:50:34.882+08:00"
       }
     },

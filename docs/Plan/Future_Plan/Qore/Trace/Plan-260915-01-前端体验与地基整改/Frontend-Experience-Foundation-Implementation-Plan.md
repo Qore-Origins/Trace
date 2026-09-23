@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–8 完成；Task 9 实施中（2026-09-23）
+**Status:** Task 1–8 完成；Task 9 代码与隔离验证完成，待本地集成（2026-09-23）
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -601,7 +601,7 @@ git commit -m "perf(bundle): 延迟加载页面与 Muya 运行时"
 
 ### Task 9: 优化计划树订阅与长列表
 
-> 2026-09-23 Codex 接手；当前 main `edd7176`，文件边界与等待项见 HANDOFF 顶部。先计数诊断与失败测试，再实施订阅收窄、分段搜索与动画采样。
+> 2026-09-23 Codex 接手；启动时 main `edd7176`，代码提交实测 `0fe64f2` 位于 `codex/frontend-foundation-task9`，尚未合入 main。文件边界与等待项见 HANDOFF 顶部。先计数诊断与失败测试，再实施订阅收窄、分段搜索与动画采样。
 
 **Files:**
 
@@ -615,23 +615,23 @@ git commit -m "perf(bundle): 延迟加载页面与 Muya 运行时"
 
 - Test: corresponding tree/search specs
 
-- [ ] **Step 1: 添加树渲染计数诊断测试**
+- [x] **Step 1: 添加树渲染计数诊断测试**
 
 构造至少 1000 个可见节点，展开一个叶级父节点；记录展开前后被重新渲染的 Row 数。优化目标是无关分支不重渲染。
 
-- [ ] **Step 2: 收窄 selector**
+- [x] **Step 2: 收窄 selector**
 
 节点只订阅自身 `expanded`、`loaded`、`selected` 和直接 children；Context value 使用 `useMemo`，动作使用稳定 callback。禁止每个 Slot 订阅完整 `expandedKeys` 数组。
 
-- [ ] **Step 3: 约束搜索结果**
+- [x] **Step 3: 约束搜索结果**
 
 首屏最多渲染 100 条结果；超过时分段加载或虚拟化，并显示总数。搜索结果项改为语义 button，保留路径和高亮。
 
-- [ ] **Step 4: 验证树动效**
+- [x] **Step 4: 验证树动效**
 
 在 100、1000 可见节点下采样展开/收拢 FPS 和 Layout 时间。若 P95 帧超过 16.7ms，再将大树的高度动画降级为 opacity/transform 或关闭 stagger；小树保留当前“发牌/收牌”语义。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 npm run typecheck
@@ -639,6 +639,8 @@ npm run test
 git add src/renderer/src/components/PlanTreePanel.tsx src/renderer/src/stores/tree-store.ts src/renderer/src/components/SearchOverlay.tsx test
 git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 ```
+
+2026-09-23 隔离验收记录：`demo/frontend-foundation/tree-perf-check.mjs` 在 Chromium CDP 内存宿主构造 1000 行，展开一个含 4 个子项的中间文件夹，优化前无关行重渲染 999 次，优化后 0 次；`search-paging-check.mjs` 注入 250 条，验收首批 100、再次 200、最终 250、换查询恢复 1 条及原生 button。100/1000 行展开与收拢各采样约 700ms；优化前 1000 行收拢曾见 P95 帧间隔约 548ms，300 行以上跳过收牌波次并直接卸载后，最新 1000 行展开/收拢 P95 为 16.7/16.8ms；100 行展开/收拢为 16.8/50.1ms，保留原动画。Tracing `AnimationFrame::StyleAndLayout` 累计约 0.59–0.68ms；CDP `LayoutDuration` 始终报 0，不作为真实布局耗时。以上仅浏览器宿主单轮诊断，不代表 Electron 真机或稳定帧率。最终 typecheck 0 错、28 文件 244/244、`npm run build` 成功；正式真机性能与 DPI 留给 Task 10。
 
 ---
 

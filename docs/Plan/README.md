@@ -39,7 +39,7 @@ docs/Plan/
 
 | 计划 | 状态 | 创建日期 | 审计/规格 | 当前下一步 |
 |---|---|---|---|---|
-| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | 实施中：Task 9 已登记 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 收窄树节点订阅、限制搜索首批 100 条并采样树动效；Muya 正式卡片人工验收另行跟踪 |
+| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | Task 9 隔离实现与验证完成，待本地集成 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 树节点局部订阅、搜索首批 100 条与大树收拢降级已在分支 `0fe64f2`；Muya 正式卡片人工验收另行跟踪 |
 | [注释 Muya 正式集成](./Future_Plan/Qore/Trace/Plan-260917-02-注释Muya正式集成/Muya-Note-Formal-Integration-Implementation-Plan.md) | 实施中：已合入 main，待正式卡片验收 | 2026-09-17 | [Muya 设计规格](../superpowers/specs/2026-09-15-muya-note-editor-design.md) | 验收 IME、剪贴板、语言选择、连续删除、切卡 flush、亮暗主题和窄窗口；通过后关闭计划 |
 
 ## 更新规则

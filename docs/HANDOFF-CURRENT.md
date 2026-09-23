@@ -2,11 +2,16 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-23（Codex：Task 9 计划树与搜索长列表启动）
+> 更新：2026-09-23（Codex：Task 9 隔离实现与验证完成，待本地集成）
 
 ## 接手前必做
 
 ### Task 9 启动（2026-09-23，Codex；当前执行项）
+
+- 最新隔离代码提交经 `git log` 实测为 `0fe64f2`（`perf(tree): 收窄树订阅与搜索渲染`），位于 `.worktrees/frontend-foundation-task9` / `codex/frontend-foundation-task9`，尚未合入 main、未推送；本段以下启动时 main `edd7176` 是历史基点而非当前分支 HEAD。共享计划 MD 五步已勾选，原生 `plan.json` 因待集成仍标 `in_progress`。
+- 已实现：行节点仅订阅自身选中、展开、加载，组只订阅自身展开及直接子项；Panel 不再订阅全量树状态，交互 Context 使用稳定 callback + memo。1000 行展开局部子树时无关行重渲染由诊断红灯 999 次降到 0。300 行以上折叠跳过全树收牌广播、直接卸载子组，小树发牌/收牌保留。搜索首批最多 100 条、逐批加载、显示已显示/总数，结果改原生 button；`tree-store.ts`、IPC、Muya 均未修改。
+- 已验证：`npm run typecheck` 0 错，`npm run test` 28 文件 244/244，`npm run build` 主进程/预加载/renderer 成功，`git diff --cached --check` 无内容错误；Chrome CDP 内存宿主 `tree-perf-check.mjs`、`search-paging-check.mjs` 通过。最近一次 1000 行收拢 P95 帧间隔 16.8ms，降级前曾见约 548ms；100 行原动画收拢单轮 P95 50.1ms，真实 Electron 性能仍待 Task 10。Tracing 风格+布局阶段累计 0.59–0.68ms，CDP `LayoutDuration` 读数恒 0，不能作为布局实测值。
+- 工作区：隔离分支代码与共享文档均已提交，工作区干净；用户 `Resource/pic/`、`Resource/vid/` 始终未触碰。下一步按用户选项本地集成或保留分支；等待正式 Muya NoteCard 人工体验结论。剩余 Task 10 真实 Electron 性能报告、Task 11 文档闭环、真机/DPI 验收。
 
 - 实测 main HEAD `edd7176`、ahead origin/main 30；工作区仅用户资源 `Resource/pic/`、`Resource/vid/` 未跟踪，另无在用 worktree。正式 Muya NoteCard 已合入 main，人工体验验收仍待用户反馈，不把该门槛写为通过。
 - 执行真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md` Task 9；镜像为同目录 `plan.json`。
