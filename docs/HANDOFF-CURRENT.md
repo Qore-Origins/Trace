@@ -2,7 +2,14 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-23（Codex：注释失焦与标题阅读态修复已提交，待用户真机复验）
+> 更新：2026-09-24（Codex：v0.15.0 已完成版本更新、全量测试、Windows 打包与隔离烟测；正在发布）
+
+## 当前在办：v0.15.0 Beta 5 双平台发布（2026-09-23，Codex）
+
+- 用户已明确授权完成后推送并发布 GitHub/Gitee：先按本次与上次发布差距确定版本、更新版本及说明、编译 Windows 安装包；GitHub Release 上传安装包，Gitee Release 只放发行说明与 GitHub 下载链接，不上传超过 100 MB 的安装包。
+- 接手实测：起始 `main` HEAD `4491da8`、ahead origin/main 36；GitHub/Gitee `main` 同为 `5058037`；工作区原有用户未跟踪 `Resource/pic/`、`Resource/vid/`，均未触碰。上次发布 v0.12.0；本地增量含回忆视图、完整 Muya 注释、前端地基/性能整改，定为 v0.15.0 Beta 5。
+- Codex 本轮所有权：`package.json`、`package-lock.json`、`CLAUDE.md` 与 `AGENTS.md` 的当前版本行、`docs/changelog/CHANGELOG.md`、`docs/Plan/README.md` 与新增 v0.15.0 发布计划、`builds/build_history.json`、`builds/release_history.json`、新增 `builds/release_notes/release_notes_v0.15.0.md`、新增 `.issues/2026-09-23-Windows根路径斜杠规范化.md`、本文件；安装包仅在 `release/` 与 `builds/windows/` 生成/归档。Claude Code 避开上述精确文件；用户资源不触碰。
+- 阶段：版本 `0.15.0`、中英文项目说明、CHANGELOG、发行说明和 Windows 安装包已更新；`npm run typecheck` 通过、`npm run test` 28 文件 246/246、`npm run build:win` 成功；归档安装包 462,698,904 B（441.26 MiB），SHA-256 `489561BBE91519D825D54BFC10291F090FFCD9FC74DDC89E0796C1E164B88810`。隔离打包应用完成 onboarding/计划/注释/Muya 烟测，首开编辑实测 254ms；此数据仅为本机单次烟测。下一步：检查待提交差异、提交并推送两端 main/tag，发布并 GET 核验 GitHub Release；再尝试 Gitee 发行说明发布。等待：Gitee API token 尚未通过已验证的 API 凭据确认，用户已被问询但尚未回复；不可用 Git HTTPS 凭据冒充 API token。剩余：Gitee Release 需有效 API token；Muya 正式卡片完整人工体验与开发模式首次加载问题仍未结案。
 
 ## 当前在办：注释失焦与标题渲染缺陷（2026-09-23，Codex）
 

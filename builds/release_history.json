@@ -358,6 +358,58 @@
       "commit": "0cff86c",
       "publishedAt": "2026-09-12T13:45:00Z",
       "url": "https://gitee.com/Qore/trace/releases/v0.12.0"
+    },
+    {
+      "platform": "GitHub",
+      "repo": "Qore-Origins/Trace",
+      "tag": "v0.15.0",
+      "target": "main",
+      "title": "v0.15.0 — 溯源 Trace 公测版 Beta 5（回忆、Muya 注释与前端地基）",
+      "label": "None",
+      "status": "draft",
+      "isLatest": false,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.15.0.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_0.15.0_beta_20260923_01.exe",
+          "platform": "win32-x64",
+          "size": 462698904,
+          "sizeFormatted": "441.26 MiB",
+          "sha256": "489561BBE91519D825D54BFC10291F090FFCD9FC74DDC89E0796C1E164B88810",
+          "localPath": "builds/windows/Trace_0.15.0_beta_20260923_01.exe",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.15.0/Trace_0.15.0_beta_20260923_01.exe"
+        }
+      ],
+      "versionInPackageJson": "0.15.0",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-23T19:14:37+08:00",
+      "commit": "pending",
+      "publishedAt": "pending",
+      "url": "pending"
+    },
+    {
+      "platform": "Gitee",
+      "repo": "Qore/trace",
+      "tag": "v0.15.0",
+      "target": "main",
+      "title": "v0.15.0 — 溯源 Trace 公测版 Beta 5（回忆、Muya 注释与前端地基）",
+      "label": "None",
+      "status": "draft",
+      "isLatest": false,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.15.0.md",
+      "notesFormat": "markdown",
+      "assets": [],
+      "assetPolicy": "Gitee Release 不上传安装包（441.26 MiB 超过 100 MB 限制），使用 GitHub 下载链接",
+      "externalDownloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.15.0/Trace_0.15.0_beta_20260923_01.exe",
+      "versionInPackageJson": "0.15.0",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-23T19:14:37+08:00",
+      "commit": "pending",
+      "publishedAt": "pending",
+      "url": "pending"
     }
   ]
 }
