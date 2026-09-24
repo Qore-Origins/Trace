@@ -16,11 +16,11 @@
         "title": "发布任务",
         "items": [
           { "id": "d2881fe1184143ac8e3cf24538e3828b", "title": "核对上版、增量、远端与基线", "status": "done" },
-          { "id": "20d97afa0bd843bdb574870deaa99888", "title": "更新版本与发行说明", "status": "in_progress" },
-          { "id": "aa1c5e9982b34631bd886fe8a33a4e58", "title": "三跑及打包烟测", "status": "not_started" },
-          { "id": "905f0a1095f649cda235bfc604edb29d", "title": "归档安装包与账本", "status": "not_started" },
-          { "id": "ef19e0aa69c34075a71276147f7c3821", "title": "GitHub 与 Gitee 推送发布", "status": "not_started" },
-          { "id": "0a1529b6c4e64a7eaa39006e4bf6cd07", "title": "远端核验与最终交接", "status": "not_started" }
+          { "id": "20d97afa0bd843bdb574870deaa99888", "title": "更新版本与发行说明", "status": "done" },
+          { "id": "aa1c5e9982b34631bd886fe8a33a4e58", "title": "三跑及打包烟测", "status": "done" },
+          { "id": "905f0a1095f649cda235bfc604edb29d", "title": "归档安装包与账本", "status": "done" },
+          { "id": "ef19e0aa69c34075a71276147f7c3821", "title": "GitHub 已发布；Gitee Release 等待 API 凭据", "status": "in_progress" },
+          { "id": "0a1529b6c4e64a7eaa39006e4bf6cd07", "title": "GitHub 已核验；等待 Gitee Release 后完成最终交接", "status": "in_progress" }
         ]
       }
     }

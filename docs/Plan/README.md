@@ -41,7 +41,7 @@ docs/Plan/
 |---|---|---|---|---|
 | [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | Task 1–9 完成；Task 10 待实施 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | Task 9 已本地合入 main `29305f6` 并复验；下一步真实 Electron 性能报告，Muya 正式卡片人工验收另行跟踪 |
 | [注释 Muya 正式集成](./Future_Plan/Qore/Trace/Plan-260917-02-注释Muya正式集成/Muya-Note-Formal-Integration-Implementation-Plan.md) | 实施中：已合入 main，待正式卡片验收 | 2026-09-17 | [Muya 设计规格](../superpowers/specs/2026-09-15-muya-note-editor-design.md) | 验收 IME、剪贴板、语言选择、连续删除、切卡 flush、亮暗主题和窄窗口；通过后关闭计划 |
-| [v0.15.0 双平台发布](./Future_Plan/Qore/Trace/Plan-260923-03-v0.15.0双平台发布/Trace-v0.15.0-Release-Plan.md) | 实施中：Windows 构建完成，正在双端推送 | 2026-09-23 | 上次发布 v0.12.0，增量为 F2、Muya 与前端地基批次 | 推送 main/tag，发布 GitHub 安装包及 Gitee 说明并核验 |
+| [v0.15.0 双平台发布](./Future_Plan/Qore/Trace/Plan-260923-03-v0.15.0双平台发布/Trace-v0.15.0-Release-Plan.md) | 部分完成：GitHub 已发布；Gitee Release 等待 API 凭据 | 2026-09-23 | 上次发布 v0.12.0，增量为 F2、Muya 与前端地基批次 | 使用 Gitee API 凭据发布纯说明 Release 并核验 |
 
 ## 更新规则
 

@@ -12,8 +12,8 @@
 - [x] 更新 `package.json`、锁文件、`CLAUDE.md`/`AGENTS.md` 版本行、CHANGELOG 和 v0.15.0 发行说明；明确已知限制，不把 Chrome 验收写作 Electron 真机验收。
 - [x] 运行 `npm run typecheck`（通过）、`npm run test`（28 文件 246/246）、`npm run build:win`（成功）；打包版隔离烟测通过（首开编辑 254ms，本机单次记录）。
 - [x] 归档安装包到 `builds/windows/`，大小 462,698,904 B / 441.26 MiB，SHA-256 `489561BBE91519D825D54BFC10291F090FFCD9FC74DDC89E0796C1E164B88810`；`build_history.json` 与发行说明已记录。
-- [ ] 提交并推送 `main` 到 GitHub/Gitee；创建 GitHub v0.15.0 预发布并上传安装包；创建 Gitee 同版本 Release，仅发行说明和 GitHub 下载链接，不上传安装包。
-- [ ] 双端 GET 核验 tag/commit、Release 正文和 GitHub asset 大小/hash；回填两份账本、计划、HANDOFF，提交并推送最终记录；确认工作区仅用户资源。
+- [x] 提交并推送 `main` 到 GitHub/Gitee；创建并推送 `v0.15.0` tag；GitHub v0.15.0 预发布已上传安装包（提交 `2316a3b`）。Gitee Release 暂待 API 凭据，仅发行说明和 GitHub 下载链接，不上传安装包。
+- [ ] 核验两端 tag/commit；GitHub Release 正文/asset 大小/hash 已 GET 核验。凭据到位后创建并 GET 核验 Gitee Release；回填账本、计划、HANDOFF，提交并推送最终记录；确认工作区仅用户资源。
 
 ## 发布门槛与恢复
 
@@ -25,4 +25,4 @@
 
 ## 结果记录
 
-2026-09-24：本地版本、自动验证、Windows x64 安装包与隔离应用烟测已完成。远端提交/Release 尚未执行；Gitee API token 当前待确认。每阶段只记录实际运行过的命令、产物与远端证据。
+2026-09-24：本地版本、自动验证、Windows x64 安装包与隔离应用烟测完成。发布准备提交 `2316a3b` 已推送两端，tag `v0.15.0` 两端存在。GitHub Release GET 确认 tag、标题、正文、462,698,904 B asset 与 SHA-256 `sha256:489561bbe91519d825d54bfc10291f090ffcd9fc74ddc89e0796c1e164b88810`；Release URL 为 `https://github.com/Qore-Origins/Trace/releases/tag/v0.15.0`。Gitee Release 未创建：已缓存 Git HTTPS 凭据对 API 返回 401，不能作为 API token 使用。每阶段只记录实际运行过的命令与远端证据。

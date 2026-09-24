@@ -366,8 +366,8 @@
       "target": "main",
       "title": "v0.15.0 — 溯源 Trace 公测版 Beta 5（回忆、Muya 注释与前端地基）",
       "label": "None",
-      "status": "draft",
-      "isLatest": false,
+      "status": "published",
+      "isLatest": true,
       "isPreRelease": true,
       "notesFile": "builds/release_notes/release_notes_v0.15.0.md",
       "notesFormat": "markdown",
@@ -385,9 +385,9 @@
       "versionInPackageJson": "0.15.0",
       "buildStatus": "beta",
       "builtAt": "2026-09-23T19:14:37+08:00",
-      "commit": "pending",
-      "publishedAt": "pending",
-      "url": "pending"
+      "commit": "2316a3b",
+      "publishedAt": "2026-09-24T04:11:08Z",
+      "url": "https://github.com/Qore-Origins/Trace/releases/tag/v0.15.0"
     },
     {
       "platform": "Gitee",
@@ -407,7 +407,7 @@
       "versionInPackageJson": "0.15.0",
       "buildStatus": "beta",
       "builtAt": "2026-09-23T19:14:37+08:00",
-      "commit": "pending",
+      "commit": "2316a3b",
       "publishedAt": "pending",
       "url": "pending"
     }
