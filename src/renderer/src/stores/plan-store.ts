@@ -20,7 +20,7 @@ interface PlanState {
   saveState: SaveState
   lastError: string | null
   externalAlert: boolean // 计划库在应用外被修改（涉及当前计划时提示）
-  open: (path: string) => Promise<void>
+  open: (path: string, forceReload?: boolean) => Promise<void>
   close: () => void
   // 渲染即编辑入口：mutator 在文档副本上执行，自动调度防抖保存
   mutate: (mutator: (doc: PlanDocument) => void) => void
@@ -36,6 +36,7 @@ let saving = false
 let sessionRevision = 0
 let editRevision = 0
 let persistedRevision = 0
+let activeOpenRequest: { path: string; session: number; promise: Promise<void> } | null = null
 
 interface PendingOperation {
   revision: number
@@ -74,26 +75,38 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   lastError: null,
   externalAlert: false,
 
-  open: async (path) => {
+  open: (path, forceReload = false) => {
+    const current = get()
+    if (activeOpenRequest?.path === path) return activeOpenRequest.promise
+    if (!forceReload && current.currentPath === path && current.document) return Promise.resolve()
+
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
     const openingSession = resetEditingSession()
     set({ currentPath: path, document: null, saveState: 'idle', lastError: null, externalAlert: false })
-    try {
-      const doc = await invoke('storage:readPlan', { path })
-      if (sessionRevision !== openingSession) return
-      set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
-    } catch (e) {
-      if (sessionRevision !== openingSession) return
-      getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
-      set({ currentPath: path, document: null })
-    }
+    const promise = (async (): Promise<void> => {
+      try {
+        const doc = await invoke('storage:readPlan', { path })
+        if (sessionRevision !== openingSession) return
+        set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
+      } catch (e) {
+        if (sessionRevision !== openingSession) return
+        getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
+        set({ currentPath: path, document: null })
+      }
+    })()
+    activeOpenRequest = { path, session: openingSession, promise }
+    void promise.finally(() => {
+      if (activeOpenRequest?.session === openingSession) activeOpenRequest = null
+    })
+    return promise
   },
 
   close: () => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
     resetEditingSession()
+    activeOpenRequest = null
     set({ currentPath: null, document: null, saveState: 'idle', externalAlert: false })
   },
 
@@ -247,7 +260,7 @@ export function subscribePlanEvents(): () => void {
     const s = usePlanStore.getState()
     if (s.currentPath === p.path && s.saveState === 'idle') {
       // 非本端编辑引起的变更（如 IPC 直改）：静默重拉
-      void s.open(p.path)
+      void s.open(p.path, true)
     }
   })
   const off3 = onEvent('trace:fs-external-change', () => {

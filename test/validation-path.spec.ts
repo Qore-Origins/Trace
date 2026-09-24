@@ -51,6 +51,18 @@ describe('resolveWithin（Windows 风格分隔）', () => {
   it('空串=根', () => {
     expect(resolveWithin(root, '').abs).toBe(root)
   })
+
+  it('把正斜杠 Windows 根目录规范化后仍允许合法子路径', () => {
+    const normalizedRoot = 'C:\\Plans\\Trace'
+    expect(resolveWithin('C:/Plans/Trace', '学期/周计划')).toEqual({
+      abs: `${normalizedRoot}\\学期\\周计划`,
+      rel: '学期/周计划'
+    })
+  })
+
+  it('规范化正斜杠根目录时仍拒绝越界相对路径', () => {
+    expect(() => resolveWithin('C:/Plans/Trace', '../outside')).toThrow(TraceError)
+  })
 })
 
 describe('isSelfOrDescendant（LLD §6.2）', () => {

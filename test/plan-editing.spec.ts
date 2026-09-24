@@ -182,6 +182,34 @@ describe('组件级计划编辑', () => {
     expect(usePlanStore.getState().document).toBe(newDocument)
   })
 
+  it('双击同一计划只读取一次；已打开后再次点击不重载', async () => {
+    const reading = deferred<{ ok: true; data: PlanDocument }>()
+    const invoke = vi.fn(async () => reading.promise)
+    installBridge(invoke as unknown as TraceBridge['invoke'])
+    const oldDocument = createDocument(1)
+    const newDocument = createDocument(1)
+    newDocument.updated_at = 'new-server-0'
+    usePlanStore.setState({ currentPath: 'plans/old.json', document: oldDocument, serverUpdatedAt: 'old-server-0', saveState: 'idle' })
+
+    const firstOpen = usePlanStore.getState().open('plans/new.json')
+    const secondOpen = usePlanStore.getState().open('plans/new.json')
+
+    expect(invoke).toHaveBeenCalledTimes(1)
+    expect(usePlanStore.getState().document).toBeNull()
+    reading.resolve({ ok: true, data: newDocument })
+    await Promise.all([firstOpen, secondOpen])
+    await usePlanStore.getState().open('plans/new.json')
+
+    expect(invoke).toHaveBeenCalledTimes(1)
+    expect(usePlanStore.getState().document).toBe(newDocument)
+
+    const firstForcedReload = usePlanStore.getState().open('plans/new.json', true)
+    const secondForcedReload = usePlanStore.getState().open('plans/new.json', true)
+    await Promise.all([firstForcedReload, secondForcedReload])
+
+    expect(invoke).toHaveBeenCalledTimes(2)
+  })
+
   it('CAS 冲突期间有新输入时保留本地最新值，并以服务端新锚点重试', async () => {
     vi.useFakeTimers()
     const firstSave = deferred<{ ok: false; code: number; message: string }>()

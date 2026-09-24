@@ -14,6 +14,9 @@ export default defineConfig({
     }
   },
   renderer: {
+    optimizeDeps: {
+      include: ['@muyajs/core']
+    },
     esbuild: {
       tsconfigRaw: {
         compilerOptions: {

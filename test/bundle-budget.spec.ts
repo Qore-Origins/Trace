@@ -38,12 +38,14 @@ describe('renderer bundle budget', () => {
   })
 
   it('keeps Muya and diagram engines behind dynamic import boundaries', () => {
+    const electronViteConfig = readFileSync(resolve('electron.vite.config.ts'), 'utf8')
     const app = readFileSync(resolve('src/renderer/src/App.tsx'), 'utf8')
     const runtime = readFileSync(resolve('src/renderer/src/components/muya-note/muya-runtime.ts'), 'utf8')
     const diagrams = readFileSync(resolve('vendor/muya/src/utils/diagram/index.ts'), 'utf8')
     const plantuml = readFileSync(resolve('vendor/muya/src/utils/diagram/plantuml/index.ts'), 'utf8')
 
     expect(app).not.toContain("from '@muyajs/core'")
+    expect(electronViteConfig).toMatch(/optimizeDeps:\s*\{[\s\S]*?include:\s*\[[^\]]*'@muyajs\/core'/)
     expect(runtime).toContain("import('@muyajs/core')")
     expect(runtime).not.toMatch(/^import\s+\{[\s\S]*?\}\s+from\s+'@muyajs\/core'/m)
     for (const dependency of ['mermaid', 'vega-embed']) {

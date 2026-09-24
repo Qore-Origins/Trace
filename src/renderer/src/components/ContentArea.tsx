@@ -236,7 +236,7 @@ export default function ContentArea(): React.JSX.Element {
           message={t('content.externalChanged')}
           description={t('content.externalChangedDesc')}
           action={
-            <Button size="small" onClick={() => currentPath && void open(currentPath)}>
+            <Button size="small" onClick={() => currentPath && void open(currentPath, true)}>
               {t('content.reloadCurrent')}
             </Button>
           }

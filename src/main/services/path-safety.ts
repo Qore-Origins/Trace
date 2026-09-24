@@ -14,9 +14,10 @@ export function normalizeRelSafe(rel: string): string {
 
 // 相对路径 → 绝对路径；必须位于 rootAbs 内（防穿越）
 export function resolveWithin(rootAbs: string, rel: string): { abs: string; rel: string } {
+  const normalizedRoot = resolve(rootAbs)
   const normalized = normalizeRelSafe(rel)
-  const abs = normalized === '' ? rootAbs : resolve(rootAbs, normalized)
-  if (abs !== rootAbs && !abs.startsWith(rootAbs + sep)) {
+  const abs = normalized === '' ? normalizedRoot : resolve(normalizedRoot, normalized)
+  if (abs !== normalizedRoot && !abs.startsWith(normalizedRoot + sep)) {
     throw new TraceError(ERR.PATH_UNSAFE, '路径越界被拒绝')
   }
   if (isAbsolute(normalized)) throw new TraceError(ERR.PATH_UNSAFE, '路径越界被拒绝')

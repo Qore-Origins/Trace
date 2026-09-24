@@ -59,6 +59,13 @@
 
 自动验证：标题与焦点契约测试先红后绿；typecheck 0 错，28 文件 246/246，build 成功。正式组件内存宿主 Chrome/CDP 验证外部点击、合成 focusin、Muya 浮层、上移/下移与 `# 123` 阅读态 h1。此验证不等同 Electron 真机，也未覆盖 IME、剪贴板、真实 Tab 操作。代码提交 `d03d0ea`，未推送。首次加载 >1 秒和可能重载的反馈仍待单独复验，不并入本次完成项。
 
+### 2026-09-24 首次激活重载追踪
+
+- 用户首次激活时的 Vite 控制台曾报告发现并重新优化大量依赖，随后 renderer reload；该时序与 Vite 对动态加载到的本地链接依赖晚发现相符。
+- `electron.vite.config.ts` renderer 增加 `optimizeDeps.include: ['@muyajs/core']`。生产端仍保留动态导入，因此 Muya 和图表没有进入常规生产首屏 bundle。
+- 用隔离冷缓存、从 electron-vite 同一 renderer config 创建的独立 Vite server 验证，Muya 首轮预优化 metadata 中包含 `@muyajs/core`；18 个依赖约 2.8s 就绪。开发期准备工作转到 renderer 启动期，预期避免首次点击时全页 reload；本次尚未通过 Electron GUI 对“首次点击无重载”做闭环验证。
+- 同轮 `npm run typecheck` 通过，`npm run test` 28 文件 248/248，`npm run build` 成功。正式 NoteCard 的 IME、系统剪贴板、语言菜单、连续删除、切卡 flush、亮暗主题和窄窗口仍待用户实际体验，不能据此关闭计划。
+
 - 代码提交：`d0acd3b`（`feat(note): 集成 Muya 实时注释编辑器`），连同计划提交 `1a33af6` 已按用户选择 1 fast-forward 到本地 main，未推送。
 - TDD：偏好、生命周期与 NoteCard 三批测试均先红后绿；安全自审额外复现并修复阅读态 `javascript:`/`data:`/相对链接仍生成可导航锚点的问题。
 - 最终验证：`npm run typecheck` 0 错；`npm run test` 28 文件 244/244；`npm run build` 成功（renderer 7151 模块，入口 644.91 kB，Muya 核心 2,548.81 kB 与 190.61 kB 样式保持异步）；`npm run demo:muya:build` 3998 模块成功，重型图表大块提示为已批准能力。
