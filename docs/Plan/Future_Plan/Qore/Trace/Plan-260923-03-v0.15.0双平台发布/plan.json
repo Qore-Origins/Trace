@@ -19,8 +19,8 @@
           { "id": "20d97afa0bd843bdb574870deaa99888", "title": "更新版本与发行说明", "status": "done" },
           { "id": "aa1c5e9982b34631bd886fe8a33a4e58", "title": "三跑及打包烟测", "status": "done" },
           { "id": "905f0a1095f649cda235bfc604edb29d", "title": "归档安装包与账本", "status": "done" },
-          { "id": "ef19e0aa69c34075a71276147f7c3821", "title": "GitHub 已发布；Gitee Release 等待 API 凭据", "status": "in_progress" },
-          { "id": "0a1529b6c4e64a7eaa39006e4bf6cd07", "title": "GitHub 已核验；等待 Gitee Release 后完成最终交接", "status": "in_progress" }
+          { "id": "ef19e0aa69c34075a71276147f7c3821", "title": "GitHub/Gitee 双端 Release 发布", "status": "done" },
+          { "id": "0a1529b6c4e64a7eaa39006e4bf6cd07", "title": "双端核验与最终交接记录", "status": "done" }
         ]
       }
     }
