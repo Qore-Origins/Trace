@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
-import { readdir, readFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { extname, join, relative } from 'node:path'
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
+
+const TEXT_SOURCE_EXTENSIONS = new Set(['.css', '.js', '.ts', '.txt'])
 
 async function hashSourceTree(root: string): Promise<string> {
   const filePaths: string[] = []
@@ -21,7 +24,11 @@ async function hashSourceTree(root: string): Promise<string> {
       .sort()
       .map(async (filePath) => {
         const relativePath = relative(root, filePath).replaceAll('\\', '/')
-        const fileHash = createHash('sha256').update(await readFile(filePath)).digest('hex')
+        const contents = await readFile(filePath)
+        const canonicalContents = TEXT_SOURCE_EXTENSIONS.has(extname(filePath))
+          ? Buffer.from(contents.toString('utf8').replace(/\r\n?/g, '\n'))
+          : contents
+        const fileHash = createHash('sha256').update(canonicalContents).digest('hex')
         return `${relativePath}\t${fileHash}`
       })
   )
@@ -30,6 +37,23 @@ async function hashSourceTree(root: string): Promise<string> {
 }
 
 describe('vendored Muya', () => {
+  it('text source fingerprint ignores checkout CRLF/LF conversion', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'trace-muya-fingerprint-'))
+    const lfRoot = join(root, 'lf')
+    const crlfRoot = join(root, 'crlf')
+    await Promise.all([mkdir(lfRoot), mkdir(crlfRoot)])
+    try {
+      await Promise.all([
+        writeFile(join(lfRoot, 'license.txt'), 'first line\nsecond line\n'),
+        writeFile(join(crlfRoot, 'license.txt'), 'first line\r\nsecond line\r\n')
+      ])
+
+      expect(await hashSourceTree(lfRoot)).toBe(await hashSourceTree(crlfRoot))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('固定 0.2.0、MIT 许可并记录来源指纹', async () => {
     const pkg = JSON.parse(await readFile('vendor/muya/package.json', 'utf8')) as {
       name: string
