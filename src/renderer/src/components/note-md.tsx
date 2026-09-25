@@ -7,6 +7,7 @@
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import hljs from 'highlight.js/lib/common'
+import { NoteDiagram, type NoteDiagramLanguage } from './note-diagram'
 
 // ---------- 块级解析 ----------
 
@@ -15,6 +16,7 @@ type Block =
   | { kind: 'heading'; level: number; text: string }
   | { kind: 'list'; ordered: boolean; items: string[] }
   | { kind: 'code'; lang: string; code: string }
+  | { kind: 'diagram'; lang: NoteDiagramLanguage; code: string }
   | { kind: 'quote'; lines: string[] }
   | { kind: 'hr' }
   | { kind: 'table'; head: string[]; rows: string[][] }
@@ -36,6 +38,17 @@ const HR_RE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/
 const QUOTE_RE = /^\s*>\s?(.*)$/
 const TABLE_ROW_RE = /^\s*\|.*\|\s*$/
 const HEADING_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/
+const DIAGRAM_LANGUAGES = new Set<NoteDiagramLanguage>([
+  'mermaid',
+  'vega-lite',
+  'plantuml',
+  'flowchart',
+  'sequence'
+])
+
+function isDiagramLanguage(language: string): language is NoteDiagramLanguage {
+  return DIAGRAM_LANGUAGES.has(language as NoteDiagramLanguage)
+}
 
 // HTML 注释剥除（<!-- ... -->，单行/跨行；代码块内原样保留）
 // 2026-09-10 用户截图修复：命名设计文档内含注释，原实现把注释字面泄漏进正文
@@ -109,7 +122,12 @@ export function parseBlocks(text: string): Block[] {
       }
       i++ // 跳过结束围栏（未闭合时 i===length 自然结束）
       while (code.length > 0 && code[code.length - 1] === '') code.pop() // 文末换行遗留的空行不进代码体
-      blocks.push({ kind: 'code', lang: fence.lang, code: code.join('\n') })
+      const source = code.join('\n')
+      blocks.push(
+        isDiagramLanguage(fence.lang)
+          ? { kind: 'diagram', lang: fence.lang, code: source }
+          : { kind: 'code', lang: fence.lang, code: source }
+      )
       continue
     }
 
@@ -281,7 +299,17 @@ export function renderText(text: string, keyBase: string, onLink?: (url: string)
 
 // ---------- 组件 ----------
 
-export function NoteMarkdown({ content, onLink, wrap }: { content: string; onLink?: (url: string) => void; wrap?: boolean }): React.JSX.Element {
+export function NoteMarkdown({
+  content,
+  onLink,
+  wrap,
+  plantumlServer = ''
+}: {
+  content: string
+  onLink?: (url: string) => void
+  wrap?: boolean
+  plantumlServer?: string
+}): React.JSX.Element {
   const blocks = useMemo(() => parseBlocks(content), [content])
   return (
     <div className={wrap ? 'note-md wrap' : 'note-md'}>
@@ -300,6 +328,9 @@ export function NoteMarkdown({ content, onLink, wrap }: { content: string; onLin
               />
             </pre>
           )
+        }
+        if (b.kind === 'diagram') {
+          return <NoteDiagram key={key} language={b.lang} code={b.code} plantumlServer={plantumlServer} />
         }
         if (b.kind === 'list') {
           const items = b.items.map((it, li) => <li key={`${key}-i-${li}`}>{renderText(it, `${key}-i-${li}`, onLink)}</li>)

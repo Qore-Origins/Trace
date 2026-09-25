@@ -95,7 +95,7 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
           }}
         >
           {p.content.trim() ? (
-            <NoteMarkdown content={p.content} onLink={openLink} wrap={noteWrap} />
+            <NoteMarkdown content={p.content} onLink={openLink} wrap={noteWrap} plantumlServer={plantumlServer} />
           ) : (
             <div className="note-empty">{t('cards.notePlaceholder')}</div>
           )}

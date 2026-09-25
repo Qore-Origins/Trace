@@ -20,6 +20,24 @@ describe('note-md parseBlocks', () => {
     expect((blocks[0] as { lang: string }).lang).toBe('python')
   })
 
+  it.each([
+    ['mermaid', 'flowchart TD\n  Start --> Ready'],
+    ['vega-lite', '{"mark":"bar","data":{"values":[]}}'],
+    ['plantuml', '@startuml\nAlice -> Bob\n@enduml'],
+    ['flowchart', 'st=>start: Start\ne=>end: Ready\nst->e'],
+    ['sequence', 'Alice->Bob: Ready']
+  ])('将 Muya 支持的 %s 围栏保留为图表块而非普通代码块', (language, source) => {
+    expect(parseBlocks(`\`\`\`${language}\n${source}\n\`\`\``)).toEqual([
+      { kind: 'diagram', lang: language, code: source }
+    ])
+  })
+
+  it('不把普通带语言代码块误判成图表', () => {
+    expect(parseBlocks('```typescript\nconst ready = true\n```')).toEqual([
+      { kind: 'code', lang: 'typescript', code: 'const ready = true' }
+    ])
+  })
+
   it('代码块：未闭合围栏吞到文末', () => {
     const blocks = parseBlocks('```\na\nb\n')
     expect(blocks).toHaveLength(1)

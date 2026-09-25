@@ -149,6 +149,13 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .note-md th, .note-md td { border: 1px solid var(--split); padding: 4px 8px; text-align: left; }
 .note-md th { background: var(--paper-dim); font-weight: 600; color: var(--text-1); }
 .note-md.wrap pre { white-space: pre-wrap; word-break: break-word; }
+.note-diagram { margin: 0 0 8px; color: var(--text-2); }
+.note-diagram:last-child { margin-bottom: 0; }
+.note-diagram-preview { max-width: 100%; overflow-x: auto; text-align: center; }
+.note-diagram-preview svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.note-diagram-preview img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.note-diagram-status { border-radius: 4px; color: var(--text-3); font-size: 12px; line-height: 1.6; padding: 4px 8px; }
+.note-diagram-status.error { background: var(--warn-bg); color: var(--warn-text); }
 
 /* 今日心情（mood）/ 标题（heading）组件卡（2026-09-09 组件扩展 Task 4） */
 .card.mood { border-left: 4px solid var(--split); }
