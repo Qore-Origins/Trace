@@ -410,6 +410,58 @@
       "commit": "2316a3b",
       "publishedAt": "2026-09-24T04:20:29Z",
       "url": "https://gitee.com/Qore/trace/releases/v0.15.0"
+    },
+    {
+      "platform": "GitHub",
+      "repo": "Qore-Origins/Trace",
+      "tag": "v0.15.1",
+      "target": "main",
+      "title": "v0.15.1 — 溯源 Trace 公测版 Beta 5 修订",
+      "label": "None",
+      "status": "published",
+      "isLatest": true,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.15.1.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_0.15.1_beta_20260924_01.exe",
+          "platform": "win32-x64",
+          "size": 479952122,
+          "sizeFormatted": "457.72 MiB",
+          "sha256": "F7892ED833EFC84C6AA5B9FDD8A7F83C869686C9BDCA95DCF0BAD8BABBEB0EE9",
+          "localPath": "builds/windows/Trace_0.15.1_beta_20260924_01.exe",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.15.1/Trace_0.15.1_beta_20260924_01.exe"
+        }
+      ],
+      "versionInPackageJson": "0.15.1",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-24T20:33:11+08:00",
+      "commit": "b55d0f3",
+      "publishedAt": "2026-09-25T14:13:55Z",
+      "url": "https://github.com/Qore-Origins/Trace/releases/tag/v0.15.1"
+    },
+    {
+      "platform": "Gitee",
+      "repo": "Qore/trace",
+      "tag": "v0.15.1",
+      "target": "main",
+      "title": "v0.15.1 — 溯源 Trace 公测版 Beta 5 修订",
+      "label": "None",
+      "status": "published",
+      "isLatest": true,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.15.1.md",
+      "notesFormat": "markdown",
+      "assets": [],
+      "assetPolicy": "Gitee Release 不上传安装包（457.72 MiB 超过 100 MB 限制），使用 GitHub 下载链接",
+      "externalDownloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.15.1/Trace_0.15.1_beta_20260924_01.exe",
+      "versionInPackageJson": "0.15.1",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-24T20:33:11+08:00",
+      "commit": "b55d0f3",
+      "publishedAt": "2026-09-25T14:17:35Z",
+      "url": "https://gitee.com/Qore/trace/releases/v0.15.1"
     }
   ]
 }

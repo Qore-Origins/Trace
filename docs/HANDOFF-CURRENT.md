@@ -2,14 +2,15 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-24（Codex：v0.15.1 用户复验通过，进入双平台发布）
+> 更新：2026-09-25（Codex：v0.15.1 双平台发布与远端核验完成）
 
-## 当前在办：v0.15.1 稳定性修订发布（2026-09-24，Codex）
+## 当前待办：Muya 首次激活与正式 NoteCard 人工验收（v0.15.1 已发布）
 
-- 用户已确认在当前 Electron 应用双击切换计划，重复加载/闪烁问题已修复。此前的 Windows 根路径正斜杠合法子路径误拒绝与 Muya 开发依赖首次 late optimization 也已修复。正式 NoteCard 的 IME、系统剪贴板、语言菜单、连续删除、切卡持久化、亮暗主题、窄窗口体验仍是独立待办。
-- 发布起始基线实测：`main` HEAD `c716b05`，工作区起始与 `origin/main` 同步；用户未跟踪 `Resource/pic/`、`Resource/vid/` 保留且未触碰。v0.15.1 安装包已构建归档；用户复验已通过，正在提交、推送并发布 GitHub/Gitee。
-- 本轮 Codex 文件所有权：`src/main/services/path-safety.ts`、`test/validation-path.spec.ts`、`.issues/2026-09-23-Windows根路径斜杠规范化.md`；Muya 首开诊断/修复 `electron.vite.config.ts`、`test/bundle-budget.spec.ts`、`src/renderer/src/components/muya-note/MuyaNoteEditor.tsx`、`test/muya-note-integration.spec.tsx`（先以复现证据决定是否扩大到 loader，避免修改 Muya/vendor）；双击计划去重 `src/renderer/src/stores/plan-store.ts`、`src/renderer/src/components/ContentArea.tsx`、`test/plan-editing.spec.ts`、`.issues/2026-09-24-双击计划重复加载.md`。后续 v0.15.1 发布边界：`package.json`、`package-lock.json`、`AGENTS.md`、`CLAUDE.md`、`docs/changelog/CHANGELOG.md`、新增 `builds/release_notes/release_notes_v0.15.1.md`、`builds/build_history.json`、`builds/release_history.json`、构建产物 `release/` 与 `builds/windows/`，以及本计划镜像与本文件。Claude Code 避开以上精确文件；用户资源 `Resource/pic/`、`Resource/vid/` 不触碰。
-- 阶段：路径回归定向 32/32；`..` 越界拒绝仍通过。Muya 根因是 Vite 首次发现链接依赖后触发 late optimization/reload；renderer include `@muyajs/core` 后冷缓存验证 18 项在 dev server 启动期约 2.8s 优化。双击修复回归先红后绿（重复读取 2 次降为 1 次；显式刷新/外部变更仍强制重读），用户已确认当前 Electron 应用表现正常。已实测 `npm run typecheck` 通过、`npm run test` 28 文件 249/249、`npm run build`、`npm run build:win` 成功。v0.15.1 安装包归档大小 479,952,122 B、SHA-256 `F7892ED833EFC84C6AA5B9FDD8A7F83C869686C9BDCA95DCF0BAD8BABBEB0EE9`，安装器 ProductVersion/FileVersion 均为 0.15.1。隔离启动打包版 GUI 的调用被执行策略拒绝，未启动进程、未创建隔离配置目录，烟测未完成。当前仅进行已授权的发布闭环：推送 main/tag，GitHub 附安装包，Gitee 只发布说明及 GitHub 下载链接；两端 GET 核验后补 release_history 并推送收尾记录。正式 NoteCard 其余人工验收仍未逐项记录。
+- 用户已在当前 Electron 应用确认双击切换计划不再重复加载/闪烁。Windows 正斜杠根路径修复和 Muya 开发依赖预优化也已实现；正式 NoteCard 的 IME、系统剪贴板、语言菜单、连续删除、切卡 flush、亮暗主题和窄窗口体验仍待后续。
+- 发布准备提交 `b55d0f3b0aae1c8d9a53a0c21f27dfdf66f28c6a` 与 `v0.15.1` tag 已推送至 GitHub/Gitee；两端 main/tag 远端核验指向一致。GitHub Release 已发布并携带 Windows x64 安装包；Gitee Release 已发布说明与 GitHub 链接，没有上传安装包。发布记录和计划账本正在本轮收尾提交中。
+- 本轮代码边界已随 `b55d0f3` 提交并释放：`src/main/services/path-safety.ts`、`test/validation-path.spec.ts`、`.issues/2026-09-23-Windows根路径斜杠规范化.md`、`electron.vite.config.ts`、`test/bundle-budget.spec.ts`、`src/renderer/src/stores/plan-store.ts`、`src/renderer/src/components/ContentArea.tsx`、`test/plan-editing.spec.ts`、`.issues/2026-09-24-双击计划重复加载.md`。后续 Muya 真实首次激活验收暂不占用实现文件，仍需先读本文件/计划并登记边界。用户资源 `Resource/pic/`、`Resource/vid/` 保持未触碰。
+- 已验证：`npm run typecheck` 通过；`npm run test` 28 文件 249/249；`npm run build`、`npm run build:win` 成功。安装包 479,952,122 B、SHA-256 `F7892ED833EFC84C6AA5B9FDD8A7F83C869686C9BDCA95DCF0BAD8BABBEB0EE9`，归档哈希一致，ProductVersion/FileVersion 均为 0.15.1。GitHub asset digest 与本地一致；Gitee GET 正文与本地 payload 一致，发布页 HTTP 200 且包含下载链接。隔离启动打包版 GUI 被执行策略拒绝，烟测未完成，不标为通过。
+- 下一步：提交并双端推送 release history、计划与 HANDOFF 收尾记录。等待事项：重启开发服务器后用户/本机复验正式 NoteCard 首次打开无 reload 并可编辑。剩余事项：IME、剪贴板、语言菜单、连续删除、切卡持久化、亮暗主题及窄窗口人工验收；打包 GUI 独立烟测未完成。
 
 ## 已完成：v0.15.0 Beta 5 双平台发布（2026-09-24）
 

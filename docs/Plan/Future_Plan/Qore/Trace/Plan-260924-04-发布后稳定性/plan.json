@@ -2,7 +2,7 @@
   "id": "9f3de44328604d63a6b34cbf242e2d8f",
   "name": "Trace 发布后稳定性与 v0.15.1 修订发布",
   "created_at": "2026-09-24T12:30:00+08:00",
-  "updated_at": "2026-09-24T20:45:00+08:00",
+  "updated_at": "2026-09-25T22:21:57+08:00",
   "components": [
     {
       "id": "f587a2d5d8f045fdb6d40d769af08111",
@@ -21,8 +21,9 @@
           { "id": "5d7d2da90e744f51ab98985ff673a01c", "title": "去重双击导致的同计划重复加载并保留显式刷新", "status": "done" },
           { "id": "cf750f4f59e8468a8ff4cc871da08d1e", "title": "升级 v0.15.1 并构建、归档 Windows 安装包", "status": "done" },
           { "id": "729a2669522841f68233e3490a9cfb44", "title": "Electron 界面双击计划切换不再重复闪烁复验", "status": "done" },
-          { "id": "edcc44140a0044ae838d8455edb78ac5", "title": "推送 GitHub/Gitee 并发布 GitHub 安装包与 Gitee 说明", "status": "in_progress" },
-          { "id": "8e32c73923f049cebb4be8904f927bb6", "title": "Electron 首次激活无重载复验及正式 NoteCard 人工体验", "status": "not_started" }
+          { "id": "edcc44140a0044ae838d8455edb78ac5", "title": "推送 GitHub/Gitee 并发布 GitHub 安装包与 Gitee 说明", "status": "done" },
+          { "id": "8e32c73923f049cebb4be8904f927bb6", "title": "Electron 首次激活无重载复验及正式 NoteCard 人工体验", "status": "not_started" },
+          { "id": "e6f1d9a348bb43ae96f90558d9c28abc", "title": "回填双平台发布账本并推送收尾状态记录", "status": "done" }
         ]
       }
     }
