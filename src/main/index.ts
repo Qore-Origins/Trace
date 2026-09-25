@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { PlanRepository } from './services/plan-repository'
 import { ConfigService } from './services/config-service'
@@ -11,6 +11,7 @@ import { setDiaryRepo } from './services/diary-service'
 import { ExportService, resolveRendererSource } from './services/export-service'
 import { registerIpc } from './ipc/register'
 import { bus } from './services/event-bus'
+import { createExternalLinkWindowHandler } from './services/external-link-service'
 
 // 安全基线（接口设计文档 §2.3）：contextIsolation/sandbox/webSecurity 显式声明
 const SECURITY_BASE = {
@@ -75,8 +76,13 @@ function createWindow(bounds?: { width: number; height: number }): void {
   // 界面就绪后再显示（避免白屏闪烁）
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
-  // 拒绝任何窗口内新窗口/外部导航（v1.0 无外部链接语义）
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // 新窗口始终拒绝；合法 HTTP(S) 链接交给系统浏览器，协议校验在主进程再次执行。
+  mainWindow.webContents.setWindowOpenHandler(
+    createExternalLinkWindowHandler(
+      (url) => shell.openExternal(url),
+      () => console.warn('[trace] Failed to open an external link in the system browser')
+    )
+  )
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (process.env['ELECTRON_RENDERER_URL'] && url.startsWith(process.env['ELECTRON_RENDERER_URL'])) return
     event.preventDefault()
