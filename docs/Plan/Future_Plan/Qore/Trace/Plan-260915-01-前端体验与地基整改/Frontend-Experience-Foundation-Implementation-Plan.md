@@ -650,6 +650,8 @@ git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 
 **执行状态（2026-09-26）：** Codex 在 `codex/trace-task10-11` 隔离工作树完成真实 Electron 采样；原始 JSON、指标口径、局限与上限规模树动画退化记录见《性能测试报告》及 `docs/performance/2026-09-25-electron-baseline/`。首屏 cold process、键入到保存多轮 P50/P95、安装版体验未伪称已覆盖。
 
+**提交记录：** 性能实现与报告 `eefae21`（`test(perf): establish Electron performance baseline`）；UI/前端/架构文档及计划闭环 `2f8764c`（`docs(frontend): close experience audit plan`）。
+
 **Files:**
 
 - Create: `src/renderer/src/perf/marks.ts`

@@ -6,14 +6,14 @@
 
 ## 当前在办：注释阅读态修复、真实性能基线与设计架构文档闭环（Codex）
 
-- 当前主分支基线：`3de25d3`，GitHub/Gitee 同步；实施隔离分支：`codex/trace-task10-11`，当前 HEAD `eefae21`，相对基线领先 4 个本地提交；工作树 `.worktrees/codex/trace-task10-11`。主目录仅有用户未跟踪资源 `Resource/pic/`、`Resource/vid/`，保持不触碰。
+- 当前主分支基线：`3de25d3`，GitHub/Gitee 同步；实施隔离分支：`codex/trace-task10-11`，工作树 `.worktrees/codex/trace-task10-11`。本轮任务闭环文档提交 `2f8764c` 已由 `git log` 核实；当前精确 HEAD 与提交数以 `git log`/`git status` 为准。主目录仅有用户未跟踪资源 `Resource/pic/`、`Resource/vid/`，保持不触碰。
 - 本轮实现提交（`git log` 实测）：`8d9eef2`（阅读态安全外链）、`dcb10b0`（失焦注释图表渲染）、`e16d3da`（Muya 文本指纹跨换行稳定）、`eefae21`（真实 Electron 性能基线）。均仅在隔离分支本地，未合入 main、未推送。
 - 根因及实现：阅读态安全链接通过 `window.open` 被主进程原有全拒绝策略拦截；现经 `shell.openExternal` 打开协议校验通过的 HTTP(S)，其他协议仍拒绝。失焦图不显示的原因是 `NoteMarkdown` 把所有围栏都当普通代码；现复用 Muya 懒加载 renderer，支持 Mermaid、Vega-Lite、PlantUML、Flowchart、Sequence，普通代码围栏不变。PlantUML Server 默认空值，界面明确提示源码不发送到网络。
 - LF 稳定指纹：旧检出中的 `open-sans-LICENSE.txt` 是 CRLF，新检出按 `.gitattributes` 是 LF；测试现仅将文本类型换行规范为 LF 后校验，`vendor/muya/UPSTREAM.md` 记录相同规范化口径，未改 `vendor/muya/src/`。
 - 文件所有权：外链为 `src/main/index.ts`、`src/main/services/external-link-service.ts`、`test/external-link-service.spec.ts`；指纹为 `test/muya-vendor.spec.ts`、`vendor/muya/UPSTREAM.md`；图表为 `cards.tsx`、`note-md.tsx`、`note-diagram.tsx`、`cards.css`、`test/note-md.spec.ts` 与 `.issues/2026-09-25-注释失焦态图表未渲染.md`；Task 10 为 `src/renderer/src/perf/marks.ts`、性能标记接入点、`scripts/trace-perf-*.mjs`、`docs/performance/` 与 Electron 性能报告；Task 11 为 UI/前端/架构文档、计划 MD/JSON、`docs/Plan/README.md` 与本文件。均由 Codex 独占至显式交接。
 - 验收：真实 Electron 失焦态中 Mermaid/Vega-Lite/Flowchart/Sequence 均 `ready` 且生成 4 个 SVG；PlantUML 为 `plantuml-required`；普通 TypeScript 仍是代码块；renderer 未重载。性能已采标准 100/1000/10000 规模与 100/1000 行任务卡；上限树展开 15,799 ms，22 帧间隔样本 P50/P95 60.6/115.1 ms，为明确后续性能问题。报告已记录样本数与不能推导 SLA 的限制。
-- 验证：`npm run typecheck` 通过；`npm run test` 30 文件、261/261；`npm run build` 成功（renderer 7,153 modules）；真实 Electron 静态图表矩阵通过。共享文档/计划已更新，当前只剩文档变更待提交；正式安装版冷启动、IME/剪贴板和人工卡片体验未验收，不在本轮推送或发布。
-- 当前下一步：完成最后的 `git diff --check`、计划 JSON/状态一致性及文档自审后本地提交；随后等待用户选择保留 worktree 分支或本地集成。未经用户授权不合并主分支、不推送。
+- 验证：`npm run typecheck` 通过；`npm run test` 30 文件、261/261；`npm run build` 成功（renderer 7,153 modules）；真实 Electron 静态图表矩阵通过。共享文档/计划均已更新并提交；正式安装版冷启动、IME/剪贴板和人工卡片体验未验收，不在本轮推送或发布。
+- 当前下一步：实现与 Task 10/11 文档闭环完成；等待用户选择保留隔离分支或安排本地集成。上限树动画、Release 多轮性能采样和正式 NoteCard 人工验收作为后续项。未经用户授权不合并主分支、不推送。
 
 ## 已完成：Muya 首次激活与 v0.15.1 发布交接（历史待验收项）
 

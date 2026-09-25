@@ -15,7 +15,7 @@
       "id": "eaaef1be94204da2af120a6284386c42",
       "type": "note",
       "payload": {
-        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–11 实施与验证完成，代码仍在隔离分支 codex/trace-task10-11，未合入 main、未推送。真实性能报告：docs/lifecycle/04-测试阶段 Testing/性能测试报告 Performance Test.md；原始 Electron 样本在 docs/performance/2026-09-25-electron-baseline/。验证：typecheck 0 错、30 文件 261/261、build 成功；静态注释五种图表语言实测通过。实现提交：8d9eef2、dcb10b0、e16d3da、eefae21。已知后续：千计划树展开约 15.8 秒，帧间隔 P95 115.1ms；须单列性能改进，不宣称达标。正式安装版、IME/剪贴板人工验收仍未覆盖。",
+        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–11 实施与验证完成，代码仍在隔离分支 codex/trace-task10-11，未合入 main、未推送。真实性能报告：docs/lifecycle/04-测试阶段 Testing/性能测试报告 Performance Test.md；原始 Electron 样本在 docs/performance/2026-09-25-electron-baseline/。验证：typecheck 0 错、30 文件 261/261、build 成功；静态注释五种图表语言实测通过。实现提交：8d9eef2、dcb10b0、e16d3da、eefae21；文档闭环提交：2f8764c。已知后续：千计划树展开约 15.8 秒，帧间隔 P95 115.1ms；须单列性能改进，不宣称达标。正式安装版、IME/剪贴板人工验收仍未覆盖。",
         "created_at": "2026-09-15T11:50:34.882+08:00"
       }
     },
