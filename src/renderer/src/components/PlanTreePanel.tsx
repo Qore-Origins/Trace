@@ -35,10 +35,18 @@ import { useAppStore } from '../stores/app-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
 import { usePrefStore } from '../stores/pref-store'
 import { useTranslation } from '../i18n'
+import { markTrace, startTraceMeasure } from '../perf/marks'
 import { effStagger } from './tree-utils'
 import { ActionButton } from './ui/ActionButton'
 
 const LARGE_TREE_ROW_THRESHOLD = 300
+
+function finishTreeExpandMeasure(finish: () => number | undefined): void {
+  requestAnimationFrame(() => {
+    markTrace('trace:tree-expand')
+    finish()
+  })
+}
 
 // 行视图（渲染单位；path='' 为根）
 interface RowView {
@@ -462,6 +470,7 @@ export default function PlanTreePanel(): React.JSX.Element {
     if (!node.hasChildren) return
     const p = node.path
     if (closingPaths.has(p)) {
+      const finishMeasure = startTraceMeasure('trace:tree-expand')
       // 取消收拢：清定时器、组恢复展开（settled 钉住防重播）；未加载过则补懒加载
       const t = closeTimers.current.get(p)
       if (t) {
@@ -475,7 +484,11 @@ export default function PlanTreePanel(): React.JSX.Element {
       })
       const st = useTreeStore.getState()
       if (!st.expandedKeys.includes(p)) setExpanded([...st.expandedKeys, p])
-      if (!st.loaded[p]) void loadChildren(p)
+      if (!st.loaded[p]) {
+        void loadChildren(p).catch(() => undefined).finally(() => finishTreeExpandMeasure(finishMeasure))
+      } else {
+        finishTreeExpandMeasure(finishMeasure)
+      }
       return
     }
     const st = useTreeStore.getState() // 读最新状态，防闭包过期
@@ -503,8 +516,13 @@ export default function PlanTreePanel(): React.JSX.Element {
       return
     }
     // 展开：组随 expandedKeys 挂载（发牌入场）；未加载则懒加载
+    const finishMeasure = startTraceMeasure('trace:tree-expand')
     setExpanded([...st.expandedKeys, p])
-    if (!st.loaded[p]) void loadChildren(p)
+    if (!st.loaded[p]) {
+      void loadChildren(p).catch(() => undefined).finally(() => finishTreeExpandMeasure(finishMeasure))
+    } else {
+      finishTreeExpandMeasure(finishMeasure)
+    }
   }, [closingPaths, loadChildren, setExpanded])
 
   const onOpen = useCallback((node: RowView): void => {

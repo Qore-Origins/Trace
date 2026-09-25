@@ -1,3 +1,4 @@
+import { useLayoutEffect } from 'react'
 import type { TaskItem, TaskListPayload } from '@shared/plan-types'
 import { isOverdue } from '@shared/task-state'
 import { uuid32 } from '@shared/validation'
@@ -5,6 +6,7 @@ import { useTranslation } from '../../i18n'
 import { usePlanMutations } from '../../stores/plan-store'
 import { ActionButton } from '../ui/ActionButton'
 import { removePlanRow } from '../ui/plan-row-actions'
+import { startTraceMeasure, traceNow } from '../../perf/marks'
 import { CardShell, type CardRenderProps } from './CardShell'
 
 function nextStatus(s: TaskItem['status']): TaskItem['status'] {
@@ -19,6 +21,12 @@ export function TaskListCard({ comp, index, total, today }: CardRenderProps): Re
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as TaskListPayload
   const doneCount = p.items.filter((t) => t.status === 'done').length
+  const taskRenderStartedAt = traceNow()
+  const finishTaskRender = startTraceMeasure('trace:task-render', taskRenderStartedAt, { taskCount: p.items.length })
+
+  useLayoutEffect(() => {
+    finishTaskRender()
+  })
 
   const patchItem = (taskId: string, fn: (item: TaskItem) => void): void =>
     patchComponent(comp.id, (payload) => {

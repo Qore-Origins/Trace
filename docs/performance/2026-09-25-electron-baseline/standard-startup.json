@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-25T16:00:09.081Z",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26340",
+    "architecture": "x64",
+    "cpuModel": "AMD Ryzen 9 8940HX with Radeon Graphics        ",
+    "logicalCpuCount": 32,
+    "totalMemoryBytes": 16337637376
+  },
+  "renderer": {
+    "targetUrl": "http://localhost:5173/",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) trace/0.15.1 Chrome/152.0.7977.76 Electron/44.2.0 Safari/537.36",
+    "interaction": null,
+    "capturedAt": "2026-09-25T16:00:09.080Z",
+    "title": "溯源 Trace",
+    "href": "http://localhost:5173/",
+    "timeOrigin": 1790351991286.8,
+    "appInteractiveMark": {
+      "name": "trace:app-interactive",
+      "startTime": 1313.5
+    },
+    "navigation": {
+      "domContentLoadedMs": 1173,
+      "loadEventMs": 1174.3999999985099,
+      "responseMs": 18.399999998509884
+    },
+    "paint": [
+      {
+        "name": "first-paint",
+        "startTime": 1232
+      },
+      {
+        "name": "first-contentful-paint",
+        "startTime": 1300
+      }
+    ],
+    "memory": {
+      "usedJsHeapBytes": 49021452,
+      "totalJsHeapBytes": 122030032,
+      "heapLimitBytes": 4395630592
+    },
+    "counts": {
+      "treeRows": 101,
+      "taskRows": 10,
+      "taskCards": 1,
+      "noteCards": 1,
+      "diagrams": 0,
+      "diagramErrors": 0
+    },
+    "taskCounts": {
+      "036190623cf84797b03def7e44352262": 10
+    },
+    "marks": [
+      {
+        "name": "trace:app-interactive",
+        "startTime": 1313.5
+      },
+      {
+        "name": "trace:plan-open",
+        "startTime": 4176.10000000149
+      },
+      {
+        "name": "trace:tree-expand",
+        "startTime": 10553.5
+      },
+      {
+        "name": "trace:edit-commit",
+        "startTime": 16421.5
+      }
+    ],
+    "measures": [
+      {
+        "name": "trace:app-interactive",
+        "duration": 105.39999999850988,
+        "detail": null
+      },
+      {
+        "name": "trace:tree-expand",
+        "duration": 139,
+        "detail": null
+      },
+      {
+        "name": "trace:plan-open",
+        "duration": 66.60000000149012,
+        "detail": null
+      },
+      {
+        "name": "trace:task-render",
+        "duration": 5.299999997019768,
+        "detail": {
+          "taskCount": 10
+        }
+      },
+      {
+        "name": "trace:tree-expand",
+        "duration": 85.20000000298023,
+        "detail": null
+      },
+      {
+        "name": "trace:tree-expand",
+        "duration": 80.29999999701977,
+        "detail": null
+      },
+      {
+        "name": "trace:tree-expand",
+        "duration": 119.60000000149012,
+        "detail": null
+      },
+      {
+        "name": "trace:task-render",
+        "duration": 2.1999999955296516,
+        "detail": {
+          "taskCount": 10
+        }
+      },
+      {
+        "name": "trace:edit-commit",
+        "duration": 48.399999998509884,
+        "detail": null
+      }
+    ],
+    "treeFrames": null,
+    "traceMetricSummary": [
+      {
+        "name": "trace:app-interactive",
+        "taskCount": null,
+        "durations": [
+          105.39999999850988
+        ],
+        "count": 1,
+        "p50Ms": 105.39999999850988,
+        "p95Ms": 105.39999999850988,
+        "minMs": 105.39999999850988,
+        "maxMs": 105.39999999850988
+      },
+      {
+        "name": "trace:tree-expand",
+        "taskCount": null,
+        "durations": [
+          139,
+          85.20000000298023,
+          80.29999999701977,
+          119.60000000149012
+        ],
+        "count": 4,
+        "p50Ms": 85.20000000298023,
+        "p95Ms": 139,
+        "minMs": 80.29999999701977,
+        "maxMs": 139
+      },
+      {
+        "name": "trace:plan-open",
+        "taskCount": null,
+        "durations": [
+          66.60000000149012
+        ],
+        "count": 1,
+        "p50Ms": 66.60000000149012,
+        "p95Ms": 66.60000000149012,
+        "minMs": 66.60000000149012,
+        "maxMs": 66.60000000149012
+      },
+      {
+        "name": "trace:task-render",
+        "taskCount": 10,
+        "durations": [
+          5.299999997019768,
+          2.1999999955296516
+        ],
+        "count": 2,
+        "p50Ms": 2.1999999955296516,
+        "p95Ms": 5.299999997019768,
+        "minMs": 2.1999999955296516,
+        "maxMs": 5.299999997019768
+      },
+      {
+        "name": "trace:edit-commit",
+        "taskCount": null,
+        "durations": [
+          48.399999998509884
+        ],
+        "count": 1,
+        "p50Ms": 48.399999998509884,
+        "p95Ms": 48.399999998509884,
+        "minMs": 48.399999998509884,
+        "maxMs": 48.399999998509884
+      }
+    ]
+  }
+}

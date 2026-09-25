@@ -2,7 +2,7 @@
 // 全局交互底座（评审 Important-1）：搜索浮层/命名对话框/设置弹窗 + 全局快捷键在此单点挂载，
 // 工作台与日记两视图共用——view 路由切换不再使底座随 WorkspaceView 卸载而静默失效
 // （修复：日记视图下 Ctrl+F 搜索 / Ctrl+N 新建计划 / 文件→设置 全部无效）
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Button, Descriptions, Input, Modal, Radio, Spin, Switch, Tooltip } from 'antd'
 import OnboardingView from './views/OnboardingView'
@@ -23,6 +23,7 @@ import { DIARY_DIR } from '@shared/plan-types'
 import { useTranslation } from './i18n'
 import { getMessage } from './antd-host'
 import { validatePlantumlServer } from './components/muya-note/muya-config'
+import { markTrace, startTraceMeasure } from './perf/marks'
 
 const DiaryView = lazy(() => import('./views/DiaryView'))
 const MemoriesView = lazy(() => import('./views/MemoriesView'))
@@ -41,6 +42,17 @@ export default function App(): React.JSX.Element {
   const rootDir = useAppStore((s) => s.rootDir)
   const view = useUiStore((s) => s.view)
   const setView = useUiStore((s) => s.setView)
+  const appInteractiveMeasureRef = useRef<(() => number | undefined) | null>(null)
+  if (appInteractiveMeasureRef.current === null) {
+    appInteractiveMeasureRef.current = startTraceMeasure('trace:app-interactive')
+  }
+
+  useEffect(() => {
+    if (phase !== 'onboarding' && phase !== 'ready') return
+    markTrace('trace:app-interactive')
+    appInteractiveMeasureRef.current?.()
+    appInteractiveMeasureRef.current = null
+  }, [phase])
 
   // 「在树中打开」（Task 5 日记深化接线）：定位 Diary/<date> 计划并切回工作台。
   // 复用搜索回溯定位 locate（expandTo → select → open → 滚动），不新建并行定位路径；

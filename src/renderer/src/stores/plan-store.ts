@@ -7,6 +7,7 @@ import type { PlanDocument, Component } from '@shared/plan-types'
 import { validateDueDate } from '@shared/validation'
 import { ERR } from '@shared/errors'
 import { i18n } from '../i18n'
+import { markTrace, startTraceMeasure } from '../perf/marks'
 
 export type SaveState = 'idle' | 'editing' | 'saved' | 'error'
 
@@ -84,15 +85,19 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     saveTimer = null
     const openingSession = resetEditingSession()
     set({ currentPath: path, document: null, saveState: 'idle', lastError: null, externalAlert: false })
+    const finishOpenMeasure = startTraceMeasure('trace:plan-open')
     const promise = (async (): Promise<void> => {
       try {
         const doc = await invoke('storage:readPlan', { path })
         if (sessionRevision !== openingSession) return
         set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
+        markTrace('trace:plan-open')
       } catch (e) {
         if (sessionRevision !== openingSession) return
         getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
         set({ currentPath: path, document: null })
+      } finally {
+        finishOpenMeasure()
       }
     })()
     activeOpenRequest = { path, session: openingSession, promise }
@@ -172,6 +177,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     const flushingSession = sessionRevision
     const flushingRevision = editRevision
     let scheduleNext = false
+    const finishCommitMeasure = startTraceMeasure('trace:edit-commit')
     saving = true
     try {
       const r = await invoke('storage:savePlan', {
@@ -185,6 +191,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
       pendingOperations = pendingOperations.filter((operation) => operation.revision > flushingRevision)
       scheduleNext = editRevision > flushingRevision
       set({ serverUpdatedAt: r.updated_at, saveState: scheduleNext ? 'editing' : 'saved', lastError: null })
+      markTrace('trace:edit-commit')
     } catch (e) {
       // 同上：目标已不在（如被删除）属正常竞态，静默丢弃，不误报
       if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
@@ -204,6 +211,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         scheduleNext = editRevision > flushingRevision
       }
     } finally {
+      finishCommitMeasure()
       saving = false
       const activeSessionChanged = sessionRevision !== flushingSession
       const activeSessionHasPendingEdits = editRevision > persistedRevision

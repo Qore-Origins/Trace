@@ -7,6 +7,7 @@ import type { SearchHit } from '@shared/ipc-contract'
 import { useTreeStore } from './tree-store'
 import { usePlanStore } from './plan-store'
 import { i18n } from '../i18n'
+import { markTrace, startTraceMeasure, traceNow } from '../perf/marks'
 
 const DEBOUNCE_MS = 300
 
@@ -39,14 +40,20 @@ export const useSearchStore = create<SearchState>()((set, get) => ({
       return
     }
     set({ querying: true })
+    const searchStartedAt = traceNow()
     timer = setTimeout(() => {
+      const finishSearchMeasure = startTraceMeasure('trace:search-query', searchStartedAt)
       void invoke('search:query', { keywords: trimmed.split(/\s+/) })
-        .then((hits) => set({ hits, querying: false }))
+        .then((hits) => {
+          set({ hits, querying: false })
+          markTrace('trace:search-query')
+        })
         .catch((e) => {
           set({ querying: false })
           if (e instanceof ClientError && e.code === 23) return // 索引构建中：静默（状态栏有提示）
           getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.searchFailed'))
         })
+        .finally(() => finishSearchMeasure())
     }, DEBOUNCE_MS)
   },
 

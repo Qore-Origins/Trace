@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-25T15:29:38.544Z",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26340",
+    "architecture": "x64",
+    "cpuModel": "AMD Ryzen 9 8940HX with Radeon Graphics        ",
+    "logicalCpuCount": 32,
+    "totalMemoryBytes": 16337637376
+  },
+  "renderer": {
+    "targetUrl": "http://localhost:5173/",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) trace/0.15.1 Chrome/152.0.7977.76 Electron/44.2.0 Safari/537.36",
+    "interaction": {
+      "firstActivation": {
+        "stayedInSameRenderer": true,
+        "editable": true,
+        "loading": true,
+        "fallback": false
+      }
+    },
+    "capturedAt": "2026-09-25T15:29:38.542Z",
+    "title": "溯源 Trace",
+    "href": "http://localhost:5173/",
+    "timeOrigin": 1790350160361.9,
+    "appInteractiveMark": {
+      "name": "trace:app-interactive",
+      "startTime": 1336.6999999955297
+    },
+    "navigation": {
+      "domContentLoadedMs": 1193.1999999955297,
+      "loadEventMs": 1194.6999999955297,
+      "responseMs": 16.599999994039536
+    },
+    "paint": [
+      {
+        "name": "first-paint",
+        "startTime": 1248
+      },
+      {
+        "name": "first-contentful-paint",
+        "startTime": 1320
+      }
+    ],
+    "memory": {
+      "usedJsHeapBytes": 65027761,
+      "totalJsHeapBytes": 80673441,
+      "heapLimitBytes": 4395630592
+    },
+    "counts": {
+      "treeRows": 2,
+      "taskRows": 1000,
+      "taskCards": 1,
+      "noteCards": 1,
+      "diagrams": 1,
+      "diagramErrors": 0
+    },
+    "taskCounts": {
+      "c52d62633a0b42eb9faeb194fba4a59a": 1000
+    },
+    "marks": [
+      {
+        "name": "trace:app-interactive",
+        "startTime": 1336.6999999955297
+      },
+      {
+        "name": "trace:plan-open",
+        "startTime": 5780.69999999553
+      },
+      {
+        "name": "trace:tree-expand",
+        "startTime": 14583.60000000149
+      },
+      {
+        "name": "trace:search-query",
+        "startTime": 16483.39999999851
+      },
+      {
+        "name": "trace:muya-activate",
+        "startTime": 17715.19999999553
+      }
+    ],
+    "measures": [
+      {
+        "name": "trace:app-interactive",
+        "duration": 104.5,
+        "detail": null
+      },
+      {
+        "name": "trace:tree-expand",
+        "duration": 8.5,
+        "detail": null
+      },
+      {
+        "name": "trace:plan-open",
+        "duration": 9.5,
+        "detail": null
+      },
+      {
+        "name": "trace:task-render",
+        "duration": 75.39999999850988,
+        "detail": {
+          "taskCount": 1000
+        }
+      },
+      {
+        "name": "trace:tree-expand",
+        "duration": 18.600000001490116,
+        "detail": null
+      },
+      {
+        "name": "trace:search-query",
+        "duration": 303.29999999701977,
+        "detail": null
+      },
+      {
+        "name": "trace:muya-activate",
+        "duration": 1177.5999999940395,
+        "detail": null
+      }
+    ],
+    "treeFrames": {
+      "sampledFrames": 197,
+      "p50IntervalMs": 6.100000000000364,
+      "p95IntervalMs": 12.199999999998909,
+      "estimatedP50Fps": 163.93442622949843,
+      "droppedFramesOver20Ms": 0
+    },
+    "traceMetricSummary": [
+      {
+        "name": "trace:app-interactive",
+        "taskCount": null,
+        "durations": [
+          104.5
+        ],
+        "count": 1,
+        "p50Ms": 104.5,
+        "p95Ms": 104.5,
+        "minMs": 104.5,
+        "maxMs": 104.5
+      },
+      {
+        "name": "trace:tree-expand",
+        "taskCount": null,
+        "durations": [
+          8.5,
+          18.600000001490116
+        ],
+        "count": 2,
+        "p50Ms": 8.5,
+        "p95Ms": 18.600000001490116,
+        "minMs": 8.5,
+        "maxMs": 18.600000001490116
+      },
+      {
+        "name": "trace:plan-open",
+        "taskCount": null,
+        "durations": [
+          9.5
+        ],
+        "count": 1,
+        "p50Ms": 9.5,
+        "p95Ms": 9.5,
+        "minMs": 9.5,
+        "maxMs": 9.5
+      },
+      {
+        "name": "trace:task-render",
+        "taskCount": 1000,
+        "durations": [
+          75.39999999850988
+        ],
+        "count": 1,
+        "p50Ms": 75.39999999850988,
+        "p95Ms": 75.39999999850988,
+        "minMs": 75.39999999850988,
+        "maxMs": 75.39999999850988
+      },
+      {
+        "name": "trace:search-query",
+        "taskCount": null,
+        "durations": [
+          303.29999999701977
+        ],
+        "count": 1,
+        "p50Ms": 303.29999999701977,
+        "p95Ms": 303.29999999701977,
+        "minMs": 303.29999999701977,
+        "maxMs": 303.29999999701977
+      },
+      {
+        "name": "trace:muya-activate",
+        "taskCount": null,
+        "durations": [
+          1177.5999999940395
+        ],
+        "count": 1,
+        "p50Ms": 1177.5999999940395,
+        "p95Ms": 1177.5999999940395,
+        "minMs": 1177.5999999940395,
+        "maxMs": 1177.5999999940395
+      }
+    ]
+  }
+}

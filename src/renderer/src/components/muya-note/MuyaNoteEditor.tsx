@@ -4,6 +4,7 @@ import type { Muya } from '@muyajs/core'
 import type { Language } from '../../stores/pref-store'
 import { createMuyaOptions } from './muya-config'
 import { loadMuyaRuntime } from './muya-runtime'
+import { markTrace, startTraceMeasure } from '../../perf/marks'
 import './muya-theme.css'
 
 const MARKDOWN_CHANGE_DELAY_MS = 150
@@ -104,6 +105,24 @@ export function MuyaNoteEditor({
 
     let cancelled = false
     let jsonChangeListener: (() => void) | null = null
+    let diagramObserver: MutationObserver | null = null
+    let diagramMeasureFinished = false
+    const finishActivationMeasure = startTraceMeasure('trace:muya-activate')
+    const containsDiagram = /```\s*(?:mermaid|vega-lite|plantuml|flowchart|sequence)\b/i.test(valueRef.current)
+    const finishDiagramMeasure = containsDiagram ? startTraceMeasure('trace:muya-diagram') : null
+    const completeDiagramMeasure = (): void => {
+      if (!finishDiagramMeasure || diagramMeasureFinished) return
+      const preview = host.querySelector('.mu-diagram-preview')
+      if (!preview?.querySelector('svg, img, .mu-diagram-error')) return
+      diagramMeasureFinished = true
+      diagramObserver?.disconnect()
+      markTrace('trace:muya-diagram')
+      finishDiagramMeasure()
+    }
+    if (containsDiagram) {
+      diagramObserver = new MutationObserver(completeDiagramMeasure)
+      diagramObserver.observe(host, { childList: true, subtree: true })
+    }
     const bridge = createMarkdownChangeBridge((markdown) => {
       lastEmittedValueRef.current = markdown
       onChangeRef.current(markdown)
@@ -126,16 +145,21 @@ export function MuyaNoteEditor({
         }
         muya.on('json-change', jsonChangeListener)
         muyaRef.current = muya
+        markTrace('trace:muya-activate')
+        finishActivationMeasure()
         setLoading(false)
+        completeDiagramMeasure()
       })
       .catch(() => {
         if (cancelled) return
+        finishActivationMeasure()
         setLoading(false)
         setFailed(true)
       })
 
     return () => {
       cancelled = true
+      diagramObserver?.disconnect()
       const muya = muyaRef.current
       if (muya) {
         bridge.flush(muya.getMarkdown())
