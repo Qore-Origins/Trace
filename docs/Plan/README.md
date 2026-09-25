@@ -39,7 +39,7 @@ docs/Plan/
 
 | 计划 | 状态 | 创建日期 | 审计/规格 | 当前下一步 |
 |---|---|---|---|---|
-| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | Task 1–9 完成；Task 10 待实施 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | Task 9 已本地合入 main `29305f6` 并复验；下一步真实 Electron 性能报告，Muya 正式卡片人工验收另行跟踪 |
+| [前端体验与地基整改](./Future_Plan/Qore/Trace/Plan-260915-01-前端体验与地基整改/Frontend-Experience-Foundation-Implementation-Plan.md) | Task 1–11 实施与验证完成；上限树动效和 Release 多轮性能采样另行跟踪 | 2026-09-15 | [综合审计报告](../audit/2026-09-15-frontend-ui-performance-architecture-audit.md) | 见真实性能报告；尚未合入主分支或推送 |
 | [注释 Muya 正式集成](./Future_Plan/Qore/Trace/Plan-260917-02-注释Muya正式集成/Muya-Note-Formal-Integration-Implementation-Plan.md) | 实施完成，待正式卡片人工验收 | 2026-09-17 | [Muya 设计规格](../superpowers/specs/2026-09-15-muya-note-editor-design.md) | 用户验收 IME、剪贴板、语言选择、连续删除、切卡 flush、亮暗主题和窄窗口 |
 | [v0.15.0 双平台发布](./Future_Plan/Qore/Trace/Plan-260923-03-v0.15.0双平台发布/Trace-v0.15.0-Release-Plan.md) | 已完成：GitHub/Gitee Release 已发布并核验 | 2026-09-23 | 上次发布 v0.12.0，增量为 F2、Muya 与前端地基批次 | 发布闭环；后续跟进 Muya 人工验收等独立待办 |
 | [发布后稳定性与 v0.15.1 修订发布](./Future_Plan/Qore/Trace/Plan-260924-04-发布后稳定性/Trace-Post-Release-Stability-Plan.md) | 稳定性修复及 v0.15.1 双平台发布已完成；Muya 人工验收待后续 | 2026-09-24 | 发布后稳定性 issue 与 Muya 正式集成验收清单 | 重启开发服务器复验正式 NoteCard 首次激活，再完成 IME/剪贴板等人工体验验收 |

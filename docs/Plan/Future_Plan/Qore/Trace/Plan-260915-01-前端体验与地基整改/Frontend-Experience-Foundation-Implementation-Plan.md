@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 44、React 19、TypeScript 5、zustand 4、Ant Design 5、electron-vite 5、Vitest 5、Muya 0.2.0、CSS View Transitions、dnd-kit。
 
-**Status:** Task 1–9 完成；下一步 Task 10 真实 Electron 性能报告（2026-09-23）
+**Status:** Task 1–11 实施与验证完成；上限规模树动画和 Release 真机多轮采样作为后续性能改进项跟踪（2026-09-26）
 **Created:** 2026-09-15  
 **Audit:** `docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md`
 
@@ -648,6 +648,8 @@ git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 
 ### Task 10: 建立真实 Electron 性能报告
 
+**执行状态（2026-09-26）：** Codex 在 `codex/trace-task10-11` 隔离工作树完成真实 Electron 采样；原始 JSON、指标口径、局限与上限规模树动画退化记录见《性能测试报告》及 `docs/performance/2026-09-25-electron-baseline/`。首屏 cold process、键入到保存多轮 P50/P95、安装版体验未伪称已覆盖。
+
 **Files:**
 
 - Create: `src/renderer/src/perf/marks.ts`
@@ -656,11 +658,11 @@ git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 
 - Modify: performance scripts under `scripts/` with a Trace-specific filename
 
-- [ ] **Step 1: 定义本地桌面指标**
+- [x] **Step 1: 定义本地桌面指标**
 
 记录：冷启动首个可交互帧、空闲内存、编辑 P50/P95、100/1000 任务渲染、1000 节点树展开 FPS、搜索端到端耗时、Muya 首次激活和图表渲染耗时。
 
-- [ ] **Step 2: 增加 Performance API 标记**
+- [x] **Step 2: 增加 Performance API 标记**
 
 生产代码只保留低成本 mark/measure；详细采样由开发/测试开关启用。指标名必须稳定，例如：
 
@@ -672,7 +674,7 @@ git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 'trace:muya-activate'
 ```
 
-- [ ] **Step 3: 建立两档样本库**
+- [x] **Step 3: 建立两档样本库**
 
 - 标准：100 计划、1000 任务；
 
@@ -680,11 +682,11 @@ git commit -m "perf(tree): 收窄树订阅与搜索渲染"
 
 - 样本写入临时目录，不读取或污染用户真实计划库。
 
-- [ ] **Step 4: 替换无关性能模板**
+- [x] **Step 4: 替换无关性能模板**
 
 删除服务器 CPU、MySQL、登录、订单和 1000 并发用户口径，改为 Electron/renderer/main/IPC/文件 IO 指标；每项填写机器配置、样本规模、测量次数、P50/P95 和原始记录位置。
 
-- [ ] **Step 5: 提交真实性能报告**
+- [x] **Step 5: 提交真实性能报告**
 
 ```bash
 git add src/renderer/src/perf scripts "docs/lifecycle/04-测试阶段 Testing/性能测试报告 Performance Test.md"
@@ -709,19 +711,19 @@ git commit -m "test(perf): 建立 Electron 性能基线"
 
 - Modify: `docs/HANDOFF-CURRENT.md`
 
-- [ ] **Step 1: 更新 UI 真源**
+- [x] **Step 1: 更新 UI 真源**
 
 写入亮暗主题、五类动作语义、删除确认/撤销矩阵、最终按钮尺寸、文本对比度、焦点、减弱动效和经用户确认的 spring/时长。
 
-- [ ] **Step 2: 更新前端结构**
+- [x] **Step 2: 更新前端结构**
 
 文档必须包含 AppShell、Workspace/Diary/Memories、全局弹层、卡片注册表、组件级编辑、Muya lazy boundary 和性能标记。
 
-- [ ] **Step 3: 清理失效陈述**
+- [x] **Step 3: 清理失效陈述**
 
 删除不存在的 `src/shared/design-tokens.ts`、旧树宽 220–400、旧三视图描述和“全部基础组件取 antd”等不再成立的文字，或将其更新为真实实现。
 
-- [ ] **Step 4: 最终全量验证**
+- [x] **Step 4: 最终全量验证**
 
 ```bash
 npm run typecheck
@@ -732,7 +734,7 @@ git status --short --branch
 
 Expected: 三项命令全部通过；工作区只保留用户资源和已明确说明的文件；计划 Markdown、`plan.json`、索引和 HANDOFF 状态一致。
 
-- [ ] **Step 5: 提交文档闭环**
+- [x] **Step 5: 提交文档闭环**
 
 ```bash
 git add docs/lifecycle docs/Plan docs/HANDOFF-CURRENT.md

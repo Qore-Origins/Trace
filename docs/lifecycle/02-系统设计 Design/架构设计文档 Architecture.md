@@ -4,9 +4,9 @@
 
 | 项目 Item | 内容 Content |
 |---------|-------------|
-| 文档版本 Document Version | v1.0.0 |
+| 文档版本 Document Version | v1.1.0 |
 | 创建日期 Created Date | 2026-09-05 |
-| 最后修改 Last Modified | 2026-09-05 |
+| 最后修改 Last Modified | 2026-09-26 |
 | 架构师 Architect | HeYS-Snowe |
 
 ---
@@ -16,6 +16,7 @@
 | 版本 Version | 日期 Date | 修改人 Modifier | 审核人 Reviewer | 修改内容 Description |
 |-------------|---------|---------------|---------------|-------------------|
 | v1.0.0 | 2026-09-05 | HeYS-Snowe | HeYS-Snowe | 初始版本 Initial Version（Electron 44 + React 19 定案后的工程画像） |
+| v1.1.0 | 2026-09-26 | Codex | HeYS-Snowe | 同步真实 renderer 模块边界、Muya lazy boundary、网络例外与 Electron 性能实测 |
 
 ---
 
@@ -40,10 +41,10 @@
 | 目标维度 Goal Dimension | 目标描述 Target Description |
 |---------------------|--------------------------|
 | 业务目标 Business | 单用户自用桌面工具（非 SaaS）；MVP 三模块（存储/渲染/溯源查询）可用；远期可扩展 macOS/Linux 分发（同代码）与移动端（原生分轨，未排期） |
-| 性能目标 Performance | 常规操作 < 1s；冷启动 < 3s；检索 ≤ 1s（≤1000 计划/≤10000 任务） |
-| 可用性 Availability | 单机 100%（无网络依赖；无外部服务） |
+| 性能目标 Performance | 设计目标：常规操作 <1s、进程冷启动 <3s、上限库检索 ≤1s；需多轮 Release 环境复测，不视为已达 SLA |
+| 可用性 Availability | 计划管理/数据读写/检索本地运行；外部链接或显式配置的 PlantUML Server 是可选例外 |
 | 可扩展性 Scalability | 数据规模上限内可扩展；格式版本化支持跨年演进；多端分发仅换壳（Electron 同代码打包） |
-| 安全性 Security | 数据不出设备（无网络功能硬约束）；IPC 边界最小化；日志脱敏 |
+| 安全性 Security | 数据默认留在设备；用户触发的 HTTP(S) 外链与显式配置的 PlantUML Server 是受限网络例外；IPC 边界最小化、日志脱敏 |
 
 ### 1.2 架构视图 Architecture Views
 
@@ -52,16 +53,16 @@
 | 逻辑架构视图 Logical View | 渲染进程 + 主进程服务 + 文件系统/索引/配置/日志（§3） |
 | 部署架构视图 Deployment View | 单机部署（安装包 + 应用目录 + 数据目录 + 配置），无服务器（§4） |
 | 数据架构视图 Data View | 明文件 JSON + 原子写 + 内存索引；数据流（§5） |
-| 安全架构视图 Security View | IPC 隔离、路径防护、无网络、日志脱敏（§6） |
+| 安全架构视图 Security View | IPC 隔离、路径防护、默认离线与显式网络例外、日志脱敏（§6） |
 
 ### 1.3 工程画像速览 Engineering Snapshot
 
 ```
 溯源 Trace v1.0 工程画像（2026-09-05 定案）
 
-技术栈：Electron 44 + React 19 + TypeScript 5 + antd 5 + Vite(脚手架)
-        （主进程 Node 24.18；索引 FlexSearch 候选；分发 electron-builder/NSIS）
-形态：  单机本地应用（无服务器、无网络、无账号）
+技术栈：Electron 44 + React 19 + TypeScript 5 + antd 5 + electron-vite 5
+        （主进程 Node；检索为内存包含匹配；分发 electron-builder/NSIS）
+形态：  单机本地应用（无账号、同步或遥测；核心数据操作本地完成）
 数据：  计划库根目录（用户指定）明文件文件夹；配置/索引/日志在用户数据目录
 边界：  Renderer(UI) <——contextBridge 白名单 API——> Main(存储/检索/配置/监视)
 平台：  v1.0 承诺 Windows 10/11 x64；macOS/Linux 同代码可发（不承诺）；移动端远期原生
@@ -81,7 +82,7 @@
 | 开闭原则 OCP | 组件类型可扩展不改渲染引擎 | 5 类组件由 type 分发渲染 |
 | 依赖倒置 DIP | 主进程服务经接口暴露 | 存储/检索/配置服务接口化 |
 | 接口隔离 ISP | IPC API 最小化 | 白名单方法按模块分组，不暴露原始 fs 能力 |
-| **本地优先 Local-first** | 所有数据与状态本地，任何操作无网络依赖 | 应用无网络代码（审计项） |
+| **本地优先 Local-first** | 计划/日记数据及核心操作本地完成，不做账号同步或遥测 | 外链和 PlantUML 服务仅由用户明确触发/配置 |
 | **明文件 Plain Files** | 数据=用户可见文件夹，可整库备份/迁移/第三方读 | 计划=文件夹 + JSON；备份=拷贝 |
 | **渲染即编辑 WYSIWYG** | 组件渲染态与编辑态一体 | 点击即编辑，无模式切换（痛点约束） |
 | **原子写 Atomic Write** | 内容落盘绝不半写 | 临时文件 + rename；崩溃不损坏 |
@@ -120,11 +121,13 @@
 
 | 组件 Component | 职责 Responsibility | 技术选型 Technology |
 |--------------|-------------------|-------------------|
-| 计划树视图 | 计划层级展示、导航、右键菜单、拖拽交互 | React + antd Tree（dnd: dnd-kit/内建拖拽） |
-| 组件渲染区 | 5 类计划单片组件的渲染 + 组件内编辑 | React（受控组件，type 分发） |
-| 溯源查询视图 | 搜索框、命中分段列表、回溯定位 | React + Zustand |
-| 全局状态 | 树/当前计划/检索态/保存态 | Zustand |
-| 状态栏 | 索引/保存/根目录状态 | React |
+| AppShell / 视图 | 唯一顶栏、Workspace/Diary/Memories 切换、可选状态栏及全局弹层 | React；Diary/Memories lazy-loaded |
+| 计划树 | 计划层级、路径级加载、右键、拖拽与可调宽度 | React + Zustand + dnd-kit；非 antd Tree |
+| 卡片渲染区 | 注册表分发计划/任务/注释卡；组件级 patch | React + Zustand；未知类型降级显示 |
+| 注释 | 阅读态 Markdown/五类图表；活动态真实 Muya | 静态 NoteMarkdown + 单活动 Muya lazy boundary |
+| 溯源查询 | 搜索、分批显示、命中回溯定位 | React + Zustand + 主进程 IPC |
+| 全局状态 | 树/计划/检索/偏好/撤销 | 按域拆分的 Zustand stores |
+| 状态栏 | 索引/保存/根目录状态 | Workspace 内显示并提供 `aria-live` |
 
 #### 服务层 Service Layer（主进程）
 
@@ -133,10 +136,10 @@
 | 服务 Service | 职责 Responsibility | 技术 Type |
 |-----------|-------------------|----------|
 | StorageService | 计划树枚举、文件夹 CRUD、组件内容读写、原子写、移动/排序、破坏性操作校验 | fs/promises |
-| SearchService | 索引构建（启动全量 + 变更增量）、关键词检索、命中路径映射、回溯定位 | FlexSearch（候选）+ 索引持久化 |
+| SearchService | 索引构建、内存包含匹配、命中路径映射；renderer 分批显示结果 | 主进程内存索引（不依赖 FlexSearch/数据库） |
 | ConfigService | 根目录持久化、窗口状态、格式版本号 | JSON（用户数据目录） |
 | WatchService | 计划库外部变更监视（chokidar）→ 变更事件驱动索引增量 & UI 刷新 | chokidar |
-| LogService | 本地日志（脱敏，不含计划正文） | 自研轻量 |
+| Transfer/Diary/Export | 导入导出、日记及 PDF/PNG 导出 | 主进程服务，按 IPC 合约调用 |
 
 #### 数据层 Data Layer
 
@@ -153,17 +156,17 @@
 溯源应用 Trace App
     │
     ├── 渲染进程 Renderer Process
-    │       ├── 计划树 View (antd Tree)
-    │       ├── 组件渲染/编辑（5 类组件）
-    │       ├── 溯源查询 View
-    │       └── 主界面壳/首次引导/状态栏
+│       ├── AppShell + Workspace/Diary/Memories views
+│       ├── PlanTreePanel / ContentArea / card registry
+│       ├── Static Markdown ⇄ lazy Muya note editor
+│       └── global dialogs/search/undo/settings hosts
     │
     ├── 主进程 Main Process
     │       ├── StorageService（树/内容/原子写）
-    │       ├── SearchService（索引/检索/回溯）
+│       ├── SearchService（内存索引/检索）
     │       ├── ConfigService（配置/根目录）
     │       ├── WatchService（外部变更监视）
-    │       └── LogService（脱敏日志）
+│       └── Transfer / Diary / Export services
     │
     └── 数据 Data（本地文件系统）
             ├── 计划库根目录（明文件：计划文件夹树 + 内容文件 + 元数据）
@@ -222,7 +225,7 @@ Trace/
 
 ### 4.1 网络拓扑 Network Topology
 
-**无服务器、无网络拓扑。** 应用为单机本地软件；唯一"外部"关系是用户本地文件系统与（可选的）GitHub 仓库（代码托管/CI，非运行期依赖）。
+**无应用服务器或服务端数据同步。** 应用为本地单机软件；运行期网络例外仅为用户触发的 HTTP(S) 系统浏览器外链与显式配置的 PlantUML Server。GitHub 仓库用于代码托管/CI，不是运行期依赖。
 
 ```
 ┌────────────────────────────────────────────────────┐
@@ -335,9 +338,9 @@ Trace/
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    网络层 Network（本应用：不适用）               │
-│  硬约束：应用无网络功能——无 URL 访问、无上传、无遥测、无更新检测   │
-│  （年度审计项：依赖清单/网络调用扫描）                            │
+│          网络层 Network（默认不联网；明确限定的用户动作）        │
+│  外链仅接受 HTTP(S) 并打开系统浏览器；PlantUML Server 默认为空     │
+│  配置 PlantUML 后才向用户指定的服务发出图表请求；无上传/遥测/同步  │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -364,11 +367,11 @@ Trace/
 
 | 安全领域 Security Area | 措施 Measures |
 |---------------------|--------------|
-| 网络安全 | 无网络（硬约束）；依赖清单定期审计（NMP/Electron 已知漏洞） |
+| 网络安全 | 核心数据路径离线；外链由主进程再次校验协议后交给系统浏览器；PlantUML Server 默认关闭且只能显式配置；依赖定期审计 |
 | 认证安全 | 无账号体系（不适用）；不做任何远端认证 |
 | 授权安全 | 单用户（不适用）；系统文件权限处理：只读目录时降级提示 |
-| 数据安全 | 数据不出设备；明文件即加密面（本地文件系统权限）；日志脱敏 |
-| 应用安全 | IPC 白名单最小暴露；路径校验（resolve 后前缀在根目录内，防路径穿越）；组件渲染=受控纯文本（禁 dangerouslySetInnerHTML）；任务/名称长度与非法字符验证 |
+| 数据安全 | 计划/应用数据本地明文件存储；无账号同步和遥测；日志脱敏。用户配置远程图表服务或点开外链时，相关请求由用户主动发起 |
+| 应用安全 | IPC 白名单最小暴露；路径校验（resolve 后前缀在根目录内，防路径穿越）；Markdown 链接协议白名单；图表 HTML/SVG 由对应运行时安全模式处理；任务/名称长度与非法字符验证 |
 | 运维安全 | 破坏性操作二次确认；原子写防半写；文档化备份指引 |
 
 ---
@@ -379,7 +382,7 @@ Trace/
 
 | 层面 Layer | 优化策略 Optimization Strategy |
 |----------|---------------------------|
-| 前端（渲染器） | 计划树按需懒加载（折叠节点不读子内容）；组件渲染区局部刷新；列表虚拟化（任务列表量大时，M5 视实测） |
+| 前端（渲染器） | 计划树按需懒加载；组件级 patch/memo；Diary/Memories 和 Muya 延迟加载；搜索结果分批显示；大任务列表暂未虚拟化 |
 | 主进程 | 进程内缓存（树枚举/内容/索引）；变更事件驱动增量而非全量重建 |
 | 数据 | 索引：启动全量构建（≤1s 规模）+ 变更增量；搜索=内存态（无磁盘 IO）；原子写仅落变更文件 |
 | 打包 | 安装包 NSIS；应用启动不做初始化时网络/版本检查（保持冷启动冷路径最简） |
@@ -404,7 +407,7 @@ Trace/
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> 无 CDN/分布式缓存（本地单机，不适用）。容量目标：1000 计划/10000 任务的全量内存对象 < 100MB（M5 实测校准）。
+> 无 CDN/分布式缓存（本地单机，不适用）。2026-09-25 Electron 诊断基线见《性能测试报告》：标准 100 计划/1,000 任务 renderer JS heap 使用约 49 MB（启动后静置样本 N=1）；上限 1,000 计划/10,000 任务约 171 MB（交互后样本 N=1）。后者超过旧 <100 MB 设计目标，须以多轮与 Release 样本复测，不将单次值当 SLA。
 
 ---
 
@@ -412,7 +415,7 @@ Trace/
 
 ### 8.1 高可用设计 High Availability Design
 
-**不适用**（单机应用无多实例/主备场景）。对应替代指标：单机可靠运行——无网络依赖（断网照常）、重启秒恢复（RAM 数据即时重建，不等待外部服务）。
+**不适用**（单机应用无多实例/主备场景）。对应替代指标：计划管理/读写/本地搜索断网照常；用户触发的外链和可选 PlantUML 服务在断网时不可用，不影响本地计划数据。
 
 ### 8.2 容错设计 Fault Tolerance
 
@@ -442,8 +445,8 @@ Trace/
 | EB-02 | 远端仓库 | GitHub 仓库 `Qore-Origins/Trace`（仅本人与组织可见性待定，走组织约定），首次推送 | 已完成（2026-09-05） |
 | EB-03 | 02 其余文档 | 要件：存储格式契约（数据库设计说明书）、接口设计文档（IPC 白名单）、概要/详细设计说明书、UI 设计规范 | M3（2026-10-10）前 |
 | EB-04 | 订单/排期联动 | 组件语义评审（01 验收项）→ 设计冻结 | 2026-09-19 前（M2） |
-| EB-05 | Spike 验证 | electron-vite 脚手架 + 最小窗口 + 文件树读写 + FlexSearch 中文分词 PoC | 开发首周（M4 开始时） |
-| EB-06 | 性能基线采集 | M5 测冷启动/内存/检索实际数据，校准 §1.1 目标 | M5 |
+| EB-05 | Spike 验证 | electron-vite 脚手架 + 最小窗口 + 文件树读写 + 中文包含搜索验证；FlexSearch 候选已否决 | 已完成；搜索正确性决策见 ADR-004 |
+| EB-06 | 性能基线采集 | Electron 临时数据目录，采集标准/上限/任务卡/注释图表样本；覆盖 renderer mark 与帧间隔 | 已建立诊断基线；Release 冷启动和多轮统计仍待补 |
 
 ---
 
@@ -464,8 +467,8 @@ Trace/
 
 | 债务项 Debt Item | 优先级 Priority | 计划偿还计划 Payback Plan |
 |----------------|---------------|------------------------|
-| 索引中文分词未验证（FlexSearch 候选态） | 高 | 开发首周 Spike（EB-05）；不达标即换退化方案，债务不进入设计 |
-| 撤销/还原缺失（v1.0 二次确认兜底） | 中 | v1.1 引入（已入 roadmap） |
+| 上限库树展开动画约 15.8s、RAF P95 间隔约 115ms（单轮诊断） | 高 | 后续先用性能 trace 拆分 React commit/布局/绘制，再优化分批或高规模动效降级；真实体验复验 |
+| Release 安装版冷启动、持续键入到保存及搜索的多轮 P50/P95 尚未采集 | 中 | 扩展性能采集，在至少 10 轮中提供可比较样本 |
 | 应用签名未做（SmartScreen 提示） | 低 | 远期（需要证书费用，走变更） |
 | 移动端原生化（Kotlin）数据模型对齐 | 低 | v2.0 后评估 |
 

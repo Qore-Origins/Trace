@@ -6,7 +6,7 @@
 
 | 项目 Item | 内容 Content |
 |---------|-------------|
-| 文档版本 Document Version | v1.0.0 |
+| 文档版本 Document Version | v1.1.0 |
 | 创建日期 Created Date | 2026-09-05 |
 | 设计负责人 Design Lead | HeYS-Snowe |
 | 对应 HLD/LLD 版本 | v1.0.0 |
@@ -18,6 +18,7 @@
 | 版本 Version | 日期 Date | 修改内容 |
 |-------------|---------|---------|
 | v1.0.0 | 2026-09-05 | 初始版本：主题定案「迹」+ 全组件设计理念 + 渲染器工程设计 |
+| v1.1.0 | 2026-09-26 | 同步 AppShell、三视图、统一动作/撤销、组件级编辑与 Muya 注释架构 |
 
 ---
 
@@ -48,36 +49,38 @@
 
 | 项 | 取值 | 来源 |
 |----|------|------|
-| 主色（迹线蓝） | #1677FF → #0958D9 渐变（仅迹线/主按钮用渐变） | UI 规范 §2.1 |
+| 主色（迹线蓝） | `--trace-500` / `--trace-700`；装饰渐变仅用于既定迹线元素 | `src/renderer/src/styles/tokens.css` |
 | 源头点（Logo 圆点同色） | #1D39C4（深蓝，仅用于根节点/源头标记） | 应用图标 |
-| 纸面 | #FFFFFF 内容 + #FAFAFA 布局底 | UI 规范 §2.3 |
-| 字体/间距/圆角 | antd token，不另立 | UI 规范 §3/§4 |
+| 纸面 | `--paper` + `--paper-dim`；亮暗主题各自映射 | `src/renderer/src/styles/tokens.css` |
+| 字体/间距/圆角 | 复用 antd 基础尺度与项目现存间距/token；卡片圆角 `--r-card` | UI 规范 §3/§4 |
 
 ---
 
 ## 2. 信息架构与视图设计
 
-### 2.1 视图划分（渲染器只有三个顶层视图）
+### 2.1 视图划分（工作台、日记、回忆）
 
 ```
 App
-├── OnboardingView        首启引导（根目录配置）——条件渲染
-├── WorkspaceView         工作台（常态唯一视图）
-│   ├── TopBar            顶栏：品牌 / 全局搜索 / 新建计划
-│   ├── PlanTreePanel     左：计划树（280px，可折叠为抽屉）
-│   ├── ContentArea       右：当前计划（面包屑 + 组件序列 + 空态）
-│   └── StatusBar         底：索引 / 保存 / 根目录
-└── SearchOverlay         溯源浮层（叠在 WorkspaceView 上，非路由）
+├── OnboardingView        首启引导（根目录配置）
+└── AppShell              TopBar、主视图区、可选 StatusBar 单点编排
+    ├── WorkspaceView     计划树 + 当前计划内容
+    ├── DiaryView         日记列表与预览（lazy boundary）
+    ├── MemoriesView      回忆检索与预览（lazy boundary）
+    ├── SearchOverlay     全局搜索浮层
+    ├── NameDialogModal   全局计划/文件夹命名与重命名
+    ├── UndoNotice        轻量删除撤销
+    └── TopBarSettingsHost 全局设置入口
 ```
 
-**为什么无路由**：单窗口工作台，"视图"由数据状态（有无根目录、有无选中计划）推导而非 URL。切换根目录 = 引导页条件重现。
+**视图边界**：单窗口无 URL 路由。App 根据 `appStore.phase` 选择引导或工作区阶段，再由 `uiStore.view` 选择 Workspace/Diary/Memories；`AppShell` 单点渲染 TopBar 和弹层底座。StatusBar 仅工作台显示。Diary/Memories 使用 `React.lazy`，切换时才加载。
 
 ### 2.2 WorkspaceView 布局网格
 
 ```
 ┌────────────────────────── 48px 顶栏 ──────────────────────────┐
-│ [ logos dot ] 溯源 Trace   [ 搜索：沿迹回望… ]      [ + 计划 ] │
-├────────── 280px ──────────┬──────────────────────────────────┤
+│ [logos dot] 菜单/视图导航   [ 搜索：沿迹回望… ]  [窗口控制]    │
+├────────── 默认 280px ─────┬──────────────────────────────────┤
 │ 计划树（连接线可见）        │ 面包屑：● 源头 > 学期 > 周计划      │
 │  ● 源头（根）              │ ┌────────── 12px 组件卡片序列 ───┐ │
 │  ├─ ▸ 2026-A 学期          │ │ 单选计划卡                     │ │
@@ -102,7 +105,7 @@ App
 
 ### 3.1 计划树 PlanTreePanel
 
-**理念**：树的连接线不是装饰，是"迹的骨架"——默认显示（antd Tree `showLine`），让"层级=路径"肉眼可见。根节点显示为**源头圆点**（logo 同款 #1D39C4 实心点），整棵树的"从源头生长"一目了然。
+**理念**：树的连接线不是装饰，是"迹的骨架"——自定义 `PlanTreePanel` 保持连接线，让"层级=路径"肉眼可见。根节点显示为**源头圆点**（logo 同款 `--origin` 实心点），整棵树的"从源头生长"一目了然。
 
 **形态**：
 - 节点：folder 图标 + 名称（14px/500）；选中 = 迹线蓝底（Primary BG #E6F4FF）+ 左侧 3px 蓝条（"你在这条迹上"）。
@@ -136,7 +139,11 @@ App
 
 ### 3.5 注释 NoteCard（旁批）
 
-**理念**：注释是读计划时写在**页边的旁批**。视觉：#FAFAFA 底 + 4px 左侧灰条 + 引号装饰（可选），字号 13px（比正文小半档）——刻意"退后一步"，与任务卡形成主次。**但内容参与检索**（溯源闭环），旁批不等于边角料。
+**理念**：注释是读计划时写在**页边的旁批**。视觉使用 `--paper-dim`、`--text-*`、`--border` 等语义 token，亮/暗主题一致。**内容参与检索**（溯源闭环），旁批不等于边角料。
+
+**渲染**：非活动态由安全的静态 Markdown 解析器呈现；聚焦后按需挂载 Muya，同一时刻只保留一个活动 Muya 实例。阅读态支持 Mermaid、Vega-Lite、PlantUML、Flowchart、Sequence 五种围栏语言，普通代码围栏仍显示源码。PlantUML Server 默认空值且离线，只有用户配置 Server 才发送渲染请求；外链限 HTTP(S) 并交由系统浏览器打开。
+
+**交互**：点卡片正文进入 Muya，点到卡外退出编辑并回到静态排版；实时渲染和自动换行默认开启，可在设置中配置。删除 Markdown 时保留 Muya 的 token 级回退语义，不将整张卡切回 textarea。
 
 ### 3.6 溯源浮层 SearchOverlay
 
@@ -160,32 +167,32 @@ App
 
 ```
 App
-├── ConfigProvider(zhCN)
-└── AppView（按 appStore.phase 条件渲染）
-    ├── OnboardingView
-    └── WorkspaceView
-        ├── TopBar          ← appStore / searchStore
-        ├── PlanTreePanel   ← treeStore（nodes map / expandedKeys / selectedPath / dnd handlers）
-        ├── ContentArea     ← planStore（currentPath / document / dirty / anchors）
-        │   ├── Breadcrumb
-        │   ├── ComponentRenderer（type 分发 → 5 类卡片 + FallbackBlock）
-        │   └── EmptyState
-        ├── StatusBar       ← appStore.indexState / planStore.saveState
-        └── SearchOverlay   ← searchStore（open / keywords / hits / locating）
+├── ConfigProvider + AppShell
+│   ├── TopBar             ← 菜单、视图导航、搜索、系统窗口按钮
+│   ├── Suspense           ← lazy DiaryView / MemoriesView
+│   ├── WorkspaceView      ← PlanTreePanel + ContentArea
+│   ├── StatusBar?         ← 仅 workspace 阶段显示
+│   ├── NameDialogModal / SearchOverlay / UndoNotice
+│   └── TopBarSettingsHost
+└── ComponentRenderer      ← registry 分发卡片；卡片按组件级更新
+    └── NoteCard           ← 静态 NoteMarkdown ⇄ 按需 MuyaNoteEditor
 ```
 
 | Store | 状态（摘要） | 动作（摘要） |
 |-------|------------|------------|
 | appStore | phase: onboarding\|ready；rootDir；indexState | bootstrap() / setRootDir() |
-| treeStore | childrenMap（懒加载缓存）；expandedKeys；selectedPath；loadChildren(p) / move(p, target, idx) / rename / remove / create |
-| planStore | currentPath；document；saving；lastSavedAt；lastError；open(p) / saveDebounced() / mutateComponent() |
-| searchStore | open；keywords；hits；query(kw) / locate(hit) |
+| treeStore | childrenMap（懒加载）；expandedKeys；selectedPath；路径级加载与结构操作 |
+| planStore | currentPath；组件级 patch；待持久化操作队列；CAS 保护；500ms 防抖 flush |
+| searchStore | open；keywords；分页 hits；300ms 防抖 query / loadMore / locate |
+| noteEditorStore | 唯一活动注释 ID；激活/失焦时明确释放 Muya |
+| undoStore | 单槽撤销；5 秒失效；切计划/库/外部重载时清除 |
+| prefStore | 主题、语言、树宽、动效、实时渲染/换行、PlantUML Server 等本地偏好 |
 
 ### 4.2 关键交互时序
 
 1. **渲染即编辑（防抖 + CAS）**：组件字段 onChange → 本地 document 即时更新（UI 零延迟）→ 500ms 防抖 `storage:savePlan(document, expected_updated_at)` → 成功：状态栏 ✓；失败 code 22：静默重拉最新文档 + message.warning("内容已在别处更新，已为你刷新")。
 2. **外部变更（chokidar 事件）**：`trace:fs-external-change` → 若涉及当前打开计划 → 顶部 inline alert（不弹窗）"计划库在应用外被修改" + [重新加载]；树自动刷新。
-3. **删除/切根**：Modal.confirm（危险红按钮）；文案必含"不可恢复"/"不迁移"。
+3. **删除**：计划树节点、组件卡、自定义预设经上下文确认；任务行和选项行先删除并提供 5 秒撤销。撤销尽量恢复原索引与焦点；切计划/库或外部重载时旧撤销失效。
 4. **错误呈现策略**：字段级错误 → 内联红字；操作失败（IO/冲突）→ message；数据级异常（格式损坏）→ 卡片降级占位 + 状态栏记录。**禁止 alert/原生对话框**。
 
 ### 4.3 键盘与可达性
@@ -199,6 +206,10 @@ App
 | ESC | 关浮层/退出编辑（放弃未提交行） | 出口一致 |
 
 `prefers-reduced-motion` 时全部动画 ≤50ms（UI 规范 §8.3）。
+
+### 4.4 性能测量
+
+`src/renderer/src/perf/marks.ts` 为 app interactive、plan open、edit commit、task render、tree expand、search query、Muya activate/diagram 定义稳定指标。详细采样仅在 DEV 或 `?trace-perf=1` 时启用。实测上限规模树动画退化与测量限制见《性能测试报告》；性能 API 数字用于定位，仍需结合真实操作验收。
 
 ---
 

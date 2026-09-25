@@ -4,9 +4,9 @@
 
 | 项目 Item | 内容 Content |
 |---------|-------------|
-| 文档版本 Document Version | v1.0.0 |
+| 文档版本 Document Version | v1.1.0 |
 | 创建日期 Created Date | 2026-09-05 |
-| 最后修改 Last Modified | 2026-09-05 |
+| 最后修改 Last Modified | 2026-09-26 |
 | 设计负责人 Design Lead | HeYS-Snowe |
 
 ---
@@ -16,6 +16,7 @@
 | 版本 Version | 日期 Date | 修改人 Modifier | 审核人 Reviewer | 修改内容 Description |
 |-------------|---------|---------------|---------------|-------------------|
 | v1.0.0 | 2026-09-05 | HeYS-Snowe | HeYS-Snowe | 初始版本 Initial Version（基于 antd v5 默认主题 token） |
+| v1.1.0 | 2026-09-26 | Codex | HeYS-Snowe | 同步已实现的语义主题、动作类别、删除策略、响应式范围与减弱动效 |
 
 ---
 
@@ -40,17 +41,17 @@
 |--------------|---------------|--------------|
 | 计划先行 Plan First | 一切围绕"计划"对象：树即结构、内容即组件 | 左树 280px 常驻 |
 | 清楚 Clarity | 状态一眼可读：任务三态/完成/逾期可视化 | 状态 Tag + 勾选线 |
-| 一致性 Consistency | 与 antd 默认交互一致（少自定义=少心智负担） | 弹窗/按钮/选中态 全部 antd 语义 |
+| 一致性 Consistency | 统一语义 token 与动作组件；antd 和自定义组件共享同一设计语言 | 确认/取消、删除/编辑依场景保持一致 |
 | 低噪音 Minimal | 计划内容为主要视觉对象，装饰让位于信息 | 无重阴影/无渐变泛滥 |
-| 安宁 Calm | 长期使用不刺眼；主色青蓝（溯源/时间语义） | 背景纯白/灰 50 |
+| 安宁 Calm | 长期使用不刺眼；主题可切换亮色、暗色或跟随系统 | paper/fill/text 等语义 token 映射主题 |
 | 可访问 Accessibility | 键盘可达、对比度足够、减弱动效支持 | Tab 导航 + prefers-reduced-motion |
 
 ### 1.2 设计风格 Design Style
 
 | 风格维度 Style Dimension | 定义 Definition |
 |----------------------|---------------|
-| 整体风格 Overall Style | 现代简约（antd 默认气质） |
-| 色彩风格 Color Style | 明亮清爽（白底 + 青蓝主色 + 灰阶文本） |
+| 整体风格 Overall Style | 「迹 · Trace Mark」：安静、留白、路径可见的桌面工具；借鉴 VS Code 的信息密度与 antd 的控件稳定性，不直接套用组件库默认视觉 |
+| 色彩风格 Color Style | 语义色 token 驱动的亮/暗主题；主色迹线蓝，纸面和文字随主题切换 |
 | 圆角风格 Border Radius | 默认 6px（antd v5）；卡片/弹窗 8px |
 | 阴影风格 Shadow | 轻微阴影（卡片 1 级；浮层/弹窗 2 级） |
 | 侧重 Budget | 不增加独立设计语言：全部语义以 antd token 表达，规范仅补充"布局与组合"约定 |
@@ -187,18 +188,28 @@
 
 ## 5. 组件规范 Component Guidelines
 
-> 全部基础组件取 antd（Button/Input/Tree/Table/Modal/Tag/Drawer/Spin/Tooltip）。本规范只定义**语义与组合约束**，样式细节以 antd 默认与 §2 色板为准。
+> 组件采用 antd 与项目语义组件组合。颜色必须使用 `tokens.css` 中的语义 token；不可为新 UI 硬编码主题色。
 
 ### 5.1 按钮 Button
 
-| 类型 Type | 场景 Usage | 语义 Semantics |
-|----------|----------|--------------|
-| 主要 Primary | 新建计划 / 进入溯源 | colorPrimary 实心 |
-| 默认 Default | 次要操作 | 白底描边 |
-| 危险 Danger | 删除确认弹窗 确认键 | colorError 实心 |
-| 文字 Text | 卡内/树内轻操作 | 无底无边框 |
+| ActionButton intent | 场景 Usage | 语义 Semantics |
+|---|---|---|
+| Primary | 确认当前主要目标、新建/继续 | `--trace-700` 实底；避免同屏多个主动作 |
+| Secondary | 取消、次要或并列动作 | paper 背景 + border 描边 |
+| Quiet | 卡内/树内低强调功能动作 | 无常驻底色；危险动作另加 danger 语义 |
+| Danger | 删除等危险操作 | `--danger-text`；需遵循下方删除策略，不因红色样式替代确认 |
+| Icon | 升降、删除、关闭等纯图标操作 | 固定点击区域、必需 aria-label/title |
 
-> 桌面应用仅用"中"尺寸（高 32px）；不做 3 档响应式按钮。
+> 通用动作按钮最小高度 32px；卡片内排序/删除动作压缩为约 28px 宽、26px 高，仍须保持可见焦点态。纯图标按钮以标签提供读屏与悬停说明。
+
+### 5.1.1 删除与撤销策略
+
+| 对象 | 策略 | 交互约束 |
+|---|---|---|
+| 计划树节点、组件卡、自定义预设 | 二次确认 | 明确操作对象与不可逆后果；取消不改变数据 |
+| 任务行、选项行 | 先删除并显示 5 秒撤销提示 | 撤销恢复原位置并尝试恢复焦点；切换计划/根目录或外部重载时清除旧撤销 |
+
+实现单一来源：`src/renderer/src/components/ui/action-policy.ts`、`ConfirmAction` 入口与 `UndoNotice`/`undo-store`。同一确认不能重复提交；失败时保留重试机会。
 
 ### 5.2 输入框 Input
 
@@ -296,9 +307,9 @@
 ### 7.1 断点定义 Breakpoints（桌面单窗口）
 
 | 断点名称 Breakpoint | 窗口宽度 Window Width | 布局 Layout | 说明 Description |
-|------------------|---------------------|-----------|---------------|
-| 紧凑 Compact | < 960px | 树折叠为 Drawer（顶栏按钮唤起）；内容区全宽 | 小窗口/摸鱼模式 |
-| 标准 Standard | ≥ 960px | 双栏：树 280px + 内容区自适应 | 默认 |
+|---|---|---|---|
+| 紧凑 Compact | antd Grid `lg` 以下 | 计划树改为 Drawer；内容区全宽 | 保留树操作入口，不通过隐藏功能换取空间 |
+| 标准 Standard | antd Grid `lg` 及以上 | 双栏；计划树可调宽 | 默认树宽 280px，限制 180–520px |
 
 ### 7.2 布局约束 Layout Constraints
 
@@ -306,7 +317,7 @@
 |--------|---------|
 | 最小窗口 | 720 × 480（LLD 落 `mainWindow.setMinimumSize`） |
 | 默认窗口 | 1200 × 800（居中） |
-| 树宽 | 280px（可拖拽调宽 220-400px，LLD 确认 antd Tree/抽屉实现） |
+| 树宽 | 默认 280px；可拖拽范围 180–520px |
 | 顶栏高 | 48px |
 | 状态栏高 | 28px |
 
@@ -318,8 +329,9 @@
 
 | 动效类型 Animation Type | 时长 Duration | 说明 Description |
 |----------------------|-------------|---------------|
-| 树节点展开/收起 | 150ms | ease-out |
-| 编辑态进入/离开 | 120ms | ease-out（轻反馈） |
+| 常规控件状态变化 | 180ms | `--t-ui` + ease-out，仅过渡颜色/位置/透明度等明确属性 |
+| 树节点发牌/收拢 | 320ms / 260ms | 分波；槽位开合 220ms，子项间隔 32ms；大批量时压缩波次 |
+| 心情分数变化 | 260ms | 轮带式；偏好可设为无动画 |
 | 浮动面板/命中列表 | 200ms | ease-out |
 | 回溯定位高亮 | 渐隐 2000ms | ease-out；**高亮本身 1 帧出现**（不限时长帧控） |
 | 后台重载/索引构建 | 无动画 | 进度条（Spin/Progress）即可 |
@@ -340,7 +352,13 @@
 | 插入线出现 | 拖拽悬停 | 即时（0ms） |
 | Loading | 索引构建/大计划加载 | Progress 条 |
 
-**减弱动效（可访问性）**：`prefers-reduced-motion` 开启时，全部动画时长 ≤ 50ms（或关闭），仅保留状态变化。
+**减弱动效（可访问性）**：`prefers-reduced-motion: reduce` 时，基础/树/动作等动画关闭或归零，仅保留状态变化；不可只缩短至 50ms 后仍反复播放。
+
+### 8.4 焦点与对比度
+
+- 键盘焦点以 `:focus-visible` 表达，使用主色轮廓并保留偏移；交互宿主不得仅移除浏览器 outline。
+- 新控件应支持 Tab、Enter/Space 与清晰的禁用态；状态文字使用 `aria-live="polite"`，避免只靠颜色表达。
+- 色彩 token 的对比度测试覆盖普通文本使用的关键组合、代码高亮与心情分数色；覆盖组合目标不低于 WCAG AA 4.5:1。新增语义色须补充测试，不把装饰性或禁用态颜色误称为正文合格色。
 
 ---
 
@@ -358,8 +376,8 @@
 
 | 资源名称 Resource | 链接 Link | 说明 Description |
 |----------------|---------|---------------|
-| 主题定制入口 | antd `ConfigProvider`（App.vue 根包裹，v1.0 默认主题不改 token） | 未来换主题只动此处 |
-| 项目结构 | `src/shared/design-tokens.ts`（LLD 落位） | 常量集中 |
+| 主题定制入口 | `src/renderer/src/styles/tokens.css` + `ConfigProvider` 主题桥 | 语义 token 同步适配亮/暗主题 |
+| 项目结构 | `src/renderer/src/styles/tokens.css` | renderer 主题变量集中定义 |
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "format_version": "1",
   "created_at": "2026-09-15T11:50:34.882+08:00",
-  "updated_at": "2026-09-23T18:25:18+08:00",
+  "updated_at": "2026-09-26T00:12:39+08:00",
   "components": [
     {
       "id": "5d2bbf6eb85d4af0b377b8aeb96b7411",
@@ -15,7 +15,7 @@
       "id": "eaaef1be94204da2af120a6284386c42",
       "type": "note",
       "payload": {
-        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–9 完成；Task 9 代码 0fe64f2 已随计划提交 29305f6 本地合入 main。1000 行展开无关行重渲染从 999 降到 0；搜索首批 100 条并支持加载更多；大树收拢降级。main 复验 typecheck 0 错、28 文件 244/244、build 成功。下一步 Task 10 真实 Electron 性能报告；正式 Muya 卡片人工体验验收独立跟踪。",
+        "content": "审计报告：docs/audit/2026-09-15-frontend-ui-performance-architecture-audit.md\n\n执行真源：Frontend-Experience-Foundation-Implementation-Plan.md\n\n状态：Task 1–11 实施与验证完成，代码仍在隔离分支 codex/trace-task10-11，未合入 main、未推送。真实性能报告：docs/lifecycle/04-测试阶段 Testing/性能测试报告 Performance Test.md；原始 Electron 样本在 docs/performance/2026-09-25-electron-baseline/。验证：typecheck 0 错、30 文件 261/261、build 成功；静态注释五种图表语言实测通过。实现提交：8d9eef2、dcb10b0、e16d3da、eefae21。已知后续：千计划树展开约 15.8 秒，帧间隔 P95 115.1ms；须单列性能改进，不宣称达标。正式安装版、IME/剪贴板人工验收仍未覆盖。",
         "created_at": "2026-09-15T11:50:34.882+08:00"
       }
     },
@@ -52,8 +52,8 @@
         "items": [
           { "id": "aa83b03c24744f33815f6b51512292ee", "title": "实施页面与 Muya 懒加载及构建预算", "status": "done" },
           { "id": "475587919f3d463581491a086e54b760", "title": "优化计划树订阅与搜索长列表", "status": "done", "completed_at": "2026-09-23T18:25:18+08:00" },
-          { "id": "c2aeb06efe3641dcb36964a06a6edce2", "title": "建立真实 Electron 性能报告", "status": "not_started" },
-          { "id": "1f22035c936749079315e73fbf52d4d1", "title": "同步 UI、前端设计、架构、计划与 HANDOFF 文档", "status": "not_started" }
+          { "id": "c2aeb06efe3641dcb36964a06a6edce2", "title": "建立真实 Electron 性能报告", "status": "done", "completed_at": "2026-09-26T00:12:39+08:00" },
+          { "id": "1f22035c936749079315e73fbf52d4d1", "title": "同步 UI、前端设计、架构、计划与 HANDOFF 文档", "status": "done", "completed_at": "2026-09-26T00:12:39+08:00" }
         ]
       }
     }
