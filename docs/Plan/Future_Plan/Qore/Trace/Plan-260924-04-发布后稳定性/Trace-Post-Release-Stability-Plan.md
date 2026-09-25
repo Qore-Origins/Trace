@@ -28,6 +28,6 @@
 
 ## 实施记录
 
-2026-09-24：起始 `main` HEAD `c716b05`，用户资源未跟踪且未触碰。路径回归 32/32；冷 Vite 验证 18 项依赖约 2.8s 优化于 server startup；双击回归先红后绿（2 次读取→1 次，显式刷新仍触发读取）。`npm run typecheck`、`npm run test`（28/249）、`npm run build`、`npm run build:win` 通过。v0.15.1 安装包 479,952,122 B；SHA-256 `F7892ED833EFC84C6AA5B9FDD8A7F83C869686C9BDCA95DCF0BAD8BABBEB0EE9`；归档副本哈希一致，EXE ProductVersion/FileVersion 均为 0.15.1。打包 GUI 隔离启动调用被执行策略拒绝，故没有声称 smoke 通过。用户已在当前 Electron 应用复验双击行为并确认修复；下一步提交、推送并发布。正式 NoteCard 完整人工验收仍待单独确认。
+2026-09-24：起始 `main` HEAD `c716b05`，用户资源未跟踪且未触碰。路径回归 32/32；冷 Vite 验证 18 项依赖约 2.8s 优化于 server startup；双击回归先红后绿（2 次读取→1 次，显式刷新仍触发读取）。`npm run typecheck`、`npm run test`（28/249）、`npm run build`、`npm run build:win` 通过。v0.15.1 安装包 479,952,122 B；SHA-256 `F7892ED833EFC84C6AA5B9FDD8A7F83C869686C9BDCA95DCF0BAD8BABBEB0EE9`；归档副本哈希一致，EXE ProductVersion/FileVersion 均为 0.15.1。打包 GUI 隔离启动调用被执行策略拒绝，故没有声称 smoke 通过。用户已在当前 Electron 应用复验双击行为并确认修复；该复验已随 v0.15.1 发布。正式 NoteCard 完整人工验收仍待单独确认。
 
-2026-09-25：发布准备提交 `b55d0f3` 已推送至 GitHub/Gitee；`v0.15.1` tag 两端均指向该提交。GitHub Release 已发布（2026-09-25T14:13:55Z），安装包 479,952,122 B；GitHub asset digest 与本地 SHA-256 一致。Gitee Release 已创建（2026-09-25T14:17:35Z），GET 返回正文与本地 payload 完全一致；Release 页面 HTTP 200 且包含版本与 GitHub 下载链接，未上传安装包（仅平台自动源码归档）。v0.15.1 双平台发布完成；打包 GUI smoke 未运行，开发服务器首次 NoteCard 激活复验与其余 NoteCard 人工验收仍待后续。
+2026-09-25：发布准备提交 `b55d0f3` 已推送至 GitHub/Gitee；`v0.15.1` tag 两端均指向该提交。GitHub Release 已发布（2026-09-25T14:13:55Z），安装包 479,952,122 B；GitHub asset digest 与本地 SHA-256 一致。Gitee Release 已创建（2026-09-25T14:17:35Z），GET 返回正文与本地 payload 完全一致；Release 页面 HTTP 200 且包含版本与 GitHub 下载链接，未上传安装包（仅平台自动源码归档）。发布账本/计划索引提交 `2defc34` 已推送双端，核验时双端 main 同步。v0.15.1 双平台发布完成；打包 GUI smoke 未运行，开发服务器首次 NoteCard 激活复验与其余 NoteCard 人工验收仍待后续。
