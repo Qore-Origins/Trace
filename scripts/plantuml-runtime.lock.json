@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-09-26",
+  "target": {
+    "os": "windows",
+    "architecture": "x64",
+    "platform": "windows-x64"
+  },
+  "plantuml": {
+    "version": "1.2026.8",
+    "distribution": "LGPL",
+    "spdx": "LGPL-3.0-or-later",
+    "fileName": "plantuml-lgpl-1.2026.8.jar",
+    "url": "https://github.com/plantuml/plantuml/releases/download/v1.2026.8/plantuml-lgpl-1.2026.8.jar",
+    "sha256": "99e271611aa65a2319c0a4502ae9a4289f02933fdcc4f96a4e2f62a9b4e5b4ce",
+    "sizeBytes": 17738545,
+    "sha256Method": "Locally computed with Get-FileHash -Algorithm SHA256 over the exact downloaded official release asset; not copied from the standard GPL JAR checksum.",
+    "releasePage": "https://github.com/plantuml/plantuml/releases/tag/v1.2026.8",
+    "licenseFile": "scripts/plantuml-licenses/PLANTUML-LICENSE.txt"
+  },
+  "temurin": {
+    "distribution": "Eclipse Temurin",
+    "version": "21.0.12+8",
+    "fileName": "OpenJDK21U-jdk_x64_windows_hotspot_21.0.12_8.zip",
+    "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12_8.zip",
+    "sha256": "9ba963ee2371874a74185d18bc7bb2ab9407df7683300855ed7606e0662321d0",
+    "sizeBytes": 205069442,
+    "officialChecksumUrl": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12_8.zip.sha256.txt",
+    "officialChecksumSha256": "9ba963ee2371874a74185d18bc7bb2ab9407df7683300855ed7606e0662321d0",
+    "releasePage": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.12%2B8",
+    "releaseMetadata": {
+      "implementor": "Eclipse Adoptium",
+      "implementorVersion": "Temurin-21.0.12+8",
+      "javaVersion": "21.0.12",
+      "osArchitecture": "x86_64"
+    },
+    "licenseFile": "scripts/plantuml-licenses/TEMURIN-NOTICE.txt"
+  },
+  "modules": [
+    "java.base",
+    "java.desktop",
+    "java.logging",
+    "java.prefs",
+    "java.scripting"
+  ],
+  "moduleAnalysis": {
+    "reviewedAt": "2026-09-26",
+    "jdkTool": "Eclipse Temurin jdeps 21.0.12",
+    "command": "bin/jdeps.exe --multi-release 21 --ignore-missing-deps --print-module-deps plantuml-lgpl-1.2026.8.jar",
+    "output": "java.base,java.desktop,java.logging,java.prefs,java.scripting",
+    "unresolvedExternalPackagesWithoutIgnoreMissingDeps": [
+      "org.apache.tools.ant.*",
+      "org.openpdf.*",
+      "org.teavm.*"
+    ],
+    "requiresClosureModulesFromPinnedJmods": [
+      "java.base",
+      "java.datatransfer",
+      "java.desktop",
+      "java.logging",
+      "java.prefs",
+      "java.scripting",
+      "java.xml"
+    ],
+    "requiresClosureMethod": "Recursively followed non-static requires entries from each selected module's jmods/<module>.jmod using the pinned JDK's jmod describe. This is legal-file coverage planning, not a built or validated jlink image.",
+    "runtimeImageVerification": "Pending step 3 offline jlink/runtime matrix."
+  },
+  "licenseSources": {
+    "plantuml": {
+      "downloadPage": "https://plantuml.com/download",
+      "picoWebDocumentation": "https://plantuml.com/picoweb",
+      "securityDocumentation": "https://plantuml.com/security",
+      "flavorNotice": "https://raw.githubusercontent.com/plantuml/plantuml/v1.2026.8/plantuml-lgpl/lgpl-license.txt",
+      "fullLicenseText": "https://raw.githubusercontent.com/plantuml/plantuml/v1.2026.8/COPYING.LESSER",
+      "spdx": "LGPL-3.0-or-later"
+    },
+    "temurin": {
+      "sourceArchivePath": "jdk-21.0.12+8/legal/",
+      "includedModuleDirectories": [
+        "java.base",
+        "java.datatransfer",
+        "java.desktop",
+        "java.logging",
+        "java.prefs",
+        "java.scripting",
+        "java.xml"
+      ],
+      "spdxSummary": "GPL-2.0-only with the OpenJDK Classpath and Assembly exceptions; see original upstream texts in TEMURIN-NOTICE.txt"
+    }
+  }
+}
