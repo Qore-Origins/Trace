@@ -104,6 +104,27 @@ export function retryPlantumlService(
   return api.configure({ enabled: false, port })
 }
 
+export async function runPlantumlRetryIfCurrent(
+  mode: PlantUmlMode,
+  port: number,
+  api: PlantumlServiceActionApi,
+  isCurrent: () => boolean,
+  onStatus: (status: PlantUmlStatusDto) => void,
+  getCurrentStatus: () => PlantUmlStatusDto
+): Promise<void> {
+  try {
+    const status = await retryPlantumlService(mode, port, api)
+    if (isCurrent()) onStatus(status)
+  } catch {
+    if (!isCurrent()) return
+    onStatus({
+      state: 'error',
+      port: mode === 'local' ? port : getCurrentStatus().port,
+      errorCode: 'service_unavailable'
+    })
+  }
+}
+
 // 输入控件内不劫持快捷键（Ctrl+N/F5 等不作用于输入框；Ctrl+F 例外——输入框内也应打开溯源）
 function isTypingTarget(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null
@@ -286,6 +307,25 @@ function TopBarSettingsHost(): React.JSX.Element {
   const [plantumlPortDraft, setPlantumlPortDraft] = useState(String(plantumlPort))
   const [plantumlStatus, setPlantumlStatus] = useState<PlantUmlStatusDto>({ state: 'stopped', port: null, errorCode: null })
   const [plantumlRetrying, setPlantumlRetrying] = useState(false)
+  const plantumlStatusGenerationRef = useRef(0)
+  const plantumlRetryGenerationRef = useRef(0)
+
+  useEffect(() => {
+    const unsubscribe = usePrefStore.subscribe((state, previousState) => {
+      if (
+        state.plantumlHydrated !== previousState.plantumlHydrated ||
+        state.plantumlMode !== previousState.plantumlMode ||
+        state.plantumlPort !== previousState.plantumlPort
+      ) {
+        plantumlStatusGenerationRef.current += 1
+      }
+    })
+    return () => {
+      unsubscribe()
+      plantumlStatusGenerationRef.current += 1
+      plantumlRetryGenerationRef.current += 1
+    }
+  }, [])
 
   // 主题切换经 View Transitions（合成器整页 cross-fade，替代掉帧的全元素 transition）；
   // flushSync 把 antd 重渲染（algorithm 切换 + cssinjs）压进快照回调内同步完成
@@ -318,7 +358,10 @@ function TopBarSettingsHost(): React.JSX.Element {
   }, [plantumlPort])
 
   useEffect(
-    () => syncPlantumlPreference({ plantumlHydrated, plantumlMode, plantumlPort }, setPlantumlStatus),
+    () => syncPlantumlPreference({ plantumlHydrated, plantumlMode, plantumlPort }, (status) => {
+      plantumlStatusGenerationRef.current += 1
+      setPlantumlStatus(status)
+    }),
     [plantumlHydrated, plantumlMode, plantumlPort]
   )
 
@@ -363,17 +406,31 @@ function TopBarSettingsHost(): React.JSX.Element {
   }
 
   const retryPlantuml = async (): Promise<void> => {
+    const retryGeneration = ++plantumlRetryGenerationRef.current
+    const statusGeneration = plantumlStatusGenerationRef.current
+    const retryMode = plantumlMode
+    const retryPort = plantumlPort
     setPlantumlRetrying(true)
     try {
-      setPlantumlStatus(await retryPlantumlService(plantumlMode, plantumlPort))
-    } catch {
-      setPlantumlStatus({
-        state: 'error',
-        port: plantumlMode === 'local' ? plantumlPort : plantumlStatus.port,
-        errorCode: 'service_unavailable'
-      })
+      await runPlantumlRetryIfCurrent(
+        retryMode,
+        retryPort,
+        plantumlPreferenceSyncApi,
+        () => {
+          const preference = usePrefStore.getState()
+          return retryGeneration === plantumlRetryGenerationRef.current &&
+            statusGeneration === plantumlStatusGenerationRef.current &&
+            preference.plantumlMode === retryMode &&
+            preference.plantumlPort === retryPort
+        },
+        (status) => {
+          plantumlStatusGenerationRef.current += 1
+          setPlantumlStatus(status)
+        },
+        () => plantumlStatus
+      )
     } finally {
-      setPlantumlRetrying(false)
+      if (retryGeneration === plantumlRetryGenerationRef.current) setPlantumlRetrying(false)
     }
   }
 

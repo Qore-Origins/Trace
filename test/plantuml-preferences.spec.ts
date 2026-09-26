@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { StateStorage } from 'zustand/middleware'
-import { validatePlantumlPort, type PlantUmlStatusDto } from '../src/shared/plantuml-types'
+import { validatePlantumlPort, type PlantUmlMode, type PlantUmlStatusDto } from '../src/shared/plantuml-types'
 import { migratePlantumlPreference, usePrefStore } from '../src/renderer/src/stores/pref-store'
-import { retryPlantumlService, syncPlantumlPreference } from '../src/renderer/src/App'
+import { retryPlantumlService, runPlantumlRetryIfCurrent, syncPlantumlPreference } from '../src/renderer/src/App'
 
 interface PlantumlPreferenceSyncApi {
   getStatus: () => Promise<PlantUmlStatusDto>
@@ -279,5 +279,110 @@ describe('PlantUML preferences', () => {
 
     expect(api.retry).toHaveBeenCalledOnce()
     expect(api.configure).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { label: 'running', status: { state: 'running', port: 18080, errorCode: null } as PlantUmlStatusDto },
+    { label: 'starting', status: { state: 'starting', port: 18080, errorCode: null } as PlantUmlStatusDto }
+  ])('新模式配置状态到达后，不接受迟到的旧本地 retry $label 快照', async ({ status: staleRetryStatus }) => {
+    const stopped: PlantUmlStatusDto = { state: 'stopped', port: 18080, errorCode: null }
+    let resolveRetry!: (value: PlantUmlStatusDto) => void
+    let mode: PlantUmlMode = 'local'
+    let statusGeneration = 0
+    let currentStatus: PlantUmlStatusDto = { state: 'error', port: 18080, errorCode: 'process_exit' }
+    const applyStatus = vi.fn((next: PlantUmlStatusDto): void => {
+      statusGeneration += 1
+      currentStatus = next
+    })
+    const retryApi: PlantumlServiceActionApi = {
+      retry: vi.fn(() => new Promise<PlantUmlStatusDto>((resolve) => { resolveRetry = resolve })),
+      configure: vi.fn().mockResolvedValue(stopped)
+    }
+    const retryGeneration = statusGeneration
+    const retryMode = mode
+    const pendingRetry = runPlantumlRetryIfCurrent(
+      retryMode,
+      18080,
+      retryApi,
+      () => statusGeneration === retryGeneration && mode === retryMode,
+      applyStatus,
+      () => currentStatus
+    )
+
+    let publishStatus: ((next: PlantUmlStatusDto) => void) | undefined
+    mode = 'custom'
+    const preferenceApi: PlantumlPreferenceSyncApi = {
+      getStatus: vi.fn().mockResolvedValue(stopped),
+      configure: vi.fn(() => {
+        publishStatus?.(stopped)
+        return Promise.resolve(stopped)
+      }),
+      subscribe: vi.fn((listener) => {
+        publishStatus = listener
+        return () => undefined
+      })
+    }
+    syncPlantumlPreference(
+      { plantumlHydrated: true, plantumlMode: mode, plantumlPort: 18080 },
+      applyStatus,
+      preferenceApi
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(currentStatus).toEqual(stopped)
+
+    resolveRetry(staleRetryStatus)
+    await pendingRetry
+
+    expect(currentStatus).toEqual(stopped)
+    expect(applyStatus).not.toHaveBeenCalledWith(staleRetryStatus)
+  })
+
+  it('新模式状态到达后，不接受迟到旧 retry 的失败状态', async () => {
+    const stopped: PlantUmlStatusDto = { state: 'stopped', port: 18080, errorCode: null }
+    let rejectRetry!: (reason?: unknown) => void
+    let mode: PlantUmlMode = 'local'
+    let statusGeneration = 0
+    let currentStatus: PlantUmlStatusDto = { state: 'error', port: 18080, errorCode: 'process_exit' }
+    const applyStatus = vi.fn((next: PlantUmlStatusDto): void => {
+      statusGeneration += 1
+      currentStatus = next
+    })
+    const retryApi: PlantumlServiceActionApi = {
+      retry: vi.fn(() => new Promise<PlantUmlStatusDto>((_resolve, reject) => { rejectRetry = reject })),
+      configure: vi.fn().mockResolvedValue(stopped)
+    }
+    const retryGeneration = statusGeneration
+    const retryMode = mode
+    const pendingRetry = runPlantumlRetryIfCurrent(
+      retryMode,
+      18080,
+      retryApi,
+      () => statusGeneration === retryGeneration && mode === retryMode,
+      applyStatus,
+      () => currentStatus
+    )
+
+    mode = 'off'
+    syncPlantumlPreference(
+      { plantumlHydrated: true, plantumlMode: mode, plantumlPort: 18080 },
+      applyStatus,
+      {
+        getStatus: vi.fn().mockResolvedValue(stopped),
+        configure: vi.fn().mockResolvedValue(stopped),
+        subscribe: vi.fn(() => () => undefined)
+      }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(currentStatus).toEqual(stopped)
+
+    rejectRetry(new Error('superseded retry'))
+    await pendingRetry
+
+    expect(currentStatus).toEqual(stopped)
+    expect(applyStatus).not.toHaveBeenCalledWith({
+      state: 'error',
+      port: 18080,
+      errorCode: 'service_unavailable'
+    })
   })
 })
