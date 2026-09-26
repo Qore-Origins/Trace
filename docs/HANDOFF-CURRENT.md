@@ -8,7 +8,8 @@
 
 - 用户已确认视觉方向 B「居中主导航」与动效 C「柔弹回落」，并于 2026-09-27 回复“继续”进入执行计划阶段。设计规格：`docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md`；共享执行真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/Centered-Liquid-View-Navigation-Implementation-Plan.md`，原生镜像为同目录 `plan.json`。
 - 当前阶段：实施计划已建立并同步 `docs/Plan/README.md`；正式代码尚未改动、自动测试尚未运行，也没有正式代码/测试文件所有权。设计方向已确认，实施仍待用户选择执行方式。
-- 本轮开始实测：`main...origin/main [ahead 2]`，HEAD=`be7209329991a3eff2352a23b146c98472fc4b70`。未跟踪 `Resource/pic/`、`Resource/vid/` 是用户资源，必须保留。此前规格提交 `de1f6dc030fa528760f2617bd17228c9c9fcc42c`；HANDOFF 同步提交 `be7209329991a3eff2352a23b146c98472fc4b70`；均尚未推送。
+- 本轮开始实测基线：`main...origin/main [ahead 2]`，HEAD=`be7209329991a3eff2352a23b146c98472fc4b70`。计划文档提交后状态为 `main...origin/main [ahead 3]`，HEAD=`c567cb1191101294572dc0ebba0fe40ad3e69f29`；本次仅提交文档，未推送。未跟踪 `Resource/pic/`、`Resource/vid/` 是用户资源，必须保留。此前规格提交 `de1f6dc030fa528760f2617bd17228c9c9fcc42c`、初始 HANDOFF 同步提交 `be7209329991a3eff2352a23b146c98472fc4b70` 均可由 Git 历史实测。
+- 计划文档验证：`plan.json` 由 PowerShell `ConvertFrom-Json` 成功解析，3 个组件、7 个唯一 ID、4 个 `not_started` 任务；Markdown 四个步骤与 JSON 队列对应，规格链接存在，占位文本扫描和尾随空格检查无命中，`git diff --check` 通过。由于本轮仅文档变更，未运行应用 typecheck/test/build；正式源代码未修改。
 - 计划文档阶段所有权：Codex 独占新计划 Markdown/JSON、`docs/Plan/README.md`、设计规格状态行与 `docs/HANDOFF-CURRENT.md`。应用源文件暂不属于任何执行者；实际实施前必须复核 worktree、状态与当前交接，并登记精确代码边界。
 - 下一步：选定子代理驱动或由当前智能体顺序执行；实施前在 `.worktrees/codex/centered-liquid-view-navigation` 隔离开发并更新计划/HANDOFF。等待：执行方式选择。剩余：TDD 行为组件、样式/响应式、自动验证、Electron 用户视角验收；未授权推送或发布。
 
