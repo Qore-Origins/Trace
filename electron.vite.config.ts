@@ -15,7 +15,7 @@ export default defineConfig({
   },
   renderer: {
     optimizeDeps: {
-      include: ['@muyajs/core']
+      include: ['@muyajs/core', '@muyajs/core/utils/diagram/index.js']
     },
     esbuild: {
       tsconfigRaw: {

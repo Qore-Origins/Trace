@@ -1,13 +1,22 @@
+// @vitest-environment happy-dom
+
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { inflateRawSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { IFetchInterceptor } from 'happy-dom'
 import { usePrefStore } from '../src/renderer/src/stores/pref-store'
 import {
+  MuyaNoteEditor,
   applyMuyaPlantumlRenderConfig,
   createMarkdownChangeBridge,
   shouldApplyExternalMarkdown
 } from '../src/renderer/src/components/muya-note/MuyaNoteEditor'
+import { loadMuyaRuntime } from '../src/renderer/src/components/muya-note/muya-runtime'
 import { resolvePlantumlRenderConfig } from '../src/renderer/src/components/muya-note/muya-config'
+import type { PlantumlRenderConfig } from '../src/renderer/src/components/muya-note/muya-config'
 import type { PlantUmlStatusDto } from '../src/shared/plantuml-types'
 
 type NotePreferenceState = {
@@ -23,6 +32,46 @@ const defaults = {
   noteLiveRender: true,
   noteWrap: true,
   plantumlServer: ''
+}
+
+function decodePlantumlSource(encoded: string): string {
+  const decodeSixBit = (character: string): number => {
+    const code = character.charCodeAt(0)
+    if (character === '_') return 63
+    if (character === '-') return 62
+    if (code >= 97) return code - 61
+    if (code >= 65) return code - 55
+    if (code >= 48) return code - 48
+    return 0
+  }
+
+  const bytes: number[] = []
+  for (let offset = 0; offset < encoded.length; offset += 4) {
+    const quartet = encoded.slice(offset, offset + 4).padEnd(4, '0')
+    const [first, second, third, fourth] = [...quartet].map(decodeSixBit)
+    bytes.push(
+      (first << 2) | (second >> 4),
+      ((second & 15) << 4) | (third >> 2),
+      ((third & 3) << 6) | fourth
+    )
+  }
+  return inflateRawSync(Buffer.from(bytes)).toString('utf8')
+}
+
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolvePromise: (value: T) => void = () => undefined
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve
+  })
+  return { promise, resolve: resolvePromise }
+}
+
+async function waitForCondition(predicate: () => boolean, message: string, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(message)
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10))
+  }
 }
 
 afterEach(() => {
@@ -282,6 +331,118 @@ describe('Muya note React adapter', () => {
       [{ plantumlServer: 'http://127.0.0.1:18081/plantuml' }, true]
     ])
   })
+
+  it('does not issue stale PlantUML requests across Off, error, and local port changes while the optimized Muya renderer is loading', async () => {
+    const completed = createDeferred<void>()
+    const rendererGate = createDeferred<void>()
+    const oldServer = 'https://trace-stale-note.invalid/plantuml'
+    const obsoleteLocalServer = 'http://127.0.0.1:18080/plantuml'
+    const finalServer = 'http://127.0.0.1:18081/plantuml'
+    const staleServers = [oldServer, obsoleteLocalServer]
+    const configTransitions: Array<{ label: string; config: PlantumlRenderConfig }> = [
+      { label: 'Off', config: { server: null, state: 'disabled' } },
+      { label: 'service error', config: { server: null, state: 'error' } },
+      { label: 'local server at old port', config: { server: obsoleteLocalServer, state: 'ready' } },
+      { label: 'local server at new port', config: { server: finalServer, state: 'ready' } }
+    ]
+    const noteSource = '```plantuml\n@startuml\nAlice -> Bob: TRACE_PRIVATE_PLANTUML_SOURCE\n@enduml\n```'
+    const requests: Array<{ url: string; source: string }> = []
+    let rendererStarted = false
+    const settings = (Reflect.get(window, 'happyDOM') as {
+      settings: {
+        enableImageFileLoading: boolean
+        fetch: { interceptor: IFetchInterceptor | null }
+      }
+    }).settings
+    const previousImageLoading = settings.enableImageFileLoading
+    const previousInterceptor = settings.fetch.interceptor
+    const previousActEnvironment = Reflect.get(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+    const host = document.createElement('div')
+    const root = createRoot(host)
+    let restoreSetOptions: (() => void) | undefined
+    const editorProps = (plantumlConfig: PlantumlRenderConfig) => ({
+      value: noteSource,
+      onChange: vi.fn(),
+      liveRender: true,
+      wrap: true,
+      plantumlConfig,
+      language: 'zh-CN' as const,
+      placeholder: 'Note'
+    })
+
+    Reflect.set(globalThis, '__tracePlantumlRendererStarted', () => {
+      rendererStarted = true
+    })
+    Reflect.set(globalThis, '__tracePlantumlRendererCompleted', () => completed.resolve())
+    Reflect.set(globalThis, '__tracePlantumlRendererGate', rendererGate.promise)
+    Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true)
+    settings.enableImageFileLoading = true
+    settings.fetch.interceptor = {
+      beforeAsyncRequest: async ({ request }) => {
+        const url = request.url
+        const encoded = new URL(url).pathname.split('/svg/')[1] ?? ''
+        requests.push({ url, source: decodePlantumlSource(decodeURIComponent(encoded)) })
+        return new window.Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>', {
+          status: 200,
+          headers: { 'content-type': 'image/svg+xml' }
+        })
+      }
+    }
+    document.body.append(host)
+
+    try {
+      const runtime = await loadMuyaRuntime()
+      const setOptions = vi.spyOn(runtime.Muya.prototype, 'setOptions')
+      restoreSetOptions = () => setOptions.mockRestore()
+
+      await act(async () => {
+        root.render(createElement(MuyaNoteEditor, editorProps({ server: oldServer, state: 'ready' })))
+      })
+      await waitForCondition(
+        () => rendererStarted,
+        `The optimized PlantUML chunk gate did not start; editor DOM: ${host.innerHTML}`
+      )
+      expect(requests).toEqual([])
+      expect(setOptions.mock.calls.some(([options]) => staleServers.includes(options.plantumlServer))).toBe(false)
+
+      for (const { label, config } of configTransitions) {
+        const callsBeforeTransition = setOptions.mock.calls.length
+        await act(async () => {
+          root.render(createElement(MuyaNoteEditor, editorProps(config)))
+        })
+        await waitForCondition(
+          () => setOptions.mock.calls.slice(callsBeforeTransition).some(([options]) => !options.plantumlServer),
+          `Transition to ${label} did not clear the pending Muya PlantUML configuration`
+        )
+      }
+
+      expect(setOptions.mock.calls.some(([options]) => staleServers.includes(options.plantumlServer))).toBe(false)
+      rendererGate.resolve()
+      await completed.promise
+      await waitForCondition(
+        () => requests.some(({ url }) => url.startsWith(`${finalServer}/svg/`)),
+        'The current PlantUML endpoint was not used after the renderer became available'
+      )
+      const staleRequests = requests.filter(({ url }) => staleServers.some((server) => url.startsWith(`${server}/svg/`)))
+      expect(staleRequests, `Observed stale PlantUML requests: ${JSON.stringify(staleRequests)}`).toHaveLength(0)
+      expect(setOptions.mock.calls.some(([options]) => staleServers.includes(options.plantumlServer))).toBe(false)
+      expect(setOptions.mock.calls.some(([options]) => options.plantumlServer === finalServer)).toBe(true)
+      expect(requests.find(({ url }) => url.startsWith(`${finalServer}/svg/`))?.source).toContain('TRACE_PRIVATE_PLANTUML_SOURCE')
+      expect(host.querySelector('.mu-codeblock-content[contenteditable="true"]')).not.toBeNull()
+    } finally {
+      rendererGate.resolve()
+      await act(async () => root.unmount())
+      restoreSetOptions?.()
+      settings.fetch.interceptor = previousInterceptor
+      settings.enableImageFileLoading = previousImageLoading
+      host.remove()
+      Reflect.deleteProperty(globalThis, '__tracePlantumlRendererStarted')
+      Reflect.deleteProperty(globalThis, '__tracePlantumlRendererCompleted')
+      Reflect.deleteProperty(globalThis, '__tracePlantumlRendererGate')
+      if (previousActEnvironment === undefined) Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+      else Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousActEnvironment)
+    }
+  }, 20000)
 })
 
 describe('NoteCard Muya integration', () => {

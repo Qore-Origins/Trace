@@ -7,7 +7,7 @@ import { applyMuyaPlantumlRenderConfig, createMuyaOptions } from './muya-config'
 import type { PlantumlRenderConfig } from './muya-config'
 import { loadMuyaRuntime } from './muya-runtime'
 import { markTrace, startTraceMeasure } from '../../perf/marks'
-import loadDiagramRenderer from '../../../../../vendor/muya/src/utils/diagram'
+import loadDiagramRenderer from '@muyajs/core/utils/diagram/index.js'
 import './muya-theme.css'
 
 export { applyMuyaPlantumlRenderConfig } from './muya-config'
