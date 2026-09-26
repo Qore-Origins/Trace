@@ -462,6 +462,59 @@
       "commit": "b55d0f3",
       "publishedAt": "2026-09-25T14:17:35Z",
       "url": "https://gitee.com/Qore/trace/releases/v0.15.1"
+    },
+    {
+      "platform": "GitHub",
+      "repo": "Qore-Origins/Trace",
+      "tag": "v0.17.0",
+      "target": "main",
+      "title": "v0.17.0 — 溯源 Trace 公测版 Beta 6（任务三态与完全离线 PlantUML）",
+      "label": "None",
+      "status": "published",
+      "isLatest": false,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.17.0.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_0.17.0_beta_20260926_01.exe",
+          "platform": "win32-x64",
+          "size": 210577133,
+          "sizeFormatted": "200.82 MiB",
+          "sha256": "394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699",
+          "localPath": "builds/windows/Trace_0.17.0_beta_20260926_01.exe",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.17.0/Trace_0.17.0_beta_20260926_01.exe"
+        }
+      ],
+      "versionInPackageJson": "0.17.0",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-26T22:05:52+08:00",
+      "commit": "403fcb174667743f2979ba55b9d29b5ef35ce4f4",
+      "publishedAt": "2026-09-26T14:40:02Z",
+      "url": "https://github.com/Qore-Origins/Trace/releases/tag/v0.17.0"
+    },
+    {
+      "platform": "Gitee",
+      "repo": "Qore/trace",
+      "tag": "v0.17.0",
+      "target": "main",
+      "title": "v0.17.0 — 溯源 Trace 公测版 Beta 6（任务三态与完全离线 PlantUML）",
+      "label": "None",
+      "status": "unpublished",
+      "isLatest": false,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.17.0.md",
+      "notesFormat": "markdown",
+      "assets": [],
+      "assetPolicy": "Gitee Release 不上传安装包（200.82 MiB 超过 100 MB 限制），使用 GitHub 下载链接",
+      "externalDownloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.17.0/Trace_0.17.0_beta_20260926_01.exe",
+      "versionInPackageJson": "0.17.0",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-26T22:05:52+08:00",
+      "commit": "403fcb174667743f2979ba55b9d29b5ef35ce4f4",
+      "publishedAt": null,
+      "url": null,
+      "publicationBlocker": "尚未提供 GITEE_ACCESS_TOKEN 进程环境变量；尚未发起 Gitee Release API 请求。"
     }
   ]
 }

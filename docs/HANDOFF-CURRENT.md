@@ -4,9 +4,9 @@
 >
 > 更新：2026-09-26（Codex：注释阅读态修复、前端 Task 10/11、任务三态反馈与离线 PlantUML 实施计划）
 
-## 当前任务：v0.17.0 双平台发布闭环（Step8 双审、Windows 安装包与本地验收完成；远端发布待执行）
+## 当前任务：v0.17.0 双平台发布闭环（GitHub Release 已发布；Gitee Release 等待安全凭据）
 
-- 发布版本已由用户确认采用 `v0.17.0`（相对 v0.15.1 按任务三态反馈、离线 PlantUML 两个功能域递增）。版本文件、CHANGELOG、累计改动文档和发行说明已更新；全量门槛和 Windows x64 安装包、本地资源/运行时核验已完成。本地 `main` 已快进合入发布准备提交 `f769415676bc3ebe7676bbc4f6902b8206679a0f`；当前剩余最终主分支验证、创建 tag、SSH 双端推送、GitHub/Gitee Release 创建与核验。
+- 发布版本已由用户确认采用 `v0.17.0`（相对 v0.15.1 按任务三态反馈、离线 PlantUML 两个功能域递增）。版本文档、累计改动文档、发行说明与安装包已准备并核验；合并后的主目录 typecheck、39 files / 388 tests、build 均通过。`main` 与 annotated tag 已通过 SSH 推送至 GitHub/Gitee；GitHub Release 已发布并附安装包，API 返回 SHA-256 与本地一致。剩余仅为创建 Gitee 说明版 Release、核验无安装包附件并完成发布记录。
 - Step6 shutdown API 针对性复核（用户已批准）已完成并释放服务边界：无代码修改。实现满足普通 stop timeout 后 SIGKILL 升级、仅在 exit 事件/已填 exitCode/signalCode 确认后返回 stopped、超时仍保留 active child 并 fail-closed 阻止 quit；shutdown 后 start/configure/retry 不会重新启动。子代理 `/root/plantuml_service_impl` 实跑 `npm run test -- --run test/plantuml-service.spec.ts test/startup-coordinator.spec.ts`（2 files / 29 tests passed）与 `npm run typecheck`（通过）；两文件 diff 为空。Step6 原有双阶段审查仍有效，无新代码需重新审查。
 
 - Step6 最终状态（2026-09-26）：HEAD `e13c01339029710be275db1da2d7498c3db123e0`（实测）；完整提交链为 `51eabbddc3e1264a2d5d2e770396521b78de03c9`、`828fd5f6938774c68a8a75ccc659368ea0662621`、`5cb011f0c0e2e57ea73c8930b04365f6a1b919b3`、`14507f2db71a6ecda7ec8f5718c143ab2df811e8`、`e13c01339029710be275db1da2d7498c3db123e0`。P2 exit listener 累积已按 TDD 修复；独立规格审查 Ready: Yes、独立质量/安全复审 Ready: Yes。协调者新跑 `npx vitest run test/plantuml-service.spec.ts`（25/25）、`npm run typecheck`、`npm run test`（35 files / 335 tests）、`npm run build`（renderer 7,154 modules）均通过；独立审查另跑 Step6 focused 58/58、typecheck 与 diff-check。IPC spec strict tsc 由实施代理报告通过。未做 Electron 人工验收。已接受限制：慢文件系统 `fs.access` 可能让重复 bootstrap 队列延迟 onboarding 恢复（Minor，未做 UNC 实测）；macOS 无窗口 stop timeout 风险为 P3，Windows-first 暂不阻塞且未做 macOS 实测。
@@ -17,7 +17,7 @@
 
 - 用户已批准设计并要求开始：保留任务 not_started → in_progress → done → in_progress 三态；PlantUML 必须完全离线、首次安装可用，不依赖系统 Java；Trace 窗口优先显示，再后台启动根目录相关服务和 PlantUML。
 - 规格真源：docs/superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md，规格提交 fc9f15c5eb42a7c838dab2a8fd58ec96bc35ca0e、规格交接提交 35c6e1f；本轮共享计划提交 35e6a12f8d9fc1273b02a84c56bf555a962a405b，均以本地 git log 实测。PlantUML 方案为 LGPL JAR + Temurin OpenJDK 21 LTS jlink 精简运行时、本机 127.0.0.1、SANDBOX、关闭统计。
-- 当前工作区：隔离分支 `codex/trace-task10-11` 保留在发布准备提交 `f769415676bc3ebe7676bbc4f6902b8206679a0f`；主目录 `main` 已快进合并该提交并包含当前发布状态同步。GitHub 与 Gitee 的 `main` 远端仍为基线 `3de25d30717ce1e1107e8599ce8b02d68e4b6845`，版本 tag 尚未创建或推送。主目录未跟踪的 `Resource/pic/`、`Resource/vid/` 是用户资源，必须保留且不触碰。当前进程没有 `GITEE_ACCESS_TOKEN`，不得从聊天记录读取或复用令牌；需要用户仅通过 Codex 进程环境设置后再操作 Gitee Release API。
+- 当前工作区：隔离分支 `codex/trace-task10-11` 保留在发布准备提交 `f769415676bc3ebe7676bbc4f6902b8206679a0f`；主目录 `main`、GitHub/Gitee 远端 `main` 与 `v0.17.0` tag 解引用目标均为 `403fcb174667743f2979ba55b9d29b5ef35ce4f4`。GitHub Release：`https://github.com/Qore-Origins/Trace/releases/tag/v0.17.0`，预发布，包 210,577,133 bytes，SHA-256 `394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699`（GitHub API digest 一致）。主目录未跟踪的 `Resource/pic/`、`Resource/vid/` 是用户资源，必须保留且不触碰。当前进程没有 `GITEE_ACCESS_TOKEN`，不得从聊天记录读取或复用令牌；Gitee API 发布须等待用户安全设置并由 Codex 进程继承该变量。
 - 合并后主目录首次全量测试因 node_modules 缺少锁定的 happy-dom 依赖未能启动一个 worker；执行 `npm install --registry=https://registry.npmmirror.com`（ELECTRON_MIRROR 指向 npmmirror）同步环境后，`npm run typecheck`、`npm run test`（39 files / 388 tests）和 `npm run build`（renderer 7,155 modules）均通过。安装未修改 package/package-lock 源文件。
 - 发布包本地验收：`Trace_0.17.0_beta_20260926_01.exe`，210,577,133 bytes（200.82 MiB），SHA-256 `394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699`；归档与构建产物摘要一致，PlantUML 随包 runtime 与 SANDBOX smoke 已核验。未手动安装并交互启动 Electron GUI；安装包未签名。
 - 当前发布阶段文件所有权由 Codex 持有：`AGENTS.md`、`CLAUDE.md`、`builds/build_history.json`、`builds/release_history.json`、`builds/release_notes/release_notes_v0.17.0.md`、`docs/HANDOFF-CURRENT.md`、`docs/Plan/README.md`、v0.17.0 对应计划 MD/JSON、CHANGELOG、累计改动文档、lifecycle 发布说明、`package.json` 与 `package-lock.json`、已批准规格中的版本同步；实施及复审代码边界已释放。
