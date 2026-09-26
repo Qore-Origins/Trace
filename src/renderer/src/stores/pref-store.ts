@@ -1,6 +1,7 @@
 // prefStore：用户偏好（界面语言 / 树动效发牌方向 / 心情分数动画 / 自定义组件预设）——localStorage 持久化，渲染器本地（不出设备）
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlMode } from '@shared/plantuml-types'
 import { i18n } from '../i18n'
 
 export type Language = 'zh-CN' | 'en-US'
@@ -12,6 +13,7 @@ export type ThemeMode = 'light' | 'dark' | 'system' // 界面主题（system=跟
 export const TREE_WIDTH_MIN = 180
 export const TREE_WIDTH_MAX = 520
 export const TREE_WIDTH_DEFAULT = 280
+const PREF_STORAGE_VERSION = 1
 
 // 宽度约束（拖拽与 store 单点规则；纯函数供单测）
 export function clampTreeWidth(w: number): number {
@@ -24,6 +26,17 @@ export interface CustomPreset {
   content: string
 }
 
+export function migratePlantumlPreference<T extends { plantumlServer?: string }>(stored: T): T & {
+  plantumlMode: PlantUmlMode
+  plantumlPort: number
+} {
+  return {
+    ...stored,
+    plantumlMode: stored.plantumlServer ? 'custom' : 'local',
+    plantumlPort: DEFAULT_PLANTUML_PORT
+  }
+}
+
 interface PrefState {
   language: Language
   dealDirection: DealDirection // 树展开/收拢的发牌波次方向（默认首张先发）
@@ -33,6 +46,9 @@ interface PrefState {
   noteLiveRender: boolean // 注释同面实时渲染，默认开启
   noteWrap: boolean // 注释代码块自动换行，默认开启
   plantumlServer: string // 空字符串表示 PlantUML 离线
+  plantumlMode: PlantUmlMode
+  plantumlPort: number
+  plantumlHydrated: boolean
   customPresets: CustomPreset[] // 自定义组件预设（插入即快照：插入时复制 content，改预设不影响已插入卡）
   setLanguage: (language: Language) => void
   setDealDirection: (dealDirection: DealDirection) => void
@@ -42,12 +58,15 @@ interface PrefState {
   setNoteLiveRender: (noteLiveRender: boolean) => void
   setNoteWrap: (noteWrap: boolean) => void
   setPlantumlServer: (plantumlServer: string) => void
+  setPlantumlMode: (plantumlMode: PlantUmlMode) => void
+  setPlantumlPort: (plantumlPort: number) => void
+  markPlantumlHydrated: () => void
   addPreset: (name: string, content: string) => void
   removePreset: (id: string) => void
 }
 
 export const usePrefStore = create<PrefState>()(
-  persist(
+  persist<PrefState, [], [], Partial<PrefState>>(
     (set) => ({
       language: 'zh-CN',
       dealDirection: 'top',
@@ -57,6 +76,9 @@ export const usePrefStore = create<PrefState>()(
       noteLiveRender: true,
       noteWrap: true,
       plantumlServer: '',
+      plantumlMode: 'local',
+      plantumlPort: DEFAULT_PLANTUML_PORT,
+      plantumlHydrated: false,
       // 旧持久化数据（trace-prefs 无此键）经 persist 浅合并取默认 []，不破坏既有契约
       customPresets: [],
       setLanguage: (language) => {
@@ -71,10 +93,33 @@ export const usePrefStore = create<PrefState>()(
       setNoteLiveRender: (noteLiveRender) => set({ noteLiveRender }),
       setNoteWrap: (noteWrap) => set({ noteWrap }),
       setPlantumlServer: (plantumlServer) => set({ plantumlServer }),
+      setPlantumlMode: (plantumlMode) => set({ plantumlMode }),
+      setPlantumlPort: (plantumlPort) => set({ plantumlPort: validatePlantumlPort(plantumlPort) }),
+      markPlantumlHydrated: () => set({ plantumlHydrated: true }),
       addPreset: (name, content) =>
         set((s) => ({ customPresets: [...s.customPresets, { id: crypto.randomUUID(), name, content }] })),
       removePreset: (id) => set((s) => ({ customPresets: s.customPresets.filter((p) => p.id !== id) }))
     }),
-    { name: 'trace-prefs' }
+    {
+      name: 'trace-prefs',
+      version: PREF_STORAGE_VERSION,
+      migrate: (stored) =>
+        migratePlantumlPreference(
+          stored !== null && typeof stored === 'object' && !Array.isArray(stored)
+            ? (stored as Partial<PrefState>)
+            : {}
+        ),
+      merge: (stored, current) => ({
+        ...current,
+        ...(stored !== null && typeof stored === 'object' && !Array.isArray(stored)
+          ? (stored as Partial<PrefState>)
+          : {}),
+        plantumlHydrated: false
+      }),
+      partialize: ({ plantumlHydrated: _plantumlHydrated, ...persistent }) => persistent,
+      onRehydrateStorage: () => (state, error) => {
+        if (!error) state?.markPlantumlHydrated()
+      }
+    }
   )
 )
