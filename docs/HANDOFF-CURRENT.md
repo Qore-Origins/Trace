@@ -7,8 +7,8 @@
 ## 当前任务：任务三态反馈与离线 PlantUML 服务实施计划已登记
 
 - 用户已批准设计并要求开始：保留任务 not_started → in_progress → done → in_progress 三态；PlantUML 必须完全离线、首次安装可用，不依赖系统 Java；Trace 窗口优先显示，再后台启动根目录相关服务和 PlantUML。
-- 规格真源：docs/superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md，规格提交 fc9f15c5eb42a7c838dab2a8fd58ec96bc35ca0e、交接提交 35c6e1f，均以本地 git log 实测；PlantUML 方案为 LGPL JAR + Temurin OpenJDK 21 LTS jlink 精简运行时、本机 127.0.0.1、SANDBOX、关闭统计。
-- 当前工作区：隔离 worktree D:\Code\Project\Qore\Trace\.worktrees\codex\trace-task10-11，分支 codex/trace-task10-11，开始本轮前 HEAD 35c6e1f、干净；main 3de25d3 与 GitHub/Gitee 同步。隔离分支 Task 10/11 与注释修复尚未合入/推送；本轮继续扩展该隔离分支，不合并 main、不提前推送。主目录用户未跟踪 Resource/pic/、Resource/vid/保持不触碰。
+- 规格真源：docs/superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md，规格提交 fc9f15c5eb42a7c838dab2a8fd58ec96bc35ca0e、规格交接提交 35c6e1f；本轮共享计划提交 35e6a12f8d9fc1273b02a84c56bf555a962a405b，均以本地 git log 实测。PlantUML 方案为 LGPL JAR + Temurin OpenJDK 21 LTS jlink 精简运行时、本机 127.0.0.1、SANDBOX、关闭统计。
+- 当前工作区：隔离 worktree D:\Code\Project\Qore\Trace\.worktrees\codex\trace-task10-11，分支 codex/trace-task10-11；本轮起始 HEAD 35c6e1f、干净，计划/HANDOFF 提交 35e6a12 已实测，当前没有源码改动。main 3de25d3 与 GitHub/Gitee 同步；隔离分支 Task 10/11 与注释修复尚未合入/推送；本轮继续扩展该隔离分支，不提前合并/推送。主目录用户未跟踪 Resource/pic/、Resource/vid/保持不触碰。
 - 精确文件所有权已登记：
   - 三态反馈：src/renderer/src/styles/cards.css、test/frontend-foundation-css.spec.ts。
   - 运行时构建：scripts/plantuml-runtime.lock.json、scripts/prepare-plantuml-runtime.mjs、scripts/test-plantuml-runtime.mjs、.build/plantuml-runtime、.gitignore、package.json、package-lock.json、electron-builder.yml。
@@ -18,8 +18,8 @@
   - 测试：test/plantuml-service.spec.ts、test/startup-coordinator.spec.ts、test/plantuml-preferences.spec.ts、test/plantuml-runtime-lock.spec.ts、test/plantuml-renderer.spec.ts、test/note-md.spec.ts。禁止修改 vendor/muya 源码及指纹。
   - 发布闭环：CLAUDE.md、docs/changelog/CHANGELOG.md、docs/lifecycle/05-部署上线 Deployment/发布说明 Release Notes.md、builds/release_notes/、builds/build_history.json、builds/release_history.json、builds/windows/、docs/Plan/README.md、本两计划及 HANDOFF-CURRENT.md。
   - Claude Code 避开上述精确边界与隔离分支未交接改动；边界拆分前先更新 HANDOFF。
-- 阶段区分：设计规格已批准；两份 Markdown 执行计划与 plan.json、docs/Plan/README.md 已创建；源码尚未改动。文档验证实测：两份 plan.json 均可解析，3/3 与 10/10 队列项分别匹配编号阶段，ID 唯一且初始均为 not_started；README 链接目标存在；未发现占位词/转义 Markdown 定界符；计划/规格路径存在且无尾随空白。git diff --check 与 git diff --cached --check 已通过；未运行代码测试。
-- 下一步：完成计划文档自检并提交计划/HANDOFF；随后进入三态反馈与 PlantUML 服务代码实施。代码验收后按用户已授权流程更新版本、build:win 并发布：GitHub Release 上传安装包，Gitee Release 只更新说明与 GitHub 下载链接。发布前先完成全量验证和安装包体积/离线体验核验。
+- 阶段区分：设计规格已批准；两份 Markdown 执行计划与 plan.json、docs/Plan/README.md 已提交。文档验证实测：两份 plan.json 均可解析，3/3 与 10/10 队列项分别匹配编号阶段，ID 唯一且初始均为 not_started；README 链接目标存在；未发现占位词/转义 Markdown 定界符；计划/规格路径存在且无尾随空白；git diff --check 与提交前 git diff --cached --check 均通过。未运行代码测试，未修改源码。
+- 下一步：开始三态反馈与 PlantUML 服务实现，继续只在 codex/trace-task10-11 上推进；发布前按计划执行全量验证、build:win、安装包体积/离线体验核验和双平台 Release。执行计划要求选择 subagent-driven 或 inline 执行方式；当前尚未启动代码任务或委派子代理。
 
 ## 当前在办：注释阅读态修复、真实性能基线与设计架构文档闭环（Codex）
 
