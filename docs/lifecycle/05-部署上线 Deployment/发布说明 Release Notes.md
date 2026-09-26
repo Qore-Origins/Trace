@@ -1,162 +1,38 @@
 # 发布说明 Release Notes
 
-## 文档信息 Document Information
+## 当前版本 Current Release
 
-| 项目 Item | 内容 Content |
-|---------|-------------|
-| 发布版本 Release Version | v1.0.0 |
-| 发布日期 Release Date | YYYY-MM-DD |
-| 发布负责人 Release Manager | |
+| 项目 | 内容 |
+|------|------|
+| 版本 | v0.17.0 公测版 Beta 6 |
+| 日期 | 2026-09-26 |
+| 类型 | 功能批次 / Beta |
+| 升级兼容 | 计划文件格式和数据目录不变 |
+| 版本唯一真源 | `package.json`；版本史见 `docs/changelog/CHANGELOG.md` |
 
----
+## 版本概述
 
-## 版本信息 Version Information
+本次相对 v0.15.1 按两个独立功能域递增版本：任务三态反馈，以及无需系统 Java 或网络即可使用的离线 PlantUML。
 
-| 项目 Item | 内容 Content |
-|---------|-------------|
-| **版本号 Version** | v1.0.0 |
-| **发布日期 Release Date** | YYYY-MM-DD |
-| **版本类型 Type** | □ 正式版 □ 测试版 □ 补丁版 |
-| **兼容性 Compatibility** | 同前版本 |
+## 新增与改进
 
----
+- **任务列表三态**：未开始、进行中、已完成之间可循环并可回退；修正状态按钮单击反馈。
+- **完全离线 PlantUML**：将 PlantUML 和精简 Java 运行时随应用分发；Trace 主窗口优先显示，PlantUML 服务随后后台启动。
+- **服务配置**：设置支持本地服务、自定义服务和关闭三态，显示端口/运行状态并支持重试；既有自定义地址保留迁移兼容。
+- **本地安全**：内置服务只监听 `127.0.0.1`；SANDBOX 拒绝本地与 URL include，统计关闭。
+- **注释竞态修复**：Muya 的预加载路径与正式图表 renderer 共享同一 loader；切换关闭、错误状态或端口时不会继续向旧地址发送源码。
 
-## 版本概述 Version Overview
+## 已知验收边界
 
-### 主要更新 Highlights
+- 自动验证已通过：`npm run typecheck`、`npm run test`（39 个测试文件 / 388 项）、`npm run build`。
+- Windows x64 安装包已构建并归档：210,577,133 字节 / 200.82 MiB，SHA-256 `394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699`。包内 Java/JAR/许可证已核对，随包 Java 真实渲染和 SANDBOX smoke 通过。
+- 尚未在本轮手动启动安装后的 Electron 窗口；该项与自动化及安装包内容核验分开记录。
+- 安装包未数字签名，Windows 可能显示 SmartScreen/未知发布者提示；与 v0.15.1 相同。
 
-本次更新包含以下主要内容：
+## 安装与升级
 
-1. 新功能1的完整实现
-2. 新功能2的完整实现
-3. 性能优化和Bug修复
+- Windows x64 使用 GitHub Release 提供的安装包。Gitee Release 仅发布本说明并链接 GitHub 下载，不上传超过 100 MB 的安装包。
+- 升级前建议按个人习惯备份计划库；应用不改变既有计划文件格式或数据根目录。
+- 若以前配置了 PlantUML 地址，升级后该地址作为自定义服务保留；用户可在设置中切回本地服务或关闭服务。
 
----
-
-## 新增功能 New Features
-
-| 功能 ID Feature ID | 功能名称 Feature Name | 功能描述 Description |
-|------------------|---------------------|---------------------|
-| F-001 | 用户注册登录 | 支持邮箱和手机号注册登录 |
-| F-002 | 产品浏览 | 支持产品列表、搜索、详情查看 |
-| F-003 | 购物车 | 支持添加/删除商品，数量修改 |
-| F-004 | 订单下单 | 支持创建订单、在线支付 |
-| F-005 | 个人中心 | 支持个人信息管理、订单查询 |
-
----
-
-## 功能改进 Improvements
-
-| 改进项 Improvement | 说明 Description |
-|----------------|---------------|
-| 性能优化 | 页面加载速度提升30% |
-| UI优化 | 优化用户界面交互体验 |
-| 搜索优化 | 搜索结果相关性提升 |
-
----
-
-## 问题修复 Bug Fixes
-
-| Bug ID | 问题描述 Description | 影响范围 Impact |
-|--------|-----------------|---------------|
-| BUG-001 | 修复支付回调处理错误 | 支付模块 |
-| BUG-002 | 修复库存扣减并发问题 | 订单模块 |
-| BUG-003 | 修复用户头像上传失败 | 用户模块 |
-
----
-
-## 已知问题 Known Issues
-
-| Issue ID | 问题描述 Description | 影响 Impact | 计划修复 Planned Fix |
-|----------|-----------------|----------|-------------------|
-| ISSUE-001 | Safari浏览器部分样式异常 | 低 | v1.0.1 |
-| ISSUE-002 | 高并发下响应时间较长 | 中 | v1.1.0 |
-
----
-
-## 技术变更 Technical Changes
-
-### 依赖更新 Dependency Updates
-
-| 依赖名称 Dependency | 旧版本 Old Version | 新版本 New Version |
-|-----------------|-------------------|-------------------|
-| Spring Boot | 2.7.x | 3.0.x |
-| MySQL Connector | 8.0.28 | 8.0.33 |
-| Redis Client | 3.x | 4.x |
-
-### 数据库变更 Database Changes
-
-| 变更类型 Change Type | 说明 Description |
-|-----------------|---------------|
-| 新增表 New Table | t_order_item 订单明细表 |
-| 字段修改 Field Modified | t_user 增加last_login_at字段 |
-| 索引优化 Index Optimization | t_order增加idx_status索引 |
-
----
-
-## 升级指南 Upgrade Guide
-
-### 从前版本升级 From Previous Version
-
-```bash
-# 1. 备份数据
-mysqldump -u root -p project_db > backup.sql
-
-# 2. 停止服务
-systemctl stop myapp
-
-# 3. 更新代码
-git pull origin main
-
-# 4. 执行数据库迁移
-mysql -u root -p project_db < migrations/upgrade_v1.0.0.sql
-
-# 5. 更新依赖
-npm install  # 或 mvn clean install
-
-# 6. 构建项目
-npm run build  # 或 mvn clean package
-
-# 7. 启动服务
-systemctl start myapp
-
-# 8. 验证升级
-curl http://localhost:8080/actuator/health
-```
-
-### 回滚方案 Rollback
-
-```bash
-# 回滚代码
-git revert <commit-hash>
-git push
-
-# 回滚数据库
-mysql -u root -p project_db < migrations/rollback_v1.0.0.sql
-
-# 重启服务
-systemctl restart myapp
-```
-
----
-
-## 注意事项 Important Notes
-
-1. 本次发布需要停机维护，预计维护时间：30分钟
-2. 请提前备份数据
-3. 发布后请验证核心功能
-4. 如遇问题请联系技术支持
-
----
-
-## 联系方式 Contact
-
-| 技术支持 Tech Support | 联系方式 Contact |
-|-------------------|---------------|
-| 技术热线 | 400-XXX-XXXX |
-| 技术邮箱 | support@example.com |
-| 工单系统 | https://support.example.com |
-
----
-
-**文档结束 End of Document**
+详细版本说明与发布资产以 `builds/release_notes/release_notes_v0.17.0.md` 和 `builds/release_history.json` 为准。

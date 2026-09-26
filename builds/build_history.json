@@ -133,6 +133,23 @@
       "platform": "win32-x64",
       "verificationPassed": false,
       "verification": "typecheck passed; vitest 28 files/249 passed; build:win succeeded; installer ProductVersion/FileVersion 0.15.1; archived size/SHA-256 match source. Isolated packaged GUI smoke was not run because process launch was rejected by execution policy."
+    },
+    {
+      "version": "0.17.0",
+      "status": "beta",
+      "statusLabel": "公测版 Beta 6",
+      "date": "20260926",
+      "sequence": 1,
+      "filename": "Trace_0.17.0_beta_20260926_01.exe",
+      "timestamp": "2026-09-26T22:05:52+08:00",
+      "fileSize": 210577133,
+      "fileSizeFormatted": "200.82 MiB",
+      "sha256": "394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699",
+      "sourcePath": "D:\\Code\\Project\\Qore\\Trace\\.worktrees\\codex\\trace-task10-11\\release\\溯源 Trace-0.17.0-setup.exe",
+      "targetPath": "D:\\Code\\Project\\Qore\\Trace\\builds\\windows\\Trace_0.17.0_beta_20260926_01.exe",
+      "platform": "win32-x64",
+      "verificationPassed": false,
+      "verification": "package version ProductVersion 0.17.0.0 and FileVersion 0.17.0; npm run typecheck/test/build/build:win passed; 39 files/388 tests; app.asar main/renderer/version checked; all 149 packaged PlantUML runtime files match the prepared runtime; packaged Java 21.0.12 rendered local SVG; SANDBOX/local-only/statistics/child-shutdown smoke passed; archive size and SHA-256 match build output. GUI install/interaction was not run; installer is unsigned (same as v0.15.1). Size delta from v0.15.1: -269374989 bytes (-56.13%)."
     }
   ]
 }

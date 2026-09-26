@@ -1,8 +1,136 @@
 {
   "format_version": "1",
   "created_at": "2026-09-26T10:37:19+08:00",
-  "updated_at": "2026-09-26T10:37:19+08:00",
+  "updated_at": "2026-09-26T22:20:00+08:00",
   "components": [
+    {
+      "id": "0170926d2e18499bbf64be92528f0001",
+      "type": "note",
+      "payload": {
+        "content": "v0.17.0 本地发布验收已完成：npm run typecheck、npm run test（39 files / 388 tests）、npm run build、npm run build:win 均通过；Windows x64 安装包 210,577,133 bytes（200.82 MiB），SHA-256 394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699；包内 PlantUML runtime 逐文件校验与离线 SANDBOX smoke 通过。GitHub/Gitee 尚未推送或创建 Release；当前按用户授权进入本地 main 快进合并、SSH 推送及双端发布核验。未手动安装交互 GUI，安装包未签名。",
+        "created_at": "2026-09-26T22:20:00+08:00"
+      }
+    },
+    {
+      "id": "5a6b7c8d9e0f4123a4b5c6d7e8f90123",
+      "type": "note",
+      "payload": {
+        "content": "Step8 修复实现提交 b31631d43a721db96228ecb64c0da60095137f21（fix(note): share Muya PlantUML renderer preload），仅含登记的六个代码/测试文件。通过 package subpath preload + Electron optimizeDeps include 共享 renderer cache；真实 happy-dom React/Muya 测试覆盖 Off/error/旧端口/new端口。历史验证 focused integration 17/17、typecheck、全量 test 39 files / 388 tests、build、diff-check；happy-dom 仅 dev dependency。2026-09-26 双审均 Ready: No（P2）：集成用例通过 fetch.interceptor 拦截并替换图像请求，违反已批准测试边界，未完成真实 HTTP 往返验收；生产实现未发现已证实问题。当前仅重开 test/muya-note-integration.spec.tsx，改为真实 127.0.0.1 HTTP 服务并禁止请求拦截；Step8 保持 in_progress，不发布。未手动启动 packaged Electron。",
+        "created_at": "2026-09-26T21:30:00+08:00"
+      }
+    },
+    {
+      "id": "b528c8dbad684d81b12dba404668a200",
+      "type": "note",
+      "payload": {
+        "content": "Step8 双审与边界修正完成（2026-09-26）：首轮规格/质量审查 Ready: No 的唯一 P2 为测试以 fetch.interceptor 短路图像 HTTP。仅修改 test/muya-note-integration.spec.tsx，改用真实 127.0.0.1 HTTP 服务接收图像 GET 并返回 SVG，无请求拦截；旧 custom/旧本地服务零请求，新端点收到源码哨兵，代码块可编辑。修正版规格审查与质量/安全审查均 Ready: Yes，无 P1/P2/P3；非阻断备注：未额外派发键盘输入。协调者验证 focused 17/17、typecheck、全量 test 39 files / 388 tests、build renderer 7,155 modules、diff-check 均通过。Step8 done；未手动启动 packaged Electron。现转入 v0.17.0 版本文档和离线安装包验收。",
+        "created_at": "2026-09-26T21:52:00+08:00"
+      }
+    },
+    {
+      "id": "4f60718293a44b5c8d6e7f8091a2b3c4",
+      "type": "note",
+      "payload": {
+        "content": "Step8 有效 RED（2026-09-26）：实施代理实跑 npx vitest run test/muya-note-integration.spec.tsx -t \"does not issue a stale custom PlantUML request\" --reporter=verbose。真实 happy-dom React/Muya 优化 runtime 到达 PlantUML chunk gate；切 Off 后释放 gate，捕获到旧 custom endpoint 请求，解码后含 TRACE_PRIVATE_PLANTUML_SOURCE，零泄漏断言按预期失败（1 个请求）。生产文件尚未修改；仅在已登记的 MuyaNoteEditor.tsx/muya-config.ts 修复并重跑。",
+        "created_at": "2026-09-26T21:13:00+08:00"
+      }
+    },
+    {
+      "id": "3e4f5a6b7c8d4901a2b3c4d5e6f70819",
+      "type": "note",
+      "payload": {
+        "content": "Step8 测试边界授权（2026-09-26）：用户批准仅在 Vitest 测试构建中，对 Muya Prism 语言注册的精确 import.meta.glob 调用作等价展开，使 happy-dom 加载实际语言模块。不得修改 vendor/muya 源码，不 mock/替换 React/Muya runtime、PlantUML renderer/loader/chunk 或图像请求，生产构建不受影响。此前 glob is not a function 是测试夹具限制，不计为目标 RED。",
+        "created_at": "2026-09-26T21:03:00+08:00"
+      }
+    },
+    {
+      "id": "8d1ec8f0b6ca4a6ea123c6f9b7d3e204",
+      "type": "note",
+      "payload": {
+        "content": "Step8 补充登记：`/root/plantuml_step8_renderer_impl` 另拥有 vitest.config.ts，范围仅为启用与 Electron renderer 对齐的 Vitest client dependency optimizer。测试用 happy-dom 挂载真实 React/Muya 编辑器，复现 optimized @muyajs/core 与 vendor-source loader 的双缓存；不得 mock runtime/loader/preloader。一次性 SSR optimizer 试验因 Prism import.meta.glob 语言表不完整而停止，不计为有效 RED。禁止修改 vendor/muya 与指纹。",
+        "created_at": "2026-09-26T20:15:00+08:00"
+      }
+    },
+    {
+      "id": "8d1ec8f0b6ca4a6ea123c6f9b7d3e205",
+      "type": "note",
+      "payload": {
+        "content": "Step8 测试夹具补充登记：允许 `vitest.config.ts` 增加测试专用 client esbuild alias，将 plantuml-encoder 指向包内 browser-index.js（已核对 Electron Vite 优化产物使用相同入口），并对精确 PlantUML renderer 源模块注入异步 gate。仅开发测试配置，不改 vendor/muya、运行依赖或生产构建配置；真实 happy-dom editor/runtime 测试不得 mock loader/preloader。client optimizer 已精确映射浏览器入口，并确认 gate 注入实际 renderer 模块前；允许测试插件仅 stub Node/happy-dom 不支持的 CSS/图片/字体静态导入，不拦截 JS/TS、renderer/chunk 或图像请求。client optimizer 绝对路径静态资源加载失败仍是测试夹具问题；目标生命周期 RED 尚未完成，生产代码尚未修改。此前 browser-deflate/pako 与 SSR/Prism 启动失败均不是有效 RED。",
+        "created_at": "2026-09-26T20:30:00+08:00"
+      }
+    },
+    {
+      "id": "5f81d8dd21c34f2aa815aa48cc5bf6e2",
+      "type": "note",
+      "payload": {
+        "content": "发布版本确认（2026-09-26）：用户已批准 v0.17.0。依据：相对 v0.15.1，本批含任务三态反馈与完全离线 PlantUML 两个独立用户可见功能域；版本文件待 Step8 真实生命周期回归与独立复审完成后更新。",
+        "created_at": "2026-09-26T20:48:00+08:00"
+      }
+    },
+    {
+      "id": "8a8b3af1dcec4caeaa1f6c472c5427d1",
+      "type": "note",
+      "payload": {
+        "content": "用户已选择 happy-dom（仅开发测试依赖）作为 Step8 真实 editor/runtime 验证路径。`/root/plantuml_step8_renderer_impl` 现拥有 package.json/package-lock.json（仅新增 happy-dom devDependency）、electron.vite.config.ts、MuyaNoteEditor.tsx、muya-config.ts、test/muya-note-integration.spec.tsx。目标：真实 React/Muya 挂载；验证预加载与实际 loader 同实例；custom→Off/error/换端口时旧 endpoint 不发送注释源码。不得改 vendor/muya 或指纹；新增边界必须先交协调者登记。该问题修复并独立复审前禁止发布。",
+        "created_at": "2026-09-26T19:42:16+08:00"
+      }
+    },
+    {
+      "id": "d1fb4a4c99ba5bb5de0c911538e17331",
+      "type": "note",
+      "payload": {
+        "content": "Step9 smoke 诊断第二轮修复提交 d1fb4a4c99ba5bb5de0c911538e1733124d280c6，范围仅 scripts/test-plantuml-runtime.mjs 与 test/plantuml-runtime-security.spec.ts。实施验证 2 files / 13 tests、node --check、真实 bundled-runtime smoke、清理与 diff-check 通过；独立复审 Ready: Yes，复审 focused security spec 9/9、Node 语法、真实 smoke 与两文件 diff-check 均通过。非阻断注意项：人工自引用 AggregateError 可能递归过深但没有生产可达路径证据；原生文件错误消息可能带本机临时路径，外传诊断日志时需脱敏。协调者随后实跑 npm run typecheck（通过）与 npm run test（39 files / 387 tests passed）；npm run build、npm run build:win 和安装包资源/体积 SHA 验收未完成。Step8 仍等待用户选择 happy-dom（仅开发测试依赖）或 Electron renderer smoke；用户选择前不登记实现所有权。",
+        "created_at": "2026-09-26T19:20:44+08:00"
+      }
+    },
+    {
+      "id": "6c72de0c558e9f9c107eaf14fa54650a",
+      "type": "note",
+      "payload": {
+        "content": "当前状态（2026-09-26）：Step7 实现与自动验证及规格/质量双审完成，修复提交 6c72de0c558e9f9c107eaf14fa54650af83df236；父级验证 21/21 targeted、35 files / 345 tests、typecheck、build、diff-check 通过。Electron UI 人工验收仍待后续。Step8 原实现提交 10269efe3a8ba62863a5bce884159665f9781ec6；首个 TDD 修复提交 48dd5ce0443a66d59eda55880f2a2c2912d986ab，focused 35/35、typecheck、全量 39 files / 383 tests、build 通过；但独立复审 Ready: No，发现 preload 与 Vite 预优化后的 `@muyajs/core` loader 是两份 cache 实例，真实 Muya 仍可能向旧 endpoint 发源码。精确四文件边界已重开，包含 `electron.vite.config.ts`，真实路径回归待做。Step9 打包提交 `4875a7a867a8f3c05c0dbc6de7c06015e127fe3a`，smoke 门禁加固提交 `567c9c878ef4b6730e55431dceb2494324629405`；TDD 新增 5 项先红，定向 2 files / 12 tests、node check、真实 bundled-runtime offline smoke、diff-check 均通过。独立复审 Ready: No，发现 finally cleanup 错误会掩盖原 smoke 错误且 CLI 隐藏 AggregateError.errors；仅同两文件的修复已重新登记。用户批准的 Step6 shutdown API 复核完成：无代码改动，现有终止升级、退出确认及 fail-closed quit gate 满足要求；定向 29/29、typecheck 通过。协调者尚未运行 build/build:win、安装包资源/体积/SHA 检查。",
+        "created_at": "2026-09-26T19:12:00+08:00"
+      }
+    },
+    {
+      "id": "05017c826b4eb456f160c9d8bfb71bd0",
+      "type": "note",
+      "payload": {
+        "content": "Step7 质量/安全复审 Ready: No，发现唯一 P2：旧 PlantUML retry promise 可能在新 mode 配置事件 stopped 后无条件覆盖 UI status。复现为 local 错误态点 retry，promise pending 时切 custom/off，新 configure 发布 stopped，旧 retry 回包后写回 starting/running 快照。服务层 transitionVersion 与既有 replaced-port 测试证实旧请求可返回过期快照。已将 `src/renderer/src/App.tsx`、`test/plantuml-preferences.spec.ts` 重新登记给 bug-fixer `/root/plantuml_step7_retry_fix` 按 TDD 加代次/配置键防护和 deferred retry 切模式测试；其他 Step7 文件边界释放。质量复审未发现其他安全/质量阻断；配置 IPC 严格仅含 enabled/port，URL 不外泄。步骤7仍 in_progress，修复后需双阶段复审。",
+        "created_at": "2026-09-26T17:24:46+08:00"
+      }
+    },
+    {
+      "id": "05017c826b4eb456f160c9d8bfb71bc7",
+      "type": "note",
+      "payload": {
+        "content": "Step7 设置三态 UI 已提交 05017c826b4eb456f160c9d8bfb71bc7868973d6，仅改 App.tsx、zh-CN.ts、en-US.ts、plantuml-preferences.spec.ts；pref-store.ts migration/hydration 已在 Step1 实现并复用。原始定向偏好+无障碍 18/18，父代理 typecheck、全量 35 files / 342 tests、build 通过。原质量审查发现 retry 过期回包 P2；修复提交 6c72de0c558e9f9c107eaf14fa54650af83df236 仅改 App.tsx 与偏好 spec，TDD deferred 回归覆盖迟到 running、starting、失败三种结果，均不得覆盖新模式 stopped。父代理独立复跑定向 21/21、npm run typecheck、npm run test（35 files / 345 tests）、npm run build（renderer 7,154 modules）、git show --check HEAD 均通过。规格与质量/安全双审进行中，Step7 task 仍 in_progress。尚未 Electron 设置 UI 人工验收；双审通过后下一步为 Step8 Muya/阅读态共享服务状态接入。",
+        "created_at": "2026-09-26T17:14:31+08:00"
+      }
+    },
+    {
+      "id": "e13c01339029710be275db1da2d7498c",
+      "type": "note",
+      "payload": {
+        "content": "Step6 已完成并通过双阶段复审。最终修复提交 e13c01339029710be275db1da2d7498c3db123e0 关闭 stopActiveChild 超时后 exit listener 累积；规格审查 Ready: Yes、质量/安全复审 Ready: Yes。协调者新跑 plantuml-service 定向 25/25、全量 35 files / 335 tests、npm run typecheck、npm run build 均通过；独立复审另跑 PlantUML IPC/startup/service 58/58、typecheck、diff-check；实施代理报告 IPC spec strict tsc 通过。未做 Electron 人工验收。已接受限制：慢 fs.access 可延迟重复 bootstrap 恢复（Minor，未做 UNC 实测）；macOS 无窗口 stop timeout 为 Windows-first 范围外 P3，未做 macOS 实测。Step7 设置三态 UI/偏好 hydration 已进入实施，精确边界记录于 HANDOFF-CURRENT.md；工作分支未合入、未推送。",
+        "created_at": "2026-09-26T16:42:39+08:00"
+      }
+    },
+    {
+      "id": "bd2e7c6f2e6e4bb8a2824262092e63ab",
+      "type": "note",
+      "payload": {
+        "content": "历史记录（2026-09-26 16:28）：当时 Step6 规格复审 Ready: Yes、质量复审 Ready: No，发现停止超时后的 exit listener 累积（P2）。之后已由 e13c01339029710be275db1da2d7498c3db123e0 修复并通过双阶段复审，详见最新记录。",
+        "created_at": "2026-09-26T16:28:42+08:00"
+      }
+    },
+    {
+      "id": "14507f2db71a6ecda7ec8f5718c143ab",
+      "type": "note",
+      "payload": {
+        "content": "Step6 实现提交链已更新到 14507f2db71a6ecda7ec8f5718c143ab2df811e8：51eabbddc3e1264a2d5d2e770396521b78de03c9（启动协调/shutdown）、828fd5f6938774c68a8a75ccc659368ea0662621（根初始化失败恢复）、5cb011f0c0e2e57ea73c8930b04365f6a1b919b3（bootstrap 与 setRootDir 串行化）、14507f2db71a6ecda7ec8f5718c143ab2df811e8（仅 active 根可进入 ready，inactive onboarding 可恢复）。最近三项只修改 src/main/ipc/register.ts 与 test/plantuml-ipc.spec.ts。TDD 回归先红后绿。验证：focused IPC/startup/service 58/58、全量 35 files / 335 tests、npm run typecheck、npm run build、IPC spec strict tsc、git diff --check 通过。Step6 当前等最终规格/质量复审；复审需评估慢 bootstrap 队列 Minor 等待风险。计划状态 in_progress，Step7 未开始。",
+        "created_at": "2026-09-26T16:10:49+08:00"
+      }
+    },
     {
       "id": "2c528e3f5e4f46e6ae42a86518c2f211",
       "type": "heading",
@@ -15,8 +143,72 @@
       "id": "90e1c4788e56409280b6da7ea26c65e1",
       "type": "note",
       "payload": {
-        "content": "设计已批准；执行真源：Offline-PlantUML-Service-Implementation-Plan.md；规格：docs/superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md。目标为 Windows x64 首装离线可用，内置 PlantUML LGPL JAR 与精简 Temurin 运行时。执行者：Codex；精确文件边界见 Markdown 与 HANDOFF-CURRENT.md。代码尚未修改。",
+        "content": "设计已批准；执行真源：Offline-PlantUML-Service-Implementation-Plan.md；规格：docs/superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md。目标为 Windows x64 首装离线可用，内置 PlantUML LGPL JAR 与精简 Temurin 运行时。步骤 1 已由 /root/plantuml_preferences 完成并通过规格/质量复审；提交 343ff18355eb840bbc485c50e1871350273f53fa、c156d69efbc8927f92ffa039ed4c367bd43fe9f3；全量测试 31 files / 270 tests、typecheck 通过。步骤 2 已由 /root/plantuml_artifact_lock 提交 79acec82929643b5020fbb09ba033ce0b7677e6b，并通过独立规格/质量复审；锁 SHA/Temurin sidecar、jdeps 根模块、44 个 Temurin legal 文本/2 段 PlantUML 许可、PicoWeb HTTP 200/2101-byte SVG smoke 均有记录。`modules` 是 jdeps roots，最小 runtime 充分性须在步骤 3 图表 smoke 验证。步骤 3 由 /root/plantuml_runtime_prep 实施，范围为 prepare script、runtime lock test、.gitignore、package.json、生成的 .build/plantuml-runtime；仅若 smoke 失败可改锁的 modules 字段。运行时、离线矩阵、安装包未验收。临时目录 C:/Users/aaa/AppData/Local/Temp/trace-plantuml-step2-bc5cc206b79e4b8bb85398285d01f888 保留至步骤 3 smoke 后复核清理。",
         "created_at": "2026-09-26T10:37:19+08:00"
+      }
+    },
+    {
+      "id": "b1cb992772424495958e3f62f48124b0",
+      "type": "note",
+      "payload": {
+        "content": "步骤 3 实现提交 12d8dd838b20de02e2667821c47215a6053da8e7，仅含 .gitignore、package.json、scripts/prepare-plantuml-runtime.mjs、test/plantuml-runtime-lock.spec.ts。prepare 首次构建和第二次 manifest/逐文件 SHA 复用均通过；固定资产 SHA 与 lock 一致，最终输出 .build/plantuml-runtime/bin/java.exe。运行时 66,542,936 bytes，jlink image 48,584,554 bytes。隔离 PATH（仅 System32）、无 GraphViz PATH/外网下，PicoWeb/SANDBOX/-disablestats 仅监听 127.0.0.1，固定 UML smoke HTTP 200 / 有效 2,537-byte SVG，PID/端口已回收。验证：定向 5/5、typecheck node/web、全量 32 files / 275 tests、git diff --check 通过。当前独立规格审查中，之后待独立质量审查，因此队列仍为 in_progress；通过双阶段后才进入步骤 4。步骤 2 历史临时验证目录仍待精确复核与安全清理。",
+        "created_at": "2026-09-26T13:16:26+08:00"
+      }
+    },
+    {
+      "id": "c4c782653b254deab95a45eb769d7001",
+      "type": "note",
+      "payload": {
+        "content": "步骤 3 首轮独立规格审查发现 Minor：scripts/prepare-plantuml-runtime.mjs 的监听检测只排除 wildcard，没有断言同一进程/端口不会同时监听另一具体网卡地址。启动参数和此次 smoke 均是 127.0.0.1，但验证应检查同 PID/端口的全部 LISTENING 地址。原实现代理 /root/plantuml_runtime_prep 重新获得 scripts/prepare-plantuml-runtime.mjs 与其回归测试文件所有权，当前步骤仍为 in_progress；修复后重做规格审查，再进行质量审查。",
+        "created_at": "2026-09-26T13:19:41+08:00"
+      }
+    },
+    {
+      "id": "db2cd2bdf6114e05bfa56f284aac8178",
+      "type": "note",
+      "payload": {
+        "content": "步骤 3 listener 规格修复提交 66eb291cdcff932615c9da069fae4faa3a87cc16 已通过独立规格复审（Ready: Yes，无遗留发现）。修复增加纯解析回归：同 PID/目标端口另一具体网卡监听必须拒绝；其他 PID、端口和非 LISTENING 行不得误判。真实 smoke 使用同一校验并通过。验证：定向 7/7、node --check、prepare manifest 复用、离线 smoke HTTP 200/有效 SVG、typecheck、全量 32 files / 277 tests、diff-check 均通过。现在等待独立质量/安全审查，因此队列状态仍 in_progress；通过后才进入步骤 4。",
+        "created_at": "2026-09-26T13:28:19+08:00"
+      }
+    },
+    {
+      "id": "2fd41c410f8c47b6985146e449ccf77b",
+      "type": "note",
+      "payload": {
+        "content": "步骤 3 修复提交 66eb291 的独立规格审查通过（Ready: Yes，无遗留发现），现进入独立质量/安全审查。实现和修复验证、提交 hash 与文件边界已同步在 Markdown 计划及 HANDOFF；当前项保持 in_progress，质量审查通过后才开始步骤 4。",
+        "created_at": "2026-09-26T13:30:51+08:00"
+      }
+    },
+    {
+      "id": "8d9b9c3286224f08b44ce1bb35820961",
+      "type": "note",
+      "payload": {
+        "content": "步骤 3 已完成双阶段审查：实现提交 12d8dd838b20de02e2667821c47215a6053da8e7，规格修复 66eb291cdcff932615c9da069fae4faa3a87cc16；规格审查通过，独立 bug-detector Ready: Yes，无 Critical/Important。Minor 限制：prepare 不保证并发安全，构建中必须串行运行；生成目录仅放脚本产物。步骤 4 现由 /root/plantuml_service_impl 实施，精确文件为 src/main/services/plantuml-service.ts、test/plantuml-service.spec.ts、package.json、package-lock.json；目标是生命周期服务和异常路径单测。本步骤不含 IPC/启动协调器/UI。",
+        "created_at": "2026-09-26T13:38:14+08:00"
+      }
+    },
+    {
+      "id": "4c385e4d19af425f8d81b9299d8aab92",
+      "type": "note",
+      "payload": {
+        "content": "步骤 4 实现提交 07482c52c05471b8c8782a32b2a7fc567d6b0c41，仅含 service、对应测试、package.json/lock。TDD 后最终 focused 23/23、全量 33 files / 300 tests、typecheck node/web、测试独立 strict tsc、diff-check 均通过；plantuml-encoder 1.4.0 直依赖检查通过。stop timeout 保留仍活 child ownership、阻止替代实例。代码边界已释放，独立规格审查中，之后待质量审查；通过后才进入步骤 5。",
+        "created_at": "2026-09-26T14:08:58+08:00"
+      }
+    },
+    {
+      "id": "63a87b9d5d704fb7b65b4038186cfe9e",
+      "type": "note",
+      "payload": {
+        "content": "步骤 4 独立规格审查已通过（Ready: Yes，无 Critical/Important/Minor），确认四文件边界和服务生命周期、安全参数、健康探针、超时与 child ownership 符合计划。当前进入独立质量/安全审查；步骤 4 仍为 in_progress，步骤 5 未开始。",
+        "created_at": "2026-09-26T14:15:16+08:00"
+      }
+    },
+    {
+      "id": "1c97ec2460e141f0a51b67850152578d",
+      "type": "note",
+      "payload": {
+        "content": "步骤 4 双阶段审查均通过：实现 07482c52c05471b8c8782a32b2a7fc567d6b0c41；质量/安全无 Critical/Important。Minor 是缺少直接测试探针响应体超限、请求取消与原生 ENOENT 事件顺序，已有实现保护，留到后续集成测试补强，不阻塞。步骤 5 已登记子代理 /root/plantuml_ipc_impl，所有权文件为 src/shared/ipc-contract.ts、src/shared/event-types.ts、src/preload/index.ts、src/main/ipc/register.ts、test/plantuml-ipc.spec.ts；只做 configure/getStatus/retry 严格 IPC 和事件白名单，不能改服务实现、包清单、应用启动与 renderer。",
+        "created_at": "2026-09-26T14:24:34+08:00"
       }
     },
     {
@@ -24,18 +216,45 @@
       "type": "task_list",
       "payload": {
         "title": "离线服务实施与发布",
-        "items": [
-          { "id": "29d7c82e7c2f4d49acf1c74d124dc864", "title": "建立三模式偏好迁移和端口验证测试", "status": "not_started" },
-          { "id": "392e56b11865433db446f89d5d4381ce", "title": "固定 PlantUML/Temurin 产物、SHA-256 与许可证", "status": "not_started" },
-          { "id": "08cc0e5e08f84caea4ba28ae287ab9c7", "title": "实现 jdeps/jlink 精简运行时准备脚本", "status": "not_started" },
-          { "id": "37974340d85e44459a45f8e83cf9e4fd", "title": "实现 PlantUML 服务生命周期并覆盖异常路径", "status": "not_started" },
-          { "id": "f6cd031c64064f26a90876e4d4220007", "title": "增加 PlantUML 白名单 IPC 与状态事件", "status": "not_started" },
-          { "id": "a083878307b64ddeaddd55c34acc7769", "title": "重排主进程为窗口先显示、后台服务后启动", "status": "not_started" },
-          { "id": "4915df6891a947c19e22464eb2ca04ef", "title": "实现设置三态、迁移兼容、端口和服务状态", "status": "not_started" },
-          { "id": "d6b5329a40bd4fca8df0f808fbfba9aa", "title": "接入 Muya/阅读态图表服务状态并防止早发请求", "status": "not_started" },
-          { "id": "3096714da418407ba2ccfd87619247cf", "title": "完成离线安装包、自动验证和体积增量记录", "status": "not_started" },
-          { "id": "5ebed2a1765d4be6a9328cc990b8477c", "title": "按授权升版本并发布 GitHub/Gitee Release", "status": "not_started" }
+      "items": [
+          { "id": "29d7c82e7c2f4d49acf1c74d124dc864", "title": "建立三模式偏好迁移和端口验证测试", "status": "done" },
+          { "id": "392e56b11865433db446f89d5d4381ce", "title": "固定 PlantUML/Temurin 产物、SHA-256 与许可证", "status": "done" },
+          { "id": "08cc0e5e08f84caea4ba28ae287ab9c7", "title": "实现 jdeps/jlink 精简运行时准备脚本", "status": "done" },
+          { "id": "37974340d85e44459a45f8e83cf9e4fd", "title": "实现 PlantUML 服务生命周期并覆盖异常路径", "status": "done" },
+          { "id": "f6cd031c64064f26a90876e4d4220007", "title": "增加 PlantUML 白名单 IPC 与状态事件", "status": "done" },
+          { "id": "a083878307b64ddeaddd55c34acc7769", "title": "重排主进程为窗口先显示、后台服务后启动", "status": "done" },
+          { "id": "4915df6891a947c19e22464eb2ca04ef", "title": "实现设置三态、迁移兼容、端口和服务状态", "status": "done" },
+        { "id": "d6b5329a40bd4fca8df0f808fbfba9aa", "title": "接入 Muya/阅读态图表服务状态并防止早发请求", "status": "done" },
+          { "id": "3096714da418407ba2ccfd87619247cf", "title": "完成离线安装包、自动验证和体积增量记录", "status": "in_progress" },
+        { "id": "5ebed2a1765d4be6a9328cc990b8477c", "title": "按授权升版本并发布 GitHub/Gitee Release", "status": "in_progress" },
+          { "id": "f28dc85d6c2c4bb3b9847d3708cf8001", "title": "复核关闭升级和 Java 子进程退出确认 API", "status": "done" },
+          { "id": "2c3edceba5c349d6bcd74314e0b03142", "title": "收紧离线 PlantUML smoke 的拒绝断言和异常清理", "status": "done" },
+        { "id": "48752bbd18474165a543f97be5e322fb", "title": "让 PlantUML preload 与 Muya runtime 使用同一 loader 实例", "status": "done" }
         ]
+      }
+    },
+    {
+      "id": "7de49f914b0d4a8dab633c6085d4d1f0",
+      "type": "note",
+      "payload": {
+        "content": "步骤 5 实现提交 665bc0ee8254553005b70ed6712a574a8328fdc6。RED 16/16；最终 IPC 16/16、服务回归 23/23、全量 34 files / 316 tests、typecheck、新测试 strict tsc、diff-check 通过。规格复核 Ready: Yes；质量/安全复核 Ready: Yes，无已证实问题。非阻塞建议：补测 accessor、Symbol own key、端口下界；Step6 保留 disposer 生命周期。步骤 5 已完成。用户批准 Step6 扩展服务 API，实施代理 /root/plantuml_ipc_impl 独占 startup coordinator、main、register、PlantumlService、startup/IPC/service 三组测试七文件。shutdown 需经终止升级并确认 child 退出后才允许 app.quit；超时仍活时 fail-closed。",
+        "created_at": "2026-09-26T14:52:19+08:00"
+      }
+    },
+    {
+      "id": "ef6aa8c0c4014ed0b7dd885788ca9de1",
+      "type": "note",
+      "payload": {
+        "content": "步骤 6 初始实现提交 51eabbddc3e1264a2d5d2e770396521b78de03c9；全量 35 files / 329 tests、typecheck、三个 spec strict tsc、build、diff-check 通过。独立规格与质量/安全审查均发现同一 Important/P1：已存在的配置根目录在核心初始化失败后仍被 bootstrap 报告为有效，Renderer 误进 ready；重新选库也会被旧根目录确认规则阻断。原七文件边界重新登记给 /root/plantuml_ipc_impl 修复并补回归；修复后须重新双阶段审查。当前任务保持 in_progress，步骤 7 尚未开始。",
+        "created_at": "2026-09-26T15:31:53+08:00"
+      }
+    },
+    {
+      "id": "56db23cb2ff541f48aca40feabf68209",
+      "type": "note",
+      "payload": {
+        "content": "Step6 P1 已由修复提交 828fd5f6938774c68a8a75ccc659368ea0662621 解决，规格复审 Ready: Yes。独立质量审查与另一审查者发现两个 P2 并发缺口：bootstrap 旧状态快照可能覆盖恢复后的 ready；两个同时到达的失败恢复选库请求可能都被提升为 confirmed=true。原代理现仅重开 src/main/ipc/register.ts 与 test/plantuml-ipc.spec.ts，按 TDD 序列化 app:bootstrap/app:setRootDir 并补 deferred 并发回归。计划保持 in_progress，未启动 Step7。",
+        "created_at": "2026-09-26T15:48:07+08:00"
       }
     }
   ]

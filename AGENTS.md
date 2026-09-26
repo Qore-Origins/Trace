@@ -1,7 +1,7 @@
 # Trace - 项目定制规则（AGENTS.md · 供非 CC 工具加载）
 
 > **应用名称**: 溯源 Trace（by Qore）
-> **更新日期**: 2026-09-07
+> **更新日期**: 2026-09-26
 > **项目类型**: Electron 桌面计划管理软件（本地优先）
 > **技术栈**: Electron 44 / React 19 / TypeScript 5 / zustand 4 / antd 5 / electron-vite 5 / vitest 5
 
@@ -32,7 +32,7 @@
 |------|-----|
 | 项目名称 | 溯源 Trace（`productName: 溯源 Trace`） |
 | 项目类型 | 桌面计划管理软件（个人自用，本地优先） |
-| 当前版本 | v0.15.1 公测版 Beta 5 修订 |
+| 当前版本 | v0.17.0 公测版 Beta 6 |
 | 应用 ID | `com.qore.trace` |
 | 署名 | Copyright (c) 2026 Qore |
 | GitHub 仓库 | `git@github.com:Qore-Origins/Trace.git`（**组织为 Qore-Origins，简称 Qore 已被占用**） |

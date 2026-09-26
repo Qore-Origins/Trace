@@ -3,10 +3,10 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { readFileSync } from 'node:fs'
+import { createServer, type Server } from 'node:http'
 import { resolve } from 'node:path'
 import { inflateRawSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { IFetchInterceptor } from 'happy-dom'
 import { usePrefStore } from '../src/renderer/src/stores/pref-store'
 import {
   MuyaNoteEditor,
@@ -64,6 +64,61 @@ function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void
     resolvePromise = resolve
   })
   return { promise, resolve: resolvePromise }
+}
+
+type PlantumlHttpRequest = { url: string; source: string }
+
+type PlantumlTestServer = {
+  endpoint: string
+  requests: PlantumlHttpRequest[]
+  close: () => Promise<void>
+}
+
+async function startPlantumlTestServer(): Promise<PlantumlTestServer> {
+  const requests: PlantumlHttpRequest[] = []
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>'
+  const server: Server = createServer((request, response) => {
+    const requestUrl = request.url ?? '/'
+    const encodedSource = new URL(requestUrl, 'http://127.0.0.1').pathname.split('/svg/')[1] ?? ''
+    requests.push({
+      url: requestUrl,
+      source: encodedSource ? decodePlantumlSource(decodeURIComponent(encodedSource)) : ''
+    })
+    response.writeHead(200, {
+      'content-type': 'image/svg+xml',
+      'content-length': Buffer.byteLength(svg),
+      'access-control-allow-origin': '*'
+    })
+    response.end(svg)
+  })
+
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    server.once('error', rejectPromise)
+    server.listen(0, '127.0.0.1', () => {
+      server.removeListener('error', rejectPromise)
+      resolvePromise()
+    })
+  })
+
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      server.close((error) => error ? rejectPromise(error) : resolvePromise())
+    })
+    throw new Error('PlantUML test server did not bind to a TCP port')
+  }
+
+  const port = address.port
+  return {
+    endpoint: `http://127.0.0.1:${port}/plantuml`,
+    requests,
+    close: async () => {
+      if (!server.listening) return
+      await new Promise<void>((resolvePromise, rejectPromise) => {
+        server.close((error) => error ? rejectPromise(error) : resolvePromise())
+      })
+    }
+  }
 }
 
 async function waitForCondition(predicate: () => boolean, message: string, timeoutMs = 5000): Promise<void> {
@@ -335,27 +390,15 @@ describe('Muya note React adapter', () => {
   it('does not issue stale PlantUML requests across Off, error, and local port changes while the optimized Muya renderer is loading', async () => {
     const completed = createDeferred<void>()
     const rendererGate = createDeferred<void>()
-    const oldServer = 'https://trace-stale-note.invalid/plantuml'
-    const obsoleteLocalServer = 'http://127.0.0.1:18080/plantuml'
-    const finalServer = 'http://127.0.0.1:18081/plantuml'
-    const staleServers = [oldServer, obsoleteLocalServer]
-    const configTransitions: Array<{ label: string; config: PlantumlRenderConfig }> = [
-      { label: 'Off', config: { server: null, state: 'disabled' } },
-      { label: 'service error', config: { server: null, state: 'error' } },
-      { label: 'local server at old port', config: { server: obsoleteLocalServer, state: 'ready' } },
-      { label: 'local server at new port', config: { server: finalServer, state: 'ready' } }
-    ]
     const noteSource = '```plantuml\n@startuml\nAlice -> Bob: TRACE_PRIVATE_PLANTUML_SOURCE\n@enduml\n```'
-    const requests: Array<{ url: string; source: string }> = []
+    const testServers: PlantumlTestServer[] = []
     let rendererStarted = false
     const settings = (Reflect.get(window, 'happyDOM') as {
       settings: {
         enableImageFileLoading: boolean
-        fetch: { interceptor: IFetchInterceptor | null }
       }
     }).settings
     const previousImageLoading = settings.enableImageFileLoading
-    const previousInterceptor = settings.fetch.interceptor
     const previousActEnvironment = Reflect.get(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
     const host = document.createElement('div')
     const root = createRoot(host)
@@ -377,33 +420,35 @@ describe('Muya note React adapter', () => {
     Reflect.set(globalThis, '__tracePlantumlRendererGate', rendererGate.promise)
     Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true)
     settings.enableImageFileLoading = true
-    settings.fetch.interceptor = {
-      beforeAsyncRequest: async ({ request }) => {
-        const url = request.url
-        const encoded = new URL(url).pathname.split('/svg/')[1] ?? ''
-        requests.push({ url, source: decodePlantumlSource(decodeURIComponent(encoded)) })
-        return new window.Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>', {
-          status: 200,
-          headers: { 'content-type': 'image/svg+xml' }
-        })
-      }
-    }
-    document.body.append(host)
 
     try {
+      const oldCustomServer = await startPlantumlTestServer()
+      testServers.push(oldCustomServer)
+      const obsoleteLocalServer = await startPlantumlTestServer()
+      testServers.push(obsoleteLocalServer)
+      const finalLocalServer = await startPlantumlTestServer()
+      testServers.push(finalLocalServer)
+      const staleServers = [oldCustomServer, obsoleteLocalServer]
+      const configTransitions: Array<{ label: string; config: PlantumlRenderConfig }> = [
+        { label: 'Off', config: { server: null, state: 'disabled' } },
+        { label: 'service error', config: { server: null, state: 'error' } },
+        { label: 'local server at old port', config: { server: obsoleteLocalServer.endpoint, state: 'ready' } },
+        { label: 'local server at new port', config: { server: finalLocalServer.endpoint, state: 'ready' } }
+      ]
+      document.body.append(host)
       const runtime = await loadMuyaRuntime()
       const setOptions = vi.spyOn(runtime.Muya.prototype, 'setOptions')
       restoreSetOptions = () => setOptions.mockRestore()
 
       await act(async () => {
-        root.render(createElement(MuyaNoteEditor, editorProps({ server: oldServer, state: 'ready' })))
+        root.render(createElement(MuyaNoteEditor, editorProps({ server: oldCustomServer.endpoint, state: 'ready' })))
       })
       await waitForCondition(
         () => rendererStarted,
         `The optimized PlantUML chunk gate did not start; editor DOM: ${host.innerHTML}`
       )
-      expect(requests).toEqual([])
-      expect(setOptions.mock.calls.some(([options]) => staleServers.includes(options.plantumlServer))).toBe(false)
+      expect(oldCustomServer.requests).toEqual([])
+      expect(setOptions.mock.calls.some(([options]) => staleServers.some(({ endpoint }) => endpoint === options.plantumlServer))).toBe(false)
 
       for (const { label, config } of configTransitions) {
         const callsBeforeTransition = setOptions.mock.calls.length
@@ -416,31 +461,38 @@ describe('Muya note React adapter', () => {
         )
       }
 
-      expect(setOptions.mock.calls.some(([options]) => staleServers.includes(options.plantumlServer))).toBe(false)
+      expect(setOptions.mock.calls.some(([options]) => staleServers.some(({ endpoint }) => endpoint === options.plantumlServer))).toBe(false)
       rendererGate.resolve()
       await completed.promise
       await waitForCondition(
-        () => requests.some(({ url }) => url.startsWith(`${finalServer}/svg/`)),
+        () => finalLocalServer.requests.some(({ url }) => url.includes('/svg/')),
         'The current PlantUML endpoint was not used after the renderer became available'
       )
-      const staleRequests = requests.filter(({ url }) => staleServers.some((server) => url.startsWith(`${server}/svg/`)))
-      expect(staleRequests, `Observed stale PlantUML requests: ${JSON.stringify(staleRequests)}`).toHaveLength(0)
-      expect(setOptions.mock.calls.some(([options]) => staleServers.includes(options.plantumlServer))).toBe(false)
-      expect(setOptions.mock.calls.some(([options]) => options.plantumlServer === finalServer)).toBe(true)
-      expect(requests.find(({ url }) => url.startsWith(`${finalServer}/svg/`))?.source).toContain('TRACE_PRIVATE_PLANTUML_SOURCE')
+      expect(oldCustomServer.requests, 'The obsolete custom PlantUML server received an HTTP request').toHaveLength(0)
+      expect(obsoleteLocalServer.requests, 'The obsolete local PlantUML port received an HTTP request').toHaveLength(0)
+      expect(setOptions.mock.calls.some(([options]) => staleServers.some(({ endpoint }) => endpoint === options.plantumlServer))).toBe(false)
+      expect(setOptions.mock.calls.some(([options]) => options.plantumlServer === finalLocalServer.endpoint)).toBe(true)
+      expect(finalLocalServer.requests[0]?.url).toContain('/svg/')
+      expect(finalLocalServer.requests[0]?.source).toContain('TRACE_PRIVATE_PLANTUML_SOURCE')
       expect(host.querySelector('.mu-codeblock-content[contenteditable="true"]')).not.toBeNull()
     } finally {
       rendererGate.resolve()
-      await act(async () => root.unmount())
-      restoreSetOptions?.()
-      settings.fetch.interceptor = previousInterceptor
-      settings.enableImageFileLoading = previousImageLoading
-      host.remove()
-      Reflect.deleteProperty(globalThis, '__tracePlantumlRendererStarted')
-      Reflect.deleteProperty(globalThis, '__tracePlantumlRendererCompleted')
-      Reflect.deleteProperty(globalThis, '__tracePlantumlRendererGate')
-      if (previousActEnvironment === undefined) Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
-      else Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousActEnvironment)
+      try {
+        await act(async () => root.unmount())
+      } finally {
+        try {
+          restoreSetOptions?.()
+          settings.enableImageFileLoading = previousImageLoading
+          host.remove()
+          Reflect.deleteProperty(globalThis, '__tracePlantumlRendererStarted')
+          Reflect.deleteProperty(globalThis, '__tracePlantumlRendererCompleted')
+          Reflect.deleteProperty(globalThis, '__tracePlantumlRendererGate')
+          if (previousActEnvironment === undefined) Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+          else Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousActEnvironment)
+        } finally {
+          await Promise.all(testServers.map(({ close }) => close()))
+        }
+      }
     }
   }, 20000)
 })
