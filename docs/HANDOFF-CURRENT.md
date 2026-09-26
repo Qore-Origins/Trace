@@ -2,16 +2,15 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-27（Codex：顶栏居中胶囊式页面导航设计）
+> 更新：2026-09-27（Codex：顶栏居中胶囊式页面导航实施计划）
 
 ## 当前任务：顶栏居中胶囊式页面导航
 
-- 用户已确认视觉方向 B「居中主导航」与动效 C「柔弹回落」。视觉稿选择记录为 B + C；主方向文档为 `docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md`。
-- 当前阶段：已将选择整理为书面设计规格并完成自审，待用户复核；尚未实现，也没有正式代码文件所有权。
-- 当前协作状态：任务开始核对时 `main...origin/main`、HEAD=`495a9e4ba542899d05e6e1e58818d5505341656a`；设计规格提交后 `main` ahead `origin/main` 1，HEAD=`de1f6dc030fa528760f2617bd17228c9c9fcc42c`。工作区仅有用户资源 `Resource/pic/`、`Resource/vid/` 未跟踪，必须保留。规格检查：`git diff --check` 通过，占位词扫描无命中，99 行无尾随空格；正式源代码未改。
-- 书面规格提交：`de1f6dc030fa528760f2617bd17228c9c9fcc42c`（`docs(ui): specify centered liquid view navigation`）；未推送。
-- 本阶段文件所有权：Codex 独占新规格文件与本 HANDOFF；正式源代码/测试边界尚未登记。书面规格获用户复核后，先创建共享实施计划，再登记边界。
-- 下一步：请用户复核书面规格。等待：用户对书面规格的核对。剩余：共享计划与 `plan.json`、正式代码边界、隔离实施、自动/人工验证；未授权推送或发布。
+- 用户已确认视觉方向 B「居中主导航」与动效 C「柔弹回落」，并于 2026-09-27 回复“继续”进入执行计划阶段。设计规格：`docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md`；共享执行真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/Centered-Liquid-View-Navigation-Implementation-Plan.md`，原生镜像为同目录 `plan.json`。
+- 当前阶段：实施计划已建立并同步 `docs/Plan/README.md`；正式代码尚未改动、自动测试尚未运行，也没有正式代码/测试文件所有权。设计方向已确认，实施仍待用户选择执行方式。
+- 本轮开始实测：`main...origin/main [ahead 2]`，HEAD=`be7209329991a3eff2352a23b146c98472fc4b70`。未跟踪 `Resource/pic/`、`Resource/vid/` 是用户资源，必须保留。此前规格提交 `de1f6dc030fa528760f2617bd17228c9c9fcc42c`；HANDOFF 同步提交 `be7209329991a3eff2352a23b146c98472fc4b70`；均尚未推送。
+- 计划文档阶段所有权：Codex 独占新计划 Markdown/JSON、`docs/Plan/README.md`、设计规格状态行与 `docs/HANDOFF-CURRENT.md`。应用源文件暂不属于任何执行者；实际实施前必须复核 worktree、状态与当前交接，并登记精确代码边界。
+- 下一步：选定子代理驱动或由当前智能体顺序执行；实施前在 `.worktrees/codex/centered-liquid-view-navigation` 隔离开发并更新计划/HANDOFF。等待：执行方式选择。剩余：TDD 行为组件、样式/响应式、自动验证、Electron 用户视角验收；未授权推送或发布。
 
 ## 已完成：v0.17.0 双平台发布闭环
 

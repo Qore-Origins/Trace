@@ -1,0 +1,36 @@
+{
+  "format_version": "1",
+  "created_at": "2026-09-27T04:16:57+08:00",
+  "updated_at": "2026-09-27T04:16:57+08:00",
+  "components": [
+    {
+      "id": "e9d4a9c75f844c4a91a60f901fb312ae",
+      "type": "heading",
+      "payload": {
+        "title": "顶栏居中胶囊式页面导航",
+        "size": 25
+      }
+    },
+    {
+      "id": "da528530a9b44731b61ba68ced5b2ce8",
+      "type": "note",
+      "payload": {
+        "content": "用户已确认设计方向 B（居中主导航）+ C（柔弹回落）。设计规格：docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md；执行真源：Centered-Liquid-View-Navigation-Implementation-Plan.md。当前待实施，正式代码与测试文件尚未登记所有权。实施前复核 HANDOFF 和 Git 状态，在 .worktrees/codex/centered-liquid-view-navigation 隔离开发。",
+        "created_at": "2026-09-27T04:16:57+08:00"
+      }
+    },
+    {
+      "id": "ff02766be62340f59d86d3e4b3e2a255",
+      "type": "task_list",
+      "payload": {
+        "title": "实施与验收",
+        "items": [
+          { "id": "a63a4c78e8d14ae3a31ce61bf101cb5e", "title": "建立页面导航行为测试并确认红灯", "status": "not_started" },
+          { "id": "0985d791278e4b13a36f1d79ddf016b2", "title": "实现无状态导航组件并接入现有状态与文案", "status": "not_started" },
+          { "id": "bf4602a178884f669d1adfb2498c70ae", "title": "完成三栏居中布局、胶囊动效与样式契约", "status": "not_started" },
+          { "id": "1517e9e6cf59414a9a8f1748652a0754", "title": "运行完整门槛并进行 Electron 用户视角验收", "status": "not_started" }
+        ]
+      }
+    }
+  ]
+}
