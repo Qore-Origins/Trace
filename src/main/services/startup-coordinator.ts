@@ -1,10 +1,14 @@
 import type { PlantUmlStatusDto } from '../../shared/plantuml-types'
 
+export type RootActivationStatus = 'pending' | 'active' | 'inactive' | 'failed'
+
 export interface StartupCoordinator {
   onWindowShown(): void
   waitForRootActivation(): Promise<void>
   waitForBootstrap(): Promise<void>
+  getRootActivationStatus(): RootActivationStatus
   runAfterRootActivation<T>(operation: () => T | Promise<T>): Promise<T>
+  markRootActivated(): void
 }
 
 export interface StartupCoordinatorDependencies {
@@ -14,6 +18,7 @@ export interface StartupCoordinatorDependencies {
 
 export function createStartupCoordinator(dependencies: StartupCoordinatorDependencies): StartupCoordinator {
   let releaseRootActivation!: () => void
+  let rootActivationStatus: RootActivationStatus = 'pending'
   const rootActivationComplete = new Promise<void>((resolveActivation) => {
     releaseRootActivation = resolveActivation
   })
@@ -30,24 +35,34 @@ export function createStartupCoordinator(dependencies: StartupCoordinatorDepende
       activation = Promise.reject(error)
     }
 
-    void activation
-      .catch((error: unknown) => {
+    void activation.then(
+      (result) => {
+        rootActivationStatus = result === false ? 'inactive' : 'active'
+        releaseRootActivation()
+      },
+      (error: unknown) => {
+        rootActivationStatus = 'failed'
         try {
           dependencies.onRootActivationError?.(error)
         } catch {
           // Startup reporting must not hold the bootstrap gate closed.
         }
-      })
-      .then(releaseRootActivation)
+        releaseRootActivation()
+      }
+    )
   }
 
   return {
     onWindowShown,
     waitForRootActivation: () => rootActivationComplete,
     waitForBootstrap: () => rootActivationComplete,
+    getRootActivationStatus: () => rootActivationStatus,
     async runAfterRootActivation<T>(operation: () => T | Promise<T>): Promise<T> {
       await rootActivationComplete
       return operation()
+    },
+    markRootActivated() {
+      rootActivationStatus = 'active'
     }
   }
 }

@@ -104,9 +104,21 @@ export function registerIpc(deps: Deps): () => void {
   reg('app:getAppInfo', () => app.getAppInfo())
   reg('app:bootstrap', async () => {
     await startup.waitForBootstrap()
-    return app.bootstrap()
+    const rootActivationStatus = startup.getRootActivationStatus()
+    const info = await app.bootstrap()
+    if (rootActivationStatus !== 'failed' || !info.rootConfigured) return info
+    return { ...info, rootInvalid: true }
   })
-  reg('app:setRootDir', (p) => app.setRootDir(p.dirPath, p.confirmed))
+  reg('app:setRootDir', async (p) => {
+    await startup.waitForRootActivation()
+    const rootActivationStatus = startup.getRootActivationStatus()
+    // The onboarding action after failed startup is explicit recovery consent; it only changes
+    // the configured path and does not delete or migrate data from the inactive library.
+    const recoverySelection = rootActivationStatus === 'failed' && p.confirmed === false
+    const result = await app.setRootDir(p.dirPath, p.confirmed || recoverySelection)
+    startup.markRootActivated()
+    return result
+  })
   reg('app:chooseDirectory', async () => {
     const r = await dialog.showOpenDialog(getWindow() ?? ({} as BrowserWindow), {
       properties: ['openDirectory', 'createDirectory']

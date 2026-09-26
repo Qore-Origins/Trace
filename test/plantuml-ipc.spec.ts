@@ -108,7 +108,9 @@ function createDependencies(options: {
       onWindowShown: vi.fn(),
       waitForRootActivation: async () => undefined,
       waitForBootstrap: async () => undefined,
-      runAfterRootActivation: (operation) => Promise.resolve().then(operation)
+      getRootActivationStatus: () => 'active',
+      runAfterRootActivation: (operation) => Promise.resolve().then(operation),
+      markRootActivated: vi.fn()
     },
     getWindow: () => options.webContents
       ? ({ webContents: options.webContents } as unknown as BrowserWindow)
@@ -342,6 +344,76 @@ describe('PlantUML IPC boundary', () => {
     expect(result).toMatchObject({ ok: false, data: null })
     expect(plantuml.service.configure).not.toHaveBeenCalled()
     expect(plantuml.unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports an accessible but unactivated root as invalid and allows onboarding recovery', async () => {
+    const rootActivation = deferred<void>()
+    const startup = createStartupCoordinator({ activateConfiguredRoot: () => rootActivation.promise })
+    const markRootActivated = vi.spyOn(startup, 'markRootActivated')
+    const existingRoot = 'C:\\existing-library'
+    const recoveredRoot = 'D:\\recovered-library'
+    let configuredRoot = existingRoot
+    const app = {
+      bootstrap: vi.fn(async () => ({
+        appVersion: '0.15.1',
+        formatVersion: '1',
+        rootDir: configuredRoot,
+        rootConfigured: true,
+        rootInvalid: false,
+        indexState: 'ready'
+      })),
+      setRootDir: vi.fn(async (dirPath: string, confirmed: boolean) => {
+        if (!confirmed) throw new Error('switching an active root requires confirmation')
+        configuredRoot = dirPath
+        return { rootDir: dirPath }
+      })
+    }
+    dispose = registerIpc(createDependencies({ app: app as unknown as IpcDependencies['app'], startup }))
+
+    const bootstrapPromise = findHandler('app:bootstrap')({}, undefined)
+    startup.onWindowShown()
+    rootActivation.reject(new Error('root metadata is not writable'))
+    const bootstrapResult = await bootstrapPromise
+
+    expect(bootstrapResult).toMatchObject({
+      ok: true,
+      data: { rootDir: existingRoot, rootConfigured: true, rootInvalid: true }
+    })
+
+    const recoveryResult = await findHandler('app:setRootDir')({}, {
+      dirPath: recoveredRoot,
+      confirmed: false
+    })
+    expect(recoveryResult).toMatchObject({ ok: true, data: { rootDir: recoveredRoot } })
+    expect(app.setRootDir).toHaveBeenCalledWith(recoveredRoot, true)
+    expect(markRootActivated).toHaveBeenCalledTimes(1)
+
+    const recoveredBootstrap = await findHandler('app:bootstrap')({}, undefined)
+    expect(recoveredBootstrap).toMatchObject({
+      ok: true,
+      data: { rootDir: recoveredRoot, rootConfigured: true, rootInvalid: false }
+    })
+  })
+
+  it('does not bypass confirmation when the configured root activated successfully', async () => {
+    const startup = createStartupCoordinator({ activateConfiguredRoot: async () => true })
+    const app = {
+      bootstrap: vi.fn(async () => ({ rootConfigured: true, rootInvalid: false })),
+      setRootDir: vi.fn(async (_dirPath: string, confirmed: boolean) => {
+        if (!confirmed) throw new Error('active library switch requires confirmation')
+        return { rootDir: 'D:\\new-library' }
+      })
+    }
+    dispose = registerIpc(createDependencies({ app: app as unknown as IpcDependencies['app'], startup }))
+    startup.onWindowShown()
+
+    const result = await findHandler('app:setRootDir')({}, {
+      dirPath: 'D:\\new-library',
+      confirmed: false
+    })
+
+    expect(result).toMatchObject({ ok: false, data: null })
+    expect(app.setRootDir).toHaveBeenCalledWith('D:\\new-library', false)
   })
 
   it('lets bootstrap finish after root activation while PlantUML configure remains pending', async () => {

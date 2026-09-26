@@ -57,6 +57,7 @@ describe('startup coordinator', () => {
     rootActivation.reject(activationError)
 
     await expect(bootstrap).resolves.toBeUndefined()
+    expect(coordinator.getRootActivationStatus()).toBe('failed')
     await expect(backgroundService).resolves.toBe('still schedulable')
     expect(onRootActivationError).toHaveBeenCalledTimes(1)
     expect(onRootActivationError).toHaveBeenCalledWith(activationError)
