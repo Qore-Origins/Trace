@@ -395,6 +395,54 @@ describe('PlantUML IPC boundary', () => {
     })
   })
 
+  it('reports a configured root as invalid when startup activation returns false', async () => {
+    const startup = createStartupCoordinator({ activateConfiguredRoot: async () => false })
+    startup.onWindowShown()
+    await startup.waitForBootstrap()
+
+    const app = {
+      bootstrap: vi.fn(async () => ({
+        rootDir: 'C:\\existing-library',
+        rootConfigured: true,
+        rootInvalid: false,
+        indexState: 'ready'
+      }))
+    }
+    dispose = registerIpc(createDependencies({ app: app as unknown as IpcDependencies['app'], startup }))
+
+    const result = await findHandler('app:bootstrap')({}, undefined)
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { rootDir: 'C:\\existing-library', rootConfigured: true, rootInvalid: true }
+    })
+  })
+
+  it('allows onboarding to replace a root whose startup activation returned false', async () => {
+    const startup = createStartupCoordinator({ activateConfiguredRoot: async () => false })
+    startup.onWindowShown()
+    await startup.waitForBootstrap()
+
+    const recoveredRoot = 'D:\\recovered-library'
+    const app = {
+      bootstrap: vi.fn(async () => ({ rootConfigured: true, rootInvalid: false })),
+      setRootDir: vi.fn(async (dirPath: string, confirmed: boolean) => {
+        if (!confirmed) throw new Error('switching an active root requires confirmation')
+        return { rootDir: dirPath }
+      })
+    }
+    dispose = registerIpc(createDependencies({ app: app as unknown as IpcDependencies['app'], startup }))
+
+    const result = await findHandler('app:setRootDir')({}, {
+      dirPath: recoveredRoot,
+      confirmed: false
+    })
+
+    expect(result).toMatchObject({ ok: true, data: { rootDir: recoveredRoot } })
+    expect(app.setRootDir).toHaveBeenCalledWith(recoveredRoot, true)
+    expect(startup.getRootActivationStatus()).toBe('active')
+  })
+
   it('does not bypass confirmation when the configured root activated successfully', async () => {
     const startup = createStartupCoordinator({ activateConfiguredRoot: async () => true })
     const app = {

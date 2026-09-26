@@ -116,15 +116,15 @@ export function registerIpc(deps: Deps): () => void {
     await startup.waitForBootstrap()
     const rootActivationStatus = startup.getRootActivationStatus()
     const info = await app.bootstrap()
-    if (rootActivationStatus !== 'failed' || !info.rootConfigured) return info
+    if (!info.rootConfigured || rootActivationStatus === 'active') return info
     return { ...info, rootInvalid: true }
   })
   regRootState('app:setRootDir', async (p) => {
     await startup.waitForRootActivation()
     const rootActivationStatus = startup.getRootActivationStatus()
-    // The onboarding action after failed startup is explicit recovery consent; it only changes
-    // the configured path and does not delete or migrate data from the inactive library.
-    const recoverySelection = rootActivationStatus === 'failed' && p.confirmed === false
+    // Onboarding after unsuccessful startup is explicit recovery consent; it only changes the
+    // configured path and does not delete or migrate data from the inactive library.
+    const recoverySelection = rootActivationStatus !== 'active' && p.confirmed === false
     const result = await app.setRootDir(p.dirPath, p.confirmed || recoverySelection)
     startup.markRootActivated()
     return result
