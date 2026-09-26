@@ -18,7 +18,8 @@
     "test": "vitest run",
     "migrate:md": "esbuild scripts/migrate-md-library.ts --bundle --platform=node --format=esm --outfile=scripts/migrate-md-library.mjs && node scripts/migrate-md-library.mjs",
     "build:win": "electron-vite build && electron-builder --win --x64",
-    "icon": "node scripts/make-ico.mjs"
+    "icon": "node scripts/make-ico.mjs",
+    "plantuml:prepare": "node scripts/prepare-plantuml-runtime.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
