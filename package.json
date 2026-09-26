@@ -17,7 +17,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test": "vitest run",
     "migrate:md": "esbuild scripts/migrate-md-library.ts --bundle --platform=node --format=esm --outfile=scripts/migrate-md-library.mjs && node scripts/migrate-md-library.mjs",
-    "build:win": "electron-vite build && electron-builder --win --x64",
+    "build:win": "npm run plantuml:prepare && electron-vite build && electron-builder --win --x64",
     "icon": "node scripts/make-ico.mjs",
     "plantuml:prepare": "node scripts/prepare-plantuml-runtime.mjs"
   },

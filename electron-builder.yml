@@ -10,6 +10,13 @@ files:
   - out/**/*
   - package.json
 
+extraResources:
+  - from: .build/plantuml-runtime
+    to: plantuml
+    filter:
+      - '**/*'
+      - '!**/.trace-plantuml-runtime-owner.json'
+
 win:
   icon: resources/icon.ico
   target:
