@@ -52,6 +52,11 @@ describe('frontend information and interaction foundation', () => {
     for (const selector of ['.single-title:focus-visible', '.task-title input:focus-visible', '.o-input:focus-visible']) expect(base).toContain(selector)
     expect(base).toContain('.mem-card:focus-visible')
   })
+  it('styles the in-progress task ring and title from the rendered row class', () => {
+    expect(css).toContain('.task-row.in_progress .state-ring')
+    expect(css).toContain('.task-row.in_progress .task-title input')
+    expect(css).not.toContain('.task-row.doing')
+  })
   it('reduces all ordinary motion while preserving the normal tree height transition', () => {
     expect(css).not.toMatch(/transition:\s*all\b/)
     expect(css).toContain('transition: grid-template-rows var(--t-slot)')

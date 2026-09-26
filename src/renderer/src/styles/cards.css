@@ -65,8 +65,8 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .task-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 5px 60px 5px 4px; border-radius: 6px; transition: background-color var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out); }
 .task-row:hover { background: var(--paper-dim); }
 .task-row .state-ring { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--text-4); cursor: pointer; position: relative; transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out); background: transparent; padding: 0; }
-.task-row.doing .state-ring { border-color: var(--link); background: var(--trace-500); box-shadow: 0 0 0 3px var(--trace-bg); }
-.task-row.doing .task-title input { color: var(--link); }
+.task-row.in_progress .state-ring { border-color: var(--link); background: var(--trace-500); box-shadow: 0 0 0 3px var(--trace-bg); }
+.task-row.in_progress .task-title input { color: var(--link); }
 .task-row.done .state-ring { border-color: var(--text-3); background: var(--fill); }
 /* 勾号常驻（opacity 切换）——content 不可过渡，改为恒有 + 淡入缩放入场 */
 .task-row .state-ring::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-3); opacity: 0; scale: 0.6; transition: opacity var(--t-ui) var(--ease-out), scale 0.22s var(--ease-spring); }
