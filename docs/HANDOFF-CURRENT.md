@@ -8,9 +8,10 @@
 
 - 用户已确认视觉方向 B「居中主导航」与动效 C「柔弹回落」。视觉稿选择记录为 B + C；主方向文档为 `docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md`。
 - 当前阶段：已将选择整理为书面设计规格并完成自审，待用户复核；尚未实现，也没有正式代码文件所有权。
-- 当前协作状态：开始核对时 `main...origin/main`，HEAD=`495a9e4ba542899d05e6e1e58818d5505341656a`；工作区仅有用户资源 `Resource/pic/`、`Resource/vid/` 未跟踪，必须保留。规格检查：`git diff --check` 通过，占位词扫描无命中，99 行无尾随空格；正式源代码未改。
+- 当前协作状态：任务开始核对时 `main...origin/main`、HEAD=`495a9e4ba542899d05e6e1e58818d5505341656a`；设计规格提交后 `main` ahead `origin/main` 1，HEAD=`de1f6dc030fa528760f2617bd17228c9c9fcc42c`。工作区仅有用户资源 `Resource/pic/`、`Resource/vid/` 未跟踪，必须保留。规格检查：`git diff --check` 通过，占位词扫描无命中，99 行无尾随空格；正式源代码未改。
+- 书面规格提交：`de1f6dc030fa528760f2617bd17228c9c9fcc42c`（`docs(ui): specify centered liquid view navigation`）；未推送。
 - 本阶段文件所有权：Codex 独占新规格文件与本 HANDOFF；正式源代码/测试边界尚未登记。书面规格获用户复核后，先创建共享实施计划，再登记边界。
-- 下一步：提交规格/HANDOFF 后请用户复核书面规格。等待：用户对书面规格的核对。剩余：共享计划与 `plan.json`、正式代码边界、隔离实施、自动/人工验证；未授权推送或发布。
+- 下一步：请用户复核书面规格。等待：用户对书面规格的核对。剩余：共享计划与 `plan.json`、正式代码边界、隔离实施、自动/人工验证；未授权推送或发布。
 
 ## 已完成：v0.17.0 双平台发布闭环
 
