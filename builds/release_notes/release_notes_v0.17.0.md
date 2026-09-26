@@ -27,7 +27,7 @@ Windows x64 安装包：`Trace_0.17.0_beta_20260926_01.exe`（210,577,133 字节
 
 安装包未数字签名，Windows 可能显示 SmartScreen/未知发布者提示；这与上一版 v0.15.1 相同。本轮没有手动安装并交互启动 Electron GUI。安装包仅附于 GitHub Release；Gitee Release 不上传安装包，并链接 GitHub 下载资产。
 
-自动验证：`npm run typecheck`、`npm run test`（39 个测试文件 / 388 项）、`npm run build`、`npm run build:win` 通过。安装包归档路径：`builds/windows/Trace_0.17.0_beta_20260926_01.exe`；GitHub/Gitee Release 仍待发布。
+自动验证：`npm run typecheck`、`npm run test`（39 个测试文件 / 388 项）、`npm run build`、`npm run build:win` 通过。安装包归档路径：`builds/windows/Trace_0.17.0_beta_20260926_01.exe`。GitHub Release 附带该安装包；Gitee Release 同步本说明并链接 GitHub 下载，不附安装包。
 
 GitHub Release 页面：<https://github.com/Qore-Origins/Trace/releases/tag/v0.17.0>
 

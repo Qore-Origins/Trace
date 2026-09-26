@@ -270,7 +270,8 @@ v0.17.0 发布门槛与 Windows 包核验（2026-09-26）：`npm run typecheck`�
 
 - [x] 用户已确认发布版本 `v0.17.0`：相对 v0.15.1，按任务三态反馈与完全离线 PlantUML 两个独立功能域递增。版本批准已完成；现同步 package.json、package-lock.json、CLAUDE.md 当前版本行、docs/changelog/CHANGELOG.md、lifecycle 发布说明、builds 发布说明/历史与累计改动文档。
 - [x] 构建并归档 Windows x64 安装包；`builds/build_history.json`、`builds/release_notes/release_notes_v0.17.0.md`、累计改动文档与 lifecycle 发布说明已写入实测版本信息、字节数、SHA-256 和人工验收边界。
-- [ ] 完成最终 diff 与验证复核后，将当前 Codex 隔离分支快进合入 `main`；保留用户未跟踪 `Resource/pic/`、`Resource/vid/`，禁止覆盖或清理。
+- [x] 完成最终 diff 与验证复核，并将 Codex 隔离分支发布准备提交 `f769415676bc3ebe7676bbc4f6902b8206679a0f` 快进合入 `main`。用户未跟踪 `Resource/pic/`、`Resource/vid/` 均保留未动。
+- [x] 在合并后的主目录重跑 `npm run typecheck`、`npm run test`（39 files / 388 tests）与 `npm run build`（7,155 renderer modules）；主目录缺少 happy-dom 的安装环境经 npmmirror 同步后全绿。
 - [ ] 通过 SSH 推送 `main` 与 `v0.17.0` tag；创建 GitHub Release 并附安装包，创建 Gitee Release 仅发布说明并链接 GitHub 下载（不上传超过 100 MB 的安装包）。发布后更新 `builds/release_history.json`，核验两端 tag/commit、GitHub 资产摘要和 Gitee 的说明/附件策略，再回填 Markdown、plan.json、README 与 HANDOFF 的真实结果。
 - [ ] 若缺少可验证的 GitHub/Gitee 身份或发布 API 权限，停止在打包归档处，明确指出未推送/未发布部分，不将其标成完成。
 
