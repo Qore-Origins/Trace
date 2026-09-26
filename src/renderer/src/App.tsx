@@ -18,6 +18,7 @@ import { subscribePlanEvents } from './stores/plan-store'
 import { subscribeSearchEvents, useSearchStore } from './stores/search-store'
 import { useUiStore } from './stores/ui-store'
 import { usePrefStore, type DealDirection, type Language, type ScoreAnim, type ThemeMode } from './stores/pref-store'
+import { usePlantumlStatusStore } from './stores/plantuml-status-store'
 import { invoke, onEvent } from './ipc-client'
 import { DIARY_DIR } from '@shared/plan-types'
 import type { PlantUmlMode, PlantUmlStatusDto } from '@shared/plantuml-types'
@@ -62,26 +63,30 @@ export function syncPlantumlPreference(
 ): () => void {
   if (!preference.plantumlHydrated) return () => undefined
 
+  const publishStatus = (status: PlantUmlStatusDto): void => {
+    usePlantumlStatusStore.getState().setStatus(status)
+    onStatus(status)
+  }
   let active = true
   let statusEventVersion = 0
   const unsubscribe = api.subscribe((status) => {
     statusEventVersion += 1
-    if (active) onStatus(status)
+    if (active) publishStatus(status)
   })
 
   const initialVersion = statusEventVersion
   void api.getStatus().then((status) => {
-    if (active && statusEventVersion === initialVersion) onStatus(status)
+    if (active && statusEventVersion === initialVersion) publishStatus(status)
   }).catch(() => undefined)
 
   const configurationVersion = statusEventVersion
   void api.configure({ enabled: preference.plantumlMode === 'local', port: preference.plantumlPort })
     .then((status) => {
-      if (active && statusEventVersion === configurationVersion) onStatus(status)
+      if (active && statusEventVersion === configurationVersion) publishStatus(status)
     })
     .catch(() => {
       if (!active || statusEventVersion !== configurationVersion) return
-      onStatus({
+      publishStatus({
         state: 'error',
         port: preference.plantumlMode === 'local' ? preference.plantumlPort : null,
         errorCode: 'service_unavailable'
@@ -112,12 +117,16 @@ export async function runPlantumlRetryIfCurrent(
   onStatus: (status: PlantUmlStatusDto) => void,
   getCurrentStatus: () => PlantUmlStatusDto
 ): Promise<void> {
+  const publishStatus = (status: PlantUmlStatusDto): void => {
+    usePlantumlStatusStore.getState().setStatus(status)
+    onStatus(status)
+  }
   try {
     const status = await retryPlantumlService(mode, port, api)
-    if (isCurrent()) onStatus(status)
+    if (isCurrent()) publishStatus(status)
   } catch {
     if (!isCurrent()) return
-    onStatus({
+    publishStatus({
       state: 'error',
       port: mode === 'local' ? port : getCurrentStatus().port,
       errorCode: 'service_unavailable'

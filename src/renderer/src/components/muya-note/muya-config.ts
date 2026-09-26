@@ -1,6 +1,27 @@
 import type { IMuyaOptions } from '@muyajs/core'
+import type { PlantUmlMode, PlantUmlStatusDto } from '@shared/plantuml-types'
+import { validatePlantumlPort } from '@shared/plantuml-types'
 
 const ALLOWED_PLANTUML_PROTOCOLS = new Set(['http:', 'https:'])
+
+export type PlantumlRenderState = 'disabled' | 'starting' | 'error' | 'unconfigured' | 'ready'
+
+export interface PlantumlRenderConfig {
+  server: string | null
+  state: PlantumlRenderState
+}
+
+export interface PlantumlRenderPreferences {
+  plantumlHydrated: boolean
+  plantumlMode: PlantUmlMode
+  plantumlPort: number
+  plantumlServer: string
+}
+
+export const DEFAULT_PLANTUML_RENDER_CONFIG: PlantumlRenderConfig = {
+  server: null,
+  state: 'unconfigured'
+}
 
 export function validatePlantumlServer(value: string): string {
   const trimmedValue = value.trim()
@@ -18,6 +39,51 @@ export function validatePlantumlServer(value: string): string {
   }
 
   return serverUrl.toString().replace(/\/$/, '')
+}
+
+/** Resolve the one PlantUML endpoint shared by note reading and editing. */
+export function resolvePlantumlRenderConfig(
+  preference: PlantumlRenderPreferences,
+  status: PlantUmlStatusDto
+): PlantumlRenderConfig {
+  if (!preference.plantumlHydrated) return { ...DEFAULT_PLANTUML_RENDER_CONFIG }
+  if (preference.plantumlMode === 'off') return { server: null, state: 'disabled' }
+
+  if (preference.plantumlMode === 'custom') {
+    try {
+      const server = validatePlantumlServer(preference.plantumlServer)
+      return server ? { server, state: 'ready' } : { server: null, state: 'unconfigured' }
+    } catch {
+      return { server: null, state: 'unconfigured' }
+    }
+  }
+
+  let port: number
+  try {
+    port = validatePlantumlPort(preference.plantumlPort)
+  } catch {
+    return { server: null, state: 'unconfigured' }
+  }
+
+  if (status.state === 'running' && status.port === port) {
+    return { server: `http://127.0.0.1:${port}/plantuml`, state: 'ready' }
+  }
+  // Local mode is selected, so an initial/stopped snapshot means startup is pending, not disabled.
+  if (status.state === 'stopped' || status.state === 'starting' || status.state === 'running') {
+    return { server: null, state: 'starting' }
+  }
+  if (status.state === 'error') return { server: null, state: 'error' }
+  return { ...DEFAULT_PLANTUML_RENDER_CONFIG }
+}
+
+/** Muya receives an empty server unless the shared resolver granted a ready endpoint. */
+export function getMuyaPlantumlServer(config: PlantumlRenderConfig): string {
+  if (config.state !== 'ready') return ''
+  try {
+    return validatePlantumlServer(config.server ?? '')
+  } catch {
+    return ''
+  }
 }
 
 export function createMuyaOptions(plantumlServer: string): Partial<IMuyaOptions> {

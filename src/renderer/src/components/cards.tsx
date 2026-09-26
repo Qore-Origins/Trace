@@ -1,7 +1,7 @@
 // 计划单片组件卡（前端详细设计 §3.3-3.5 / LLD §2.3）：渲染即编辑；payload 直改 + 防抖保存
 // 组件卡拖拽排序（2026-09-07，@dnd-kit 同款 AI Resource Hub）：手柄发起（distance 8 防误触），
 // 拖动中被拖卡放大投影置顶、其余卡 transform 实时让位，落点 arrayMove 语义换序
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type { Component, NotePayload } from '@shared/plan-types'
@@ -9,7 +9,9 @@ import { validateNoteText } from '@shared/validation'
 import { usePlanMutations } from '../stores/plan-store'
 import { useNoteEditorStore } from '../stores/note-editor-store'
 import { usePrefStore } from '../stores/pref-store'
+import { usePlantumlStatusStore } from '../stores/plantuml-status-store'
 import { useTranslation } from '../i18n'
+import { resolvePlantumlRenderConfig } from './muya-note/muya-config'
 import { NoteMarkdown } from './note-md'
 import { MuyaNoteEditor } from './muya-note/MuyaNoteEditor'
 import { CardShell } from './cards/CardShell'
@@ -24,7 +26,31 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
   const activeComponentId = useNoteEditorStore((state) => state.activeComponentId)
   const activate = useNoteEditorStore((state) => state.activate)
   const deactivate = useNoteEditorStore((state) => state.deactivate)
-  const { noteLiveRender, noteWrap, plantumlServer, language } = usePrefStore()
+  const {
+    noteLiveRender,
+    noteWrap,
+    plantumlHydrated,
+    plantumlMode,
+    plantumlPort,
+    plantumlServer,
+    language
+  } = usePrefStore()
+  const plantumlStatus = usePlantumlStatusStore((state) => state.status)
+  const plantumlConfig = useMemo(
+    () => resolvePlantumlRenderConfig(
+      { plantumlHydrated, plantumlMode, plantumlPort, plantumlServer },
+      plantumlStatus
+    ),
+    [
+      plantumlHydrated,
+      plantumlMode,
+      plantumlPort,
+      plantumlServer,
+      plantumlStatus.state,
+      plantumlStatus.port,
+      plantumlStatus.errorCode
+    ]
+  )
   const p = comp.payload as NotePayload
   const active = activeComponentId === comp.id
   const editorBoundaryRef = useRef<HTMLDivElement | null>(null)
@@ -76,7 +102,7 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
             onChange={updateMarkdown}
             liveRender={noteLiveRender}
             wrap={noteWrap}
-            plantumlServer={plantumlServer}
+            plantumlConfig={plantumlConfig}
             language={language}
             placeholder={t('cards.notePlaceholder')}
           />
@@ -95,7 +121,7 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
           }}
         >
           {p.content.trim() ? (
-            <NoteMarkdown content={p.content} onLink={openLink} wrap={noteWrap} plantumlServer={plantumlServer} />
+            <NoteMarkdown content={p.content} onLink={openLink} wrap={noteWrap} plantumlConfig={plantumlConfig} />
           ) : (
             <div className="note-empty">{t('cards.notePlaceholder')}</div>
           )}

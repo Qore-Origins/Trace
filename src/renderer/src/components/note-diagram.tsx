@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { useTranslation } from '../i18n'
 import { validatePlantumlServer } from './muya-note/muya-config'
+import type { PlantumlRenderConfig } from './muya-note/muya-config'
 // Keep reading-mode charts on Muya's exact engine loader; each heavy renderer remains dynamically imported there.
 import loadDiagramRenderer from '../../../../vendor/muya/src/utils/diagram'
 
 export type NoteDiagramLanguage = 'mermaid' | 'vega-lite' | 'plantuml' | 'flowchart' | 'sequence'
 
-type DiagramStatus = 'loading' | 'ready' | 'empty' | 'plantuml-required' | 'error'
+type DiagramStatus = 'loading' | 'ready' | 'empty' | 'disabled' | 'starting' | 'unconfigured' | 'service-error' | 'error'
+type PlantumlPreviewResult = PlantumlRenderConfig['state'] | 'empty' | 'cancelled'
 
 type MermaidRenderer = {
   initialize: (options: { startOnLoad: boolean; securityLevel: 'strict'; theme: string }) => void
@@ -26,6 +29,8 @@ type PlantumlRenderer = {
 type SvgRenderer = {
   parse: (source: string) => { drawSVG: (target: HTMLElement, options?: { theme?: string }) => void }
 }
+
+type PlantumlRendererLoader = () => Promise<unknown>
 
 async function loadRenderer(language: NoteDiagramLanguage): Promise<unknown> {
   return loadDiagramRenderer(language)
@@ -66,8 +71,7 @@ function observeSvgViewBox(target: HTMLElement): () => void {
 async function renderDiagram(
   language: NoteDiagramLanguage,
   source: string,
-  target: HTMLElement,
-  plantumlServer: string
+  target: HTMLElement
 ): Promise<void> {
   const renderer = await loadRenderer(language)
 
@@ -94,29 +98,58 @@ async function renderDiagram(
     return
   }
 
-  if (language === 'plantuml') {
-    const plantuml = renderer as PlantumlRenderer
-    plantuml.parse(source, plantumlServer).insertImgElement(target)
-    return
-  }
-
   const diagram = (renderer as SvgRenderer).parse(source)
   diagram.drawSVG(target, language === 'sequence' ? { theme: 'hand' } : undefined)
+}
+
+/** Clear any prior image before deciding whether a PlantUML request is allowed. */
+export async function renderPlantumlPreview(
+  source: string,
+  config: PlantumlRenderConfig,
+  target: HTMLElement,
+  loadPlantumlRenderer: PlantumlRendererLoader = () => loadRenderer('plantuml'),
+  isCurrent: () => boolean = () => true
+): Promise<PlantumlPreviewResult> {
+  target.replaceChildren()
+  if (!source.trim()) return 'empty'
+  if (config.state !== 'ready') return config.state
+
+  let server: string
+  try {
+    server = validatePlantumlServer(config.server ?? '')
+  } catch {
+    return 'unconfigured'
+  }
+  if (!server) return 'unconfigured'
+
+  try {
+    const renderer = await loadPlantumlRenderer()
+    if (!isCurrent()) return 'cancelled'
+    const plantuml = renderer as PlantumlRenderer
+    plantuml.parse(source, server).insertImgElement(target)
+    return 'ready'
+  } catch {
+    target.replaceChildren()
+    return 'error'
+  }
 }
 
 export function NoteDiagram({
   language,
   code,
-  plantumlServer
+  plantumlConfig
 }: {
   language: NoteDiagramLanguage
   code: string
-  plantumlServer: string
+  plantumlConfig: PlantumlRenderConfig
 }): React.JSX.Element {
+  const { t } = useTranslation()
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<DiagramStatus>('loading')
+  const plantumlState = language === 'plantuml' ? plantumlConfig.state : null
+  const plantumlServer = language === 'plantuml' ? plantumlConfig.server : null
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const host = hostRef.current
     if (!host) return
 
@@ -134,36 +167,56 @@ export function NoteDiagram({
     }
 
     if (language === 'plantuml') {
-      try {
-        if (!validatePlantumlServer(plantumlServer)) {
-          setStatus('plantuml-required')
-          host.replaceChildren()
-          return () => host.replaceChildren()
-        }
-      } catch {
-        setStatus('plantuml-required')
-        host.replaceChildren()
+      const config: PlantumlRenderConfig = {
+        server: plantumlServer,
+        state: plantumlState ?? 'unconfigured'
+      }
+      if (config.state !== 'ready' || !config.server) {
+        const unavailableStatus = config.state === 'error'
+          ? 'service-error'
+          : config.state === 'ready'
+            ? 'unconfigured'
+            : config.state
+        setStatus(unavailableStatus)
         return () => host.replaceChildren()
+      }
+
+      setStatus('loading')
+      void renderPlantumlPreview(code, config, preview, undefined, () => !cancelled)
+        .then((result) => {
+          if (cancelled || result === 'cancelled') return
+          if (result === 'ready') {
+            plantumlImage = preview.querySelector('img')
+            if (plantumlImage) {
+              plantumlImage.alt = 'PlantUML diagram'
+              plantumlImage.addEventListener('error', handlePlantumlImageError)
+              if (plantumlImage.complete && plantumlImage.naturalWidth === 0) {
+                setStatus('error')
+                return
+              }
+            }
+          }
+          setStatus(result)
+        })
+        .catch(() => {
+          if (cancelled) return
+          preview.replaceChildren()
+          setStatus('error')
+        })
+
+      return () => {
+        cancelled = true
+        plantumlImage?.removeEventListener('error', handlePlantumlImageError)
+        host.replaceChildren()
       }
     }
 
     setStatus('loading')
-    void renderDiagram(language, code, preview, plantumlServer)
+    void renderDiagram(language, code, preview)
       .then(() => {
         if (cancelled) return
         if (language === 'flowchart' || language === 'sequence') {
           stopViewBoxObserver = observeSvgViewBox(preview)
-        }
-        if (language === 'plantuml') {
-          plantumlImage = preview.querySelector('img')
-          if (plantumlImage) {
-            plantumlImage.alt = 'PlantUML diagram'
-            plantumlImage.addEventListener('error', handlePlantumlImageError)
-            if (plantumlImage.complete && plantumlImage.naturalWidth === 0) {
-              setStatus('error')
-              return
-            }
-          }
         }
         setStatus('ready')
       })
@@ -179,15 +232,19 @@ export function NoteDiagram({
       plantumlImage?.removeEventListener('error', handlePlantumlImageError)
       host.replaceChildren()
     }
-  }, [code, language, plantumlServer])
+  }, [code, language, plantumlServer, plantumlState])
 
-  const statusLabel = {
-    loading: '图表加载中…',
+  const statusLabels: Record<DiagramStatus, string> = {
+    loading: t('cards.diagramLoading'),
     ready: '',
-    empty: '空图表',
-    'plantuml-required': 'PlantUML Server 未配置，源码未发送到网络',
-    error: '图表渲染失败'
-  }[status]
+    empty: t('cards.diagramEmpty'),
+    disabled: t('cards.plantumlDisabled'),
+    starting: t('cards.plantumlStarting'),
+    unconfigured: t('cards.plantumlUnconfigured'),
+    'service-error': t('cards.plantumlServiceError'),
+    error: t('cards.diagramError')
+  }
+  const statusLabel = statusLabels[status]
 
   return (
     <div
@@ -198,7 +255,7 @@ export function NoteDiagram({
     >
       <div ref={hostRef} />
       {statusLabel && (
-        <div className={`note-diagram-status${status === 'error' ? ' error' : ''}`} role="status">
+        <div className={`note-diagram-status${status === 'error' || status === 'service-error' ? ' error' : ''}`} role="status">
           {statusLabel}
         </div>
       )}

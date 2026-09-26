@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { StateStorage } from 'zustand/middleware'
 import { validatePlantumlPort, type PlantUmlMode, type PlantUmlStatusDto } from '../src/shared/plantuml-types'
 import { migratePlantumlPreference, usePrefStore } from '../src/renderer/src/stores/pref-store'
+import { usePlantumlStatusStore } from '../src/renderer/src/stores/plantuml-status-store'
 import { retryPlantumlService, runPlantumlRetryIfCurrent, syncPlantumlPreference } from '../src/renderer/src/App'
 
 interface PlantumlPreferenceSyncApi {
@@ -18,6 +19,7 @@ interface PlantumlServiceActionApi {
 describe('PlantUML preferences', () => {
   afterEach(() => {
     usePrefStore.setState(usePrefStore.getInitialState(), true)
+    usePlantumlStatusStore.getState().resetStatus()
   })
 
   it('新安装默认使用 Trace 本地服务端口', () => {
@@ -223,10 +225,12 @@ describe('PlantUML preferences', () => {
     expect(api.configure).toHaveBeenCalledWith({ enabled: true, port: 18081 })
     expect(onStatus).toHaveBeenCalledWith(currentStatus)
     expect(onStatus).toHaveBeenCalledWith(startingStatus)
+    expect(usePlantumlStatusStore.getState().status).toEqual(startingStatus)
 
     const runningStatus: PlantUmlStatusDto = { state: 'running', port: 18081, errorCode: null }
     publishStatus?.(runningStatus)
     expect(onStatus).toHaveBeenLastCalledWith(runningStatus)
+    expect(usePlantumlStatusStore.getState().status).toEqual(runningStatus)
 
     unsubscribe()
     expect(calls.at(-1)).toBe('unsubscribe')
@@ -279,6 +283,25 @@ describe('PlantUML preferences', () => {
 
     expect(api.retry).toHaveBeenCalledOnce()
     expect(api.configure).not.toHaveBeenCalled()
+  })
+
+  it('只把当前 retry 回包同步到非持久化状态 store', async () => {
+    const running: PlantUmlStatusDto = { state: 'running', port: 18080, errorCode: null }
+    const api: PlantumlServiceActionApi = {
+      retry: vi.fn().mockResolvedValue(running),
+      configure: vi.fn().mockResolvedValue(running)
+    }
+
+    await runPlantumlRetryIfCurrent(
+      'local',
+      18080,
+      api,
+      () => true,
+      vi.fn(),
+      () => ({ state: 'stopped', port: null, errorCode: null })
+    )
+
+    expect(usePlantumlStatusStore.getState().status).toEqual(running)
   })
 
   it.each([

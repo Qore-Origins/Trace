@@ -3,9 +3,12 @@ import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { usePrefStore } from '../src/renderer/src/stores/pref-store'
 import {
+  applyMuyaPlantumlRenderConfig,
   createMarkdownChangeBridge,
   shouldApplyExternalMarkdown
 } from '../src/renderer/src/components/muya-note/MuyaNoteEditor'
+import { resolvePlantumlRenderConfig } from '../src/renderer/src/components/muya-note/muya-config'
+import type { PlantUmlStatusDto } from '../src/shared/plantuml-types'
 
 type NotePreferenceState = {
   noteLiveRender: boolean
@@ -97,6 +100,59 @@ describe('Muya note React adapter', () => {
     expect(editor).toContain('note-muya-host trace-muya')
     expect(editor).toContain("classList.toggle('trace-muya-source-mode'")
   })
+
+  it('defines localized PlantUML render states in both supported languages', () => {
+    const zhCN = readFileSync(resolve('src/renderer/src/i18n/locales/zh-CN.ts'), 'utf8')
+    const enUS = readFileSync(resolve('src/renderer/src/i18n/locales/en-US.ts'), 'utf8')
+
+    for (const key of ['plantumlDisabled', 'plantumlStarting', 'plantumlServiceError', 'plantumlUnconfigured']) {
+      expect(zhCN).toContain(`${key}:`)
+      expect(enUS).toContain(`${key}:`)
+    }
+  })
+
+  it('refreshes Muya options for ready and unavailable PlantUML states without changing editing behavior', () => {
+    const setOptions = vi.fn()
+    const muya = { setOptions } as never
+    const readyStatus: PlantUmlStatusDto = { state: 'running', port: 18080, errorCode: null }
+    const stoppedStatus: PlantUmlStatusDto = { state: 'stopped', port: 18080, errorCode: null }
+    const errorStatus: PlantUmlStatusDto = { state: 'error', port: 18080, errorCode: 'process_exit' }
+    const ready = resolvePlantumlRenderConfig(
+      { plantumlHydrated: true, plantumlMode: 'local', plantumlPort: 18080, plantumlServer: '' },
+      readyStatus
+    )
+    const stopped = resolvePlantumlRenderConfig(
+      { plantumlHydrated: true, plantumlMode: 'local', plantumlPort: 18080, plantumlServer: '' },
+      stoppedStatus
+    )
+    const errored = resolvePlantumlRenderConfig(
+      { plantumlHydrated: true, plantumlMode: 'local', plantumlPort: 18080, plantumlServer: '' },
+      errorStatus
+    )
+    const disabled = resolvePlantumlRenderConfig(
+      { plantumlHydrated: true, plantumlMode: 'off', plantumlPort: 18080, plantumlServer: 'https://old.example/plantuml' },
+      readyStatus
+    )
+    const custom = resolvePlantumlRenderConfig(
+      { plantumlHydrated: true, plantumlMode: 'custom', plantumlPort: 18080, plantumlServer: 'https://uml.example/plantuml' },
+      stoppedStatus
+    )
+
+    applyMuyaPlantumlRenderConfig(muya, ready)
+    applyMuyaPlantumlRenderConfig(muya, stopped)
+    applyMuyaPlantumlRenderConfig(muya, errored)
+    applyMuyaPlantumlRenderConfig(muya, disabled)
+    applyMuyaPlantumlRenderConfig(muya, custom)
+
+    expect(setOptions.mock.calls).toEqual([
+      [{ plantumlServer: 'http://127.0.0.1:18080/plantuml' }, true],
+      [{ plantumlServer: '' }, true],
+      [{ plantumlServer: '' }, true],
+      [{ plantumlServer: '' }, true],
+      [{ plantumlServer: 'https://uml.example/plantuml' }, true]
+    ])
+    expect(shouldApplyExternalMarkdown('external', 'local', false)).toBe(true)
+  })
 })
 
 describe('NoteCard Muya integration', () => {
@@ -142,6 +198,7 @@ describe('NoteCard Muya integration', () => {
     expect(cards).toContain('<NoteMarkdown')
     expect(cards).toContain('activeComponentId === comp.id')
     expect(cards).toContain('noteLiveRender')
-    expect(cards).toContain('plantumlServer')
+    expect(cards.match(/plantumlConfig=\{plantumlConfig\}/g)).toHaveLength(2)
+    expect(cards).not.toContain('plantumlServer={')
   })
 })

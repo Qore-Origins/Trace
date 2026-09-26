@@ -1,5 +1,7 @@
 // NoteMarkdown 解析器单测（renderer 纯函数；React 节点仅断言类型/标签，不渲染）
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { highlightCode, parseBlocks, renderText } from '../src/renderer/src/components/note-md'
 
 describe('note-md parseBlocks', () => {
@@ -181,5 +183,14 @@ describe('note-md renderText（React 片段结构）', () => {
     // 非配对/恶意形态不解析为 u
     const bad = renderText('<u>未闭合', 'k').join('')
     expect(bad).toContain('<u>')
+  })
+})
+
+describe('NoteMarkdown PlantUML configuration wiring', () => {
+  it('forwards one fail-closed render config to each parsed diagram', () => {
+    const source = readFileSync(resolve('src/renderer/src/components/note-md.tsx'), 'utf8')
+
+    expect(source).toContain('DEFAULT_PLANTUML_RENDER_CONFIG')
+    expect(source).toContain('plantumlConfig={plantumlConfig}')
   })
 })

@@ -8,6 +8,8 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import hljs from 'highlight.js/lib/common'
 import { NoteDiagram, type NoteDiagramLanguage } from './note-diagram'
+import { DEFAULT_PLANTUML_RENDER_CONFIG } from './muya-note/muya-config'
+import type { PlantumlRenderConfig } from './muya-note/muya-config'
 
 // ---------- 块级解析 ----------
 
@@ -303,12 +305,12 @@ export function NoteMarkdown({
   content,
   onLink,
   wrap,
-  plantumlServer = ''
+  plantumlConfig = DEFAULT_PLANTUML_RENDER_CONFIG
 }: {
   content: string
   onLink?: (url: string) => void
   wrap?: boolean
-  plantumlServer?: string
+  plantumlConfig?: PlantumlRenderConfig
 }): React.JSX.Element {
   const blocks = useMemo(() => parseBlocks(content), [content])
   return (
@@ -330,7 +332,7 @@ export function NoteMarkdown({
           )
         }
         if (b.kind === 'diagram') {
-          return <NoteDiagram key={key} language={b.lang} code={b.code} plantumlServer={plantumlServer} />
+          return <NoteDiagram key={key} language={b.lang} code={b.code} plantumlConfig={plantumlConfig} />
         }
         if (b.kind === 'list') {
           const items = b.items.map((it, li) => <li key={`${key}-i-${li}`}>{renderText(it, `${key}-i-${li}`, onLink)}</li>)

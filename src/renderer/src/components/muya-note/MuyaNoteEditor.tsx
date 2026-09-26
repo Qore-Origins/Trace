@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Input, Spin } from 'antd'
 import type { Muya } from '@muyajs/core'
 import type { Language } from '../../stores/pref-store'
-import { createMuyaOptions } from './muya-config'
+import { useTranslation } from '../../i18n'
+import { createMuyaOptions, getMuyaPlantumlServer } from './muya-config'
+import type { PlantumlRenderConfig } from './muya-config'
 import { loadMuyaRuntime } from './muya-runtime'
 import { markTrace, startTraceMeasure } from '../../perf/marks'
 import './muya-theme.css'
@@ -61,12 +63,19 @@ export function shouldApplyExternalMarkdown(value: string, lastEmittedValue: str
   return value !== lastEmittedValue && !focused
 }
 
+export function applyMuyaPlantumlRenderConfig(
+  muya: Pick<Muya, 'setOptions'>,
+  config: PlantumlRenderConfig
+): void {
+  muya.setOptions({ plantumlServer: getMuyaPlantumlServer(config) }, true)
+}
+
 interface MuyaNoteEditorProps {
   value: string
   onChange: (markdown: string) => void
   liveRender: boolean
   wrap: boolean
-  plantumlServer: string
+  plantumlConfig: PlantumlRenderConfig
   language: Language
   placeholder: string
 }
@@ -76,17 +85,18 @@ export function MuyaNoteEditor({
   onChange,
   liveRender,
   wrap,
-  plantumlServer,
+  plantumlConfig,
   language,
   placeholder
 }: MuyaNoteEditorProps): React.JSX.Element {
+  const { t } = useTranslation()
   const hostRef = useRef<HTMLDivElement | null>(null)
   const muyaRef = useRef<Muya | null>(null)
   const onChangeRef = useRef(onChange)
   const valueRef = useRef(value)
   const liveRenderRef = useRef(liveRender)
   const wrapRef = useRef(wrap)
-  const plantumlServerRef = useRef(plantumlServer)
+  const plantumlConfigRef = useRef(plantumlConfig)
   const languageRef = useRef(language)
   const lastEmittedValueRef = useRef(value)
   const [loading, setLoading] = useState(true)
@@ -96,7 +106,7 @@ export function MuyaNoteEditor({
   valueRef.current = value
   liveRenderRef.current = liveRender
   wrapRef.current = wrap
-  plantumlServerRef.current = plantumlServer
+  plantumlConfigRef.current = plantumlConfig
   languageRef.current = language
 
   useEffect(() => {
@@ -131,7 +141,7 @@ export function MuyaNoteEditor({
       .then((runtime) => {
         if (cancelled) return
         const muya = new runtime.Muya(host, {
-          ...createMuyaOptions(plantumlServerRef.current),
+          ...createMuyaOptions(getMuyaPlantumlServer(plantumlConfigRef.current)),
           wrapCodeBlocks: wrapRef.current,
           markdown: valueRef.current
         })
@@ -183,8 +193,9 @@ export function MuyaNoteEditor({
   }, [wrap])
 
   useEffect(() => {
-    muyaRef.current?.setOptions({ plantumlServer: createMuyaOptions(plantumlServer).plantumlServer }, true)
-  }, [plantumlServer])
+    const muya = muyaRef.current
+    if (muya) applyMuyaPlantumlRenderConfig(muya, plantumlConfig)
+  }, [plantumlConfig.server, plantumlConfig.state])
 
   useEffect(() => {
     void loadMuyaRuntime().then((runtime) => {
@@ -204,14 +215,17 @@ export function MuyaNoteEditor({
 
   if (failed) {
     return (
-      <Input.TextArea
-        className="note-muya-fallback"
-        variant="borderless"
-        autoSize
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      <>
+        <Input.TextArea
+          className="note-muya-fallback"
+          variant="borderless"
+          autoSize
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {plantumlStatusMessage(value, plantumlConfig, t)}
+      </>
     )
   }
 
@@ -223,6 +237,27 @@ export function MuyaNoteEditor({
           <Spin size="small" />
         </div>
       ) : null}
+      {plantumlStatusMessage(value, plantumlConfig, t)}
+    </div>
+  )
+}
+
+function plantumlStatusMessage(
+  markdown: string,
+  config: PlantumlRenderConfig,
+  translate: (key: string) => string
+): React.JSX.Element | null {
+  if (!/```\s*plantuml\b/i.test(markdown) || config.state === 'ready') return null
+
+  const messageKey = {
+    disabled: 'cards.plantumlDisabled',
+    starting: 'cards.plantumlStarting',
+    error: 'cards.plantumlServiceError',
+    unconfigured: 'cards.plantumlUnconfigured'
+  }[config.state]
+  return (
+    <div className={`note-diagram-status${config.state === 'error' ? ' error' : ''}`} role="status" aria-live="polite">
+      {translate(messageKey)}
     </div>
   )
 }
