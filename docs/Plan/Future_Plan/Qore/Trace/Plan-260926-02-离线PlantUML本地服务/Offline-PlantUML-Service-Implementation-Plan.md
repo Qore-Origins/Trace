@@ -274,8 +274,8 @@ v0.17.0 发布门槛与 Windows 包核验（2026-09-26）：`npm run typecheck`�
 - [x] 在合并后的主目录重跑 `npm run typecheck`、`npm run test`（39 files / 388 tests）与 `npm run build`（7,155 renderer modules）；主目录缺少 happy-dom 的安装环境经 npmmirror 同步后全绿。
 - [x] 通过 SSH 将 `main` 与 `v0.17.0` annotated tag 推送至 GitHub/Gitee；发布状态同步时 `main` 核对锚点为 `3ce352b771fafaf50f9eef871700902a54bd56ab`，tag object 为 `12941bdcf036aa9ff566fa236a01c8d307ea915b`、peeled commit 为 `403fcb174667743f2979ba55b9d29b5ef35ce4f4`。随后纯交接同步提交 `385aef6951bd1f37ef9d4958a67666ed4bc6344e` 已双端推送；精确当前远端 main 以 `git ls-remote` 实测为准。
 - [x] 创建 GitHub Release `https://github.com/Qore-Origins/Trace/releases/tag/v0.17.0`，预发布；附加 Windows x64 安装包。GitHub API 实测附件为 210,577,133 bytes，digest `sha256:394dffa219b9329b150d19d33dd0887fc67619551ae7e38093df841e39b41699`，与本地一致；预发布版不能标成 Latest，GitHub 按 `latest=false` 发布。
-- [ ] 创建 Gitee Release，仅发布相同说明并链接 GitHub 下载，不上传安装包；`GITEE_TRACE_ACCESS_TOKEN` 存在于用户级和系统级环境，但当前进程未继承，尚未发起 Gitee Release API 请求。该变量值对应聊天中暴露的凭据，不使用，建议撤销轮换；新凭据须仅由 Codex 进程环境安全提供。发布后核验说明、无附件，并更新其 `builds/release_history.json` 记录。
-- [x] 双平台 SSH 推送、GitHub Release 与资产已核验；Gitee 发布结果及最终跨文档回填仍待完成，不将整个双平台发布闭环提前标为完成。
+- [x] 创建 Gitee Release `https://gitee.com/Qore/trace/releases/v0.17.0`（ID `1168823`）：正文与本地 UTF-8 Markdown 说明一致，tag `v0.17.0`、target commit `403fcb174667743f2979ba55b9d29b5ef35ce4f4`、prerelease 均核验正确；未上传 EXE。API 返回的两项资产 `v0.17.0.zip`、`v0.17.0.tar.gz` 为 Gitee 自动源码归档，不是安装包。
+- [x] 双平台 SSH 推送、GitHub Release/安装包 SHA-256、Gitee Release 正文/tag/资产策略均已核验；`builds/release_history.json`、计划与交接文档已同步。
 
     发布前命令：
 
@@ -290,5 +290,5 @@ v0.17.0 发布门槛与 Windows 包核验（2026-09-26）：`npm run typecheck`�
 - 本地服务只绑定 127.0.0.1，源码默认不发往外网，停止/退出会回收进程；错误仅影响 PlantUML，不影响其他图表和编辑。
 - 新装默认本地，旧非空 URL 保持自定义远程目标，设置中三态、端口、状态和重试均可用；静态态和 Muya 态行为一致。
 - 提供可核验的 PlantUML/Temurin 版本、来源、SHA-256、许可证和安装包增量。
-- 全量 typecheck/test/build/build:win 通过；GitHub Release 含安装包，Gitee Release 只有说明与 GitHub 链接；远端内容已实测核验。
+- 全量 typecheck/test/build/build:win 通过；GitHub Release 含安装包，Gitee Release 发布说明并提供 GitHub 下载链接、不含 EXE；Gitee 自动源码归档已记录，远端内容已实测核验。
 - 逐项同步同目录 plan.json、docs/Plan/README.md 和 HANDOFF；不得把规格、计划、实现、自动验证和人工/发布验收混写为同一状态。

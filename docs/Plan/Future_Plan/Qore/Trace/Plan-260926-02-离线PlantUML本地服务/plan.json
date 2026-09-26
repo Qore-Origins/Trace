@@ -1,14 +1,14 @@
 {
   "format_version": "1",
   "created_at": "2026-09-26T10:37:19+08:00",
-  "updated_at": "2026-09-26T23:00:54+08:00",
+  "updated_at": "2026-09-26T23:19:45+08:00",
   "components": [
     {
       "id": "0170926d2e18499bbf64be92528f0001",
       "type": "note",
       "payload": {
-        "content": "v0.17.0 本地发布验收已完成：合并后的主目录重新验证 npm run typecheck、npm run test（39 files / 388 tests）、npm run build（7,155 renderer modules）；此前 npm run build:win 成功。Windows x64 安装包 210,577,133 bytes（200.82 MiB），SHA-256 394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699；包内 PlantUML runtime 逐文件校验与离线 SANDBOX smoke 通过。v0.17.0 发布状态同步时的 main 核对锚点为 3ce352b771fafaf50f9eef871700902a54bd56ab；随后纯交接同步提交 385aef6951bd1f37ef9d4958a67666ed4bc6344e 已推送 GitHub/Gitee，精确当前 main 以 git log/git ls-remote 实测为准。v0.17.0 tag object 为 12941bdcf036aa9ff566fa236a01c8d307ea915b，peeled commit 为 403fcb174667743f2979ba55b9d29b5ef35ce4f4。GitHub Release 已发布为 prerelease，附件大小和 API sha256 digest 与本地一致；因为 prerelease 不能标为 Latest，按 latest=false 发布。Gitee Release 尚未创建；用户级和系统级 GITEE_TRACE_ACCESS_TOKEN 均存在但当前进程未继承。变量值为聊天中已暴露的凭据，不使用且建议撤销轮换；等待新凭据仅由进程环境安全提供。未手动安装交互 GUI，安装包未签名。",
-        "created_at": "2026-09-26T23:00:54+08:00"
+        "content": "v0.17.0 本地与双平台发布验收已完成：合并后的主目录验证 npm run typecheck、npm run test（39 files / 388 tests）、npm run build（7,155 renderer modules）；npm run build:win 成功。Windows x64 安装包 210,577,133 bytes（200.82 MiB），SHA-256 394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699；包内 PlantUML runtime 逐文件校验与离线 SANDBOX smoke 通过。发布引用：v0.17.0 tag object 12941bdcf036aa9ff566fa236a01c8d307ea915b，peeled commit 403fcb174667743f2979ba55b9d29b5ef35ce4f4。GitHub Release 已发布为 prerelease，附件大小和 API sha256 digest 与本地一致；prerelease 按 latest=false 发布。Gitee Release ID 1168823 于 2026-09-26T15:13:45Z 发布，公开页 https://gitee.com/Qore/trace/releases/v0.17.0；tag/target/prerelease 正确，正文与本地发行说明匹配。未上传 EXE；API 返回 v0.17.0.zip 与 v0.17.0.tar.gz 两项平台自动源码归档。主目录未跟踪的 Resource/pic/、Resource/vid/ 保持未触碰。用户确认凭据已轮换；API 仅从用户环境在短生命周期 PowerShell 进程中读取，未打印或持久化。未手动安装交互 GUI，安装包未签名。",
+        "created_at": "2026-09-26T23:19:45+08:00"
       }
     },
     {
@@ -225,8 +225,8 @@
           { "id": "a083878307b64ddeaddd55c34acc7769", "title": "重排主进程为窗口先显示、后台服务后启动", "status": "done" },
           { "id": "4915df6891a947c19e22464eb2ca04ef", "title": "实现设置三态、迁移兼容、端口和服务状态", "status": "done" },
         { "id": "d6b5329a40bd4fca8df0f808fbfba9aa", "title": "接入 Muya/阅读态图表服务状态并防止早发请求", "status": "done" },
-          { "id": "3096714da418407ba2ccfd87619247cf", "title": "完成离线安装包、自动验证和体积增量记录", "status": "in_progress" },
-        { "id": "5ebed2a1765d4be6a9328cc990b8477c", "title": "按授权升版本并发布 GitHub/Gitee Release", "status": "in_progress" },
+          { "id": "3096714da418407ba2ccfd87619247cf", "title": "完成离线安装包、自动验证和体积增量记录", "status": "done" },
+        { "id": "5ebed2a1765d4be6a9328cc990b8477c", "title": "按授权升版本并发布 GitHub/Gitee Release", "status": "done" },
           { "id": "f28dc85d6c2c4bb3b9847d3708cf8001", "title": "复核关闭升级和 Java 子进程退出确认 API", "status": "done" },
           { "id": "2c3edceba5c349d6bcd74314e0b03142", "title": "收紧离线 PlantUML smoke 的拒绝断言和异常清理", "status": "done" },
         { "id": "48752bbd18474165a543f97be5e322fb", "title": "让 PlantUML preload 与 Muya runtime 使用同一 loader 实例", "status": "done" }
