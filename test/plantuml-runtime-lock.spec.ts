@@ -25,6 +25,7 @@ type RuntimeLock = {
 
 type RuntimePreparationModule = {
   validateRuntimeLock?: (candidate: unknown) => void
+  assertLoopbackListeningBindings?: (netstatOutput: string, port: number, processId: number) => void
 }
 
 const runtimeLockPath = resolve(process.cwd(), 'scripts/plantuml-runtime.lock.json')
@@ -36,12 +37,14 @@ const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json
 const gitignore = readFileSync(resolve(process.cwd(), '.gitignore'), 'utf8')
 
 let validateRuntimeLock: RuntimePreparationModule['validateRuntimeLock']
+let assertLoopbackListeningBindings: RuntimePreparationModule['assertLoopbackListeningBindings']
 let preparationImportError: unknown
 
 beforeAll(async () => {
   try {
     const loadedModule = await import(pathToFileURL(runtimePreparationPath).href) as RuntimePreparationModule
     validateRuntimeLock = loadedModule.validateRuntimeLock
+    assertLoopbackListeningBindings = loadedModule.assertLoopbackListeningBindings
   } catch (error) {
     preparationImportError = error
   }
@@ -49,7 +52,36 @@ beforeAll(async () => {
 
 afterAll(() => {
   validateRuntimeLock = undefined
+  assertLoopbackListeningBindings = undefined
   preparationImportError = undefined
+})
+
+describe('PlantUML smoke listener binding validation', () => {
+  it('rejects a second listener for the same process and port on another interface', () => {
+    expect(assertLoopbackListeningBindings).toBeTypeOf('function')
+    if (typeof assertLoopbackListeningBindings !== 'function') return
+
+    const netstatOutput = [
+      '  TCP    127.0.0.1:53417    0.0.0.0:0    LISTENING    27172',
+      '  TCP    192.168.1.45:53417  0.0.0.0:0    LISTENING    27172'
+    ].join('\n')
+
+    expect(() => assertLoopbackListeningBindings(netstatOutput, 53417, 27172)).toThrow(/127\.0\.0\.1|loopback/i)
+  })
+
+  it('uses only exact local endpoint, PID, and LISTENING state as binding facts', () => {
+    expect(assertLoopbackListeningBindings).toBeTypeOf('function')
+    if (typeof assertLoopbackListeningBindings !== 'function') return
+
+    const netstatOutput = [
+      '  TCP    127.0.0.1:53417    0.0.0.0:0       LISTENING    27172',
+      '  TCP    127.0.0.1:9999     0.0.0.0:0       LISTENING    27172',
+      '  TCP    192.168.1.45:53417 0.0.0.0:0       LISTENING    99999',
+      '  TCP    192.168.1.45:53417 127.0.0.1:53417 ESTABLISHED  27172'
+    ].join('\n')
+
+    expect(() => assertLoopbackListeningBindings(netstatOutput, 53417, 27172)).not.toThrow()
+  })
 })
 
 describe('PlantUML runtime lock', () => {

@@ -902,12 +902,38 @@ async function waitForPortRelease(port, timeoutMs) {
   throw new Error(`PlantUML loopback port ${port} was not released after stopping its process`)
 }
 
+export function assertLoopbackListeningBindings(netstatOutput, port, processId) {
+  const listeningAddresses = []
+  for (const line of netstatOutput.split(/\r?\n/)) {
+    const columns = line.trim().split(/\s+/)
+    if (columns[0]?.toUpperCase() !== 'TCP' || columns[3]?.toUpperCase() !== 'LISTENING' || columns[4] !== String(processId)) continue
+
+    const localEndpoint = columns[1]
+    let address
+    let portText
+    if (localEndpoint.startsWith('[')) {
+      const closingBracket = localEndpoint.indexOf(']')
+      if (closingBracket < 0 || localEndpoint[closingBracket + 1] !== ':') continue
+      address = localEndpoint.slice(1, closingBracket)
+      portText = localEndpoint.slice(closingBracket + 2)
+    } else {
+      const separator = localEndpoint.lastIndexOf(':')
+      if (separator < 1) continue
+      address = localEndpoint.slice(0, separator)
+      portText = localEndpoint.slice(separator + 1)
+    }
+    if (!/^\d+$/.test(portText) || Number(portText) !== port) continue
+    listeningAddresses.push(address)
+  }
+
+  assert(listeningAddresses.includes('127.0.0.1'), `PlantUML did not listen on the expected 127.0.0.1:${port} endpoint`)
+  assert(listeningAddresses.every((address) => address === '127.0.0.1'), `PlantUML smoke service must listen only on 127.0.0.1:${port}`)
+}
+
 async function assertListeningOnLoopback(port, processId, systemRoot) {
   const netstatPath = resolve(systemRoot, 'System32/netstat.exe')
   const result = await runCommand(netstatPath, ['-ano', '-n', '-p', 'tcp'], { cwd: REPOSITORY_ROOT, env: process.env })
-  const matchingLines = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.includes(`:${port}`) && line.endsWith(String(processId)))
-  assert(matchingLines.some((line) => /^TCP\s+127\.0\.0\.1:/i.test(line) && /\bLISTENING\b/i.test(line)), `PlantUML did not listen only on the expected 127.0.0.1:${port} endpoint`)
-  assert(!matchingLines.some((line) => /^TCP\s+(?:0\.0\.0\.0|\[?::\]?):/i.test(line) && /\bLISTENING\b/i.test(line)), 'PlantUML smoke service unexpectedly listened on a wildcard address')
+  assertLoopbackListeningBindings(result.stdout, port, processId)
 }
 
 async function smokeRuntime() {
