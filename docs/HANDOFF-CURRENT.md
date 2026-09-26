@@ -2,9 +2,17 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-26（Codex：注释阅读态修复、前端 Task 10/11、任务三态反馈与离线 PlantUML 实施计划）
+> 更新：2026-09-27（Codex：顶栏居中胶囊式页面导航设计）
 
-## 当前任务：v0.17.0 双平台发布闭环（已完成）
+## 当前任务：顶栏居中胶囊式页面导航
+
+- 用户已确认视觉方向 B「居中主导航」与动效 C「柔弹回落」。视觉稿选择记录为 B + C；主方向文档为 `docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md`。
+- 当前阶段：已将选择整理为书面设计规格并完成自审，待用户复核；尚未实现，也没有正式代码文件所有权。
+- 当前协作状态：开始核对时 `main...origin/main`，HEAD=`495a9e4ba542899d05e6e1e58818d5505341656a`；工作区仅有用户资源 `Resource/pic/`、`Resource/vid/` 未跟踪，必须保留。规格检查：`git diff --check` 通过，占位词扫描无命中，99 行无尾随空格；正式源代码未改。
+- 本阶段文件所有权：Codex 独占新规格文件与本 HANDOFF；正式源代码/测试边界尚未登记。书面规格获用户复核后，先创建共享实施计划，再登记边界。
+- 下一步：提交规格/HANDOFF 后请用户复核书面规格。等待：用户对书面规格的核对。剩余：共享计划与 `plan.json`、正式代码边界、隔离实施、自动/人工验证；未授权推送或发布。
+
+## 已完成：v0.17.0 双平台发布闭环
 
 - 发布版本已由用户确认采用 `v0.17.0`（相对 v0.15.1 按任务三态反馈、离线 PlantUML 两个功能域递增）。版本文档、累计改动文档、发行说明与安装包已准备并核验；合并后的主目录 typecheck、39 files / 388 tests、build 均通过。`main` 与 annotated tag 已通过 SSH 推送至 GitHub/Gitee；GitHub Release 安装包 SHA-256 与本地一致。Gitee Release 已创建并公开访问，正文与本地发行说明逐字匹配（换行归一化），tag/target/prerelease 正确；未上传安装包，Gitee 自动生成的 ZIP/TAR.GZ 源码归档已单独记录。发布账本、计划、累计改动文档与本交接均已同步；发布账本同步提交及随后交接收尾的纯文档提交均已通过 SSH 推送双端，精确 refs 以接手时 `git log`/`git ls-remote` 实测为准。
 - Step6 shutdown API 针对性复核（用户已批准）已完成并释放服务边界：无代码修改。实现满足普通 stop timeout 后 SIGKILL 升级、仅在 exit 事件/已填 exitCode/signalCode 确认后返回 stopped、超时仍保留 active child 并 fail-closed 阻止 quit；shutdown 后 start/configure/retry 不会重新启动。子代理 `/root/plantuml_service_impl` 实跑 `npm run test -- --run test/plantuml-service.spec.ts test/startup-coordinator.spec.ts`（2 files / 29 tests passed）与 `npm run typecheck`（通过）；两文件 diff 为空。Step6 原有双阶段审查仍有效，无新代码需重新审查。
