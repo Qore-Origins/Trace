@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process'
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createServer, connect } from 'node:net'
 import { createServer as createHttpServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -20,6 +20,8 @@ const STARTUP_TIMEOUT_MS = 30_000
 const HEALTH_REQUEST_TIMEOUT_MS = 4_000
 const STOP_TIMEOUT_MS = 5_000
 const HEALTH_MARKER = 'TRACE_PLANTUML_RUNTIME_STEP9_HEALTH'
+const URL_CANARY_HEALTH_MARKER = 'TRACE_PLANTUML_URL_CANARY_HEALTH'
+const SMOKE_TEMP_DIRECTORY_PREFIX = 'trace-plantuml-runtime-smoke-'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -103,13 +105,71 @@ export function assertLoopbackOnlyBindings(netstatOutput, port, processId) {
   )
 }
 
-export function assertSandboxIncludeBlocked(responseBody, sentinel) {
-  assert(!responseBody.includes(sentinel), 'SANDBOX allowed local file include content into the SVG response')
+function assertPlantumlIncludeRefusal(response, sentinel, expectedError, includeKind) {
+  assert(response.status === 400, `${includeKind} include did not receive the expected HTTP 400 PlantUML refusal (received HTTP ${response.status})`)
+  const mediaType = response.contentType.split(';', 1)[0].trim().toLowerCase()
+  assert(mediaType === 'image/svg+xml', `${includeKind} include refusal was not returned as PlantUML SVG`)
+  assert(
+    response.diagramError === expectedError,
+    `${includeKind} include did not return the expected PlantUML refusal (${expectedError}; received ${response.diagramError ?? 'no PlantUML error header'})`
+  )
+  assert(!response.body.includes(sentinel), `${includeKind} include exposed protected content in the SVG response`)
 }
 
-export function assertSandboxUrlIncludeBlocked(responseBody, sentinel, requestCount) {
+export function assertSandboxIncludeBlocked(response, sentinel, expectedError) {
+  assertPlantumlIncludeRefusal(response, sentinel, expectedError, 'SANDBOX local file')
+}
+
+export function assertSandboxUrlIncludeBlocked(response, sentinel, expectedError, requestCount) {
+  assertPlantumlIncludeRefusal(response, sentinel, expectedError, 'SANDBOX URL')
   assert(requestCount === 0, 'SANDBOX URL include reached the local HTTP canary')
-  assert(!responseBody.includes(sentinel), 'SANDBOX URL include exposed canary response content')
+}
+
+function isDirectChild(parentPath, candidatePath) {
+  const relativePath = relative(resolve(parentPath), resolve(candidatePath))
+  return relativePath !== '' && !isAbsolute(relativePath) && !relativePath.includes(sep) && !relativePath.startsWith('..')
+}
+
+export async function assertSafeSmokeTempDirectory(directory) {
+  const resolvedDirectory = resolve(directory)
+  const resolvedTempDirectory = resolve(tmpdir())
+  assert(
+    isDirectChild(resolvedTempDirectory, resolvedDirectory),
+    'Refusing to remove the PlantUML smoke directory outside the system temporary directory'
+  )
+  assert(
+    basename(resolvedDirectory).startsWith(SMOKE_TEMP_DIRECTORY_PREFIX),
+    'Refusing to remove a temporary directory not created by this smoke test'
+  )
+
+  const directoryInfo = await lstat(resolvedDirectory)
+  assert(directoryInfo.isDirectory() && !directoryInfo.isSymbolicLink(), 'Refusing to remove a non-directory or redirected smoke target')
+  const [realTempDirectory, realDirectory] = await Promise.all([
+    realpath(resolvedTempDirectory),
+    realpath(resolvedDirectory)
+  ])
+  assert(isDirectChild(realTempDirectory, realDirectory), 'Refusing to remove a smoke directory redirected outside the system temporary directory')
+  assert(
+    relative(resolve(resolvedDirectory), resolve(realDirectory)) === '',
+    'Refusing to remove a smoke directory whose resolved target differs from its created path'
+  )
+  return resolvedDirectory
+}
+
+export async function cleanupPlantumlSmokeResources({ stopChild: stopChildResource, closeCanary, cleanupTemporaryFiles }) {
+  const cleanupErrors = []
+  for (const cleanup of [stopChildResource, closeCanary, cleanupTemporaryFiles]) {
+    if (!cleanup) continue
+    try {
+      await cleanup()
+    } catch (error) {
+      cleanupErrors.push(error)
+    }
+  }
+  if (cleanupErrors.length === 1) throw cleanupErrors[0]
+  if (cleanupErrors.length > 1) {
+    throw new AggregateError(cleanupErrors, 'One or more PlantUML smoke resources could not be cleaned up')
+  }
 }
 
 async function readPreparedRuntime() {
@@ -155,6 +215,7 @@ async function requestSvg(port, source) {
   return {
     status: response.status,
     contentType: response.headers.get('content-type') ?? '',
+    diagramError: response.headers.get('x-plantuml-diagram-error'),
     body
   }
 }
@@ -247,7 +308,12 @@ async function stopChild(child) {
 
 async function startUrlCanary(sentinel) {
   let requestCount = 0
-  const server = createHttpServer((_request, response) => {
+  const server = createHttpServer((request, response) => {
+    if (request.url === '/health') {
+      response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
+      response.end(URL_CANARY_HEALTH_MARKER)
+      return
+    }
     requestCount += 1
     response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
     response.end(`rectangle "${sentinel}"\n`)
@@ -265,6 +331,18 @@ async function startUrlCanary(sentinel) {
   }
 }
 
+async function assertUrlCanaryHealthy(canary) {
+  const response = await fetch(`http://${LOCAL_BINDING}:${canary.port}/health`, {
+    signal: AbortSignal.timeout(HEALTH_REQUEST_TIMEOUT_MS),
+    redirect: 'manual'
+  })
+  const body = await response.text()
+  const mediaType = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase()
+  assert(response.status === 200, `PlantUML URL canary health check returned HTTP ${response.status} instead of 200`)
+  assert(mediaType === 'text/plain', 'PlantUML URL canary health check returned an unexpected content type')
+  assert(body === URL_CANARY_HEALTH_MARKER, 'PlantUML URL canary health check did not return its expected marker')
+}
+
 async function runPlantumlRuntimeSmoke() {
   assert(process.platform === 'win32' && process.arch === 'x64', 'PlantUML runtime smoke is supported only on Windows x64')
 
@@ -277,7 +355,7 @@ async function runPlantumlRuntimeSmoke() {
   let child
   let canary
   let localIncludePath
-  const localCanaryDirectory = await mkdtemp(join(tmpdir(), 'trace-plantuml-runtime-smoke-'))
+  const localCanaryDirectory = await mkdtemp(join(tmpdir(), SMOKE_TEMP_DIRECTORY_PREFIX))
   const localFileSentinel = `TRACE_LOCAL_INCLUDE_${process.pid}_${Date.now()}`
   const urlSentinel = `TRACE_URL_INCLUDE_${process.pid}_${Date.now()}`
 
@@ -299,13 +377,16 @@ async function runPlantumlRuntimeSmoke() {
 
     const localIncludeSource = `@startuml\n!include ${basename(localIncludePath)}\n@enduml\n`
     const localIncludeResponse = await requestSvg(port, localIncludeSource)
-    assertSandboxIncludeBlocked(localIncludeResponse.body, localFileSentinel)
+    const localIncludeError = `cannot include ${basename(localIncludePath)}`
+    assertSandboxIncludeBlocked(localIncludeResponse, localFileSentinel, localIncludeError)
 
     canary = await startUrlCanary(urlSentinel)
-    const urlIncludeSource = `@startuml\n!include http://${LOCAL_BINDING}:${canary.port}/include.iuml\n@enduml\n`
+    await assertUrlCanaryHealthy(canary)
+    const urlInclude = `http://${LOCAL_BINDING}:${canary.port}/include.iuml`
+    const urlIncludeSource = `@startuml\n!include ${urlInclude}\n@enduml\n`
     const urlIncludeResponse = await requestSvg(port, urlIncludeSource)
     await delay(150)
-    assertSandboxUrlIncludeBlocked(urlIncludeResponse.body, urlSentinel, canary.requestCount())
+    assertSandboxUrlIncludeBlocked(urlIncludeResponse, urlSentinel, 'Cannot open URL', canary.requestCount())
 
     child.kill()
     assert(await waitForChildExit(child, STOP_TIMEOUT_MS), 'PlantUML child did not exit after a normal stop request')
@@ -315,11 +396,20 @@ async function runPlantumlRuntimeSmoke() {
     console.log('PlantUML bundled runtime smoke passed: local SVG, loopback-only listener, SANDBOX local/URL includes blocked, statistics disabled, child exit released its port.')
     console.log(`Bundled runtime: ${basename(RUNTIME_DIRECTORY)}; PlantUML: ${healthResponse.status}; port: ${port}`)
   } finally {
-    if (child) await stopChild(child)
-    if (canary) await canary.close()
-    if (localIncludePath) await rm(localIncludePath, { force: true })
-    assert(isWithin(tmpdir(), localCanaryDirectory), 'Refusing to remove the PlantUML smoke directory outside the system temporary directory')
-    await rm(localCanaryDirectory, { recursive: true, force: true })
+    await cleanupPlantumlSmokeResources({
+      stopChild: child ? () => stopChild(child) : undefined,
+      closeCanary: canary ? () => canary.close() : undefined,
+      cleanupTemporaryFiles: async () => {
+        const safeDirectory = await assertSafeSmokeTempDirectory(localCanaryDirectory)
+        if (localIncludePath) {
+          assert(
+            isWithin(safeDirectory, localIncludePath) && dirname(resolve(localIncludePath)) === safeDirectory,
+            'Refusing to remove a PlantUML smoke fixture outside its owned temporary directory'
+          )
+        }
+        await rm(safeDirectory, { recursive: true, force: true })
+      }
+    })
   }
 }
 

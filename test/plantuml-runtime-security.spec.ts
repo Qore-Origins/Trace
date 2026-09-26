@@ -1,8 +1,7 @@
-import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 type PlantumlSmokeSecurityModule = {
   buildPicoWebLaunchSpec?: (runtimeDirectory: string, plantumlJar: string, port: number) => {
@@ -10,27 +9,34 @@ type PlantumlSmokeSecurityModule = {
     args: string[]
   }
   assertLoopbackOnlyBindings?: (netstatOutput: string, port: number, processId: number) => void
-  assertSandboxIncludeBlocked?: (responseBody: string, sentinel: string) => void
-  assertSandboxUrlIncludeBlocked?: (responseBody: string, sentinel: string, requestCount: number) => void
+  assertSandboxIncludeBlocked?: (response: PlantumlSmokeResponse, sentinel: string, expectedError: string) => void
+  assertSandboxUrlIncludeBlocked?: (response: PlantumlSmokeResponse, sentinel: string, expectedError: string, requestCount: number) => void
   getPlantumlRuntimeMetadata?: (lock: unknown) => {
     plantumlJarName: string
     plantumlVersion: string
     plantumlLicenseName: string
     temurinLicenseName: string
   }
+  cleanupPlantumlSmokeResources?: (resources: {
+    stopChild?: () => Promise<void>
+    closeCanary?: () => Promise<void>
+    cleanupTemporaryFiles?: () => Promise<void>
+  }) => Promise<void>
+  assertSafeSmokeTempDirectory?: (directory: string) => Promise<string>
+}
+
+type PlantumlSmokeResponse = {
+  status: number
+  contentType: string
+  diagramError: string | null
+  body: string
 }
 
 const smokeModulePath = resolve(process.cwd(), 'scripts/test-plantuml-runtime.mjs')
 let smokeModule: PlantumlSmokeSecurityModule = {}
-let temporaryDirectory: string
 
 beforeAll(async () => {
   smokeModule = await import(pathToFileURL(smokeModulePath).href) as PlantumlSmokeSecurityModule
-  temporaryDirectory = await mkdtemp(join(tmpdir(), 'trace-plantuml-runtime-security-'))
-})
-
-afterAll(async () => {
-  if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true })
 })
 
 describe('bundled PlantUML runtime security contract', () => {
@@ -38,7 +44,7 @@ describe('bundled PlantUML runtime security contract', () => {
     expect(smokeModule.buildPicoWebLaunchSpec).toBeTypeOf('function')
     if (!smokeModule.buildPicoWebLaunchSpec) return
 
-    const runtimeDirectory = resolve(temporaryDirectory, 'runtime')
+    const runtimeDirectory = resolve(tmpdir(), 'trace-plantuml-runtime-security-fixture', 'runtime')
     const plantumlJar = resolve(runtimeDirectory, 'plantuml-lgpl-1.2026.8.jar')
     const spec = smokeModule.buildPicoWebLaunchSpec(runtimeDirectory, plantumlJar, 18080)
 
@@ -92,8 +98,18 @@ describe('bundled PlantUML runtime security contract', () => {
     if (!smokeModule.assertSandboxIncludeBlocked) return
 
     const sentinel = 'TRACE_LOCAL_INCLUDE_MUST_STAY_PRIVATE'
-    expect(() => smokeModule.assertSandboxIncludeBlocked?.('<svg><text>blocked</text></svg>', sentinel)).not.toThrow()
-    expect(() => smokeModule.assertSandboxIncludeBlocked?.(`<svg><text>${sentinel}</text></svg>`, sentinel)).toThrow(/local file/i)
+    const expectedError = 'cannot include local-canary.iuml'
+    const deniedResponse: PlantumlSmokeResponse = {
+      status: 400,
+      contentType: 'image/svg+xml',
+      diagramError: expectedError,
+      body: '<svg><text>PlantUML error</text></svg>'
+    }
+    expect(() => smokeModule.assertSandboxIncludeBlocked?.(deniedResponse, sentinel, expectedError)).not.toThrow()
+    expect(() => smokeModule.assertSandboxIncludeBlocked?.({ ...deniedResponse, status: 200 }, sentinel, expectedError)).toThrow(/HTTP 400/i)
+    expect(() => smokeModule.assertSandboxIncludeBlocked?.({ ...deniedResponse, contentType: 'text/html' }, sentinel, expectedError)).toThrow(/SVG/i)
+    expect(() => smokeModule.assertSandboxIncludeBlocked?.({ ...deniedResponse, diagramError: 'Syntax Error' }, sentinel, expectedError)).toThrow(/expected PlantUML refusal/i)
+    expect(() => smokeModule.assertSandboxIncludeBlocked?.({ ...deniedResponse, body: `<svg>${sentinel}</svg>` }, sentinel, expectedError)).toThrow(/local file/i)
   })
 
   it('fails when a URL include reaches its loopback canary or exposes its response', () => {
@@ -101,8 +117,59 @@ describe('bundled PlantUML runtime security contract', () => {
     if (!smokeModule.assertSandboxUrlIncludeBlocked) return
 
     const sentinel = 'TRACE_URL_INCLUDE_MUST_STAY_PRIVATE'
-    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.('<svg><text>blocked</text></svg>', sentinel, 0)).not.toThrow()
-    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.('<svg><text>blocked</text></svg>', sentinel, 1)).toThrow(/canary/i)
-    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.(`<svg><text>${sentinel}</text></svg>`, sentinel, 0)).toThrow(/URL include/i)
+    const expectedError = 'Cannot open URL'
+    const deniedResponse: PlantumlSmokeResponse = {
+      status: 400,
+      contentType: 'image/svg+xml',
+      diagramError: expectedError,
+      body: '<svg><text>PlantUML error</text></svg>'
+    }
+    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.(deniedResponse, sentinel, expectedError, 0)).not.toThrow()
+    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.({ ...deniedResponse, status: 503 }, sentinel, expectedError, 0)).toThrow(/HTTP 400/i)
+    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.({ ...deniedResponse, contentType: 'text/html' }, sentinel, expectedError, 0)).toThrow(/SVG/i)
+    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.({ ...deniedResponse, diagramError: 'Renderer failed' }, sentinel, expectedError, 0)).toThrow(/expected PlantUML refusal/i)
+    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.(deniedResponse, sentinel, expectedError, 1)).toThrow(/canary/i)
+    expect(() => smokeModule.assertSandboxUrlIncludeBlocked?.({ ...deniedResponse, body: `<svg>${sentinel}</svg>` }, sentinel, expectedError, 0)).toThrow(/URL include/i)
+  })
+
+  it('attempts canary and temporary-directory cleanup even when child stop and canary close fail', async () => {
+    expect(smokeModule.cleanupPlantumlSmokeResources).toBeTypeOf('function')
+    if (!smokeModule.cleanupPlantumlSmokeResources) return
+
+    const stopFailure = new Error('child stop failed')
+    const closeFailure = new Error('canary close failed')
+    const stopChild = vi.fn(async () => { throw stopFailure })
+    const closeCanary = vi.fn(async () => { throw closeFailure })
+    const cleanupTemporaryFiles = vi.fn(async () => undefined)
+
+    await expect(smokeModule.cleanupPlantumlSmokeResources({ stopChild, closeCanary, cleanupTemporaryFiles }))
+      .rejects.toMatchObject({ errors: [stopFailure, closeFailure] })
+    expect(stopChild).toHaveBeenCalledOnce()
+    expect(closeCanary).toHaveBeenCalledOnce()
+    expect(cleanupTemporaryFiles).toHaveBeenCalledOnce()
+  })
+
+  it('cleans the canary and temp directory after a successful child stop', async () => {
+    expect(smokeModule.cleanupPlantumlSmokeResources).toBeTypeOf('function')
+    if (!smokeModule.cleanupPlantumlSmokeResources) return
+
+    const stopChild = vi.fn(async () => undefined)
+    const closeCanary = vi.fn(async () => undefined)
+    const cleanupTemporaryFiles = vi.fn(async () => undefined)
+
+    await expect(smokeModule.cleanupPlantumlSmokeResources({ stopChild, closeCanary, cleanupTemporaryFiles })).resolves.toBeUndefined()
+    expect(stopChild).toHaveBeenCalledOnce()
+    expect(closeCanary).toHaveBeenCalledOnce()
+    expect(cleanupTemporaryFiles).toHaveBeenCalledOnce()
+  })
+
+  it('rejects temp cleanup targets outside the system temp directory before filesystem cleanup', async () => {
+    expect(smokeModule.assertSafeSmokeTempDirectory).toBeTypeOf('function')
+    if (!smokeModule.assertSafeSmokeTempDirectory) return
+
+    const outsideDirectory = resolve(tmpdir(), '..', 'trace-plantuml-runtime-smoke-unowned')
+    await expect(smokeModule.assertSafeSmokeTempDirectory(outsideDirectory)).rejects.toThrow(/outside the system temporary directory/i)
+    await expect(smokeModule.assertSafeSmokeTempDirectory(resolve(tmpdir(), 'unowned-smoke-directory')))
+      .rejects.toThrow(/not created by this smoke test/i)
   })
 })
