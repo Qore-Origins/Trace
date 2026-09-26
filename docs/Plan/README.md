@@ -43,6 +43,8 @@ docs/Plan/
 | [注释 Muya 正式集成](./Future_Plan/Qore/Trace/Plan-260917-02-注释Muya正式集成/Muya-Note-Formal-Integration-Implementation-Plan.md) | 实施完成，待正式卡片人工验收 | 2026-09-17 | [Muya 设计规格](../superpowers/specs/2026-09-15-muya-note-editor-design.md) | 用户验收 IME、剪贴板、语言选择、连续删除、切卡 flush、亮暗主题和窄窗口 |
 | [v0.15.0 双平台发布](./Future_Plan/Qore/Trace/Plan-260923-03-v0.15.0双平台发布/Trace-v0.15.0-Release-Plan.md) | 已完成：GitHub/Gitee Release 已发布并核验 | 2026-09-23 | 上次发布 v0.12.0，增量为 F2、Muya 与前端地基批次 | 发布闭环；后续跟进 Muya 人工验收等独立待办 |
 | [发布后稳定性与 v0.15.1 修订发布](./Future_Plan/Qore/Trace/Plan-260924-04-发布后稳定性/Trace-Post-Release-Stability-Plan.md) | 稳定性修复及 v0.15.1 双平台发布已完成；Muya 人工验收待后续 | 2026-09-24 | 发布后稳定性 issue 与 Muya 正式集成验收清单 | 重启开发服务器复验正式 NoteCard 首次激活，再完成 IME/剪贴板等人工体验验收 |
+| [任务三态视觉反馈](./Future_Plan/Qore/Trace/Plan-260926-01-任务三态反馈/Task-Three-State-Feedback-Implementation-Plan.md) | 实施中（执行计划和 Codex 文件边界已登记；尚未改代码） | 2026-09-26 | [已批准设计规格](../superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md) | 加入 CSS 回归测试、修复 in_progress 选择器并验证三态反馈 |
+| [离线 PlantUML 本地服务](./Future_Plan/Qore/Trace/Plan-260926-02-离线PlantUML本地服务/Offline-PlantUML-Service-Implementation-Plan.md) | 实施中（执行计划和 Codex 文件边界已登记；尚未改代码） | 2026-09-26 | [已批准设计规格](../superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md) | 锁定 PlantUML/Temurin 与许可证，先完成进程服务、窗口优先启动和本地/远程/关闭三态 |
 
 ## 更新规则
 

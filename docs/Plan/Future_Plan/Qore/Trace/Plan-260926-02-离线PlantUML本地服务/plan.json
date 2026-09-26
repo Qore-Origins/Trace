@@ -1,0 +1,42 @@
+{
+  "format_version": "1",
+  "created_at": "2026-09-26T10:37:19+08:00",
+  "updated_at": "2026-09-26T10:37:19+08:00",
+  "components": [
+    {
+      "id": "2c528e3f5e4f46e6ae42a86518c2f211",
+      "type": "heading",
+      "payload": {
+        "title": "离线 PlantUML 本地服务",
+        "size": 25
+      }
+    },
+    {
+      "id": "90e1c4788e56409280b6da7ea26c65e1",
+      "type": "note",
+      "payload": {
+        "content": "设计已批准；执行真源：Offline-PlantUML-Service-Implementation-Plan.md；规格：docs/superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md。目标为 Windows x64 首装离线可用，内置 PlantUML LGPL JAR 与精简 Temurin 运行时。执行者：Codex；精确文件边界见 Markdown 与 HANDOFF-CURRENT.md。代码尚未修改。",
+        "created_at": "2026-09-26T10:37:19+08:00"
+      }
+    },
+    {
+      "id": "bc94af7896aa48ef8d4d269e280bbad9",
+      "type": "task_list",
+      "payload": {
+        "title": "离线服务实施与发布",
+        "items": [
+          { "id": "29d7c82e7c2f4d49acf1c74d124dc864", "title": "建立三模式偏好迁移和端口验证测试", "status": "not_started" },
+          { "id": "392e56b11865433db446f89d5d4381ce", "title": "固定 PlantUML/Temurin 产物、SHA-256 与许可证", "status": "not_started" },
+          { "id": "08cc0e5e08f84caea4ba28ae287ab9c7", "title": "实现 jdeps/jlink 精简运行时准备脚本", "status": "not_started" },
+          { "id": "37974340d85e44459a45f8e83cf9e4fd", "title": "实现 PlantUML 服务生命周期并覆盖异常路径", "status": "not_started" },
+          { "id": "f6cd031c64064f26a90876e4d4220007", "title": "增加 PlantUML 白名单 IPC 与状态事件", "status": "not_started" },
+          { "id": "a083878307b64ddeaddd55c34acc7769", "title": "重排主进程为窗口先显示、后台服务后启动", "status": "not_started" },
+          { "id": "4915df6891a947c19e22464eb2ca04ef", "title": "实现设置三态、迁移兼容、端口和服务状态", "status": "not_started" },
+          { "id": "d6b5329a40bd4fca8df0f808fbfba9aa", "title": "接入 Muya/阅读态图表服务状态并防止早发请求", "status": "not_started" },
+          { "id": "3096714da418407ba2ccfd87619247cf", "title": "完成离线安装包、自动验证和体积增量记录", "status": "not_started" },
+          { "id": "5ebed2a1765d4be6a9328cc990b8477c", "title": "按授权升版本并发布 GitHub/Gitee Release", "status": "not_started" }
+        ]
+      }
+    }
+  ]
+}
