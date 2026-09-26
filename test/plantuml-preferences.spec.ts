@@ -1,7 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { StateStorage } from 'zustand/middleware'
-import { validatePlantumlPort } from '../src/shared/plantuml-types'
+import { validatePlantumlPort, type PlantUmlStatusDto } from '../src/shared/plantuml-types'
 import { migratePlantumlPreference, usePrefStore } from '../src/renderer/src/stores/pref-store'
+import { retryPlantumlService, syncPlantumlPreference } from '../src/renderer/src/App'
+
+interface PlantumlPreferenceSyncApi {
+  getStatus: () => Promise<PlantUmlStatusDto>
+  configure: (configuration: { enabled: boolean; port: number }) => Promise<PlantUmlStatusDto>
+  subscribe: (listener: (status: PlantUmlStatusDto) => void) => () => void
+}
+
+interface PlantumlServiceActionApi {
+  retry: () => Promise<PlantUmlStatusDto>
+  configure: (configuration: { enabled: boolean; port: number }) => Promise<PlantUmlStatusDto>
+}
 
 describe('PlantUML preferences', () => {
   afterEach(() => {
@@ -158,5 +170,114 @@ describe('PlantUML preferences', () => {
       vi.unstubAllGlobals()
       vi.resetModules()
     }
+  })
+
+  it('hydration 完成前不读取状态、不订阅或启动默认本地服务', () => {
+    const api: PlantumlPreferenceSyncApi = {
+      getStatus: vi.fn().mockResolvedValue({ state: 'stopped', port: 18080, errorCode: null }),
+      configure: vi.fn().mockResolvedValue({ state: 'starting', port: 18080, errorCode: null }),
+      subscribe: vi.fn(() => () => undefined)
+    }
+
+    syncPlantumlPreference(
+      { plantumlHydrated: false, plantumlMode: 'local', plantumlPort: 18080 },
+      vi.fn(),
+      api
+    )()
+
+    expect(api.getStatus).not.toHaveBeenCalled()
+    expect(api.configure).not.toHaveBeenCalled()
+    expect(api.subscribe).not.toHaveBeenCalled()
+  })
+
+  it('hydration 后先订阅状态、读取当前状态，再按本地模式和端口配置', async () => {
+    const calls: string[] = []
+    let publishStatus: ((status: PlantUmlStatusDto) => void) | undefined
+    const currentStatus: PlantUmlStatusDto = { state: 'stopped', port: 18080, errorCode: null }
+    const startingStatus: PlantUmlStatusDto = { state: 'starting', port: 18081, errorCode: null }
+    const api: PlantumlPreferenceSyncApi = {
+      getStatus: vi.fn(async () => {
+        calls.push('getStatus')
+        return currentStatus
+      }),
+      configure: vi.fn(async (configuration) => {
+        calls.push(`configure:${configuration.enabled}:${configuration.port}`)
+        return startingStatus
+      }),
+      subscribe: vi.fn((listener) => {
+        calls.push('subscribe')
+        publishStatus = listener
+        return () => calls.push('unsubscribe')
+      })
+    }
+    const onStatus = vi.fn()
+
+    const unsubscribe = syncPlantumlPreference(
+      { plantumlHydrated: true, plantumlMode: 'local', plantumlPort: 18081 },
+      onStatus,
+      api
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(calls.slice(0, 3)).toEqual(['subscribe', 'getStatus', 'configure:true:18081'])
+    expect(api.configure).toHaveBeenCalledWith({ enabled: true, port: 18081 })
+    expect(onStatus).toHaveBeenCalledWith(currentStatus)
+    expect(onStatus).toHaveBeenCalledWith(startingStatus)
+
+    const runningStatus: PlantUmlStatusDto = { state: 'running', port: 18081, errorCode: null }
+    publishStatus?.(runningStatus)
+    expect(onStatus).toHaveBeenLastCalledWith(runningStatus)
+
+    unsubscribe()
+    expect(calls.at(-1)).toBe('unsubscribe')
+  })
+
+  it.each(['custom', 'off'] as const)('在 %s 模式保留本地服务停止失败状态，且配置中不传入自定义 URL', async (plantumlMode) => {
+    const stopError: PlantUmlStatusDto = { state: 'error', port: 18082, errorCode: 'stop_timeout' }
+    const api: PlantumlPreferenceSyncApi = {
+      getStatus: vi.fn().mockResolvedValue({ state: 'running', port: 18080, errorCode: null }),
+      configure: vi.fn().mockResolvedValue(stopError),
+      subscribe: vi.fn(() => () => undefined)
+    }
+    const onStatus = vi.fn()
+
+    const unsubscribe = syncPlantumlPreference(
+      { plantumlHydrated: true, plantumlMode, plantumlPort: 18082 },
+      onStatus,
+      api
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(api.configure).toHaveBeenCalledWith({ enabled: false, port: 18082 })
+    expect(api.configure).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(api.configure.mock.calls[0]?.[0])).not.toContain('plantuml.example')
+    expect(onStatus).toHaveBeenCalledWith(stopError)
+    unsubscribe()
+  })
+
+  it.each(['custom', 'off'] as const)('在 %s 模式重试停止失败时再次发送 disabled 配置', async (plantumlMode) => {
+    const stopped: PlantUmlStatusDto = { state: 'stopped', port: 18082, errorCode: null }
+    const api: PlantumlServiceActionApi = {
+      retry: vi.fn().mockResolvedValue(stopped),
+      configure: vi.fn().mockResolvedValue(stopped)
+    }
+
+    await expect(retryPlantumlService(plantumlMode, 18082, api)).resolves.toEqual(stopped)
+
+    expect(api.configure).toHaveBeenCalledWith({ enabled: false, port: 18082 })
+    expect(api.retry).not.toHaveBeenCalled()
+  })
+
+  it('本地模式重试启动服务时调用专用 retry 通道', async () => {
+    const running: PlantUmlStatusDto = { state: 'running', port: 18080, errorCode: null }
+    const api: PlantumlServiceActionApi = {
+      retry: vi.fn().mockResolvedValue(running),
+      configure: vi.fn().mockResolvedValue(running)
+    }
+
+    await expect(retryPlantumlService('local', 18080, api)).resolves.toEqual(running)
+
+    expect(api.retry).toHaveBeenCalledOnce()
+    expect(api.configure).not.toHaveBeenCalled()
   })
 })
