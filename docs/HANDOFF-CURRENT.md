@@ -2,7 +2,16 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-26（Codex：注释阅读态修复与前端 Task 10/11）
+> 更新：2026-09-26（Codex：注释阅读态修复、前端 Task 10/11、离线 PlantUML 设计规格）
+
+## 当前任务：任务三态反馈与离线 PlantUML 服务设计规格（等待用户审阅）
+
+- 用户确认：保留任务 `not_started → in_progress → done → in_progress` 三态；PlantUML 必须完全离线、首次安装可用，不依赖系统 Java。默认由 Trace 在窗口显示后后台启动本地服务。
+- 书面规格：`docs/superpowers/specs/2026-09-26-task-state-and-offline-plantuml-design.md`。用户已批准设计方向；本阶段只完成规格、没有源代码改动。方案采用 PlantUML LGPL JAR + Temurin OpenJDK 21 LTS 的 `jlink` 精简运行时；本地服务绑定 `127.0.0.1`、`SANDBOX`、关闭统计，并在实现验收时实测安装包增量与断网首装行为。
+- 接手基线：隔离 worktree `D:\Code\Project\Qore\Trace\.worktrees\codex\trace-task10-11`，分支 `codex/trace-task10-11`，起始 HEAD `87fa1f9`，初查干净。main `3de25d3` 与 GitHub/Gitee 同步；main 只有用户未跟踪资源 `Resource/pic/`、`Resource/vid/`，未触碰。隔离分支已有 Task 10/11 与注释修复提交尚未合入/推送，源文件所有权继续由 Codex 持有。
+- 本阶段文件所有权仅限上述规格和本 HANDOFF。TaskListCard、卡片样式、主进程启动、Muya 与静态图表等源码均未修改；这些文件与隔离分支既有变更重叠，不可在用户审阅规格和明确分支处理方式前开工。
+- 验证：已核对主/隔离工作树状态、HANDOFF、当前计划、task state/CSS、PlantUML 渲染器、设置/IPC、主进程启动顺序和 electron-builder 配置；规格占位词扫描无命中，最终暂存差异 `git diff --cached --check` 通过。未运行代码测试（仅文档阶段）。
+- 下一步：请用户审阅规格。获批后调用 writing-plans 创建 docs/Plan 共享执行计划并登记文件边界；实施前还须确定继续扩展该隔离分支或先集成它。完成代码验收后按用户已授权的版本更新与 GitHub/Gitee Release 流程交付；当前不合并、不推送、不发布。
 
 ## 当前在办：注释阅读态修复、真实性能基线与设计架构文档闭环（Codex）
 
