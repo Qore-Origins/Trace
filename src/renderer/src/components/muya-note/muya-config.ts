@@ -18,6 +18,12 @@ export interface PlantumlRenderPreferences {
   plantumlServer: string
 }
 
+export interface MuyaPlantumlOptionsTarget {
+  setOptions: (options: Partial<IMuyaOptions>, forceRender?: boolean) => void
+}
+
+export type PlantumlRendererPreloader = () => Promise<unknown>
+
 export const DEFAULT_PLANTUML_RENDER_CONFIG: PlantumlRenderConfig = {
   server: null,
   state: 'unconfigured'
@@ -84,6 +90,32 @@ export function getMuyaPlantumlServer(config: PlantumlRenderConfig): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * Keep Muya fail-closed while its shared renderer module is loading. The
+ * caller's generation predicate prevents an older async preload from
+ * restoring a server after the preference has changed or the editor unmounted.
+ */
+export async function applyMuyaPlantumlRenderConfig(
+  muya: MuyaPlantumlOptionsTarget,
+  config: PlantumlRenderConfig,
+  preloadRenderer: PlantumlRendererPreloader,
+  isCurrent: () => boolean = () => true
+): Promise<void> {
+  muya.setOptions({ plantumlServer: '' }, true)
+
+  const server = getMuyaPlantumlServer(config)
+  if (!server) return
+
+  try {
+    await preloadRenderer()
+  } catch {
+    return
+  }
+
+  if (!isCurrent()) return
+  muya.setOptions({ plantumlServer: server }, true)
 }
 
 export function createMuyaOptions(plantumlServer: string): Partial<IMuyaOptions> {

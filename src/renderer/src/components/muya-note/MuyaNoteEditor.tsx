@@ -3,11 +3,14 @@ import { Input, Spin } from 'antd'
 import type { Muya } from '@muyajs/core'
 import type { Language } from '../../stores/pref-store'
 import { useTranslation } from '../../i18n'
-import { createMuyaOptions, getMuyaPlantumlServer } from './muya-config'
+import { applyMuyaPlantumlRenderConfig, createMuyaOptions } from './muya-config'
 import type { PlantumlRenderConfig } from './muya-config'
 import { loadMuyaRuntime } from './muya-runtime'
 import { markTrace, startTraceMeasure } from '../../perf/marks'
+import loadDiagramRenderer from '../../../../../vendor/muya/src/utils/diagram'
 import './muya-theme.css'
+
+export { applyMuyaPlantumlRenderConfig } from './muya-config'
 
 const MARKDOWN_CHANGE_DELAY_MS = 150
 
@@ -63,13 +66,6 @@ export function shouldApplyExternalMarkdown(value: string, lastEmittedValue: str
   return value !== lastEmittedValue && !focused
 }
 
-export function applyMuyaPlantumlRenderConfig(
-  muya: Pick<Muya, 'setOptions'>,
-  config: PlantumlRenderConfig
-): void {
-  muya.setOptions({ plantumlServer: getMuyaPlantumlServer(config) }, true)
-}
-
 interface MuyaNoteEditorProps {
   value: string
   onChange: (markdown: string) => void
@@ -97,6 +93,7 @@ export function MuyaNoteEditor({
   const liveRenderRef = useRef(liveRender)
   const wrapRef = useRef(wrap)
   const plantumlConfigRef = useRef(plantumlConfig)
+  const plantumlConfigGenerationRef = useRef(0)
   const languageRef = useRef(language)
   const lastEmittedValueRef = useRef(value)
   const [loading, setLoading] = useState(true)
@@ -141,7 +138,7 @@ export function MuyaNoteEditor({
       .then((runtime) => {
         if (cancelled) return
         const muya = new runtime.Muya(host, {
-          ...createMuyaOptions(getMuyaPlantumlServer(plantumlConfigRef.current)),
+          ...createMuyaOptions(''),
           wrapCodeBlocks: wrapRef.current,
           markdown: valueRef.current
         })
@@ -155,6 +152,18 @@ export function MuyaNoteEditor({
         }
         muya.on('json-change', jsonChangeListener)
         muyaRef.current = muya
+        const configToApply = plantumlConfigRef.current
+        const plantumlGeneration = plantumlConfigGenerationRef.current
+        void applyMuyaPlantumlRenderConfig(
+          muya,
+          configToApply,
+          () => loadDiagramRenderer('plantuml'),
+          () =>
+            !cancelled &&
+            plantumlGeneration === plantumlConfigGenerationRef.current &&
+            plantumlConfigRef.current.server === configToApply.server &&
+            plantumlConfigRef.current.state === configToApply.state
+        )
         markTrace('trace:muya-activate')
         finishActivationMeasure()
         setLoading(false)
@@ -169,6 +178,7 @@ export function MuyaNoteEditor({
 
     return () => {
       cancelled = true
+      plantumlConfigGenerationRef.current += 1
       diagramObserver?.disconnect()
       const muya = muyaRef.current
       if (muya) {
@@ -193,8 +203,20 @@ export function MuyaNoteEditor({
   }, [wrap])
 
   useEffect(() => {
+    const generation = ++plantumlConfigGenerationRef.current
     const muya = muyaRef.current
-    if (muya) applyMuyaPlantumlRenderConfig(muya, plantumlConfig)
+    if (muya) {
+      const configToApply = plantumlConfig
+      void applyMuyaPlantumlRenderConfig(
+        muya,
+        configToApply,
+        () => loadDiagramRenderer('plantuml'),
+        () =>
+          generation === plantumlConfigGenerationRef.current &&
+          plantumlConfigRef.current.server === configToApply.server &&
+          plantumlConfigRef.current.state === configToApply.state
+      )
+    }
   }, [plantumlConfig.server, plantumlConfig.state])
 
   useEffect(() => {
