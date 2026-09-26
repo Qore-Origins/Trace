@@ -1,4 +1,5 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, dialog, shell } from 'electron'
+import { spawn as spawnChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { PlanRepository } from './services/plan-repository'
 import { ConfigService } from './services/config-service'
@@ -12,6 +13,8 @@ import { ExportService, resolveRendererSource } from './services/export-service'
 import { registerIpc } from './ipc/register'
 import { bus } from './services/event-bus'
 import { createExternalLinkWindowHandler } from './services/external-link-service'
+import { checkPlantumlEndpoint, createPlantumlService, type PlantumlChildProcess } from './services/plantuml-service'
+import { createApplicationQuitCoordinator, createStartupCoordinator } from './services/startup-coordinator'
 
 // 安全基线（接口设计文档 §2.3）：contextIsolation/sandbox/webSecurity 显式声明
 const SECURITY_BASE = {
@@ -46,11 +49,26 @@ const appService = new AppService(config, repo, storage, (rootAbs) => {
 }, () => search.getState())
 // 导出为（BR-008）：离屏窗口渲染，PDF/PNG 双路；渲染层源与主窗口同源加载
 const exportService = new ExportService(repo, () => storage.getRootAbs() ?? '', resolveRendererSource(__dirname), join(__dirname, '../preload/index.js'))
+const plantumlService = createPlantumlService({
+  spawn: (executablePath, args, options) =>
+    spawnChildProcess(executablePath, args, options) as unknown as PlantumlChildProcess,
+  checkPlantumlEndpoint,
+  resolveResources: () => {
+    const runtimeDirectory = app.isPackaged
+      ? join(process.resourcesPath, 'plantuml')
+      : join(__dirname, '../../.build/plantuml-runtime')
+    return {
+      runtimeDirectory,
+      plantumlJar: join(runtimeDirectory, 'plantuml-lgpl-1.2026.8.jar')
+    }
+  }
+})
 
 let mainWindow: BrowserWindow | null = null
+let appMayCloseWindows = false
 
-function createWindow(bounds?: { width: number; height: number }): void {
-  mainWindow = new BrowserWindow({
+function createWindow(bounds: { width: number; height: number }, startup: ReturnType<typeof createStartupCoordinator>): void {
+  const window = new BrowserWindow({
     width: bounds?.width ?? 1200,
     height: bounds?.height ?? 800,
     minWidth: 720,
@@ -68,27 +86,31 @@ function createWindow(bounds?: { width: number; height: number }): void {
       ...SECURITY_BASE
     }
   })
+  mainWindow = window
 
   // 最大化状态推送（自绘按钮图标切换）
-  mainWindow.on('maximize', () => bus.emit('trace:window-state', { maximized: true }))
-  mainWindow.on('unmaximize', () => bus.emit('trace:window-state', { maximized: false }))
+  window.on('maximize', () => bus.emit('trace:window-state', { maximized: true }))
+  window.on('unmaximize', () => bus.emit('trace:window-state', { maximized: false }))
 
   // 界面就绪后再显示（避免白屏闪烁）
-  mainWindow.on('ready-to-show', () => mainWindow?.show())
+  window.once('ready-to-show', () => {
+    window.show()
+    startup.onWindowShown()
+  })
 
   // 新窗口始终拒绝；合法 HTTP(S) 链接交给系统浏览器，协议校验在主进程再次执行。
-  mainWindow.webContents.setWindowOpenHandler(
+  window.webContents.setWindowOpenHandler(
     createExternalLinkWindowHandler(
       (url) => shell.openExternal(url),
       () => console.warn('[trace] Failed to open an external link in the system browser')
     )
   )
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  window.webContents.on('will-navigate', (event, url) => {
     if (process.env['ELECTRON_RENDERER_URL'] && url.startsWith(process.env['ELECTRON_RENDERER_URL'])) return
     event.preventDefault()
   })
 
-  mainWindow.on('close', () => {
+  window.on('close', (event) => {
     // 窗口状态持久化（LLD §5.3）
     const bounds = mainWindow?.getBounds()
     if (bounds) {
@@ -98,16 +120,22 @@ function createWindow(bounds?: { width: number; height: number }): void {
         maximized: mainWindow?.isMaximized() ?? false
       })
     }
+
+    // 未确认子进程退出时保留窗口，用户可再次尝试关闭。
+    if (process.platform !== 'darwin' && !appMayCloseWindows) {
+      event.preventDefault()
+      app.quit()
+    }
   })
 
-  mainWindow.on('closed', () => {
+  window.on('closed', () => {
     mainWindow = null
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    window.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    window.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
@@ -127,28 +155,50 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     console.log('[trace] main ready')
 
-    // 配置加载 + 已配置根目录激活（含 chokidar 启动）
+    // 只等待轻量配置加载；根目录初始化延后到窗口首显之后。
     await config.load()
-    await appService.activateConfiguredRoot()
 
-    // IPC 注册（事件转发到既有窗口）
-    registerIpc({
+    const winState = await config.getWindowState()
+    const startup = createStartupCoordinator({
+      activateConfiguredRoot: () => appService.activateConfiguredRoot(),
+      onRootActivationError: () => console.error('[trace] Configured plan library activation failed')
+    })
+
+    // IPC 先注册，renderer bootstrap 可在 ready-to-show 前安全排队等待根目录激活。
+    const disposeIpc = registerIpc({
       app: appService,
       storage,
       config,
       transfer,
       export: exportService,
       search,
+      plantuml: plantumlService,
+      startup,
       getWindow: () => mainWindow,
       log: (channel, code, detail) => {
         // 日志脱敏：仅通道/错误码/消息，不含计划正文（LLD §7.2）
         if (code !== 0) console.log(`[ipc] ${channel} code=${code} ${detail ?? ''}`)
       }
     })
+    const quitCoordinator = createApplicationQuitCoordinator({
+      shutdown: () => plantumlService.shutdown(),
+      disposeIpc,
+      quit: () => {
+        appMayCloseWindows = true
+        app.quit()
+      },
+      onShutdownFailure: (status) => {
+        console.error(`[trace] PlantUML shutdown not confirmed; quit prevented (${status?.errorCode ?? 'unknown'})`)
+        dialog.showErrorBox(
+          '溯源 Trace 尚未退出',
+          '本地 PlantUML 子进程尚未确认退出。为避免留下后台服务，Trace 保持运行；请稍后重试关闭。'
+        )
+      }
+    })
+    app.on('before-quit', (event) => quitCoordinator.beforeQuit(event))
 
-    // 窗口状态恢复
-    const winState = await config.getWindowState()
-    createWindow({ width: winState.width, height: winState.height })
+    // 首屏窗口创建链路不等待根目录激活、PlantUML 或全量搜索索引。
+    createWindow({ width: winState.width, height: winState.height }, startup)
     if (mainWindow && winState.maximized) mainWindow.maximize()
     void bus // 事件转发已在 registerIpc 内建立
   })
@@ -156,6 +206,10 @@ if (!app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => {
     watch.stop()
     search.stop()
-    if (process.platform !== 'darwin') app.quit()
+    if (process.platform === 'darwin') {
+      void plantumlService.stop()
+      return
+    }
+    if (!appMayCloseWindows) app.quit()
   })
 }

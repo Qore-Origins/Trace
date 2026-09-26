@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
 import type { PlantUmlStatusDto } from '../src/shared/plantuml-types'
 import type { PlantumlService } from '../src/main/services/plantuml-service'
+import { createStartupCoordinator } from '../src/main/services/startup-coordinator'
 
 const electronMocks = vi.hoisted(() => ({
   ipcMain: {
@@ -37,6 +38,18 @@ type RendererBridge = {
   on(event: string, callback: (payload: unknown) => void): () => void
 }
 type IpcDependencies = Parameters<typeof registerIpc>[0]
+type StartupGate = IpcDependencies['startup']
+type Step6Dependencies = IpcDependencies & { startup: StartupGate }
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
 
 function findHandler(channel: string): IpcHandler {
   const registered = electronMocks.ipcMain.handle.mock.calls.find(([name]) => name === channel)
@@ -44,14 +57,15 @@ function findHandler(channel: string): IpcHandler {
   return registered[1] as IpcHandler
 }
 
-function createPlantumlServiceMock() {
+function createPlantumlServiceMock(options: { configure?: () => Promise<PlantUmlStatusDto> } = {}) {
   const status: PlantUmlStatusDto = { state: 'running', port: 18080, errorCode: null }
   const listeners = new Set<(nextStatus: PlantUmlStatusDto) => void>()
   const unsubscribe = vi.fn((listener: (nextStatus: PlantUmlStatusDto) => void) => listeners.delete(listener))
   const service: PlantumlService = {
-    configure: vi.fn(async () => ({ ...status })),
+    configure: vi.fn(options.configure ?? (async () => ({ ...status }))),
     start: vi.fn(async () => ({ ...status })),
     stop: vi.fn(async () => ({ ...status })),
+    shutdown: vi.fn(async () => ({ ...status })),
     retry: vi.fn(async () => ({ ...status })),
     getStatus: vi.fn(() => ({ ...status })),
     onStatus: vi.fn((listener: (nextStatus: PlantUmlStatusDto) => void) => {
@@ -79,20 +93,28 @@ function createWindow() {
 function createDependencies(options: {
   plantuml?: IpcDependencies['plantuml']
   webContents?: ReturnType<typeof createWindow>
-} = {}): IpcDependencies {
+  startup?: StartupGate
+  app?: IpcDependencies['app']
+} = {}): Step6Dependencies {
   return {
-    app: {} as IpcDependencies['app'],
+    app: options.app ?? ({ bootstrap: vi.fn(async () => ({ rootConfigured: false })) } as unknown as IpcDependencies['app']),
     storage: {} as IpcDependencies['storage'],
     config: {} as IpcDependencies['config'],
     transfer: {} as IpcDependencies['transfer'],
     export: {} as IpcDependencies['export'],
     search: {} as IpcDependencies['search'],
     plantuml: options.plantuml,
+    startup: options.startup ?? {
+      onWindowShown: vi.fn(),
+      waitForRootActivation: async () => undefined,
+      waitForBootstrap: async () => undefined,
+      runAfterRootActivation: (operation) => Promise.resolve().then(operation)
+    },
     getWindow: () => options.webContents
       ? ({ webContents: options.webContents } as unknown as BrowserWindow)
       : null,
     log: vi.fn()
-  }
+  } as Step6Dependencies
 }
 
 describe('PlantUML IPC boundary', () => {
@@ -155,6 +177,24 @@ describe('PlantUML IPC boundary', () => {
     expect(plantuml.service.retry).toHaveBeenCalledTimes(1)
   })
 
+  it('contains PlantUML startup failures in a TraceResult without blocking bootstrap', async () => {
+    const plantuml = createPlantumlServiceMock({
+      configure: async () => { throw new Error('local runtime unavailable') }
+    })
+    const bootstrap = vi.fn(async () => ({ rootConfigured: false }))
+    dispose = registerIpc(createDependencies({
+      plantuml: plantuml.service,
+      app: { bootstrap } as unknown as IpcDependencies['app']
+    }))
+
+    const configureResult = await findHandler('plantuml:configure')({}, { enabled: true, port: 18080 })
+    const bootstrapResult = await findHandler('app:bootstrap')({}, undefined)
+
+    expect(configureResult).toMatchObject({ ok: false, code: 50, data: null })
+    expect(bootstrapResult).toMatchObject({ ok: true, data: { rootConfigured: false } })
+    expect(bootstrap).toHaveBeenCalledTimes(1)
+  })
+
   it.each([
     ['extra local path', { enabled: true, port: 18080, javaPath: 'C:\\private\\java.exe' }],
     ['remote URL', { enabled: true, port: 18080, url: 'https://example.invalid/plantuml' }],
@@ -163,6 +203,7 @@ describe('PlantUML IPC boundary', () => {
     ['missing port', { enabled: true }],
     ['invalid enabled type', { enabled: 'yes', port: 18080 }],
     ['fractional port', { enabled: true, port: 18080.5 }],
+    ['privileged port', { enabled: true, port: 1023 }],
     ['out of range port', { enabled: true, port: 65536 }],
     ['array payload', [{ enabled: true, port: 18080 }]],
     ['null payload', null]
@@ -180,6 +221,34 @@ describe('PlantUML IPC boundary', () => {
     const plantuml = createPlantumlServiceMock()
     dispose = registerIpc(createDependencies({ plantuml: plantuml.service }))
     const payload = Object.assign(Object.create({ inherited: true }) as object, { enabled: true, port: 18080 })
+
+    const result = await findHandler('plantuml:configure')({}, payload)
+
+    expect(result).toMatchObject({ ok: false, code: 20, data: null })
+    expect(plantuml.service.configure).not.toHaveBeenCalled()
+  })
+
+  it('rejects accessor configuration fields without invoking user-provided getters', async () => {
+    const plantuml = createPlantumlServiceMock()
+    dispose = registerIpc(createDependencies({ plantuml: plantuml.service }))
+    const enabledGetter = vi.fn(() => true)
+    const payload = Object.defineProperty({ port: 18080 }, 'enabled', {
+      enumerable: true,
+      get: enabledGetter
+    })
+
+    const result = await findHandler('plantuml:configure')({}, payload)
+
+    expect(result).toMatchObject({ ok: false, code: 20, data: null })
+    expect(enabledGetter).not.toHaveBeenCalled()
+    expect(plantuml.service.configure).not.toHaveBeenCalled()
+  })
+
+  it('rejects Symbol own keys on configuration payloads', async () => {
+    const plantuml = createPlantumlServiceMock()
+    dispose = registerIpc(createDependencies({ plantuml: plantuml.service }))
+    const secret = Symbol('extra')
+    const payload = { enabled: true, port: 18080, [secret]: 'unexpected' }
 
     const result = await findHandler('plantuml:configure')({}, payload)
 
@@ -233,5 +302,96 @@ describe('PlantUML IPC boundary', () => {
     expect(statusResult).toMatchObject({ ok: true, data: { state: 'stopped', port: 18080 } })
     expect(configureResult).toMatchObject({ ok: false, data: null })
     expect(retryResult).toMatchObject({ ok: false, data: null })
+  })
+
+  it('waits to configure and retry until the window has shown and root activation finishes', async () => {
+    const rootActivation = deferred<void>()
+    const startup = createStartupCoordinator({ activateConfiguredRoot: () => rootActivation.promise })
+    const plantuml = createPlantumlServiceMock()
+    dispose = registerIpc(createDependencies({ plantuml: plantuml.service, startup }))
+    const configurePromise = findHandler('plantuml:configure')({}, { enabled: true, port: 18080 })
+    const retryPromise = findHandler('plantuml:retry')({}, undefined)
+
+    expect(plantuml.service.configure).not.toHaveBeenCalled()
+    expect(plantuml.service.retry).not.toHaveBeenCalled()
+    startup.onWindowShown()
+    expect(plantuml.service.configure).not.toHaveBeenCalled()
+
+    rootActivation.resolve()
+    const [configureResult, retryResult] = await Promise.all([configurePromise, retryPromise])
+
+    expect(configureResult).toMatchObject({ ok: true, data: { state: 'running' } })
+    expect(retryResult).toMatchObject({ ok: true, data: { state: 'running' } })
+    expect(plantuml.service.configure).toHaveBeenCalledWith({ enabled: true, port: 18080 })
+    expect(plantuml.service.retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not launch a queued PlantUML configure after IPC disposal', async () => {
+    const rootActivation = deferred<void>()
+    const startup = createStartupCoordinator({ activateConfiguredRoot: () => rootActivation.promise })
+    const plantuml = createPlantumlServiceMock()
+    dispose = registerIpc(createDependencies({ plantuml: plantuml.service, startup }))
+    const configureHandler = findHandler('plantuml:configure')
+    const configurePromise = configureHandler({}, { enabled: true, port: 18080 })
+
+    dispose()
+    startup.onWindowShown()
+    rootActivation.resolve()
+    const result = await configurePromise
+
+    expect(result).toMatchObject({ ok: false, data: null })
+    expect(plantuml.service.configure).not.toHaveBeenCalled()
+    expect(plantuml.unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets bootstrap finish after root activation while PlantUML configure remains pending', async () => {
+    const rootActivation = deferred<void>()
+    const plantumlConfiguration = deferred<PlantUmlStatusDto>()
+    const order: string[] = []
+    const startup = createStartupCoordinator({
+      activateConfiguredRoot: () => {
+        order.push('root activation')
+        return rootActivation.promise
+      }
+    })
+    const plantuml = createPlantumlServiceMock({
+      configure: () => {
+        order.push('PlantUML configure')
+        return plantumlConfiguration.promise
+      }
+    })
+    const appBootstrap = vi.fn(async () => {
+      order.push('bootstrap')
+      return { rootConfigured: true }
+    })
+    dispose = registerIpc(createDependencies({
+      plantuml: plantuml.service,
+      startup,
+      app: { bootstrap: appBootstrap } as unknown as IpcDependencies['app']
+    }))
+    let configureSettled = false
+    const configurePromise = findHandler('plantuml:configure')({}, { enabled: true, port: 18080 })
+      .then((result) => {
+        configureSettled = true
+        return result
+      })
+    const bootstrapPromise = findHandler('app:bootstrap')({}, undefined)
+
+    expect(appBootstrap).not.toHaveBeenCalled()
+    expect(plantuml.service.configure).not.toHaveBeenCalled()
+    order.push('window.show')
+    startup.onWindowShown()
+    rootActivation.resolve()
+
+    const bootstrapResult = await bootstrapPromise
+    await vi.waitFor(() => expect(plantuml.service.configure).toHaveBeenCalledTimes(1))
+
+    expect(bootstrapResult).toMatchObject({ ok: true, data: { rootConfigured: true } })
+    expect(appBootstrap).toHaveBeenCalledTimes(1)
+    expect(configureSettled).toBe(false)
+    expect(order).toEqual(['window.show', 'root activation', 'PlantUML configure', 'bootstrap'])
+
+    plantumlConfiguration.resolve({ state: 'running', port: 18080, errorCode: null })
+    await configurePromise
   })
 })

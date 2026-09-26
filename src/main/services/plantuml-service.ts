@@ -17,6 +17,7 @@ export interface PlantumlChildProcess {
   on(event: 'error', listener: (error: Error) => void): this
   on(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): this
   once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): this
+  removeListener(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): this
 }
 
 export interface PlantumlSpawnOptions {
@@ -47,6 +48,7 @@ export interface PlantumlService {
   configure(configuration: { enabled: boolean; port: number }): Promise<PlantUmlStatusDto>
   start(port?: number): Promise<PlantUmlStatusDto>
   stop(): Promise<PlantUmlStatusDto>
+  shutdown(): Promise<PlantUmlStatusDto>
   retry(): Promise<PlantUmlStatusDto>
   getStatus(): PlantUmlStatusDto
   onStatus(listener: (status: PlantUmlStatusDto) => void): () => void
@@ -56,6 +58,7 @@ type PlantumlErrorCode = 'runtime_missing' | 'plantuml_jar_missing' | 'spawn_fai
 
 const STARTUP_TIMEOUT_MS = 12_000
 const CHILD_STOP_TIMEOUT_MS = 2_000
+const SHUTDOWN_EXIT_CONFIRMATION_TIMEOUT_MS = 5_000
 const HEALTH_CHECK_INTERVAL_MS = 250
 const HTTP_PROBE_TIMEOUT_MS = 1_000
 const MAX_HEALTH_RESPONSE_BYTES = 256 * 1024
@@ -166,6 +169,9 @@ export function createPlantumlService(dependencies: PlantumlServiceDependencies)
   let pendingTransition: Promise<PlantUmlStatusDto> | null = null
   let transitionQueue: Promise<void> = Promise.resolve()
   let transitionVersion = 0
+  let shutdownRequested = false
+  let shutdownComplete = false
+  let shutdownPromise: Promise<PlantUmlStatusDto> | null = null
   const stopRequestedChildren = new WeakSet<PlantumlChildProcess>()
   const listeners = new Set<(status: PlantUmlStatusDto) => void>()
 
@@ -331,18 +337,94 @@ export function createPlantumlService(dependencies: PlantumlServiceDependencies)
     return transition
   }
 
+  const confirmChildExit = (child: PlantumlChildProcess): Promise<boolean> => new Promise((resolveConfirmation) => {
+    let settled = false
+    const timeoutController = new AbortController()
+    const finish = (confirmed: boolean): void => {
+      if (settled) return
+      settled = true
+      child.removeListener('exit', onExit)
+      timeoutController.abort()
+      resolveConfirmation(confirmed || !isChildAlive(child))
+    }
+    const onExit = (): void => finish(true)
+    child.once('exit', onExit)
+    if (!isChildAlive(child)) {
+      finish(true)
+      return
+    }
+    void delay(SHUTDOWN_EXIT_CONFIRMATION_TIMEOUT_MS, timeoutController.signal).then(
+      () => finish(!isChildAlive(child)),
+      () => finish(!isChildAlive(child))
+    )
+  })
+
+  const shutdown = (): Promise<PlantUmlStatusDto> => {
+    if (shutdownPromise) return shutdownPromise
+    if (shutdownComplete) return Promise.resolve({ ...status })
+
+    shutdownRequested = true
+    const port = status.port ?? desiredConfiguration.port
+    const operation = (async (): Promise<PlantUmlStatusDto> => {
+      const stopped = await enqueueTransition({ enabled: false, port })
+      if (stopped.state === 'stopped' && activeChild === null) {
+        shutdownComplete = true
+        return stopped
+      }
+
+      const child = activeChild
+      if (!child || !isChildAlive(child)) {
+        if (activeChild === child) activeChild = null
+        startupAbortController?.abort()
+        startupAbortController = null
+        shutdownComplete = true
+        return publish(null, 'stopped', port)
+      }
+
+      try {
+        // Re-issue a forced termination request after the ordinary stop timeout;
+        // only the child's exit event or populated exit status confirms shutdown.
+        child.kill('SIGKILL')
+      } catch {
+        // Keep ownership and fail closed if exit cannot be confirmed.
+      }
+
+      const exitConfirmed = await confirmChildExit(child)
+      if (!exitConfirmed || isChildAlive(child)) {
+        return publish('stop_timeout', 'error', status.port ?? port)
+      }
+
+      if (activeChild === child) activeChild = null
+      startupAbortController?.abort()
+      startupAbortController = null
+      shutdownComplete = true
+      return publish(null, 'stopped', port)
+    })()
+
+    shutdownPromise = operation
+    void operation.finally(() => {
+      if (!shutdownComplete && shutdownPromise === operation) shutdownPromise = null
+    })
+    return operation
+  }
+
   return {
     configure(configuration) {
+      if (shutdownRequested) return Promise.resolve({ ...status })
       validatePlantumlPort(configuration.port)
       return enqueueTransition(configuration)
     },
     start(port = status.port ?? DEFAULT_PLANTUML_PORT) {
-      return this.configure({ enabled: true, port })
+      if (shutdownRequested) return Promise.resolve({ ...status })
+      validatePlantumlPort(port)
+      return enqueueTransition({ enabled: true, port })
     },
     stop() {
       return enqueueTransition({ enabled: false, port: status.port ?? DEFAULT_PLANTUML_PORT })
     },
+    shutdown,
     retry() {
+      if (shutdownRequested) return Promise.resolve({ ...status })
       if (!desiredConfiguration.enabled) return Promise.resolve({ ...status })
       return enqueueTransition({ ...desiredConfiguration }, true)
     },

@@ -13,7 +13,7 @@ class TestChildProcess extends EventEmitter implements PlantumlChildProcess {
   signalCode: NodeJS.Signals | null = null
   readonly pid = 4512
 
-  kill = vi.fn(() => {
+  kill = vi.fn((_signal?: NodeJS.Signals) => {
     this.killed = true
     this.exitCode = 0
     this.emit('exit', 0, 'SIGTERM')
@@ -325,6 +325,65 @@ describe('PlantUML child service', () => {
     await service.stop()
 
     expect(child.exitCode).toBe(0)
+  })
+
+  it('reissues a forced termination request after stop timeout and waits for the real exit event', async () => {
+    const child = new TestChildProcess()
+    child.kill.mockImplementation(() => {
+      child.killed = true
+      return true
+    })
+    let releaseStopTimeout: (() => void) | undefined
+    const stopTimeout = new Promise<void>((resolveTimeout) => {
+      releaseStopTimeout = resolveTimeout
+    })
+    const delay = vi.fn((milliseconds: number) => milliseconds === 2_000 ? stopTimeout : new Promise<void>(() => undefined))
+    const service = createPlantumlService({
+      spawn: vi.fn(() => child),
+      checkPlantumlEndpoint: vi.fn(async () => true),
+      delay,
+      resolveResources: () => ({ runtimeDirectory, plantumlJar })
+    })
+    await service.configure({ enabled: true, port: DEFAULT_PLANTUML_PORT })
+
+    const shuttingDown = service.shutdown()
+    await vi.waitFor(() => expect(releaseStopTimeout).toBeTypeOf('function'))
+    releaseStopTimeout?.()
+    await vi.waitFor(() => expect(child.kill).toHaveBeenCalledWith('SIGKILL'))
+    let shutdownSettled = false
+    void shuttingDown.then(() => { shutdownSettled = true })
+    await Promise.resolve()
+    expect(shutdownSettled).toBe(false)
+
+    child.exitCode = 0
+    child.emit('exit', 0, 'SIGTERM')
+    const status = await shuttingDown
+
+    expect(status).toMatchObject({ state: 'stopped', port: DEFAULT_PLANTUML_PORT, errorCode: null })
+  })
+
+  it('keeps stop_timeout when forced termination has no confirmed child exit', async () => {
+    const child = new TestChildProcess()
+    child.kill.mockImplementation(() => {
+      child.killed = true
+      return true
+    })
+    const spawn: PlantumlSpawn = vi.fn(() => child)
+    const service = createPlantumlService({
+      spawn,
+      checkPlantumlEndpoint: vi.fn(async () => true),
+      delay: vi.fn(async () => undefined),
+      resolveResources: () => ({ runtimeDirectory, plantumlJar })
+    })
+    await service.configure({ enabled: true, port: DEFAULT_PLANTUML_PORT })
+
+    const status = await service.shutdown()
+
+    expect(status).toMatchObject({ state: 'error', errorCode: 'stop_timeout' })
+    expect(child.kill).toHaveBeenNthCalledWith(1)
+    expect(child.kill).toHaveBeenNthCalledWith(2, 'SIGKILL')
+    expect(child.exitCode).toBeNull()
+    expect(spawn).toHaveBeenCalledTimes(1)
   })
 
   it('retains child ownership and blocks replacement when stop times out', async () => {

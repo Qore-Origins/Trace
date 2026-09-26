@@ -14,6 +14,7 @@ import { SearchService } from '../services/search-service'
 import { ensureDiaryRoot, ensureTodayPage, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { bus } from '../services/event-bus'
 import type { PlantumlService } from '../services/plantuml-service'
+import type { StartupCoordinator } from '../services/startup-coordinator'
 import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlStatusDto } from '../../shared/plantuml-types'
 
 interface Deps {
@@ -24,6 +25,7 @@ interface Deps {
   export: ExportService
   search: SearchService
   plantuml?: PlantumlService
+  startup: StartupCoordinator
   getWindow: () => BrowserWindow | null
   log: (channel: string, code: number, detail?: string) => void
 }
@@ -89,7 +91,7 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
 }
 
 export function registerIpc(deps: Deps): () => void {
-  const { app, storage, config, transfer, search, getWindow, log, plantuml } = deps
+  const { app, storage, config, transfer, search, getWindow, log, plantuml, startup } = deps
   const registeredChannels: ChannelName[] = []
   const unsubscribeListeners: Array<() => void> = []
   let disposed = false
@@ -100,7 +102,10 @@ export function registerIpc(deps: Deps): () => void {
 
   // ---------- app ----------
   reg('app:getAppInfo', () => app.getAppInfo())
-  reg('app:bootstrap', () => app.bootstrap())
+  reg('app:bootstrap', async () => {
+    await startup.waitForBootstrap()
+    return app.bootstrap()
+  })
   reg('app:setRootDir', (p) => app.setRootDir(p.dirPath, p.confirmed))
   reg('app:chooseDirectory', async () => {
     const r = await dialog.showOpenDialog(getWindow() ?? ({} as BrowserWindow), {
@@ -179,12 +184,19 @@ export function registerIpc(deps: Deps): () => void {
     return plantuml
   }
   const stoppedStatus: PlantUmlStatusDto = { state: 'stopped', port: DEFAULT_PLANTUML_PORT, errorCode: null }
+  const runAfterRootActivation = <T>(operation: () => T | Promise<T>): Promise<T> => {
+    if (disposed) return Promise.reject(new TraceError(ERR.STATE_MACHINE, 'IPC 已关闭'))
+    return startup.runAfterRootActivation(() => {
+      if (disposed) throw new TraceError(ERR.STATE_MACHINE, 'IPC 已关闭')
+      return operation()
+    })
+  }
   reg('plantuml:configure', (payload) => {
     const configuration = parsePlantumlConfiguration(payload)
-    return requirePlantuml().configure(configuration)
+    return runAfterRootActivation(() => requirePlantuml().configure(configuration))
   })
   reg('plantuml:getStatus', () => Promise.resolve(plantuml?.getStatus() ?? { ...stoppedStatus }))
-  reg('plantuml:retry', () => requirePlantuml().retry())
+  reg('plantuml:retry', () => runAfterRootActivation(() => requirePlantuml().retry()))
 
   // ---------- transfer ----------
   reg('transfer:exportPlan', (p) => transfer.exportPlan(p.path, p.saveTo))
