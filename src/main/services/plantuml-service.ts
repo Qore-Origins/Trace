@@ -196,21 +196,28 @@ export function createPlantumlService(dependencies: PlantumlServiceDependencies)
       activeChild = null
       return true
     }
-    const exited = new Promise<void>((resolveExit) => {
-      child.once('exit', () => resolveExit())
+    let resolveExit!: () => void
+    const exited = new Promise<void>((resolve) => {
+      resolveExit = resolve
     })
+    const onExit = (): void => resolveExit()
+    child.once('exit', onExit)
     const timeoutController = new AbortController()
-    const stopTimeout = delay(CHILD_STOP_TIMEOUT_MS, timeoutController.signal).catch(() => undefined)
-    if (!stopRequestedChildren.has(child)) {
-      stopRequestedChildren.add(child)
-      try {
-        child.kill()
-      } catch {
-        // Child details are intentionally not logged.
+    try {
+      const stopTimeout = delay(CHILD_STOP_TIMEOUT_MS, timeoutController.signal).catch(() => undefined)
+      if (!stopRequestedChildren.has(child)) {
+        stopRequestedChildren.add(child)
+        try {
+          child.kill()
+        } catch {
+          // Child details are intentionally not logged.
+        }
       }
+      await Promise.race([exited, stopTimeout])
+    } finally {
+      child.removeListener('exit', onExit)
+      timeoutController.abort()
     }
-    await Promise.race([exited, stopTimeout])
-    timeoutController.abort()
     if (!isChildAlive(child)) {
       if (activeChild === child) activeChild = null
       return true

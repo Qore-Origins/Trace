@@ -306,6 +306,7 @@ describe('PlantUML child service', () => {
 
   it('waits for its spawned child to exit before stop resolves', async () => {
     const child = new TestChildProcess()
+    const stopTimeoutSignals: AbortSignal[] = []
     child.kill.mockImplementation(() => {
       child.killed = true
       setTimeout(() => {
@@ -317,14 +318,20 @@ describe('PlantUML child service', () => {
     const service = createPlantumlService({
       spawn: vi.fn(() => child),
       checkPlantumlEndpoint: vi.fn(async () => true),
-      delay: vi.fn((milliseconds) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, milliseconds))),
+      delay: vi.fn((milliseconds, signal) => {
+        if (milliseconds === 2_000) stopTimeoutSignals.push(signal)
+        return new Promise<void>((resolveDelay) => setTimeout(resolveDelay, milliseconds))
+      }),
       resolveResources: () => ({ runtimeDirectory, plantumlJar })
     })
     await service.configure({ enabled: true, port: DEFAULT_PLANTUML_PORT })
+    const exitListenerBaseline = child.listenerCount('exit')
 
     await service.stop()
 
     expect(child.exitCode).toBe(0)
+    expect(stopTimeoutSignals[0]?.aborted).toBe(true)
+    expect(child.listenerCount('exit')).toBe(exitListenerBaseline)
   })
 
   it('reissues a forced termination request after stop timeout and waits for the real exit event', async () => {
@@ -397,9 +404,11 @@ describe('PlantUML child service', () => {
     const spawn: PlantumlSpawn = vi.fn(() => children.shift()!)
     let releaseFirstStopWait: (() => void) | undefined
     let stopWaitCount = 0
-    const delay = vi.fn((milliseconds: number) => {
+    const stopTimeoutSignals: AbortSignal[] = []
+    const delay = vi.fn((milliseconds: number, signal: AbortSignal) => {
       if (milliseconds !== 2_000) return Promise.resolve()
       stopWaitCount += 1
+      stopTimeoutSignals.push(signal)
       if (stopWaitCount > 1) return Promise.resolve()
       return new Promise<void>((resolveDelay) => {
         releaseFirstStopWait = resolveDelay
@@ -412,6 +421,7 @@ describe('PlantUML child service', () => {
       resolveResources: () => ({ runtimeDirectory, plantumlJar })
     })
     await service.configure({ enabled: true, port: 18080 })
+    const exitListenerBaseline = firstChild.listenerCount('exit')
 
     const changedPort = service.configure({ enabled: true, port: 18081 })
     await vi.waitFor(() => expect(releaseFirstStopWait).toBeTypeOf('function'))
@@ -419,10 +429,14 @@ describe('PlantUML child service', () => {
     const firstStopStatus = await changedPort
 
     expect(firstStopStatus).toMatchObject({ state: 'error', errorCode: 'stop_timeout' })
+    expect(stopTimeoutSignals[0].aborted).toBe(true)
+    expect(firstChild.listenerCount('exit')).toBe(exitListenerBaseline)
     expect(spawn).toHaveBeenCalledTimes(1)
 
     const retryWhileOldChildLives = await service.retry()
     expect(retryWhileOldChildLives).toMatchObject({ state: 'error', errorCode: 'stop_timeout' })
+    expect(stopTimeoutSignals[1].aborted).toBe(true)
+    expect(firstChild.listenerCount('exit')).toBe(exitListenerBaseline)
     expect(spawn).toHaveBeenCalledTimes(1)
 
     firstChild.exitCode = 0
