@@ -4,9 +4,9 @@
 >
 > 更新：2026-09-26（Codex：注释阅读态修复、前端 Task 10/11、任务三态反馈与离线 PlantUML 实施计划）
 
-## 当前任务：v0.17.0 双平台发布闭环（GitHub/Gitee Release 均已发布并核验）
+## 当前任务：v0.17.0 双平台发布闭环（已完成）
 
-- 发布版本已由用户确认采用 `v0.17.0`（相对 v0.15.1 按任务三态反馈、离线 PlantUML 两个功能域递增）。版本文档、累计改动文档、发行说明与安装包已准备并核验；合并后的主目录 typecheck、39 files / 388 tests、build 均通过。`main` 与 annotated tag 已通过 SSH 推送至 GitHub/Gitee；GitHub Release 安装包 SHA-256 与本地一致。Gitee Release 已创建并公开访问，正文与本地发行说明逐字匹配（换行归一化），tag/target/prerelease 正确；未上传安装包，Gitee 自动生成的 ZIP/TAR.GZ 源码归档已单独记录。当前只需完成发布账本、计划和交接文档回填并双端推送。
+- 发布版本已由用户确认采用 `v0.17.0`（相对 v0.15.1 按任务三态反馈、离线 PlantUML 两个功能域递增）。版本文档、累计改动文档、发行说明与安装包已准备并核验；合并后的主目录 typecheck、39 files / 388 tests、build 均通过。`main` 与 annotated tag 已通过 SSH 推送至 GitHub/Gitee；GitHub Release 安装包 SHA-256 与本地一致。Gitee Release 已创建并公开访问，正文与本地发行说明逐字匹配（换行归一化），tag/target/prerelease 正确；未上传安装包，Gitee 自动生成的 ZIP/TAR.GZ 源码归档已单独记录。发布账本、计划、累计改动文档与本交接均已同步，最终状态提交 `100f309` 已推送双端；精确 refs 以末尾核验为准。
 - Step6 shutdown API 针对性复核（用户已批准）已完成并释放服务边界：无代码修改。实现满足普通 stop timeout 后 SIGKILL 升级、仅在 exit 事件/已填 exitCode/signalCode 确认后返回 stopped、超时仍保留 active child 并 fail-closed 阻止 quit；shutdown 后 start/configure/retry 不会重新启动。子代理 `/root/plantuml_service_impl` 实跑 `npm run test -- --run test/plantuml-service.spec.ts test/startup-coordinator.spec.ts`（2 files / 29 tests passed）与 `npm run typecheck`（通过）；两文件 diff 为空。Step6 原有双阶段审查仍有效，无新代码需重新审查。
 
 - Step6 最终状态（2026-09-26）：HEAD `e13c01339029710be275db1da2d7498c3db123e0`（实测）；完整提交链为 `51eabbddc3e1264a2d5d2e770396521b78de03c9`、`828fd5f6938774c68a8a75ccc659368ea0662621`、`5cb011f0c0e2e57ea73c8930b04365f6a1b919b3`、`14507f2db71a6ecda7ec8f5718c143ab2df811e8`、`e13c01339029710be275db1da2d7498c3db123e0`。P2 exit listener 累积已按 TDD 修复；独立规格审查 Ready: Yes、独立质量/安全复审 Ready: Yes。协调者新跑 `npx vitest run test/plantuml-service.spec.ts`（25/25）、`npm run typecheck`、`npm run test`（35 files / 335 tests）、`npm run build`（renderer 7,154 modules）均通过；独立审查另跑 Step6 focused 58/58、typecheck 与 diff-check。IPC spec strict tsc 由实施代理报告通过。未做 Electron 人工验收。已接受限制：慢文件系统 `fs.access` 可能让重复 bootstrap 队列延迟 onboarding 恢复（Minor，未做 UNC 实测）；macOS 无窗口 stop timeout 风险为 P3，Windows-first 暂不阻塞且未做 macOS 实测。
@@ -43,8 +43,8 @@
   - 测试（步骤 1 文件除外）：test/plantuml-service.spec.ts、test/plantuml-runtime-lock.spec.ts、test/plantuml-renderer.spec.ts、test/note-md.spec.ts 由后续相应步骤另行登记。禁止修改 vendor/muya 源码及指纹。
   - 发布闭环：CLAUDE.md、docs/changelog/CHANGELOG.md、docs/lifecycle/05-部署上线 Deployment/发布说明 Release Notes.md、builds/release_notes/、builds/build_history.json、builds/release_history.json、builds/windows/、docs/Plan/README.md、本两计划及 HANDOFF-CURRENT.md。
   - Claude Code 避开上述精确边界与隔离分支未交接改动；边界拆分前先更新 HANDOFF。
-- 阶段区分：设计规格已获用户批准；任务三态修复已通过双阶段审查，但 Electron 亮/暗主题和鼠标/键盘三态人工验收仍待用户侧完成。PlantUML 步骤 1–8 均通过双阶段审查；Step6 shutdown API 针对性复核无缺口；Step9 smoke 诊断补强提交 `d1fb4a4` 已通过独立复审 Ready: Yes。`npm run typecheck`、`npm run test`（39 files / 388 tests）、`npm run build`、`npm run build:win`、包内容与 packaged Java smoke 全部已实跑通过。GitHub/Gitee main/tag 推送完成，两个 Release 均发布且正文/资产策略已核验；发布历史、计划与交接文件正在回填。
-- 下一步：完成本次发布记录文件更新，运行 JSON/diff 校验，提交并 SSH 推送到 GitHub/Gitee；核验双端 main 与 tag 后关闭 v0.17.0 发布计划。步骤 2 历史临时验证目录仍待精确复核与安全处理；任务三态 Electron 人工验收仍待用户侧完成。
+- 阶段区分：设计规格已获用户批准；任务三态修复已通过双阶段审查，但 Electron 亮/暗主题和鼠标/键盘三态人工验收仍待用户侧完成。PlantUML 步骤 1–8 均通过双阶段审查；Step6 shutdown API 针对性复核无缺口；Step9 smoke 诊断补强提交 `d1fb4a4` 已通过独立复审 Ready: Yes。`npm run typecheck`、`npm run test`（39 files / 388 tests）、`npm run build`、`npm run build:win`、包内容与 packaged Java smoke 全部已实跑通过。GitHub/Gitee main/tag 推送完成，两个 Release 均发布且正文/资产策略已核验；`builds/release_history.json` 与共享计划已同步。
+- 下一步：v0.17.0 发布无待办。独立后续项仍有任务三态 Electron 亮/暗主题及鼠标/键盘人工验收；步骤 2 历史临时验证目录待精确复核与安全处理。当前无凭据等待项。
 
 ## 当前在办：注释阅读态修复、真实性能基线与设计架构文档闭环（Codex）
 
