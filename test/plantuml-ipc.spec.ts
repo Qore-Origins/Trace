@@ -416,6 +416,126 @@ describe('PlantUML IPC boundary', () => {
     expect(app.setRootDir).toHaveBeenCalledWith('D:\\new-library', false)
   })
 
+  it('serializes duplicate bootstrap calls before failed-root recovery', async () => {
+    const rootActivation = deferred<void>()
+    const startup = createStartupCoordinator({ activateConfiguredRoot: () => rootActivation.promise })
+    startup.onWindowShown()
+    rootActivation.reject(new Error('root metadata is not writable'))
+    await startup.waitForBootstrap()
+
+    const existingRoot = 'C:\\existing-library'
+    const recoveredRoot = 'D:\\recovered-library'
+    const firstBootstrap = deferred<{
+      rootDir: string
+      rootConfigured: boolean
+      rootInvalid: boolean
+      indexState: string
+    }>()
+    const secondBootstrap = deferred<{
+      rootDir: string
+      rootConfigured: boolean
+      rootInvalid: boolean
+      indexState: string
+    }>()
+    let configuredRoot = existingRoot
+    let bootstrapCall = 0
+    const app = {
+      bootstrap: vi.fn(() => {
+        bootstrapCall += 1
+        if (bootstrapCall === 1) return firstBootstrap.promise
+        if (bootstrapCall === 2) return secondBootstrap.promise
+        return Promise.resolve({
+          rootDir: configuredRoot,
+          rootConfigured: true,
+          rootInvalid: false,
+          indexState: 'ready'
+        })
+      }),
+      setRootDir: vi.fn(async (dirPath: string) => {
+        configuredRoot = dirPath
+        return { rootDir: dirPath }
+      })
+    }
+    dispose = registerIpc(createDependencies({ app: app as unknown as IpcDependencies['app'], startup }))
+
+    const firstBootstrapResult = findHandler('app:bootstrap')({}, undefined)
+    const secondBootstrapResult = findHandler('app:bootstrap')({}, undefined)
+    const recoveryResult = findHandler('app:setRootDir')({}, {
+      dirPath: recoveredRoot,
+      confirmed: false
+    })
+
+    await vi.waitFor(() => expect(app.bootstrap).toHaveBeenCalledTimes(1))
+    expect(app.setRootDir).not.toHaveBeenCalled()
+
+    firstBootstrap.resolve({
+      rootDir: existingRoot,
+      rootConfigured: true,
+      rootInvalid: false,
+      indexState: 'ready'
+    })
+    expect(await firstBootstrapResult).toMatchObject({
+      ok: true,
+      data: { rootDir: existingRoot, rootConfigured: true, rootInvalid: true }
+    })
+
+    await vi.waitFor(() => expect(app.bootstrap).toHaveBeenCalledTimes(2))
+    expect(app.setRootDir).not.toHaveBeenCalled()
+    secondBootstrap.resolve({
+      rootDir: existingRoot,
+      rootConfigured: true,
+      rootInvalid: false,
+      indexState: 'ready'
+    })
+    expect(await secondBootstrapResult).toMatchObject({
+      ok: true,
+      data: { rootDir: existingRoot, rootConfigured: true, rootInvalid: true }
+    })
+
+    expect(await recoveryResult).toMatchObject({
+      ok: true,
+      data: { rootDir: recoveredRoot }
+    })
+    expect(app.setRootDir).toHaveBeenCalledWith(recoveredRoot, true)
+    expect(await findHandler('app:bootstrap')({}, undefined)).toMatchObject({
+      ok: true,
+      data: { rootDir: recoveredRoot, rootConfigured: true, rootInvalid: false }
+    })
+  })
+
+  it('rechecks failed-root recovery consent after a prior selection activates the root', async () => {
+    const rootActivation = deferred<void>()
+    const startup = createStartupCoordinator({ activateConfiguredRoot: () => rootActivation.promise })
+    startup.onWindowShown()
+    rootActivation.reject(new Error('root metadata is not writable'))
+    await startup.waitForBootstrap()
+
+    const firstRoot = 'D:\\first-recovery'
+    const secondRoot = 'E:\\second-recovery'
+    const firstSelection = deferred<{ rootDir: string }>()
+    const app = {
+      bootstrap: vi.fn(async () => ({ rootConfigured: true, rootInvalid: false })),
+      setRootDir: vi.fn(async (dirPath: string, confirmed: boolean) => {
+        if (!confirmed) throw new Error('switching an active root requires confirmation')
+        if (dirPath === firstRoot) return firstSelection.promise
+        return { rootDir: dirPath }
+      })
+    }
+    dispose = registerIpc(createDependencies({ app: app as unknown as IpcDependencies['app'], startup }))
+
+    const firstResult = findHandler('app:setRootDir')({}, { dirPath: firstRoot, confirmed: false })
+    await vi.waitFor(() => expect(app.setRootDir).toHaveBeenCalledTimes(1))
+    expect(app.setRootDir).toHaveBeenNthCalledWith(1, firstRoot, true)
+
+    const secondResult = findHandler('app:setRootDir')({}, { dirPath: secondRoot, confirmed: false })
+    expect(app.setRootDir).toHaveBeenCalledTimes(1)
+
+    firstSelection.resolve({ rootDir: firstRoot })
+    expect(await firstResult).toMatchObject({ ok: true, data: { rootDir: firstRoot } })
+    expect(await secondResult).toMatchObject({ ok: false, data: null })
+    expect(app.setRootDir).toHaveBeenNthCalledWith(2, secondRoot, false)
+  })
+
   it('lets bootstrap finish after root activation while PlantUML configure remains pending', async () => {
     const rootActivation = deferred<void>()
     const plantumlConfiguration = deferred<PlantUmlStatusDto>()

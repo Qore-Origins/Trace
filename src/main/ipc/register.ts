@@ -95,21 +95,31 @@ export function registerIpc(deps: Deps): () => void {
   const registeredChannels: ChannelName[] = []
   const unsubscribeListeners: Array<() => void> = []
   let disposed = false
+  let rootStateQueue = Promise.resolve()
   const reg = <K extends ChannelName>(name: K, handler: Handler<K>) => {
     ipcMain.handle(name, wrap(name, handler, log))
+    registeredChannels.push(name)
+  }
+  const regRootState = <K extends ChannelName>(name: K, handler: Handler<K>) => {
+    const wrapped = wrap(name, handler, log)
+    ipcMain.handle(name, (event, payload) => {
+      const operation = rootStateQueue.then(() => wrapped(event, payload as Channels[K]['req']))
+      rootStateQueue = operation.then(() => undefined, () => undefined)
+      return operation
+    })
     registeredChannels.push(name)
   }
 
   // ---------- app ----------
   reg('app:getAppInfo', () => app.getAppInfo())
-  reg('app:bootstrap', async () => {
+  regRootState('app:bootstrap', async () => {
     await startup.waitForBootstrap()
     const rootActivationStatus = startup.getRootActivationStatus()
     const info = await app.bootstrap()
     if (rootActivationStatus !== 'failed' || !info.rootConfigured) return info
     return { ...info, rootInvalid: true }
   })
-  reg('app:setRootDir', async (p) => {
+  regRootState('app:setRootDir', async (p) => {
     await startup.waitForRootActivation()
     const rootActivationStatus = startup.getRootActivationStatus()
     // The onboarding action after failed startup is explicit recovery consent; it only changes
