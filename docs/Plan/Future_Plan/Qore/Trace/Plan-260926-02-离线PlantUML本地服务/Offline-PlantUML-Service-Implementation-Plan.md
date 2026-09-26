@@ -272,9 +272,9 @@ v0.17.0 发布门槛与 Windows 包核验（2026-09-26）：`npm run typecheck`�
 - [x] 构建并归档 Windows x64 安装包；`builds/build_history.json`、`builds/release_notes/release_notes_v0.17.0.md`、累计改动文档与 lifecycle 发布说明已写入实测版本信息、字节数、SHA-256 和人工验收边界。
 - [x] 完成最终 diff 与验证复核，并将 Codex 隔离分支发布准备提交 `f769415676bc3ebe7676bbc4f6902b8206679a0f` 快进合入 `main`。用户未跟踪 `Resource/pic/`、`Resource/vid/` 均保留未动。
 - [x] 在合并后的主目录重跑 `npm run typecheck`、`npm run test`（39 files / 388 tests）与 `npm run build`（7,155 renderer modules）；主目录缺少 happy-dom 的安装环境经 npmmirror 同步后全绿。
-- [x] 通过 SSH 将 `main` 与 `v0.17.0` annotated tag 推送至 GitHub/Gitee；两端 `main` 均为回填提交 `8122a9e529b5cc05458ffaf29c7e3bf6482c7a90`，tag peeled commit 均为 `403fcb174667743f2979ba55b9d29b5ef35ce4f4`。
+- [x] 通过 SSH 将 `main` 与 `v0.17.0` annotated tag 推送至 GitHub/Gitee；最新远端复核：两端 `main` 均为 `3ce352b771fafaf50f9eef871700902a54bd56ab`，tag object 均为 `12941bdcf036aa9ff566fa236a01c8d307ea915b`、peeled commit 均为 `403fcb174667743f2979ba55b9d29b5ef35ce4f4`。
 - [x] 创建 GitHub Release `https://github.com/Qore-Origins/Trace/releases/tag/v0.17.0`，预发布；附加 Windows x64 安装包。GitHub API 实测附件为 210,577,133 bytes，digest `sha256:394dffa219b9329b150d19d33dd0887fc67619551ae7e38093df841e39b41699`，与本地一致；预发布版不能标成 Latest，GitHub 按 `latest=false` 发布。
-- [ ] 创建 Gitee Release，仅发布相同说明并链接 GitHub 下载，不上传安装包；当前 `GITEE_ACCESS_TOKEN` 未出现在进程环境，尚未发起 Gitee Release API 请求。发布后核验说明、无附件，并更新其 `builds/release_history.json` 记录。
+- [ ] 创建 Gitee Release，仅发布相同说明并链接 GitHub 下载，不上传安装包；`GITEE_TRACE_ACCESS_TOKEN` 仅存在于用户级环境，当前进程未继承，尚未发起 Gitee Release API 请求。该变量值对应聊天中暴露的凭据，不使用，建议撤销轮换；新凭据须仅由 Codex 进程环境安全提供。发布后核验说明、无附件，并更新其 `builds/release_history.json` 记录。
 - [x] 双平台 SSH 推送、GitHub Release 与资产已核验；Gitee 发布结果及最终跨文档回填仍待完成，不将整个双平台发布闭环提前标为完成。
 
     发布前命令：

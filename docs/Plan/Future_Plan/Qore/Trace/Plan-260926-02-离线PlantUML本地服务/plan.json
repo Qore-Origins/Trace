@@ -1,14 +1,14 @@
 {
   "format_version": "1",
   "created_at": "2026-09-26T10:37:19+08:00",
-  "updated_at": "2026-09-26T22:48:00+08:00",
+  "updated_at": "2026-09-26T22:55:06+08:00",
   "components": [
     {
       "id": "0170926d2e18499bbf64be92528f0001",
       "type": "note",
       "payload": {
-        "content": "v0.17.0 本地发布验收已完成：合并后的主目录重新验证 npm run typecheck、npm run test（39 files / 388 tests）、npm run build（7,155 renderer modules）；此前 npm run build:win 成功。Windows x64 安装包 210,577,133 bytes（200.82 MiB），SHA-256 394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699；包内 PlantUML runtime 逐文件校验与离线 SANDBOX smoke 通过。本地及 GitHub/Gitee 远端 main 为 8122a9e529b5cc05458ffaf29c7e3bf6482c7a90；v0.17.0 tag peeled commit 为 403fcb174667743f2979ba55b9d29b5ef35ce4f4。GitHub Release 已发布为 prerelease，附件大小和 API sha256 digest 与本地一致；因为 prerelease 不能标为 Latest，按 latest=false 发布。Gitee Release 尚未创建；当前进程没有 GITEE_ACCESS_TOKEN，等待安全地由进程环境提供。未手动安装交互 GUI，安装包未签名。",
-        "created_at": "2026-09-26T22:43:00+08:00"
+        "content": "v0.17.0 本地发布验收已完成：合并后的主目录重新验证 npm run typecheck、npm run test（39 files / 388 tests）、npm run build（7,155 renderer modules）；此前 npm run build:win 成功。Windows x64 安装包 210,577,133 bytes（200.82 MiB），SHA-256 394DFFA219B9329B150D19D33DD0887FC67619551AE7E38093DF841E39B41699；包内 PlantUML runtime 逐文件校验与离线 SANDBOX smoke 通过。本地及 GitHub/Gitee 远端 main 最新均为 3ce352b771fafaf50f9eef871700902a54bd56ab；v0.17.0 tag object 为 12941bdcf036aa9ff566fa236a01c8d307ea915b，peeled commit 为 403fcb174667743f2979ba55b9d29b5ef35ce4f4。GitHub Release 已发布为 prerelease，附件大小和 API sha256 digest 与本地一致；因为 prerelease 不能标为 Latest，按 latest=false 发布。Gitee Release 尚未创建；用户级 GITEE_TRACE_ACCESS_TOKEN 存在但当前进程未继承。该值为聊天中已暴露的凭据，不使用且建议撤销轮换；等待新凭据仅由进程环境安全提供。未手动安装交互 GUI，安装包未签名。",
+        "created_at": "2026-09-26T22:55:06+08:00"
       }
     },
     {
