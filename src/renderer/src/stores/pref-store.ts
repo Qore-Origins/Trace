@@ -37,6 +37,19 @@ export function migratePlantumlPreference<T extends { plantumlServer?: string }>
   }
 }
 
+function isPlantUmlMode(mode: unknown): mode is PlantUmlMode {
+  return mode === 'local' || mode === 'custom' || mode === 'off'
+}
+
+function restorePlantumlPort(port: unknown): number {
+  if (typeof port !== 'number') return DEFAULT_PLANTUML_PORT
+  try {
+    return validatePlantumlPort(port)
+  } catch {
+    return DEFAULT_PLANTUML_PORT
+  }
+}
+
 interface PrefState {
   language: Language
   dealDirection: DealDirection // 树展开/收拢的发牌波次方向（默认首张先发）
@@ -109,13 +122,18 @@ export const usePrefStore = create<PrefState>()(
             ? (stored as Partial<PrefState>)
             : {}
         ),
-      merge: (stored, current) => ({
-        ...current,
-        ...(stored !== null && typeof stored === 'object' && !Array.isArray(stored)
+      merge: (stored, current) => {
+        const restored = stored !== null && typeof stored === 'object' && !Array.isArray(stored)
           ? (stored as Partial<PrefState>)
-          : {}),
-        plantumlHydrated: false
-      }),
+          : {}
+        return {
+          ...current,
+          ...restored,
+          plantumlMode: isPlantUmlMode(restored.plantumlMode) ? restored.plantumlMode : 'local',
+          plantumlPort: restorePlantumlPort(restored.plantumlPort),
+          plantumlHydrated: false
+        }
+      },
       partialize: ({ plantumlHydrated: _plantumlHydrated, ...persistent }) => persistent,
       onRehydrateStorage: () => (state, error) => {
         if (!error) state?.markPlantumlHydrated()

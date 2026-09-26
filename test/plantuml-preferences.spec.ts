@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { StateStorage } from 'zustand/middleware'
 import { validatePlantumlPort } from '../src/shared/plantuml-types'
 import { migratePlantumlPreference, usePrefStore } from '../src/renderer/src/stores/pref-store'
 
 describe('PlantUML preferences', () => {
+  afterEach(() => {
+    usePrefStore.setState(usePrefStore.getInitialState(), true)
+  })
+
   it('新安装默认使用 Trace 本地服务端口', () => {
     expect(usePrefStore.getState()).toMatchObject({
       plantumlMode: 'local',
@@ -88,6 +92,68 @@ describe('PlantUML preferences', () => {
       })
       expect(written).toBeDefined()
       expect(written).not.toContain('"plantumlHydrated"')
+    } finally {
+      vi.unstubAllGlobals()
+      vi.resetModules()
+    }
+  })
+
+  it('恢复损坏的当前版本偏好时回退模式和端口，保留远程地址', async () => {
+    const server = 'https://plantuml.example/plantuml'
+    const saved = JSON.stringify({
+      state: {
+        plantumlMode: 'invalid',
+        plantumlPort: 1023,
+        plantumlServer: server,
+        plantumlHydrated: true,
+        theme: 'dark'
+      },
+      version: 1
+    })
+    const storage: StateStorage = {
+      getItem: () => saved,
+      setItem: () => undefined,
+      removeItem: () => undefined
+    }
+    vi.stubGlobal('localStorage', storage)
+    vi.resetModules()
+    try {
+      const { usePrefStore: restoredStore } = await import('../src/renderer/src/stores/pref-store')
+      expect(restoredStore.getState()).toMatchObject({
+        plantumlHydrated: true,
+        plantumlMode: 'local',
+        plantumlPort: 18080,
+        plantumlServer: server,
+        theme: 'dark'
+      })
+    } finally {
+      vi.unstubAllGlobals()
+      vi.resetModules()
+    }
+  })
+
+  it('恢复有效的当前版本偏好时保留模式、端口和远程地址', async () => {
+    const server = 'https://plantuml.example/plantuml'
+    const saved = JSON.stringify({
+      state: { plantumlMode: 'custom', plantumlPort: 18081, plantumlServer: server, theme: 'dark' },
+      version: 1
+    })
+    const storage: StateStorage = {
+      getItem: () => saved,
+      setItem: () => undefined,
+      removeItem: () => undefined
+    }
+    vi.stubGlobal('localStorage', storage)
+    vi.resetModules()
+    try {
+      const { usePrefStore: restoredStore } = await import('../src/renderer/src/stores/pref-store')
+      expect(restoredStore.getState()).toMatchObject({
+        plantumlHydrated: true,
+        plantumlMode: 'custom',
+        plantumlPort: 18081,
+        plantumlServer: server,
+        theme: 'dark'
+      })
     } finally {
       vi.unstubAllGlobals()
       vi.resetModules()
