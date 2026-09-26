@@ -23,6 +23,14 @@ type PlantumlSmokeSecurityModule = {
     cleanupTemporaryFiles?: () => Promise<void>
   }) => Promise<void>
   assertSafeSmokeTempDirectory?: (directory: string) => Promise<string>
+  runPlantumlSmokeWithCleanup?: (
+    runSmoke: () => Promise<unknown>,
+    cleanup: () => Promise<void>
+  ) => Promise<unknown>
+  runPlantumlRuntimeSmokeCli?: (
+    runSmoke: () => Promise<unknown>,
+    writeError: (diagnostic: string) => void
+  ) => Promise<number>
 }
 
 type PlantumlSmokeResponse = {
@@ -171,5 +179,50 @@ describe('bundled PlantUML runtime security contract', () => {
     await expect(smokeModule.assertSafeSmokeTempDirectory(outsideDirectory)).rejects.toThrow(/outside the system temporary directory/i)
     await expect(smokeModule.assertSafeSmokeTempDirectory(resolve(tmpdir(), 'unowned-smoke-directory')))
       .rejects.toThrow(/not created by this smoke test/i)
+  })
+
+  it('retains the primary smoke error and prints every cleanup failure through the production CLI path', async () => {
+    expect(smokeModule.runPlantumlSmokeWithCleanup).toBeTypeOf('function')
+    expect(smokeModule.runPlantumlRuntimeSmokeCli).toBeTypeOf('function')
+    if (!smokeModule.runPlantumlSmokeWithCleanup || !smokeModule.runPlantumlRuntimeSmokeCli || !smokeModule.cleanupPlantumlSmokeResources) return
+
+    const primaryFailure = new Error('health SVG assertion failed')
+    const stopFailure = new Error('child stop failed')
+    const canaryFailure = new Error('canary close failed')
+    const tempCleanupFailure = new Error('temporary directory cleanup failed')
+    const stopChild = vi.fn(async () => { throw stopFailure })
+    const closeCanary = vi.fn(async () => { throw canaryFailure })
+    const cleanupTemporaryFiles = vi.fn(async () => { throw tempCleanupFailure })
+
+    let observedFailure: unknown
+    await smokeModule.runPlantumlSmokeWithCleanup(
+      async () => { throw primaryFailure },
+      () => smokeModule.cleanupPlantumlSmokeResources?.({ stopChild, closeCanary, cleanupTemporaryFiles }) as Promise<void>
+    ).catch((error: unknown) => { observedFailure = error })
+
+    expect(observedFailure).toBeInstanceOf(AggregateError)
+    expect(observedFailure).toMatchObject({
+      cause: primaryFailure,
+      errors: [primaryFailure, expect.objectContaining({ errors: [stopFailure, canaryFailure, tempCleanupFailure] })]
+    })
+    expect(stopChild).toHaveBeenCalledOnce()
+    expect(closeCanary).toHaveBeenCalledOnce()
+    expect(cleanupTemporaryFiles).toHaveBeenCalledOnce()
+
+    const diagnostics: string[] = []
+    const exitCode = await smokeModule.runPlantumlRuntimeSmokeCli(
+      async () => { throw observedFailure },
+      (diagnostic) => diagnostics.push(diagnostic)
+    )
+    expect(exitCode).toBe(1)
+    expect(diagnostics).toHaveLength(1)
+    for (const expectedMessage of [
+      'health SVG assertion failed',
+      'child stop failed',
+      'canary close failed',
+      'temporary directory cleanup failed'
+    ]) {
+      expect(diagnostics[0]).toContain(expectedMessage)
+    }
   })
 })

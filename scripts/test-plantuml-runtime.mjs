@@ -172,6 +172,61 @@ export async function cleanupPlantumlSmokeResources({ stopChild: stopChildResour
   }
 }
 
+export async function runPlantumlSmokeWithCleanup(runSmoke, cleanup) {
+  let smokeResult
+  let primaryError
+  let hasPrimaryError = false
+  try {
+    smokeResult = await runSmoke()
+  } catch (error) {
+    primaryError = error
+    hasPrimaryError = true
+  }
+
+  let cleanupError
+  let hasCleanupError = false
+  try {
+    await cleanup()
+  } catch (error) {
+    cleanupError = error
+    hasCleanupError = true
+  }
+
+  if (hasPrimaryError && hasCleanupError) {
+    throw new AggregateError(
+      [primaryError, cleanupError],
+      'PlantUML runtime smoke and cleanup both failed',
+      { cause: primaryError }
+    )
+  }
+  if (hasPrimaryError) throw primaryError
+  if (hasCleanupError) throw cleanupError
+  return smokeResult
+}
+
+function formatDiagnosticError(error, indent = '') {
+  if (!(error instanceof AggregateError)) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    return `${indent}${message}`
+  }
+
+  const lines = [`${indent}${error.name}: ${error.message}`]
+  error.errors.forEach((nestedError, index) => {
+    lines.push(`${indent}  [${index + 1}] ${formatDiagnosticError(nestedError, `${indent}     `).trimStart()}`)
+  })
+  return lines.join('\n')
+}
+
+export async function runPlantumlRuntimeSmokeCli(runSmoke = runPlantumlRuntimeSmoke, writeError = console.error) {
+  try {
+    await runSmoke()
+    return 0
+  } catch (error) {
+    writeError(formatDiagnosticError(error))
+    return 1
+  }
+}
+
 async function readPreparedRuntime() {
   const manifestText = await readFile(RUNTIME_MANIFEST, 'utf8').catch(() => null)
   assert(manifestText !== null, 'Prepared PlantUML runtime is missing. Run `npm run plantuml:prepare` first.')
@@ -359,7 +414,7 @@ async function runPlantumlRuntimeSmoke() {
   const localFileSentinel = `TRACE_LOCAL_INCLUDE_${process.pid}_${Date.now()}`
   const urlSentinel = `TRACE_URL_INCLUDE_${process.pid}_${Date.now()}`
 
-  try {
+  await runPlantumlSmokeWithCleanup(async () => {
     localIncludePath = resolve(localCanaryDirectory, `local-${process.pid}-${Date.now()}.iuml`)
     const localFileContents = `rectangle "${localFileSentinel}"\n`
     await writeFile(localIncludePath, localFileContents, { encoding: 'utf8', flag: 'wx' })
@@ -395,7 +450,7 @@ async function runPlantumlRuntimeSmoke() {
 
     console.log('PlantUML bundled runtime smoke passed: local SVG, loopback-only listener, SANDBOX local/URL includes blocked, statistics disabled, child exit released its port.')
     console.log(`Bundled runtime: ${basename(RUNTIME_DIRECTORY)}; PlantUML: ${healthResponse.status}; port: ${port}`)
-  } finally {
+  }, async () => {
     await cleanupPlantumlSmokeResources({
       stopChild: child ? () => stopChild(child) : undefined,
       closeCanary: canary ? () => canary.close() : undefined,
@@ -410,13 +465,12 @@ async function runPlantumlRuntimeSmoke() {
         await rm(safeDirectory, { recursive: true, force: true })
       }
     })
-  }
+  })
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : ''
 if (invokedPath === import.meta.url) {
-  runPlantumlRuntimeSmoke().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 1
+  runPlantumlRuntimeSmokeCli().then((exitCode) => {
+    process.exitCode = exitCode
   })
 }
