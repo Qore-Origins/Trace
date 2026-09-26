@@ -13,6 +13,8 @@ import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
 import { ensureDiaryRoot, ensureTodayPage, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { bus } from '../services/event-bus'
+import type { PlantumlService } from '../services/plantuml-service'
+import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlStatusDto } from '../../shared/plantuml-types'
 
 interface Deps {
   app: AppService
@@ -21,11 +23,52 @@ interface Deps {
   transfer: TransferService
   export: ExportService
   search: SearchService
+  plantuml?: PlantumlService
   getWindow: () => BrowserWindow | null
   log: (channel: string, code: number, detail?: string) => void
 }
 
 type Handler<K extends ChannelName> = (payload: Channels[K]['req']) => Promise<Channels[K]['res']>
+
+interface PlantumlConfiguration {
+  enabled: boolean
+  port: number
+}
+
+function parsePlantumlConfiguration(payload: unknown): PlantumlConfiguration {
+  if (
+    payload === null ||
+    typeof payload !== 'object' ||
+    Array.isArray(payload) ||
+    Object.getPrototypeOf(payload) !== Object.prototype
+  ) {
+    throw new TraceError(ERR.VALIDATION, 'PlantUML 配置载荷无效')
+  }
+
+  const keys = Reflect.ownKeys(payload)
+  if (keys.length !== 2 || !keys.includes('enabled') || !keys.includes('port')) {
+    throw new TraceError(ERR.VALIDATION, 'PlantUML 配置仅允许 enabled 和 port')
+  }
+
+  const enabledDescriptor = Object.getOwnPropertyDescriptor(payload, 'enabled')
+  const portDescriptor = Object.getOwnPropertyDescriptor(payload, 'port')
+  if (!enabledDescriptor || !('value' in enabledDescriptor) || !portDescriptor || !('value' in portDescriptor)) {
+    throw new TraceError(ERR.VALIDATION, 'PlantUML 配置载荷无效')
+  }
+
+  const { value: enabled } = enabledDescriptor
+  const { value: port } = portDescriptor
+  if (typeof enabled !== 'boolean' || typeof port !== 'number' || !Number.isInteger(port)) {
+    throw new TraceError(ERR.VALIDATION, 'PlantUML 配置载荷无效')
+  }
+
+  try {
+    validatePlantumlPort(port)
+  } catch {
+    throw new TraceError(ERR.VALIDATION, 'PlantUML 端口必须为 1024–65535 的整数')
+  }
+  return { enabled, port }
+}
 
 // wrapHandler：TraceError/未知异常 → { ok:false, code, message }；日志只含通道+错误码+消息（不含计划正文）
 // 未知异常（INTERNAL）额外打完整栈到主进程控制台——否则真实原因被笼统消息吞掉无法定位
@@ -45,10 +88,14 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
   }
 }
 
-export function registerIpc(deps: Deps): void {
-  const { app, storage, config, transfer, search, getWindow, log } = deps
+export function registerIpc(deps: Deps): () => void {
+  const { app, storage, config, transfer, search, getWindow, log, plantuml } = deps
+  const registeredChannels: ChannelName[] = []
+  const unsubscribeListeners: Array<() => void> = []
+  let disposed = false
   const reg = <K extends ChannelName>(name: K, handler: Handler<K>) => {
     ipcMain.handle(name, wrap(name, handler, log))
+    registeredChannels.push(name)
   }
 
   // ---------- app ----------
@@ -126,6 +173,19 @@ export function registerIpc(deps: Deps): void {
   reg('search:query', (p) => Promise.resolve(search.query(p.keywords)))
   reg('search:getStatus', () => Promise.resolve({ state: search.getState(), indexed: search.indexedCount }))
 
+  // ---------- PlantUML 本地服务 ----------
+  const requirePlantuml = (): PlantumlService => {
+    if (!plantuml) throw new TraceError(ERR.STATE_MACHINE, 'PlantUML 服务尚未初始化')
+    return plantuml
+  }
+  const stoppedStatus: PlantUmlStatusDto = { state: 'stopped', port: DEFAULT_PLANTUML_PORT, errorCode: null }
+  reg('plantuml:configure', (payload) => {
+    const configuration = parsePlantumlConfiguration(payload)
+    return requirePlantuml().configure(configuration)
+  })
+  reg('plantuml:getStatus', () => Promise.resolve(plantuml?.getStatus() ?? { ...stoppedStatus }))
+  reg('plantuml:retry', () => requirePlantuml().retry())
+
   // ---------- transfer ----------
   reg('transfer:exportPlan', (p) => transfer.exportPlan(p.path, p.saveTo))
   reg('transfer:exportPdf', (p) => deps.export.exportPdf(p.path, p.saveTo))
@@ -159,12 +219,31 @@ export function registerIpc(deps: Deps): void {
 
   // ---------- 事件转发：bus → 渲染器 ----------
   const forward = <K extends keyof TraceEvents>(event: K): void => {
-    bus.on(event, (payload) => {
-      getWindow()?.webContents.send(event, payload)
+    const unsubscribe = bus.on(event, (payload) => {
+      const window = getWindow()
+      if (!window || window.webContents.isDestroyed()) return
+      window.webContents.send(event, payload)
     })
+    unsubscribeListeners.push(unsubscribe)
   }
   forward('trace:plan-changed')
   forward('trace:save-status')
   forward('trace:fs-external-change')
   forward('trace:index-status')
+
+  if (plantuml) {
+    const unsubscribe = plantuml.onStatus((status) => {
+      const window = getWindow()
+      if (!window || window.webContents.isDestroyed()) return
+      window.webContents.send('trace:plantuml-status', { ...status })
+    })
+    unsubscribeListeners.push(unsubscribe)
+  }
+
+  return () => {
+    if (disposed) return
+    disposed = true
+    for (const unsubscribe of unsubscribeListeners.splice(0)) unsubscribe()
+    for (const channel of registeredChannels.splice(0)) ipcMain.removeHandler(channel)
+  }
 }

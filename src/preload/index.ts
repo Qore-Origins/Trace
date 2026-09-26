@@ -5,12 +5,14 @@ import type { ChannelName, Channels, EventName, TraceBridge, TraceResult } from 
 import type { TraceEventsContract } from '../shared/event-types'
 
 const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:', 'transfer:', 'window:', 'search:', 'diary:']
+const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getStatus', 'plantuml:retry'])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',
   'trace:fs-external-change',
   'trace:index-status',
-  'trace:window-state'
+  'trace:window-state',
+  'trace:plantuml-status'
 ])
 
 const bridge = {
@@ -18,7 +20,11 @@ const bridge = {
     channel: K,
     ...args: Channels[K]['req'] extends void ? [] : [Channels[K]['req']]
   ): Promise<TraceResult<Channels[K]['res']>> => {
-    if (!ALLOWED_PREFIXES.some((p) => channel.startsWith(p))) {
+    const isPlantumlChannel = typeof channel === 'string' && channel.startsWith('plantuml:')
+    if (
+      typeof channel !== 'string' ||
+      (isPlantumlChannel ? !PLANTUML_CHANNELS.has(channel) : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
+    ) {
       return { ok: false, code: 50, message: '通道未开放', data: null }
     }
     return ipcRenderer.invoke(channel, args[0])

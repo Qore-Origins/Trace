@@ -1,6 +1,7 @@
 // IPC 白名单契约（唯一事实源：接口设计文档 API Design）
 // 渲染器/主进程共享类型；新增能力：先加类型 → 主进程注册 → preload 暴露
 import type { PlanDocument, Component, TaskItem } from './plan-types'
+import type { PlantUmlStatusDto } from './plantuml-types'
 
 // ---------- 统一响应信封 ----------
 
@@ -106,6 +107,10 @@ export interface Channels {
   // search（溯源检索）
   'search:query': { req: { keywords: string[] }; res: SearchHit[] }
   'search:getStatus': { req: void; res: { state: 'building' | 'ready' | 'error'; indexed: number } }
+  // PlantUML 本地服务（路径和远程地址由主进程/偏好层管理，不接受 renderer 传入）
+  'plantuml:configure': { req: { enabled: boolean; port: number }; res: PlantUmlStatusDto }
+  'plantuml:getStatus': { req: void; res: PlantUmlStatusDto }
+  'plantuml:retry': { req: void; res: PlantUmlStatusDto }
   // config
   'config:getWindow': { req: void; res: { width: number; height: number; maximized: boolean } }
   'config:setWindow': { req: { width: number; height: number; maximized: boolean }; res: null }
