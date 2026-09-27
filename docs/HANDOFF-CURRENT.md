@@ -10,7 +10,7 @@
 - 设计规格已由用户确认，执行计划为 `docs/Plan/Future_Plan/Qore/Trace/Plan-260928-01-日记补建与计划命名模板/Diary-Backfill-and-Plan-Templates-Implementation-Plan.md`；当前等待用户审阅该计划后开始代码实现。
 - 只读调查发现：现有 `diary:ensure` 仅由 `DiaryView` 挂载触发，旧模板心情默认 50 且被按数值统计；计划创建对话框原样提交输入文本。用户资源 `Resource/pic/`、`Resource/vid/` 保持未跟踪且不触碰。
 - 当前文件所有权：Codex 独占本任务设计规格、共享实施计划目录内 Markdown/JSON、`docs/Plan/README.md` 与本 HANDOFF；当前不改产品代码。代码文件边界按实施计划分批登记，须先在 HANDOFF 与任务清单中登记执行者后再开始。
-- 阶段区分：设计规格已确认；实施计划已形成但待用户审阅；尚未实现或验证。当前 HEAD `329eeb8`（以 `git log` 实测）；分支 `main` ahead 1；`Resource/pic/`、`Resource/vid/` 为用户未跟踪资源，不触碰。
+- 阶段区分：设计规格已确认；实施计划已形成但待用户审阅；尚未实现或验证。计划登记提交 `c5ed4f5`（`git log` 实测），提交后 `main` ahead 2；此前功能代码基线为 `329eeb8`。`Resource/pic/`、`Resource/vid/` 为用户未跟踪资源，不触碰。
 - 下一步：用户审阅实施计划，特别确认移除内置模板时使用显式停用名单的配置语义；确认后登记第一个代码任务的文件所有权并启动子代理驱动实施。
 - 当前文档验证：`git diff --check` 通过；新 `plan.json` 经 PowerShell `ConvertFrom-Json` 解析成功，3 个组件、5 个队列任务，ID 唯一。产品 typecheck/test/build 未运行（当前仅修改计划文档）。
 - 等待：用户审阅计划，重点确认内置默认模板可停用的配置语义。
