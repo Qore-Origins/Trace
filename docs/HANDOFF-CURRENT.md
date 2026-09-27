@@ -2,25 +2,25 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-27（Codex：正在准备 v0.18.0 双平台发布）
+> 更新：2026-09-27（Codex：v0.18.0 版本提交已完成，正在推送与发布）
 
 ## 当前任务：v0.18.0 双平台发布
 
-- 最新状态（2026-09-27）：用户授权“构建新版本，推送并发布”。发布版本为 `0.18.0`（公测版 Beta 7），主交付为居中液态胶囊页面导航。发布前远端 `origin/main` 与 `gitee/main` 均实测为 `495a9e4ba542899d05e6e1e58818d5505341656a`；本地当时 HEAD `d03aca48850f24418932f310d677698aee215b35`、ahead 32；`v0.18.0` 标签当时未占用。
+- 最新状态（2026-09-27）：用户授权“构建新版本，推送并发布”。发布版本为 `0.18.0`（公测版 Beta 7），主交付为居中液态胶囊页面导航。初始远端 `origin/main` 与 `gitee/main` 均实测为 `495a9e4ba542899d05e6e1e58818d5505341656a`；版本准备提交 `d91ece4`（`chore(release): prepare v0.18.0`）已创建，本地 `main` 相对该基线领先 33 个提交；v0.18.0 的 Git tag 与两端 Release 初始均不存在。
 
-- 当前阶段：版本元数据、完整验证、安装包构建/验收均完成；尚未提交、推送、创建 Release。发布计划真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-02-v0.18.0双平台发布/Trace-v0.18.0-Release-Plan.md` 与同目录 `plan.json`。
+- 当前阶段：版本元数据、完整验证、安装包构建/验收和版本准备提交均完成；尚未创建 annotated tag、推送或创建 Release。发布计划真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-02-v0.18.0双平台发布/Trace-v0.18.0-Release-Plan.md` 与同目录 `plan.json`。
 - 文件所有权：Codex 独占 `package.json`、`package-lock.json`、`electron-builder.yml`（仅限打包输入边界）、`test/plantuml-packaging.spec.ts`、`AGENTS.md`、`CLAUDE.md`、`docs/changelog/CHANGELOG.md`、累计改动文档、lifecycle Release Notes、`builds/release_notes/release_notes_v0.18.0.md`、`builds/build_history.json`、`builds/release_history.json`、`docs/Plan/README.md`、本计划 MD/JSON、`docs/HANDOFF-CURRENT.md` 及新安装包归档路径。只修复本次安装包意外纳入 QA artifacts 的打包范围，不改产品实现代码。
 - 本地未跟踪 `Resource/pic/`、`Resource/vid/` 是用户资源，必须保留且不得暂存；其他 worktree 不触碰。唯一归档安装包：`builds/windows/Trace_0.18.0_beta_20260927_01.exe`，210,584,915 bytes / 200.83 MiB，SHA-256 `EBDF485209FEFB2FB3E9922BC091AE14C192D26A7E0FDE13F3FCC9867017855B`。包版本 FileVersion/ProductVersion 为 0.18.0，未签名。
 - 首次 `npm run build:win` 曾因原 `electron-builder.yml` 的 `out/**/*` 将 QA profile/cache/log 纳入 `app.asar` 而拒绝（installer 526,840,688 bytes）；这些 QA 文件均保留原样。已收紧 files 输入到三个产品构建目录，并以 `test/plantuml-packaging.spec.ts` 锁定。修正后安装包 210,584,915 bytes，`app.asar` 无项目 QA profile/cache/log。
 - 验证：版本更新后 `npm run typecheck` 通过；全量 `npm run test` 40 files / 397 tests；`npm run build` renderer 7,156 modules；`npm run build:win` 通过。定向 packaging spec 5/5，回归先 RED 后 GREEN。PlantUML runtime 148 文件 hash 全匹配；打包路径 Java 离线 SVG，SANDBOX/loopback/statistics/process-exit smoke 通过。隔离打包 Electron 真窗验证空库 onboarding、首个根目录激活、全文搜索和回溯到原注释组件通过；使用临时 APPDATA/空库，从 `release/win-unpacked` 启动，未单独运行 NSIS 安装交互，临时数据已验证路径后清理。
-- 下一步：复核最终 diff、JSON 与用户资源清单；提交版本发布准备内容并创建 annotated tag `v0.18.0`，通过 SSH 推送 `main` + tag 到 GitHub/Gitee。随后 GitHub 附安装包、Gitee 仅发布说明，核验双方并同步最终账本/计划/HANDOFF，提交推送收尾记录。
-- 等待：无；Gitee 凭据已存在于机器环境变量，GitHub CLI 已认证（只核验可用性，未读写 token）。
-- 当前 HEAD 尚为发布准备改动提交前基线 `d03aca48850f24418932f310d677698aee215b35`；发布准备文档/版本/打包配置尚未提交。旧 worktree `.worktrees/codex/trace-task10-11` 与 `Resource/pic/`、`Resource/vid/` 未触碰。
-- 还差：最终 diff/JSON 自审、版本提交与 annotated tag、双端 SSH push、GitHub/Gitee Release 创建/公开核验、发布账本/HANDOFF 收尾提交及双端 refs 核验。
+- 下一步：创建指向 `d91ece4` 的 annotated tag `v0.18.0`，通过 SSH 将 `main` 和 tag 推至 GitHub/Gitee，并核验双端 refs；随后 GitHub 附安装包、Gitee 仅发布说明，核验双方并同步最终账本/计划/HANDOFF，提交并推送收尾记录。
+- 等待：无。Gitee token 在用户与系统环境变量中均已配置且值一致（值未输出）；当前 PowerShell 未继承进程变量，调用时将从环境作用域临时读取。GitHub CLI 已认证，凭据未读取或打印。
+- 当前发布内容提交为 `d91ece4`，远端仍在上述基线，工作区状态须以每个推送前后的 `git status --short --branch` 实测；未跟踪用户资源 `Resource/pic/`、`Resource/vid/` 未触碰且不得暂存。旧 worktree `.worktrees/codex/trace-task10-11` 未触碰。
+- 还差：annotated tag、双端 SSH push、GitHub/Gitee Release 创建与公开核验、发布账本/计划/HANDOFF 收尾同步，以及最终双端 refs 核验。
 
 ### v0.18.0 发布计划入口
 
-- 本地 `main` 含此前未推送提交；本轮发布覆盖的双端基线之后提交已审阅，产品功能仅为已验收的页面导航。发布前仍需核对待推送 diff/commit 列表，`Resource/pic/`、`Resource/vid/` 不进入提交。
+- 本地 `main` 含此前未推送提交；已检查 `origin/main..HEAD` 的提交列表（发布准备提交前 32 个），产品实现增量为已验收的居中页面导航，其余为该功能的测试、合并和协作记录。`Resource/pic/`、`Resource/vid/` 不进入提交。
 - 用户规定：按本次/上次版本差距确定版本号；先更新版本，再编译；安装包发 GitHub Release；Gitee 因 100 MB 限制只发 Release Notes；SSH 推送可用；令牌一律脱敏，不可输出。
 
 ### 前次交接快照（仅供追溯；当前状态以上方“最新状态”为准）

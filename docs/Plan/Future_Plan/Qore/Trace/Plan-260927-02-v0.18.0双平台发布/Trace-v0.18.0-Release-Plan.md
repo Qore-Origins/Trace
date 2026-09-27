@@ -47,7 +47,8 @@
 
 ### 3. 双端推送
 
-- [ ] 提交经验证的版本与发行说明元数据；创建指向该提交的 annotated tag `v0.18.0`。
+- [x] 提交经验证的版本与发行说明元数据：`d91ece4`（`chore(release): prepare v0.18.0`）。
+- [ ] 在该版本提交创建 annotated tag `v0.18.0`。
 - [ ] 通过 SSH 推送 `main` 和 tag 至 `origin`（GitHub）与 `gitee`，然后用 `git ls-remote` 核实两端 refs 完全一致。
 
 ### 4. 创建并核验 Release、收尾账本
@@ -72,4 +73,5 @@
 | 版本元数据与文档 | 已更新至 0.18.0 / Beta 7；发行说明已填入构建和验收数据 |
 | typecheck / test / build / build:win | 通过；40 files / 397 tests；renderer 7,156 modules；NSIS 构建成功 |
 | Windows x64 包 | 210,584,915 bytes / 200.83 MiB；SHA-256 `EBDF485209FEFB2FB3E9922BC091AE14C192D26A7E0FDE13F3FCC9867017855B`；Package GUI smoke 通过；NSIS 安装交互未执行 |
+| 版本准备提交 | `d91ece4`（`chore(release): prepare v0.18.0`）；`Resource/pic/`、`Resource/vid/` 未纳入 |
 | GitHub / Gitee 发布 | 尚未执行 |
