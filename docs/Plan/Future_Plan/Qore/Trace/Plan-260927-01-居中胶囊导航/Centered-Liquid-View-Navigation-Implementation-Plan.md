@@ -10,7 +10,7 @@
 
 ## 当前状态与已定设计
 
-- 状态：实施中（2026-09-27；用户选择子代理驱动）。步骤 1 已完成并通过双阶段复审：真实 TopBar/store happy-dom 测试由 `/root/nav_task1_red` 提交 `bb4d9107e9d20976f58b22f010615d0c78b6200a`，P3 结构耦合修订提交 `172823fb6dc78671734950c9ba9f3c77ad7a786e`；定向测试为 1 项通过、2 项预期 RED（导航名称与唯一 `aria-current`）。步骤 2 实现已由 `/root/nav_task2_impl` 提交 `241275b1864f45476cce47696374a751f7404620`；定向测试 3/3、`npm run typecheck` 通过，规格审查通过，质量审查待完成。设计方向已经由用户确认：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
+- 状态：实施中（2026-09-27；用户选择子代理驱动）。步骤 1、2 均已完成并通过双阶段审查。Task1 真实 TopBar/store 测试提交 `bb4d9107e9d20976f58b22f010615d0c78b6200a`，P3 结构断言修订 `172823fb6dc78671734950c9ba9f3c77ad7a786e`；目标 RED 为 1 项按钮行为通过、2 项预期无障碍失败。Task2 实现提交 `241275b1864f45476cce47696374a751f7404620`，四文件范围审查通过，定向测试 3/3 与 `npm run typecheck` 经实施者及协调者复验通过。Task3 `/root/nav_task3_impl` 已完成只读预检并确认需将已释放的 `TopBar.tsx` 顺序重新登记；四文件最终边界等待本次状态同步和 kickoff，尚无代码改动。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
 - 顶栏保持一行 48px；菜单留在左区，中轴胶囊约 226 × 42px，搜索与窗口控制留在右区。
 - 页面切换由现有 `setView` 立即生效；唯一选中项及 `aria-current="page"` 均由 `view` 派生。动效不能延迟或排队页面切换。
 - 滑块在目标段间柔弹移动并有方向感的轻微拉伸/回落；快速连续点击时从最新位置重新定向。启用系统减少动态效果时取消弹性动效。
@@ -53,7 +53,7 @@ npm run test -- test/page-navigation.spec.tsx
 - [x] 在 `TopBar.tsx` 中继续从 `useUiStore` 读取 `view` 和 `setView`，通过薄容器把既有 `diary.navPlans`、`diary.nav`、`diary.navMemories` 以及新导航名称传给组件。
 - [x] 在两份 locale 词典中对齐新增 `navigation.pages`：中文「页面导航」、英文 “Page navigation”；不得再把 `menu.view` 用作页面导航名称。
 - [x] 运行组件测试并检查不同 view 下的唯一活动态、按钮标签、切换回调和 locale 词典类型。
-- [ ] 独立规格审查与代码质量审查均通过；若发现问题，交回当前实施代理修复并复审后再释放文件边界。
+- [x] 独立规格审查与代码质量审查均通过；若发现问题，交回当前实施代理修复并复审后再释放文件边界。
 
 ```text
 npm run test -- test/page-navigation.spec.tsx
@@ -69,6 +69,7 @@ npm run typecheck
 - [ ] 轨道、边框、滑块、文字、hover、focus-visible 均使用现有语义 token；确保导航和内部按钮属于 no-drag 白名单。减少动态效果下滑块不执行弹性/拉伸动画，但状态仍即时切换。
 - [ ] 在 `test/frontend-foundation-css.spec.ts` 覆盖导航专属样式、token 使用、滑块过渡、焦点可见、减少动态效果和 no-drag；在 `test/app-shell.spec.tsx` 更新/扩充紧凑顶栏契约，确保现有一行标签及搜索可收缩约束不回退。
 - [ ] 运行样式与顶栏定向测试，检查新规则没有新增硬编码颜色或破坏现有 CSS 契约。
+- [ ] 独立规格审查与代码质量审查均通过；若发现问题，交回当前实施代理修复并复审后再释放文件边界。
 
 ```text
 npm run test -- test/frontend-foundation-css.spec.ts test/app-shell.spec.tsx
