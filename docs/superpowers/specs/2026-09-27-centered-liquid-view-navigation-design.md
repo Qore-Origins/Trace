@@ -2,7 +2,7 @@
 
 日期：2026-09-27
 
-状态：用户已选择 B「居中主导航」与 C「柔弹回落」，并于 2026-09-27 确认继续；实施计划已建立，尚未实施。
+状态：用户已选择 B「居中主导航」与 C「柔弹回落」，并选择子代理驱动。执行计划步骤 1、2 已完成并通过双阶段审查；步骤 3 已登记 `/root/nav_task3_impl` 与四文件边界，待共享状态同步后 kickoff。Task3 尚无代码改动。
 
 ## 背景与现状
 
@@ -95,4 +95,4 @@ Trace 顶栏同时放置「文件 / 编辑 / 查看 / 帮助」菜单和「计�
 
 ## 当前协作边界
 
-规格由用户确认后，已建立 `docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/` 执行计划并同步 `plan.json` 与索引。实施前重新核对 git 状态，在 HANDOFF 登记确切代码/测试文件所有权，并在 `.worktrees/codex/centered-liquid-view-navigation` 隔离开发。当前未修改正式代码、未创建实施 worktree，也未推送或发布。
+规格由用户确认后，已建立 `docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/` 执行计划并同步 `plan.json` 与索引。Task1 行为测试、Task2 导航组件与无障碍文案已实现并双审；Task3 在 `.worktrees/codex/centered-liquid-view-navigation` / `codex/centered-liquid-view-navigation` 继续隔离开发，所有权仅限 `TopBar.tsx`（三栏布局结构）、`shell.css`、`test/frontend-foundation-css.spec.ts`、`test/app-shell.spec.tsx`。Task3 尚未 kickoff；未推送或发布。
