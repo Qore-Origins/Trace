@@ -1,6 +1,6 @@
 # Trace v0.18.0 双平台发布计划
 
-> 状态：实施中（2026-09-27）
+> 状态：已完成（2026-09-27）
 > 版本：v0.18.0 · 公测版 Beta 7
 > 上一发布：v0.17.0 · 公测版 Beta 6
 
@@ -56,7 +56,7 @@
 - [x] 创建 GitHub prerelease，附 Windows x64 安装包和发行说明；核对远端资产大小 210,584,915 bytes、digest `sha256:ebdf485209fefb2fb3e9922bc091ae14c192d26a7e0fde13f3fcc9867017855b`，正文与本地一致。
 - [x] 创建 Gitee prerelease（ID `1169912`），仅发布发行说明，不上传安装包；正文经 UTF-8 JSON payload 传输；核对公开页面 HTTP 200、tag `v0.18.0`、目标 commit `d91ece4326ca3a6024644d331c0263b4680fd324` 和正文一致；仅有平台自动源码归档 `v0.18.0.zip` 与 `v0.18.0.tar.gz`。
 - [x] 更新 build/release history、CHANGELOG/lifecycle、共享 README 与 HANDOFF；同步本计划 Markdown/JSON。
-- [ ] 提交并通过 SSH 推送最终记录到双端，复核收尾后的 main/tag refs。
+- [x] 发布账本提交 `c3a985e` 已通过 SSH 推送到 GitHub 与 Gitee；推送后两端 main=`c3a985eceee285ef2322083b77283ce3d4f0b650`、tag object=`4e0e2d0997f5883abdccf69a18aaa2623d46baf5`、peeled commit=`d91ece4326ca3a6024644d331c0263b4680fd324`。本计划与完成状态随本次文档同步推送。
 
 ## 发布策略与验收标准
 
@@ -78,3 +78,4 @@
 | 双端 SSH 推送 | GitHub 与 Gitee `main`=`e69e3d25cf0e15ad84ceb334bd5560762018e1f5`；annotated tag object=`4e0e2d0997f5883abdccf69a18aaa2623d46baf5`；peeled=`d91ece4326ca3a6024644d331c0263b4680fd324` |
 | GitHub Release | https://github.com/Qore-Origins/Trace/releases/tag/v0.18.0；预发布，说明正文一致；安装包 size/digest 与本地匹配 |
 | Gitee Release | https://gitee.com/Qore/trace/releases/v0.18.0；ID `1169912`；预发布，HTTP 200；正文一致；无安装包附件 |
+| 发布账本推送后 refs | 两端 `main`=`c3a985eceee285ef2322083b77283ce3d4f0b650`；annotated tag object=`4e0e2d0997f5883abdccf69a18aaa2623d46baf5`；peeled=`d91ece4326ca3a6024644d331c0263b4680fd324` |
