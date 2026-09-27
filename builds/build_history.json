@@ -150,6 +150,23 @@
       "platform": "win32-x64",
       "verificationPassed": false,
       "verification": "package version ProductVersion 0.17.0.0 and FileVersion 0.17.0; npm run typecheck/test/build/build:win passed; 39 files/388 tests; app.asar main/renderer/version checked; all 149 packaged PlantUML runtime files match the prepared runtime; packaged Java 21.0.12 rendered local SVG; SANDBOX/local-only/statistics/child-shutdown smoke passed; archive size and SHA-256 match build output. GUI install/interaction was not run; installer is unsigned (same as v0.15.1). Size delta from v0.15.1: -269374989 bytes (-56.13%)."
+    },
+    {
+      "version": "0.18.0",
+      "status": "beta",
+      "statusLabel": "公测版 Beta 7",
+      "date": "20260927",
+      "sequence": 1,
+      "filename": "Trace_0.18.0_beta_20260927_01.exe",
+      "timestamp": "2026-09-27T15:01:21+08:00",
+      "fileSize": 210584915,
+      "fileSizeFormatted": "200.83 MiB",
+      "sha256": "EBDF485209FEFB2FB3E9922BC091AE14C192D26A7E0FDE13F3FCC9867017855B",
+      "sourcePath": "D:\\Code\\Project\\Qore\\Trace\\release\\溯源 Trace-0.18.0-setup.exe",
+      "targetPath": "D:\\Code\\Project\\Qore\\Trace\\builds\\windows\\Trace_0.18.0_beta_20260927_01.exe",
+      "platform": "win32-x64",
+      "verificationPassed": true,
+      "verification": "npm run typecheck passed; npm run test 40 files/397 tests; npm run build renderer 7156 modules; npm run build:win passed; installer ProductVersion/FileVersion 0.18.0; app.asar excludes QA profiles/cache/log; all 148 packaged PlantUML runtime file hashes match the prepared runtime; packaged Java rendered offline SVG; SANDBOX/loopback/statistics/process-exit smoke passed; isolated packaged Electron smoke passed empty-library onboarding, first-root activation, full-text search and backtrace to source note. GUI smoke ran from release/win-unpacked under an isolated temporary APPDATA/library; NSIS installer UI was not separately installed. Installer is unsigned. Size delta from v0.17.0: +7782 bytes (+0.004%)."
     }
   ]
 }

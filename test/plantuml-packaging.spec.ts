@@ -15,6 +15,16 @@ const preparationScript = readFileSync(resolve(repositoryRoot, 'scripts/prepare-
 const mainEntry = readFileSync(resolve(repositoryRoot, 'src/main/index.ts'), 'utf8')
 
 describe('offline PlantUML packaging', () => {
+  it('packages only production Electron Vite outputs, not QA artifacts under out', () => {
+    const filesSection = builderConfig.match(/^files:\r?\n((?: {2,}.*\r?\n)+)/m)?.[0]
+    expect(filesSection).toBeDefined()
+    expect(filesSection).toContain('out/main/**/*')
+    expect(filesSection).toContain('out/preload/**/*')
+    expect(filesSection).toContain('out/renderer/**/*')
+    expect(filesSection).toContain('package.json')
+    expect(filesSection).not.toContain('out/**/*')
+  })
+
   it('copies the prepared runtime to the app resources directory outside ASAR', () => {
     const resourceSection = builderConfig.match(/^extraResources:\r?\n((?: {2,}.*\r?\n|\r?\n)+)/m)?.[0]
     expect(resourceSection).toBeDefined()
