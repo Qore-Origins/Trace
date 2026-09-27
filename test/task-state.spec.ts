@@ -1,6 +1,6 @@
 // 任务状态机测试（LLD §6.3）：合法转换/非法转换/completed_at 维护/逾期判定
 import { describe, it, expect } from 'vitest'
-import { canTransition, applyStatusChange, isOverdue } from '../src/shared/task-state'
+import { canTransition, applyStatusChange, isOverdue, isPastPlannedDate } from '../src/shared/task-state'
 import { TraceError, ERR } from '../src/shared/errors'
 
 describe('状态机转换', () => {
@@ -43,6 +43,11 @@ describe('applyStatusChange', () => {
 
 describe('isOverdue（展示层）', () => {
   const today = new Date('2026-09-05T12:00:00Z')
+  it('已过计划日期可单独判定，供完成态保留标签槽位', () => {
+    expect(isPastPlannedDate('2026-09-04', today)).toBe(true)
+    expect(isPastPlannedDate('2026-09-05', today)).toBe(false)
+    expect(isPastPlannedDate(undefined, today)).toBe(false)
+  })
   it('计划时间已过且未完成 → 逾期', () => {
     expect(isOverdue('not_started', '2026-09-04', today)).toBe(true)
   })

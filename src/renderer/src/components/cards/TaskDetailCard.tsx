@@ -1,6 +1,6 @@
 import { Checkbox, Input } from 'antd'
 import type { TaskDetailPayload } from '@shared/plan-types'
-import { isOverdue } from '@shared/task-state'
+import { isPastPlannedDate } from '@shared/task-state'
 import { validateNoteText } from '@shared/validation'
 import { useTranslation } from '../../i18n'
 import { usePlanMutations } from '../../stores/plan-store'
@@ -12,6 +12,7 @@ export function TaskDetailCard({ comp, index, total, today }: CardRenderProps): 
   const p = comp.payload as TaskDetailPayload
   const patch = (fn: (payload: TaskDetailPayload) => void): void => patchComponent(comp.id, (payload) => fn(payload as TaskDetailPayload))
   const statusText = p.status === 'done' ? t('cards.statusDone') : p.status === 'in_progress' ? t('cards.statusInProgress') : t('cards.statusNotStarted')
+  const hasPastPlannedDate = isPastPlannedDate(p.planned_at, today)
   return (
     <CardShell
       kind="task_detail"
@@ -28,7 +29,7 @@ export function TaskDetailCard({ comp, index, total, today }: CardRenderProps): 
             placeholder={t('cards.taskPlaceholder')}
             onChange={(e) => patch((pl) => (pl.title = e.target.value))}
           />
-          {isOverdue(p.status, p.planned_at, today) && <span className="tag-overdue">{t('cards.overdue')}</span>}
+          {hasPastPlannedDate && <span className="tag-overdue" aria-hidden={p.status === 'done'}>{t('cards.overdue')}</span>}
         </div>
       }
     >

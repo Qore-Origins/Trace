@@ -12,6 +12,8 @@ Task 4 基础验收入口：`http://127.0.0.1:52822/integration.html?foundation=
 
 两个脚本使用 Vite 52822 与 Chrome CDP 52821，均恢复 `prefers-reduced-motion: no-preference` 后退出，可依次重复运行。Chrome 使用独立测试 profile；验收是浏览器加内存 IPC，不等同 Electron 真机验收。
 
+逾期标签布局回归：`node demo/frontend-foundation/overdue-layout-check.mjs`。它在真实任务详情和任务列表中切换已完成的过期任务，逐帧核对卡片、标题/任务名和标签尺寸，并检查 1200px 亮色、720px 暗色及减少动态效果。默认使用上述 52821/52822；隔离端口运行时可在命令末尾依次传入 Chrome CDP 与 Vite 端口，例如 `node demo/frontend-foundation/overdue-layout-check.mjs 52831 52832`。脚本只更改内存测试计划。
+
 补充验收：搜索结果 Escape 关闭浮层；连续心情数字使用主题适配色，原冷暖色阶保留为装饰；双主题 antd 实心/危险按钮、危险文字与错误文字检查实际对比度。`test/score-accessibility.spec.ts` 扫描 0–100 每 0.01 分、两主题四种底色、徽标与代码高亮。
 
 菜单 hover 等待父弹层动画结束、子菜单非零尺寸且坐标实际命中后再发鼠标事件，避免首次 DOM 挂载时的零尺寸坐标。失败时输出菜单位置并保存 `integration-hover-failure.png`，便于复现。

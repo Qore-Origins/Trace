@@ -26,9 +26,14 @@ export function applyStatusChange(current: { status: TaskStatus; completed_at?: 
   else current.completed_at = undefined
 }
 
-// 逾期判定（展示层，不落盘）：计划时间早于今天且未完成
-export function isOverdue(status: TaskStatus, plannedAt?: string, todayLocal = new Date()): boolean {
-  if (!plannedAt || status === 'done') return false
+// 计划日期已过：供完成态保留逾期标签布局槽位，不代表任务仍然逾期
+export function isPastPlannedDate(plannedAt?: string, todayLocal = new Date()): boolean {
+  if (!plannedAt) return false
   const today = todayLocal.toISOString().slice(0, 10)
   return plannedAt < today
+}
+
+// 逾期判定（展示层，不落盘）：计划时间早于今天且未完成
+export function isOverdue(status: TaskStatus, plannedAt?: string, todayLocal = new Date()): boolean {
+  return status !== 'done' && isPastPlannedDate(plannedAt, todayLocal)
 }

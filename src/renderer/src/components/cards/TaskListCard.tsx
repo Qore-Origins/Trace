@@ -1,6 +1,6 @@
 import { useLayoutEffect } from 'react'
 import type { TaskItem, TaskListPayload } from '@shared/plan-types'
-import { isOverdue } from '@shared/task-state'
+import { isPastPlannedDate } from '@shared/task-state'
 import { uuid32 } from '@shared/validation'
 import { useTranslation } from '../../i18n'
 import { usePlanMutations } from '../../stores/plan-store'
@@ -60,27 +60,30 @@ export function TaskListCard({ comp, index, total, today }: CardRenderProps): Re
       }
     >
       <div>
-        {p.items.map((item) => (
-          <div className={`task-row ${item.status}`} key={item.id}>
-            <button type="button" className="state-ring" aria-label="切换状态" onClick={() => patchItem(item.id, (it) => (it.status = nextStatus(it.status)))} />
-            <div className="task-title">
+        {p.items.map((item) => {
+          const hasPastPlannedDate = isPastPlannedDate(item.planned_at, today)
+          return (
+            <div className={`task-row ${item.status}`} key={item.id}>
+              <button type="button" className="state-ring" aria-label="切换状态" onClick={() => patchItem(item.id, (it) => (it.status = nextStatus(it.status)))} />
+              <div className="task-title">
+                <input
+                  value={item.title}
+                  onChange={(e) => patchItem(item.id, (it) => (it.title = e.target.value))}
+                />
+              </div>
               <input
-                value={item.title}
-                onChange={(e) => patchItem(item.id, (it) => (it.title = e.target.value))}
+                type="date"
+                className="task-date"
+                value={item.planned_at ?? ''}
+                onChange={(e) => patchItem(item.id, (it) => (it.planned_at = e.target.value || undefined))}
               />
+              {hasPastPlannedDate && <span className="tag-overdue" aria-hidden={item.status === 'done'}>{t('cards.overdue')}</span>}
+              <ActionButton intent="quiet" danger className="task-del" label={t('cards.deleteRow')}
+                aria-label={`${t('common.delete')} ${item.title || t('cards.addTask')}`}
+                onClick={() => removePlanRow(comp.id, 'task', item.id, item.title || t('cards.addTask'))} />
             </div>
-            <input
-              type="date"
-              className="task-date"
-              value={item.planned_at ?? ''}
-              onChange={(e) => patchItem(item.id, (it) => (it.planned_at = e.target.value || undefined))}
-            />
-            {isOverdue(item.status, item.planned_at, today) && <span className="tag-overdue">{t('cards.overdue')}</span>}
-            <ActionButton intent="quiet" danger className="task-del" label={t('cards.deleteRow')}
-              aria-label={`${t('common.delete')} ${item.title || t('cards.addTask')}`}
-              onClick={() => removePlanRow(comp.id, 'task', item.id, item.title || t('cards.addTask'))} />
-          </div>
-        ))}
+          )
+        })}
         <button
           type="button"
           className="lite-btn" style={{ marginTop: 4 }}

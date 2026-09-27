@@ -77,10 +77,10 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .task-title input { border: none; outline: none; width: 100%; font-size: 14px; background: transparent; color: var(--text-1); transition: color var(--t-ui) var(--ease-out); }
 .task-date { font-size: 12px; color: var(--text-3); border: 1px solid transparent; border-radius: 4px; padding: 2px; background: transparent; transition: border-color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out); }
 .task-date:hover { border-color: var(--border); background: var(--input-hover-bg); }
-/* 逾期标：max-width+opacity 平滑展开（@starting-style 入场，不顶动布局）；
-   离开为 React 卸载（数据态低频，无 leave 钩子，可缓） */
-.tag-overdue { font-size: 11px; color: var(--warn-text); background: var(--warn-bg); border-radius: 4px; padding: 1px 6px; flex: none; max-width: 52px; overflow: hidden; transition: max-width var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out), padding var(--t-ui) var(--ease-out); }
-@starting-style { .tag-overdue { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; } }
+/* 已过计划日期的任务保留标签槽位；状态往返只淡入淡出，避免标题行缩放和标签折行顶动卡片。 */
+.tag-overdue { font-size: 11px; color: var(--warn-text); background: var(--warn-bg); border-radius: 4px; padding: 1px 6px; flex: none; white-space: nowrap; opacity: 1; transition: opacity var(--t-ui) var(--ease-out); }
+.tag-overdue[aria-hidden='true'] { opacity: 0; pointer-events: none; }
+@starting-style { .tag-overdue { opacity: 0; } }
 /* 删除钮 B 方案（demo/del-hover-demo.html 定稿）：overlay 不占位——hover 淡入+右滑入，内容永不被顶；
    行右 padding 60px 为悬浮缓冲（防盖死日期）；按钮在行内，移出即离场无间隙 */
 .task-del { position: absolute; right: 8px; top: 50%; flex: none; transform: translateY(-50%) translateX(6px); opacity: 0; pointer-events: none; transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out); }
