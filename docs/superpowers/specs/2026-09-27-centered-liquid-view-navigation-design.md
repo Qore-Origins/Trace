@@ -2,7 +2,7 @@
 
 日期：2026-09-27
 
-状态：用户已选择 B「居中主导航」与 C「柔弹回落」，并选择子代理驱动。执行计划步骤 1、2 已完成并通过双阶段审查；步骤 3 已登记 `/root/nav_task3_impl` 与四文件边界，状态已同步到实现 worktree，等待正式 kickoff。Task3 尚无代码改动。
+状态：用户已选择 B「居中主导航」与 C「柔弹回落」，并选择子代理驱动。执行计划步骤 1、2 已完成并通过双阶段审查；步骤 3 实现代理 `/root/nav_task3_implementation` 已在隔离 worktree 中启动并持有四文件边界，具体状态见 HANDOFF-CURRENT.md。
 
 ## 背景与现状
 
@@ -95,4 +95,4 @@ Trace 顶栏同时放置「文件 / 编辑 / 查看 / 帮助」菜单和「计�
 
 ## 当前协作边界
 
-规格由用户确认后，已建立 `docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/` 执行计划并同步 `plan.json` 与索引。Task1 行为测试、Task2 导航组件与无障碍文案已实现并双审；Task3 在 `.worktrees/codex/centered-liquid-view-navigation` / `codex/centered-liquid-view-navigation` 继续隔离开发，所有权仅限 `TopBar.tsx`（三栏布局结构）、`shell.css`、`test/frontend-foundation-css.spec.ts`、`test/app-shell.spec.tsx`。Task3 尚未 kickoff；未推送或发布。
+规格由用户确认后，已建立 `docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/` 执行计划并同步 `plan.json` 与索引。Task1 行为测试、Task2 导航组件与无障碍文案已实现并双审；Task3 在 `.worktrees/codex/centered-liquid-view-navigation` / `codex/centered-liquid-view-navigation` 继续隔离开发，所有权仅限 `TopBar.tsx`（三栏布局结构）、`shell.css`、`test/frontend-foundation-css.spec.ts`、`test/app-shell.spec.tsx`。本计划不含推送或发布。
