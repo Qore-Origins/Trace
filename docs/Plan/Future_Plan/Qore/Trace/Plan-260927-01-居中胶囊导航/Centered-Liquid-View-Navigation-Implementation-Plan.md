@@ -10,7 +10,7 @@
 
 ## 当前状态与已定设计
 
-- 状态：实施中（2026-09-27；用户选择子代理驱动）。步骤 1、2 均已完成并通过双阶段审查。Task1 真实 TopBar/store 测试提交 `bb4d9107e9d20976f58b22f010615d0c78b6200a`，P3 结构断言修订 `172823fb6dc78671734950c9ba9f3c77ad7a786e`；目标 RED 为 1 项按钮行为通过、2 项预期无障碍失败。Task2 实现提交 `241275b1864f45476cce47696374a751f7404620`，四文件范围审查通过，定向测试 3/3 与 `npm run typecheck` 经实施者及协调者复验通过。Task3 `/root/nav_task3_impl` 已完成只读预检并确认需将已释放的 `TopBar.tsx` 顺序重新登记；四文件最终边界等待本次状态同步和 kickoff，尚无代码改动。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
+- 状态：实施中（2026-09-27；用户选择子代理驱动）。步骤 1、2 均已完成并通过双阶段审查。Task1 真实 TopBar/store 测试提交 `bb4d9107e9d20976f58b22f010615d0c78b6200a`，P3 结构断言修订 `172823fb6dc78671734950c9ba9f3c77ad7a786e`；目标 RED 为 1 项按钮行为通过、2 项预期无障碍失败。Task2 实现提交 `241275b1864f45476cce47696374a751f7404620`，四文件范围审查通过，定向测试 3/3 与 `npm run typecheck` 经实施者及协调者复验通过。Task3 `/root/nav_task3_impl` 已完成只读预检，四文件所有权与状态同步已合入实现 worktree，当前代码基线 `e9adab83a028d9fcde63ca16c6febc8658eff136`，待正式 kickoff，尚无 Task3 代码改动。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
 - 顶栏保持一行 48px；菜单留在左区，中轴胶囊约 226 × 42px，搜索与窗口控制留在右区。
 - 页面切换由现有 `setView` 立即生效；唯一选中项及 `aria-current="page"` 均由 `view` 派生。动效不能延迟或排队页面切换。
 - 滑块在目标段间柔弹移动并有方向感的轻微拉伸/回落；快速连续点击时从最新位置重新定向。启用系统减少动态效果时取消弹性动效。
@@ -94,6 +94,6 @@ npm run test -- test/frontend-foundation-css.spec.ts test/app-shell.spec.tsx
 
 ## 协作与发布边界
 
-- Task3 代码所有权已登记给 `/root/nav_task3_impl`：`src/renderer/src/components/TopBar.tsx`（仅左/中/右布局结构）、`src/renderer/src/styles/shell.css`、`test/frontend-foundation-css.spec.ts`、`test/app-shell.spec.tsx`。只读预检已确认该边界；待本次 HANDOFF/计划状态提交同步到隔离 worktree 后正式 kickoff。其余代码文件不在本次所有权内。
+- Task3 代码所有权已登记给 `/root/nav_task3_impl`：`src/renderer/src/components/TopBar.tsx`（仅左/中/右布局结构）、`src/renderer/src/styles/shell.css`、`test/frontend-foundation-css.spec.ts`、`test/app-shell.spec.tsx`。只读预检已确认该边界；HANDOFF/计划状态提交已同步到隔离 worktree，接下来正式 kickoff。其余代码文件不在本次所有权内。
 - 仅本地 UI 改动：本计划不包含改版本、编译安装包、推送 GitHub/Gitee 或发布 Release；除非用户之后明确提出，不做发布动作。
 - 完成实现与验证后先报告下一步 / 等待 / 剩余工作；不把“设计已确认”写成“实现已完成”。
