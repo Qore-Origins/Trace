@@ -78,4 +78,31 @@ describe('frontend information and interaction foundation', () => {
     expect(search).toMatch(/<button[\s\S]*?className="o-item"/)
     expect(search).toContain('SEARCH_PAGE_SIZE')
   })
+
+  it('keeps the page navigation on a three-segment token-based capsule', () => {
+    const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
+    expect(shell).toMatch(/\.view-nav\s*\{[^}]*width:\s*226px;[^}]*height:\s*42px;/)
+    expect(shell).toMatch(/\.view-nav\s*\{[^}]*background:\s*var\(--fill\);[^}]*border:\s*1px solid var\(--border\);/)
+    expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*background:\s*var\(--trace-bg\);/)
+    expect(shell).toMatch(/\.nav-btn\s*\{[^}]*flex:\s*1;/)
+    expect(shell).toMatch(/\.nav-btn\.active\s*\{[^}]*color:\s*var\(--link\);/)
+    expect(shell).not.toMatch(/\.view-nav[^}]*#[\da-f]{3,8}\b/i)
+  })
+
+  it('moves and stretches the slider with one spring transition and disables it for reduced motion', () => {
+    const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
+    expect(shell).toMatch(/@property\s+--nav-position\s*\{/)
+    expect(shell).toMatch(/\.view-nav:has\(\.nav-btn\.active:nth-child\(2\)\)\s*\{[^}]*--nav-position:\s*1;/)
+    expect(shell).toMatch(/\.view-nav:has\(\.nav-btn\.active:nth-child\(3\)\)\s*\{[^}]*--nav-position:\s*2;/)
+    expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*transition:\s*--nav-position\s+5[0-9]{2}ms\s+var\(--ease-spring\);/)
+    expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*abs\(/)
+    expect(shell).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.view-nav::before\s*\{[^}]*transition:\s*none/)
+  })
+
+  it('keeps the entire page segment keyboard-visible and outside titlebar dragging', () => {
+    const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
+    expect(shell).toMatch(/\.nav-btn:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--link\);/)
+    expect(shell).toMatch(/\.ws-top[^}]*\.view-nav[^}]*\{\s*-webkit-app-region:\s*no-drag;/)
+    expect(shell).toMatch(/\.ws-top[^}]*button[^}]*\{\s*-webkit-app-region:\s*no-drag;/)
+  })
 })

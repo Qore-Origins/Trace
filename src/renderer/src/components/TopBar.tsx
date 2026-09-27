@@ -19,21 +19,26 @@ export default function TopBar(): React.JSX.Element {
 
   return (
     <div className="ws-top">
-      <div className="brand">
-        <span className="brand-dot" />
-        溯源 Trace
+      <div className="top-left">
+        <div className="brand">
+          <span className="brand-dot" />
+          溯源 Trace
+        </div>
+        <MenuBar />
       </div>
-      <MenuBar />
-      <ViewNav />
-      <div className="search">
-        <Input
-          placeholder={t('search.topPlaceholder')}
-          readOnly
-          onFocus={() => setSearchOpen(true)}
-        />
+      <div className="top-center">
+        <ViewNav />
       </div>
-      <div className="spacer" />
-      <WindowControls />
+      <div className="top-right">
+        <div className="search">
+          <Input
+            placeholder={t('search.topPlaceholder')}
+            readOnly
+            onFocus={() => setSearchOpen(true)}
+          />
+        </div>
+        <WindowControls />
+      </div>
     </div>
   )
 }
