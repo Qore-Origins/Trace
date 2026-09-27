@@ -122,6 +122,7 @@
   background: var(--fill);
   border: 1px solid var(--border);
   border-radius: 999px;
+  overflow: hidden;
 }
 .view-nav:has(.nav-btn.active:nth-child(2)) { --nav-position: 1; --nav-target: 1; }
 .view-nav:has(.nav-btn.active:nth-child(3)) { --nav-position: 2; --nav-target: 2; }

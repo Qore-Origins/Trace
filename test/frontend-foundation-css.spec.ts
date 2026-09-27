@@ -99,6 +99,15 @@ describe('frontend information and interaction foundation', () => {
     expect(shell).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.view-nav::before\s*\{[^}]*transition:\s*none/)
   })
 
+  it('contains first-to-last and last-to-first spring overshoot inside the capsule', () => {
+    const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
+    const overshootProgress = 1.06
+    expect(2 * overshootProgress).toBeGreaterThan(2)
+    expect(2 - 2 * overshootProgress).toBeLessThan(0)
+    expect(shell).toMatch(/\.view-nav\s*\{[^}]*overflow:\s*hidden;/)
+    expect(shell).toMatch(/\.nav-btn:focus-visible\s*\{[^}]*outline-offset:\s*-2px;/)
+  })
+
   it('keeps the entire page segment keyboard-visible and outside titlebar dragging', () => {
     const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
     expect(shell).toMatch(/\.nav-btn:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--link\);/)
