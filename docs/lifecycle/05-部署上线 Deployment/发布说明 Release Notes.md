@@ -37,3 +37,8 @@
 - 本次不改变 v0.17.0 引入的 PlantUML 本地服务配置和旧自定义地址迁移行为。
 
 详细版本说明与发布资产以 `builds/release_notes/release_notes_v0.18.0.md` 和 `builds/release_history.json` 为准。
+
+## 已发布渠道
+
+- GitHub Release（Windows x64 安装包）：<https://github.com/Qore-Origins/Trace/releases/tag/v0.18.0>
+- Gitee Release（仅说明，无安装包）：<https://gitee.com/Qore/trace/releases/v0.18.0>

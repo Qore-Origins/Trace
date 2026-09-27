@@ -14,7 +14,7 @@
 
 - 计划 Markdown 格式、数据目录、IPC 合约和用户数据均不变，无需迁移。
 - 自动验证：`npm run typecheck`；`npm run test`（40 files / 397 tests）；`npm run build`（renderer 7,156 modules）；`npm run build:win` 均通过。
-- UI Electron 实窗验收覆盖 720 / 813 / 1220 / 最大化窗口、亮暗主题、鼠标与键盘切换、快速重定向、减少动态效果、菜单/搜索/设置及窗口控制；无重叠或裁切。打包版 Electron 在隔离临时用户配置和临时空库内通过首启引导、计划库初始化、全文搜索与回溯到源注释组件检查。
+- UI Electron 实窗验收覆盖 720 / 813 / 1220 / 最大化窗口、亮暗主题、鼠标与键盘切换、快速连续切换、减少动态效果、菜单/搜索/设置及窗口控制；无重叠或裁切。打包版 Electron 在隔离临时用户配置和临时空库内通过首启引导、计划库初始化、全文搜索与回溯到源注释组件检查。
 - Windows x64 安装包：`Trace_0.18.0_beta_20260927_01.exe`，210,584,915 字节 / 200.83 MiB；SHA-256：`EBDF485209FEFB2FB3E9922BC091AE14C192D26A7E0FDE13F3FCC9867017855B`。包内 FileVersion/ProductVersion 均为 0.18.0，`app.asar` 未包含 QA profile/cache/log。NSIS 安装交互未单独执行。
 - 随包 PlantUML runtime 共 148 个文件，均与构建准备目录哈希匹配；从打包路径运行 Java 成功离线渲染 SVG；PlantUML loopback-only、SANDBOX 拒绝本地/URL include、禁用统计与进程正常退出 smoke 通过。
 - 安装包未数字签名，Windows 可能显示 SmartScreen/未知发布者提示。

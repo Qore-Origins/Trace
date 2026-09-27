@@ -1,7 +1,7 @@
 {
   "format_version": "1",
   "created_at": "2026-09-27T14:45:09+08:00",
-  "updated_at": "2026-09-27T15:36:24+08:00",
+  "updated_at": "2026-09-27T15:50:07+08:00",
   "components": [
     {
       "id": "9587f85abb5c4eb4b1c007c069802b62",
@@ -15,7 +15,7 @@
       "id": "f67bcbc99b8944ad98341002879d6963",
       "type": "note",
       "payload": {
-        "content": "发布范围为顶栏居中胶囊式页面导航。按一个完整用户可见功能域，相对 v0.17.0 提升到 0.18.0（公测版 Beta 7）。版本文档和发行说明准备提交 d91ece4（chore(release): prepare v0.18.0）已创建；完整自动化、Windows 打包、PlantUML 离线安全 smoke 和隔离打包应用空库引导/搜索回溯实窗 smoke 已完成。安装包 210,584,915 bytes / 200.83 MiB，SHA-256 EBDF485209FEFB2FB3E9922BC091AE14C192D26A7E0FDE13F3FCC9867017855B，未签名。接下来创建 annotated tag 并 SSH 推送；GitHub 上传 Windows 安装包，Gitee 仅发布说明。",
+        "content": "发布范围为顶栏居中胶囊式页面导航。按一个完整用户可见功能域，相对 v0.17.0 提升到 0.18.0（公测版 Beta 7）。版本文档和发行说明准备提交 d91ece4（chore(release): prepare v0.18.0）已创建；完整自动化、Windows 打包、PlantUML 离线安全 smoke 和隔离打包应用空库引导/搜索回溯实窗 smoke 已完成。安装包 210,584,915 bytes / 200.83 MiB，SHA-256 EBDF485209FEFB2FB3E9922BC091AE14C192D26A7E0FDE13F3FCC9867017855B，未签名。annotated tag 与 main 已经 SSH 推送到 GitHub/Gitee；GitHub Release 已附安装包并核对 digest，Gitee Release ID 1169912 已公开、正文一致且无 exe 附件。发布账本和状态同步已更新，等待最终记录提交、推送与 refs 复核。",
         "created_at": "2026-09-27T14:45:09+08:00"
       }
     },
@@ -27,8 +27,8 @@
         "items": [
           { "id": "66bf9080378e410f9e0661f5f4168d21", "title": "确定版本并准备版本文档与发行说明", "status": "done" },
           { "id": "88069560d2fa48c1893683ed911c23f1", "title": "运行完整验证并构建、核验 Windows 安装包", "status": "done" },
-          { "id": "f9b79ba635074f22b3cac35530f4bc44", "title": "通过 SSH 推送 main 与 annotated tag 至 GitHub/Gitee", "status": "in_progress" },
-          { "id": "035de94d7cda40fab2ec4f688483e0ca", "title": "发布 GitHub/Gitee Release，核验并同步发布账本", "status": "not_started" }
+          { "id": "f9b79ba635074f22b3cac35530f4bc44", "title": "通过 SSH 推送 main 与 annotated tag 至 GitHub/Gitee", "status": "done" },
+          { "id": "035de94d7cda40fab2ec4f688483e0ca", "title": "发布 GitHub/Gitee Release，核验并同步发布账本", "status": "in_progress" }
         ]
       }
     }
