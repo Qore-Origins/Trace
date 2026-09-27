@@ -1,0 +1,37 @@
+{
+  "format_version": "1",
+  "created_at": "2026-09-28T00:26:55+08:00",
+  "updated_at": "2026-09-28T00:26:55+08:00",
+  "components": [
+    {
+      "id": "7d6c476fa7744a73ac8ec28652284310",
+      "type": "heading",
+      "payload": {
+        "title": "日记补建与计划命名模板",
+        "size": 25
+      }
+    },
+    {
+      "id": "39235e879c744c778c0db9f75b27c312",
+      "type": "note",
+      "payload": {
+        "content": "执行计划已形成，待用户审阅；暂未修改产品代码。执行真源：Diary-Backfill-and-Plan-Templates-Implementation-Plan.md。",
+        "created_at": "2026-09-28T00:26:55+08:00"
+      }
+    },
+    {
+      "id": "f0dd2a109f2843d4ad3962198b82e671",
+      "type": "task_list",
+      "payload": {
+        "title": "实施与验收",
+        "items": [
+          { "id": "27a8e0f9054a4b25ae1a8a70f83a0001", "title": "安全补建日记并支持未填写心情", "status": "not_started" },
+          { "id": "27a8e0f9054a4b25ae1a8a70f83a0002", "title": "窗口显示后后台运行并同步各视图", "status": "not_started" },
+          { "id": "27a8e0f9054a4b25ae1a8a70f83a0003", "title": "实现按库命名模板配置与安全 IPC", "status": "not_started" },
+          { "id": "27a8e0f9054a4b25ae1a8a70f83a0004", "title": "设置模板并应用到所有新建计划入口", "status": "not_started" },
+          { "id": "27a8e0f9054a4b25ae1a8a70f83a0005", "title": "完成回归、真实窗口验收与共享交接", "status": "not_started" }
+        ]
+      }
+    }
+  ]
+}

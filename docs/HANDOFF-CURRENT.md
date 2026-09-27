@@ -2,18 +2,19 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-27（Codex：日记补建与计划命名模板规格待用户审阅）
+> 更新：2026-09-28（Codex：设计规格已确认；共享实施计划待用户审阅）
 
-## 当前任务：日记自动补建与按文件夹命名模板（规格待审阅）
+## 当前任务：日记自动补建与按文件夹命名模板（实施计划待审阅）
 
 - 用户确认：Trace 下次打开时补建漏掉的空白日记；自动生成的当日日记心情未填写前不计入打卡/趋势；计划名称按所在文件夹使用可配置模板。
-- 设计方向已获确认；当前规格文档为 `docs/superpowers/specs/2026-09-27-diary-backfill-and-plan-name-templates-design.md`，用户审阅前不开始代码实现。
+- 设计规格已由用户确认，执行计划为 `docs/Plan/Future_Plan/Qore/Trace/Plan-260928-01-日记补建与计划命名模板/Diary-Backfill-and-Plan-Templates-Implementation-Plan.md`；当前等待用户审阅该计划后开始代码实现。
 - 只读调查发现：现有 `diary:ensure` 仅由 `DiaryView` 挂载触发，旧模板心情默认 50 且被按数值统计；计划创建对话框原样提交输入文本。用户资源 `Resource/pic/`、`Resource/vid/` 保持未跟踪且不触碰。
-- 当前文件所有权：Codex 独占上述新规格、`docs/superpowers/specs/2026-09-10-diary-deepen-design.md` 与本 HANDOFF；本阶段不改产品代码。实施边界须在规格审阅通过、计划登记后另行登记。
-- 阶段区分：设计方向已确认；规格待用户审阅；尚未实现或验证。
-- 下一步：提交规格与交接文档，请用户审阅规格；获确认后建立共享实施计划，再登记代码边界。
-- 等待：用户审阅 `docs/superpowers/specs/2026-09-27-diary-backfill-and-plan-name-templates-design.md`。
-- 还差：用户规格审阅、实施计划、代码实现、自动化与真实窗口验收。
+- 当前文件所有权：Codex 独占本任务设计规格、共享实施计划目录内 Markdown/JSON、`docs/Plan/README.md` 与本 HANDOFF；当前不改产品代码。代码文件边界按实施计划分批登记，须先在 HANDOFF 与任务清单中登记执行者后再开始。
+- 阶段区分：设计规格已确认；实施计划已形成但待用户审阅；尚未实现或验证。当前 HEAD `329eeb8`（以 `git log` 实测）；分支 `main` ahead 1；`Resource/pic/`、`Resource/vid/` 为用户未跟踪资源，不触碰。
+- 下一步：用户审阅实施计划，特别确认移除内置模板时使用显式停用名单的配置语义；确认后登记第一个代码任务的文件所有权并启动子代理驱动实施。
+- 当前文档验证：`git diff --check` 通过；新 `plan.json` 经 PowerShell `ConvertFrom-Json` 解析成功，3 个组件、5 个队列任务，ID 唯一。产品 typecheck/test/build 未运行（当前仅修改计划文档）。
+- 等待：用户审阅计划，重点确认内置默认模板可停用的配置语义。
+- 还差：实施计划确认、日记服务与后台协调、模板存储/IPC/UI、自动化回归和真实 Electron 窗口验收。
 
 ## 最近完成：v0.18.1 双平台补丁发布
 
