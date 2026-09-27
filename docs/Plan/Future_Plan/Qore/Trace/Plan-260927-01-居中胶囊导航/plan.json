@@ -1,7 +1,7 @@
 {
   "format_version": "1",
   "created_at": "2026-09-27T04:16:57+08:00",
-  "updated_at": "2026-09-27T11:31:48+08:00",
+  "updated_at": "2026-09-27T11:59:18+08:00",
   "components": [
     {
       "id": "e9d4a9c75f844c4a91a60f901fb312ae",
@@ -15,7 +15,7 @@
       "id": "da528530a9b44731b61ba68ced5b2ce8",
       "type": "note",
       "payload": {
-        "content": "用户已确认设计方向 B（居中主导航）+ C（柔弹回落），并选择子代理驱动。设计规格：docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md；执行真源：Centered-Liquid-View-Navigation-Implementation-Plan.md。步骤 1 已标为 in_progress；worktree codex/centered-liquid-view-navigation 基线 typecheck 通过、39 files / 388 tests 通过。按锁文件 npm ci 修复了首次测试缺少本地 plantuml-encoder 的环境问题，package/package-lock 未修改。/root/nav_task1_red 只读确认真实 TopBar 可在 happy-dom 挂载，需处理 React act 标志并恢复 i18n/store 状态；它拥有唯一测试文件，待 feature worktree 快进到最新共享状态后 kickoff。",
+        "content": "用户已确认设计方向 B（居中主导航）+ C（柔弹回落），并选择子代理驱动。设计规格：docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md；执行真源：Centered-Liquid-View-Navigation-Implementation-Plan.md。Task1 已完成：/root/nav_task1_red 提交 bb4d9107e9d20976f58b22f010615d0c78b6200a，P3 结构断言修订 172823fb6dc78671734950c9ba9f3c77ad7a786e；定向测试 1 pass、2 个预期 RED（错误 aria-label、缺少唯一 aria-current），双阶段规格/质量审查与 P3 修正复审均通过。隔离 worktree 基线 typecheck、39 files / 388 tests 通过，锁文件依赖安装未改 package/package-lock。Task2 为 in_progress，执行代理 /root/nav_task2_impl 已登记并完成只读预检，等待协调者同步共享状态后 kickoff。",
         "created_at": "2026-09-27T04:16:57+08:00"
       }
     },
@@ -25,8 +25,8 @@
       "payload": {
         "title": "实施与验收",
         "items": [
-          { "id": "a63a4c78e8d14ae3a31ce61bf101cb5e", "title": "建立页面导航行为测试并确认红灯", "status": "in_progress" },
-          { "id": "0985d791278e4b13a36f1d79ddf016b2", "title": "实现无状态导航组件并接入现有状态与文案", "status": "not_started" },
+          { "id": "a63a4c78e8d14ae3a31ce61bf101cb5e", "title": "建立页面导航行为测试并确认红灯", "status": "done" },
+          { "id": "0985d791278e4b13a36f1d79ddf016b2", "title": "实现无状态导航组件并接入现有状态与文案", "status": "in_progress" },
           { "id": "bf4602a178884f669d1adfb2498c70ae", "title": "完成三栏居中布局、胶囊动效与样式契约", "status": "not_started" },
           { "id": "1517e9e6cf59414a9a8f1748652a0754", "title": "运行完整门槛并进行 Electron 用户视角验收", "status": "not_started" }
         ]
