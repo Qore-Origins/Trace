@@ -10,7 +10,7 @@
 
 ## 当前状态与已定设计
 
-- 状态：实施中（2026-09-27；用户选择子代理驱动）。步骤 1、2 均已完成并通过双阶段审查。Task1 真实 TopBar/store 测试提交 `bb4d9107e9d20976f58b22f010615d0c78b6200a`，P3 结构断言修订 `172823fb6dc78671734950c9ba9f3c77ad7a786e`；目标 RED 为 1 项按钮行为通过、2 项预期无障碍失败。Task2 实现提交 `241275b1864f45476cce47696374a751f7404620`，四文件范围审查通过，定向测试 3/3 与 `npm run typecheck` 经实施者及协调者复验通过。Task3 只读预检由 `/root/nav_task3_impl` 完成；实现代理 `/root/nav_task3_implementation` 已在隔离分支 `codex/centered-liquid-view-navigation`、基线 `79f3700ba908b48bb696ca1c60293e10f576f623` 正式启动，四文件所有权与状态同步已完成，尚无 Task3 结果。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
+- 状态：实施中（2026-09-27；用户选择子代理驱动）。步骤 1–3 均已完成，Task1–2 双阶段审查通过，Task3 过冲 Important 已按 TDD 修复。Task3 原实现提交 `e5503651a90c3ed5601167cb0254dcacc7622974`，最终修复提交 `a8e5e073858091b5ed985b213e24cf6e55f883b4`；实施者报告首尾回归先 RED、定向 21/21、typecheck、全量 396/396、diff-check 通过。独立 scoped re-review Ready，无未解决 finding，Task3 四文件边界已释放。当前进入 Task4 完整验证与 Electron 用户视角验收。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
 - 顶栏保持一行 48px；菜单留在左区，中轴胶囊约 226 × 42px，搜索与窗口控制留在右区。
 - 页面切换由现有 `setView` 立即生效；唯一选中项及 `aria-current="page"` 均由 `view` 派生。动效不能延迟或排队页面切换。
 - 滑块在目标段间柔弹移动并有方向感的轻微拉伸/回落；快速连续点击时从最新位置重新定向。启用系统减少动态效果时取消弹性动效。
@@ -63,20 +63,20 @@ npm run typecheck
 
 ### 3. 完成三栏居中布局、胶囊动效与样式契约
 
-- [ ] 在 `TopBar.tsx` 中形成左（品牌 + 菜单）、中（页面导航）、右（搜索 + 窗口控制）三个布局组；页面导航以窗口中轴为基准，不用左右剩余空间差制造“看似居中”。
-- [ ] 在 `shell.css` 中制作约 226 × 42px 胶囊与三个等宽点击段；活动滑块按当前 view 派生位置，使用 `--ease-spring` 做约 500–590ms 的轻微方向拉伸和一次回落，不改变 `view` 更新时机。
-- [ ] 顶栏剩余空间不足时先收缩搜索框，再收敛菜单间距；在 BrowserWindow 最小宽度 720px 时不得出现导航、菜单、搜索、窗口控制相互覆盖、裁切或隐藏。
-- [ ] 轨道、边框、滑块、文字、hover、focus-visible 均使用现有语义 token；确保导航和内部按钮属于 no-drag 白名单。减少动态效果下滑块不执行弹性/拉伸动画，但状态仍即时切换。
-- [ ] 在 `test/frontend-foundation-css.spec.ts` 覆盖导航专属样式、token 使用、滑块过渡、焦点可见、减少动态效果和 no-drag；在 `test/app-shell.spec.tsx` 更新/扩充紧凑顶栏契约，确保现有一行标签及搜索可收缩约束不回退。
-- [ ] 运行样式与顶栏定向测试，检查新规则没有新增硬编码颜色或破坏现有 CSS 契约。
-- [ ] 独立规格审查与代码质量审查均通过；若发现问题，交回当前实施代理修复并复审后再释放文件边界。
+- [x] 在 `TopBar.tsx` 中形成左（品牌 + 菜单）、中（页面导航）、右（搜索 + 窗口控制）三个布局组；页面导航以窗口中轴为基准，不用左右剩余空间差制造“看似居中”。
+- [x] 在 `shell.css` 中制作约 226 × 42px 胶囊与三个等宽点击段；活动滑块按当前 view 派生位置，使用 `--ease-spring` 做约 500–590ms 的轻微方向拉伸和一次回落，不改变 `view` 更新时机。过冲绘制由圆角胶囊裁切约束。
+- [x] 顶栏剩余空间不足时先收缩搜索框，再收敛菜单间距；在 BrowserWindow 最小宽度 720px 时不得出现导航、菜单、搜索、窗口控制相互覆盖、裁切或隐藏。实际 Electron 几何仍由 Task4 验收。
+- [x] 轨道、边框、滑块、文字、hover、focus-visible 均使用现有语义 token；确保导航和内部按钮属于 no-drag 白名单。减少动态效果下滑块不执行弹性/拉伸动画，但状态仍即时切换。
+- [x] 在 `test/frontend-foundation-css.spec.ts` 覆盖导航专属样式、token 使用、滑块过渡、焦点可见、减少动态效果和 no-drag；在 `test/app-shell.spec.tsx` 更新/扩充紧凑顶栏契约，确保现有一行标签及搜索可收缩约束不回退。
+- [x] 运行样式与顶栏定向测试，检查新规则没有新增硬编码颜色或破坏现有 CSS 契约；修复轮定向结果 2 files / 21 tests passed。
+- [x] 独立规格审查与代码质量审查均通过；过冲 Important 已按 TDD 修复，`e550365..a8e5e07` scoped re-review Ready，无未解决 finding；Task3 四文件边界已释放。
 
 ```text
 npm run test -- test/frontend-foundation-css.spec.ts test/app-shell.spec.tsx
 预期：新增导航样式/响应式契约与既有前端基础、AppShell 契约全部通过。
 ```
 
-### 4. 运行完整门槛并进行 Electron 用户视角验收
+### 4. 运行完整门槛并进行 Electron 用户视角验收（进行中）
 
 - [ ] 运行 `npm run typecheck`、`npm run test`、`npm run build`；任何失败均先修复并重跑，不以定向测试替代全量结果。
 - [ ] 启动 Electron 开发版，在窗口宽 720px 和常用宽屏、亮色和暗色主题下检查中轴居中、段宽一致、菜单/搜索/窗口控件无重叠。

@@ -2,7 +2,7 @@
 
 日期：2026-09-27
 
-状态：用户已选择 B「居中主导航」与 C「柔弹回落」，并选择子代理驱动。执行计划步骤 1、2 已完成并通过双阶段审查；步骤 3 实现代理 `/root/nav_task3_implementation` 已在隔离 worktree 中启动并持有四文件边界，具体状态见 HANDOFF-CURRENT.md。
+状态：用户已选择 B「居中主导航」与 C「柔弹回落」，并选择子代理驱动。Task1–3 实现与独立审查完成；Task3 过冲修复提交 `a8e5e073858091b5ed985b213e24cf6e55f883b4` 的 scoped re-review Ready，无未解决 finding。当前进入 Task4 自动门槛及 Electron 实窗验收，具体状态见 HANDOFF-CURRENT.md。
 
 ## 背景与现状
 
