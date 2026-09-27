@@ -1,6 +1,8 @@
 # 日记深化设计（日历回顾 / 统计趋势 / 记录顺滑 / 每日自动归档）
 
 > 2026-09-10 · 由 brainstorming 流程产出（4 项用户决策 + demo 定稿，demo: `demo/diary-view-demo.html`）
+>
+> 后续补充：2026-09-27 的 [日记补建与计划命名模板规格](2026-09-27-diary-backfill-and-plan-name-templates-design.md) 修订启动补建时机与未填写心情统计；本文仅作历史决策记录，以新规格为当前行为准则。
 
 ## 1. 目标与用户故事
 
