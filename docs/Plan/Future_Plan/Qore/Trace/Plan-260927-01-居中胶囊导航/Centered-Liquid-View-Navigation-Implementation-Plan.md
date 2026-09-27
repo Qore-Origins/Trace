@@ -94,6 +94,6 @@ npm run test -- test/frontend-foundation-css.spec.ts test/app-shell.spec.tsx
 
 ## 协作与发布边界
 
-- 当前代码所有权尚未开始登记；计划文档阶段由 Codex 更新。实施前须依据最新 `HANDOFF-CURRENT.md` 与 `git status` 登记执行者和精确文件边界。
+- Task3 代码所有权已登记给 `/root/nav_task3_impl`：`src/renderer/src/components/TopBar.tsx`（仅左/中/右布局结构）、`src/renderer/src/styles/shell.css`、`test/frontend-foundation-css.spec.ts`、`test/app-shell.spec.tsx`。只读预检已确认该边界；待本次 HANDOFF/计划状态提交同步到隔离 worktree 后正式 kickoff。其余代码文件不在本次所有权内。
 - 仅本地 UI 改动：本计划不包含改版本、编译安装包、推送 GitHub/Gitee 或发布 Release；除非用户之后明确提出，不做发布动作。
 - 完成实现与验证后先报告下一步 / 等待 / 剩余工作；不把“设计已确认”写成“实现已完成”。
