@@ -6,7 +6,7 @@
 
 ## 当前任务：顶栏居中胶囊式页面导航
 
-- 最新状态（2026-09-27）：居中液态胶囊页面导航 Task1–4 已实现、双阶段审查、实窗验收并本地集成到 `main`。合并提交 `efa6941df038ad69d5e505ffa9d7d875253edc85`；包含产品代码提交 `e550365`、`a8e5e07`。合并后在主工作区重新验证：`npm run typecheck` 通过、`npm run test` 40 files / 396 tests 通过、`npm run build` 成功（renderer 7,156 modules）。最终独立实现审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor。Electron 实窗鼠标/键盘验收覆盖 720/813/1220/最大化约 1707 CSS px、亮暗主题、快速重定向/回落、reduced-motion emulation、菜单/搜索/设置、窗口控件及标题栏拖拽/双击；无覆盖，胶囊中心测量误差最大约 0.17px。开发版 PlantUML bundled Java runtime unavailable 与导航无关。隔离 QA profile/测试库/截图移入 Windows 回收站（可恢复）。功能分支已删除；Git 清理掉其受跟踪 checkout，但旧路径残留 ignored `node_modules`（含 reparse-point 链接），未强行递归删除。主目录 `Resource/pic/`、`Resource/vid/` 原有未跟踪用户资源未触碰；另一 worktree `.worktrees/codex/trace-task10-11` 未触碰。本地 `main` 当前 ahead `origin/main` 30 commits（包含此前本地提交），本轮未推送/发布。
+- 最新状态（2026-09-27）：居中液态胶囊页面导航 Task1–4 已实现、双阶段审查、实窗验收并本地集成到 `main`。合并提交 `efa6941df038ad69d5e505ffa9d7d875253edc85`；包含产品代码提交 `e550365`、`a8e5e07`。合并后在主工作区重新验证：`npm run typecheck` 通过、`npm run test` 40 files / 396 tests 通过、`npm run build` 成功（renderer 7,156 modules）。最终独立实现审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor。Electron 实窗鼠标/键盘验收覆盖 720/813/1220/最大化约 1707 CSS px、亮暗主题、快速重定向/回落、reduced-motion emulation、菜单/搜索/设置、窗口控件及标题栏拖拽/双击；无重叠或裁切，胶囊中心测量误差最大约 0.17px。开发版 PlantUML bundled Java runtime unavailable 与导航无关。隔离 QA profile/测试库/截图移入 Windows 回收站（可恢复）。功能分支已删除；Git 清理掉其受跟踪 checkout，但旧路径残留 ignored `node_modules`（含 reparse-point 链接），未强行递归删除。主目录 `Resource/pic/`、`Resource/vid/` 原有未跟踪用户资源未触碰；另一 worktree `.worktrees/codex/trace-task10-11` 未触碰。本地 `main` 含此前未推送提交，本轮未推送/发布。
 
 - 下一步：实现已本地合入 `main`；此请求到此完成。未经用户另行要求，不推送、不升级版本、不构建安装包或发布 Release。
 - 等待：无当前阻塞或选择项。
