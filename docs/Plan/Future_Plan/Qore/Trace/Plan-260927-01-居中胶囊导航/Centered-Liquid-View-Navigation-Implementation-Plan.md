@@ -10,7 +10,7 @@
 
 ## 当前状态与已定设计
 
-- 状态：待实施。设计方向已经由用户确认：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
+- 状态：实施中（2026-09-27；用户选择子代理驱动）。当前执行任务：步骤 1，准备在独立 worktree 建立真实顶栏行为测试；后续步骤仍待开始。设计方向已经由用户确认：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
 - 顶栏保持一行 48px；菜单留在左区，中轴胶囊约 226 × 42px，搜索与窗口控制留在右区。
 - 页面切换由现有 `setView` 立即生效；唯一选中项及 `aria-current="page"` 均由 `view` 派生。动效不能延迟或排队页面切换。
 - 滑块在目标段间柔弹移动并有方向感的轻微拉伸/回落；快速连续点击时从最新位置重新定向。启用系统减少动态效果时取消弹性动效。
@@ -37,14 +37,13 @@
 
 ### 1. 先建立页面导航行为测试并确认红灯
 
-- [ ] 新建 `test/page-navigation.spec.tsx`，使用 `// @vitest-environment happy-dom`、React `createRoot` 与 `act`；参照 `test/muya-note-integration.spec.tsx` 的挂载和清理方式，不引入 Testing Library。
-- [ ] 覆盖导航 landmark 独立名称、三个原生按钮及其显示顺序、每个按钮只导航到对应 `ViewName`，且传入当前 view 时仅一个按钮带 `aria-current="page"`。
-- [ ] 测试组件重新接收新的当前 view 后，活动标记同步变化；按钮须保留浏览器原生 Tab / Enter / Space 语义，不用 `div` 模拟按钮。
-- [ ] 先运行定向测试，确认测试因 `PageNavigation` 尚不存在而红；保留失败原因，不能将测试环境或依赖加载错误误记为目标红灯。
+- [ ] 新建 `test/page-navigation.spec.tsx`，先挂载当前真实 `TopBar` 和 Zustand store；使用 `// @vitest-environment happy-dom`、React `createRoot` 与 `act`，参照 `test/muya-note-integration.spec.tsx` 的挂载/清理方式，不引入 Testing Library，也不 mock 页面导航。
+- [ ] 覆盖独立的「页面导航」无障碍名称、三个原生按钮及显示顺序、每个按钮只切换到对应 `ViewName`，并要求当前项唯一带 `aria-current="page"`。当前实现复用「查看」菜单标签且没有 `aria-current`，测试应具体在这两项断言失败，按钮切页行为作为既有行为回归保护。
+- [ ] 先运行定向测试并确认是上述真实 UI 断言失败；如果 React/antd 测试环境报错，先修正测试夹具，不能把模块加载错误记作目标 RED。
 
 ```text
 npm run test -- test/page-navigation.spec.tsx
-预期：在组件尚未实现时因 PageNavigation 模块/导出不存在而失败；完成步骤 2 后同一命令通过。
+预期：当前 `TopBar` 集成输出在无障碍名称与唯一 `aria-current` 断言上失败；完成步骤 2 后同一命令通过。
 ```
 
 ### 2. 实现无状态导航组件并接入现有状态与文案

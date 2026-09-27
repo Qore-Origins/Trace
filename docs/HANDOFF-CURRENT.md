@@ -7,11 +7,11 @@
 ## 当前任务：顶栏居中胶囊式页面导航
 
 - 用户已确认视觉方向 B「居中主导航」与动效 C「柔弹回落」，并于 2026-09-27 回复“继续”进入执行计划阶段。设计规格：`docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md`；共享执行真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/Centered-Liquid-View-Navigation-Implementation-Plan.md`，原生镜像为同目录 `plan.json`。
-- 当前阶段：实施计划已建立并同步 `docs/Plan/README.md`；正式代码尚未改动、自动测试尚未运行，也没有正式代码/测试文件所有权。设计方向已确认，实施仍待用户选择执行方式。
-- 本轮开始实测基线：`main...origin/main [ahead 2]`，HEAD=`be7209329991a3eff2352a23b146c98472fc4b70`。计划文档提交后状态为 `main...origin/main [ahead 3]`，HEAD=`c567cb1191101294572dc0ebba0fe40ad3e69f29`；本次仅提交文档，未推送。未跟踪 `Resource/pic/`、`Resource/vid/` 是用户资源，必须保留。此前规格提交 `de1f6dc030fa528760f2617bd17228c9c9fcc42c`、初始 HANDOFF 同步提交 `be7209329991a3eff2352a23b146c98472fc4b70` 均可由 Git 历史实测。
-- 计划文档验证：`plan.json` 由 PowerShell `ConvertFrom-Json` 成功解析，3 个组件、7 个唯一 ID、4 个 `not_started` 任务；Markdown 四个步骤与 JSON 队列对应，规格链接存在，占位文本扫描和尾随空格检查无命中，`git diff --check` 通过。由于本轮仅文档变更，未运行应用 typecheck/test/build；正式源代码未修改。
-- 计划文档阶段所有权：Codex 独占新计划 Markdown/JSON、`docs/Plan/README.md`、设计规格状态行与 `docs/HANDOFF-CURRENT.md`。应用源文件暂不属于任何执行者；实际实施前必须复核 worktree、状态与当前交接，并登记精确代码边界。
-- 下一步：选定子代理驱动或由当前智能体顺序执行；实施前在 `.worktrees/codex/centered-liquid-view-navigation` 隔离开发并更新计划/HANDOFF。等待：执行方式选择。剩余：TDD 行为组件、样式/响应式、自动验证、Electron 用户视角验收；未授权推送或发布。
+- 当前阶段：用户已选择子代理驱动。实施计划已进入步骤 1（真实顶栏行为测试）；代码尚未修改。主目录当前 `main...origin/main [ahead 4]`、HEAD=`b930850e31cb0d4107943e9bc68b884cd12247a2`；仅有未跟踪用户资源 `Resource/pic/`、`Resource/vid/`，必须保留。已存在旧 worktree `.worktrees/codex/trace-task10-11`，不得复用或覆盖。
+- 设计与计划：B「居中主导航」+ C「柔弹回落」规格已确认。执行真源 `docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/Centered-Liquid-View-Navigation-Implementation-Plan.md`，JSON 镜像与 README 已同步；Task1 `in_progress`，Task2–4 `not_started`。步骤1将挂载真实 `TopBar` 与 store，预期当前「查看」aria-label 和缺失 `aria-current` 断言红灯；不得接受模块/夹具错误作为有效 RED。
+- 文件所有权按阶段串行登记，禁止并行实现：Task1 单独实现代理拥有 `test/page-navigation.spec.tsx`；Task2 新代理拥有 `PageNavigation.tsx`、`TopBar.tsx`、`zh-CN.ts`、`en-US.ts`；Task3 新代理拥有 `shell.css`、`test/frontend-foundation-css.spec.ts`、`test/app-shell.spec.tsx`；Task4 由 Codex 协调者拥有计划/HANDOFF 同步、全量验证与用户视角验收。每个阶段的规格审查与质量审查代理只读，前者通过后才启动后者；若需要修复则回到当前实现代理，复审通过后才移交下一阶段。实际代理 ID 与启动前 Git SHA 将在代码首改前补入 HANDOFF。
+- worktree 计划：`.worktrees/codex/centered-liquid-view-navigation`，分支 `codex/centered-liquid-view-navigation`，从最新主目录提交创建；创建前需确认目标目录/分支不存在且 `.worktrees/` 被忽略，随后安装锁定依赖并运行基线。不得在 main 或旧 Task10–11 worktree 改应用代码。
+- 下一步：将本阶段状态提交至共享主目录，创建隔离 worktree、核实干净基线，随后派发 Task1 RED 实施代理并先做规格审查再做质量审查。等待：若真实 TopBar happy-dom 挂载有测试环境障碍，由实施代理带证据回报后再调整夹具。剩余：PageNavigation 接线、响应式/液态 CSS、完整 typecheck/test/build 与 Electron 人工验收；未授权推送或发布。
 
 ## 已完成：v0.17.0 双平台发布闭环
 
