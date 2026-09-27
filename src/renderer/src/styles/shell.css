@@ -36,20 +36,24 @@
   flex: none;
 }
 
-.app-shell .ws-top .search {
-  min-width: 0;
-}
-
 @media (max-width: 959px) {
   .app-shell .ws-top {
     gap: 6px;
-    padding-left: 10px;
+    padding-inline: 10px;
   }
 
-  .app-shell .menu-title,
-  .app-shell .nav-btn {
-    padding-right: 6px;
-    padding-left: 6px;
+  .top-left,
+  .top-right {
+    gap: 4px;
+  }
+
+  .menubar {
+    gap: 0;
+  }
+
+  .app-shell .menu-title {
+    padding-right: 3px;
+    padding-left: 3px;
   }
 }
 
@@ -83,12 +87,15 @@
 
 /* 顶栏：无边框标题栏——整体为拖拽区，交互控件 no-drag（双击空白=最大化/还原 系统行为）
    注意：新增顶栏交互元素必须加进 no-drag 白名单，否则点击被拖拽区吞掉（menu-title 2026-09-06 实证） */
-.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; -webkit-app-region: drag; user-select: none; }
+.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: grid; grid-template-columns: minmax(0, 1fr) 226px minmax(0, 1fr); align-items: center; gap: 12px; padding-inline: 16px; -webkit-app-region: drag; user-select: none; }
 .ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input, .ws-top .menu-title, .ws-top .menubar, .ws-top .view-nav { -webkit-app-region: no-drag; }
+.top-left, .top-right { display: flex; align-items: center; min-width: 0; gap: 12px; }
+.top-center { display: flex; justify-content: center; min-width: 0; }
+.top-right { justify-content: flex-end; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #3b5bdb, var(--origin)); }
-.ws-top .search { flex: 0 1 400px; }
-.ws-top .spacer { flex: 1; }
+.ws-top .search { min-width: 0; flex: 1 1 0; max-width: 400px; }
+.ws-top .search .ant-input { width: 100%; }
 
 /* VS Code 式菜单栏：极简文字，无底色，悬停变色（与窗口控制同语言） */
 .menubar { display: flex; align-items: center; gap: 2px; }
@@ -96,12 +103,48 @@
 .menu-title:hover { color: var(--text-1); background: transparent; }
 .menu-title:focus-visible { outline: 2px solid var(--link); }
 
-/* 视图导航（计划/日记，2026-09-10 日记深化 Task 5）：与菜单栏同语言的文字钮；激活态=主色 */
-.view-nav { display: flex; align-items: center; gap: 2px; }
-.nav-btn { padding: 4px 10px; font-size: 13px; color: var(--text-2); background: transparent; border: none; cursor: pointer; border-radius: 6px; transition: color var(--t-ui) var(--ease-out); }
+/* 活动面用同一位置变量移动；与目标位置的差值在运动中形成轻微拉伸。 */
+@property --nav-position {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+.view-nav {
+  --nav-position: 0;
+  --nav-target: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 226px;
+  height: 42px;
+  padding: 4px;
+  background: var(--fill);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.view-nav:has(.nav-btn.active:nth-child(2)) { --nav-position: 1; --nav-target: 1; }
+.view-nav:has(.nav-btn.active:nth-child(3)) { --nav-position: 2; --nav-target: 2; }
+.view-nav::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: calc(4px + (100% - 8px) / 3 * var(--nav-position) - max(0, var(--nav-position) - var(--nav-target)) * 3px);
+  width: calc((100% - 8px) / 3 + abs(var(--nav-target) - var(--nav-position)) * 3px);
+  border-radius: 999px;
+  background: var(--trace-bg);
+  transition: --nav-position 560ms var(--ease-spring);
+  pointer-events: none;
+}
+.nav-btn { position: relative; z-index: 1; flex: 1; height: 100%; padding: 0; font-size: 13px; color: var(--text-2); background: transparent; border: none; cursor: pointer; border-radius: 999px; transition: color var(--t-ui) var(--ease-out); }
 .nav-btn:hover { color: var(--text-1); }
 .nav-btn.active { color: var(--link); font-weight: 500; }
-.nav-btn:focus-visible { outline: 2px solid var(--link); }
+.nav-btn:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) {
+  .view-nav::before { transition: none; }
+}
 
 /* 自绘窗口控制：极简裸图标——无底色无边框无圆角视觉，悬停仅图标变色（2026-09-06 三次定稿）
    no-drag 在组件级全局生效（而非每个标题栏手动白名单）：引导页标题栏曾漏配致按钮点不开

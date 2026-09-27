@@ -4,6 +4,7 @@ import { getMessage, getModal } from '../antd-host'
 import { Dropdown, Input } from 'antd'
 import type { MenuProps } from 'antd'
 import WindowControls from './WindowControls'
+import PageNavigation from './PageNavigation'
 import { useTreeStore } from '../stores/tree-store'
 import { useAppStore } from '../stores/app-store'
 import { confirmRemoveTree, useUiStore } from '../stores/ui-store'
@@ -18,21 +19,26 @@ export default function TopBar(): React.JSX.Element {
 
   return (
     <div className="ws-top">
-      <div className="brand">
-        <span className="brand-dot" />
-        溯源 Trace
+      <div className="top-left">
+        <div className="brand">
+          <span className="brand-dot" />
+          溯源 Trace
+        </div>
+        <MenuBar />
       </div>
-      <MenuBar />
-      <ViewNav />
-      <div className="search">
-        <Input
-          placeholder={t('search.topPlaceholder')}
-          readOnly
-          onFocus={() => setSearchOpen(true)}
-        />
+      <div className="top-center">
+        <ViewNav />
       </div>
-      <div className="spacer" />
-      <WindowControls />
+      <div className="top-right">
+        <div className="search">
+          <Input
+            placeholder={t('search.topPlaceholder')}
+            readOnly
+            onFocus={() => setSearchOpen(true)}
+          />
+        </div>
+        <WindowControls />
+      </div>
     </div>
   )
 }
@@ -43,17 +49,16 @@ function ViewNav(): React.JSX.Element {
   const view = useUiStore((s) => s.view)
   const setView = useUiStore((s) => s.setView)
   return (
-    <nav className="view-nav" aria-label={t('menu.view')}>
-      <button type="button" className={`nav-btn${view === 'workspace' ? ' active' : ''}`} onClick={() => setView('workspace')}>
-        {t('diary.navPlans')}
-      </button>
-      <button type="button" className={`nav-btn${view === 'diary' ? ' active' : ''}`} onClick={() => setView('diary')}>
-        {t('diary.nav')}
-      </button>
-      <button type="button" className={`nav-btn${view === 'memories' ? ' active' : ''}`} onClick={() => setView('memories')}>
-        {t('diary.navMemories')}
-      </button>
-    </nav>
+    <PageNavigation
+      currentView={view}
+      onNavigate={setView}
+      labels={{
+        workspace: t('diary.navPlans'),
+        diary: t('diary.nav'),
+        memories: t('diary.navMemories')
+      }}
+      ariaLabel={t('navigation.pages')}
+    />
   )
 }
 

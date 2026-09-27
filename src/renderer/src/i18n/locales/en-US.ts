@@ -63,6 +63,9 @@ const enUS: typeof zhCN = {
     devtools: 'Developer tools',
     about: 'About Trace'
   },
+  navigation: {
+    pages: 'Page navigation'
+  },
   about: {
     title: 'Trace · Every plan leaves a trace',
     version: 'Version {{version}} (storage contract {{format}})',

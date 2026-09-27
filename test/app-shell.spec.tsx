@@ -70,4 +70,15 @@ describe('AppShell structure contract', () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.ws-top\s*\{[^}]*gap:\s*6px/)
     expect(css).toMatch(/\.ws-top \.search\s*\{[^}]*min-width:\s*0/)
   })
+
+  it('places the page capsule on the window midpoint with shrinkable search and compact menus', () => {
+    const topBar = readFileSync(resolve(rendererRoot, 'components/TopBar.tsx'), 'utf8')
+    const css = readFileSync(resolve(rendererRoot, 'styles/shell.css'), 'utf8')
+    expect(topBar).toMatch(/className="top-left"[\s\S]*?<MenuBar \/>/)
+    expect(topBar).toMatch(/className="top-center"[\s\S]*?<ViewNav \/>/)
+    expect(topBar).toMatch(/className="top-right"[\s\S]*?className="search"[\s\S]*?<WindowControls \/>/)
+    expect(css).toMatch(/\.ws-top\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 226px minmax\(0, 1fr\);/)
+    expect(css).toMatch(/\.ws-top \.search\s*\{[^}]*min-width:\s*0;[^}]*flex:\s*1 1 0;/)
+    expect(css).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.menubar\s*\{[^}]*gap:\s*0;/)
+  })
 })
