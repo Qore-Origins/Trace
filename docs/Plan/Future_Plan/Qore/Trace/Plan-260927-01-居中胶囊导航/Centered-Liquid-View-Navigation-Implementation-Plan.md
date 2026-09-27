@@ -10,7 +10,7 @@
 
 ## 当前状态与已定设计
 
-- 状态：实施中（2026-09-27；用户选择子代理驱动）。当前执行任务：步骤 1，隔离 worktree 与测试基线已就绪；`/root/nav_task1_red` 只读确认真实 TopBar 可在 happy-dom 挂载，并已报告清理与状态恢复方式；尚未写代码。待 feature worktree 快进到最新共享状态后发送 kickoff。后续步骤仍待开始。设计方向已经由用户确认：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
+- 状态：实施中（2026-09-27；用户选择子代理驱动）。步骤 1 已完成：真实 TopBar/store happy-dom 测试由 `/root/nav_task1_red` 提交 `bb4d9107e9d20976f58b22f010615d0c78b6200a`，P3 结构耦合修订提交 `172823fb6dc78671734950c9ba9f3c77ad7a786e`；定向测试为 1 项通过、2 项预期 RED（导航名称与唯一 `aria-current`），规格与质量两阶段审查均通过。当前执行步骤 2：`/root/nav_task2_impl` 已登记精确文件边界，完成只读预检，待同步交接并收到 kickoff 后开始改代码。设计方向已经由用户确认：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
 - 顶栏保持一行 48px；菜单留在左区，中轴胶囊约 226 × 42px，搜索与窗口控制留在右区。
 - 页面切换由现有 `setView` 立即生效；唯一选中项及 `aria-current="page"` 均由 `view` 派生。动效不能延迟或排队页面切换。
 - 滑块在目标段间柔弹移动并有方向感的轻微拉伸/回落；快速连续点击时从最新位置重新定向。启用系统减少动态效果时取消弹性动效。
@@ -37,9 +37,9 @@
 
 ### 1. 先建立页面导航行为测试并确认红灯
 
-- [ ] 新建 `test/page-navigation.spec.tsx`，先挂载当前真实 `TopBar` 和 Zustand store；使用 `// @vitest-environment happy-dom`、React `createRoot` 与 `act`，参照 `test/muya-note-integration.spec.tsx` 的挂载/清理方式，不引入 Testing Library，也不 mock 页面导航。
-- [ ] 覆盖独立的「页面导航」无障碍名称、三个原生按钮及显示顺序、每个按钮只切换到对应 `ViewName`，并要求当前项唯一带 `aria-current="page"`。当前实现复用「查看」菜单标签且没有 `aria-current`，测试应具体在这两项断言失败，按钮切页行为作为既有行为回归保护。
-- [ ] 先运行定向测试并确认是上述真实 UI 断言失败；如果 React/antd 测试环境报错，先修正测试夹具，不能把模块加载错误记作目标 RED。
+- [x] 新建 `test/page-navigation.spec.tsx`，先挂载当前真实 `TopBar` 和 Zustand store；使用 `// @vitest-environment happy-dom`、React `createRoot` 与 `act`，参照 `test/muya-note-integration.spec.tsx` 的挂载/清理方式，不引入 Testing Library，也不 mock 页面导航。
+- [x] 覆盖独立的「页面导航」无障碍名称、三个原生按钮及显示顺序、每个按钮只切换到对应 `ViewName`，并要求当前项唯一带 `aria-current="page"`。当前实现复用「查看」菜单标签且没有 `aria-current`，测试应具体在这两项断言失败，按钮切页行为作为既有行为回归保护。
+- [x] 先运行定向测试并确认是上述真实 UI 断言失败；如果 React/antd 测试环境报错，先修正测试夹具，不能把模块加载错误记作目标 RED。
 
 ```text
 npm run test -- test/page-navigation.spec.tsx
