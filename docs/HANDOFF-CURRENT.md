@@ -8,11 +8,11 @@
 
 - 用户已明确要求“构建并发布 0.18.1”。范围为已验证的逾期标签布局稳定修复 `fda4972` 与文档提交 `8491c00`，不追加新产品功能。发布计划：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-04-v0.18.1补丁发布/`，Markdown 为真源，JSON 为镜像。
 - 开工实测：本地 `main`=`8491c00`；`origin/main`、`gitee/main` 均=`1b31518`；`v0.18.1` 本地及双远端未占用。工作区只余用户未跟踪 `Resource/pic/`、`Resource/vid/`。
-- 文件所有权：Codex 独占 `package.json`、`package-lock.json`、`AGENTS.md`、`CLAUDE.md`、`docs/changelog/CHANGELOG.md`、`docs/changelog/改动文档_20260926_近期版本累计更新.md`、`docs/lifecycle/05-部署上线 Deployment/发布说明 Release Notes.md`、`builds/release_notes/release_notes_v0.18.1.md`、`builds/build_history.json`、`builds/release_history.json`、`docs/Plan/README.md`、本轮发布计划 Markdown/JSON 和本 HANDOFF。构建输出只在忽略的 `release/`、`builds/windows/`；不碰用户资源或其他 worktree。
-- 当前阶段：版本文档和发行说明已更新；`npm run typecheck` 通过、`npm run test` 40 文件 / 398 项、`npm run build` 与 `npm run build:win` 均通过。安装包 210,580,598 bytes，SHA-256 `36679588F921F338B8DC27FA229B968F00D11387B2843C2F5DB9B7828BF94654`，版本 0.18.1，未签名；归档哈希一致。`app.asar` 不含项目 QA 根目录，149/149 PlantUML 文件哈希一致，离线 SVG 和安全 smoke 通过。隔离打包应用首启空库引导、选择测试库、全文搜索与源注释回溯 smoke 通过；NSIS 安装界面未单独执行。外部发布尚未执行。
-- 下一步：准备提交并创建 `v0.18.1` annotated tag，通过 SSH 推送双端，然后分别发布并核对 GitHub/Gitee Release。
+- 文件所有权：Codex 独占 `package.json`、`package-lock.json`、`AGENTS.md`、`CLAUDE.md`、`docs/changelog/CHANGELOG.md`、`docs/changelog/改动文档_20260926_近期版本累计更新.md`、`docs/lifecycle/05-部署上线 Deployment/发布说明 Release Notes.md`、`builds/release_notes/release_notes_v0.18.1.md`、`builds/build_history.json`、`builds/release_history.json`、`.issues/2026-09-27-任务详情卡片瞬时宽度跳变.md`、`docs/Plan/README.md`、本轮发布计划 Markdown/JSON、前轮逾期标签计划 Markdown/JSON 和本 HANDOFF。构建输出只在忽略的 `release/`、`builds/windows/`；不碰用户资源或其他 worktree。
+- 当前阶段：版本准备提交 `9787e4932b74552a462194a0058754c426b8209e`、annotated tag `v0.18.1` 对象 `7b3c673e333c2b2b68d51f99b9cc4f3a88934080` 已经 SSH 推送双端；`git ls-remote` 实测两端 `main` 和 tag peeled commit 均=`9787e4932b74552a462194a0058754c426b8209e`。GitHub Release ID `397653862` 已发布预览版，唯一 EXE 210,580,598 bytes、digest 与本地 SHA-256 匹配，正文逐字一致；Gitee Release ID `1170435` 已发布预览版，正文/目标提交一致，公开页面 HTTP 200，仅平台自动源码归档，无 EXE。`npm run typecheck` 通过、`npm run test` 40 文件 / 398 项（中断后复跑通过）、`npm run build` 与 `npm run build:win` 均通过。安装包版本 0.18.1，未签名；归档哈希一致。`app.asar` 不含项目 QA 根目录，149/149 PlantUML 文件哈希一致，离线 SVG 和安全 smoke 通过。隔离打包应用首启空库引导、选择测试库、全文搜索与源注释回溯 smoke 通过；NSIS 安装界面未单独执行。发布账本收尾正在提交。
+- 下一步：提交并推送发布历史和共享计划状态；双端 refs 及 Release 再次核验。
 - 等待：无；若外部服务拒绝认证或构建失败，按实际错误暂停对应发布步骤，不冒称成功。
-- 还差：tag/SSH 推送、GitHub 安装包和 Gitee 说明、发布账本同步。
+- 还差：发布账本与交接状态双端同步；NSIS 安装界面交互未单独验收，用户安装版复验可在下载后进行。
 
 ## 当前任务：逾期标签布局稳定（本地完成）
 

@@ -24,8 +24,8 @@
         "items": [
           { "id": "3819cd42a9314c78997ca6c268b878d6", "title": "更新 0.18.1 版本元数据和发布说明", "status": "done" },
           { "id": "9454e9917786452e8801b26f5c39cce2", "title": "完整验证并构建、核验 Windows 安装包", "status": "done" },
-          { "id": "78b63f9d6b604a3e9f654060c184c3dd", "title": "SSH 推送 main 与 annotated tag 至 GitHub/Gitee", "status": "in_progress" },
-          { "id": "74657cedf956472eb020065458937480", "title": "双平台 Release 核验并同步发布账本", "status": "not_started" }
+          { "id": "78b63f9d6b604a3e9f654060c184c3dd", "title": "SSH 推送 main 与 annotated tag 至 GitHub/Gitee", "status": "done" },
+          { "id": "74657cedf956472eb020065458937480", "title": "双平台 Release 核验并同步发布账本", "status": "in_progress" }
         ]
       }
     }

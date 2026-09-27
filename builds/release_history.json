@@ -608,6 +608,84 @@
         ],
         "publicPageStatus": 200
       }
+    },
+    {
+      "platform": "GitHub",
+      "repo": "Qore-Origins/Trace",
+      "tag": "v0.18.1",
+      "target": "main",
+      "title": "v0.18.1 — 溯源 Trace 公测版 Beta 7 修订（逾期标签布局稳定）",
+      "label": "None",
+      "status": "published",
+      "isLatest": false,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.18.1.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_0.18.1_beta_20260927_01.exe",
+          "platform": "win32-x64",
+          "size": 210580598,
+          "sizeFormatted": "200.83 MiB",
+          "sha256": "36679588F921F338B8DC27FA229B968F00D11387B2843C2F5DB9B7828BF94654",
+          "localPath": "builds/windows/Trace_0.18.1_beta_20260927_01.exe",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.18.1/Trace_0.18.1_beta_20260927_01.exe"
+        }
+      ],
+      "versionInPackageJson": "0.18.1",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-27T18:47:41+08:00",
+      "commit": "9787e4932b74552a462194a0058754c426b8209e",
+      "publishedAt": "2026-09-27T13:08:44Z",
+      "url": "https://github.com/Qore-Origins/Trace/releases/tag/v0.18.1",
+      "releaseId": 397653862,
+      "verification": {
+        "bodyMatchesLocalNotes": true,
+        "tag": "v0.18.1",
+        "targetCommit": "9787e4932b74552a462194a0058754c426b8209e",
+        "preRelease": true,
+        "installerSize": 210580598,
+        "installerDigest": "sha256:36679588f921f338b8dc27fa229b968f00d11387b2843c2f5db9b7828bf94654"
+      }
+    },
+    {
+      "platform": "Gitee",
+      "repo": "Qore/trace",
+      "tag": "v0.18.1",
+      "target": "main",
+      "title": "v0.18.1 — 溯源 Trace 公测版 Beta 7 修订（逾期标签布局稳定）",
+      "label": "None",
+      "status": "published",
+      "isLatest": false,
+      "isPreRelease": true,
+      "notesFile": "builds/release_notes/release_notes_v0.18.1.md",
+      "notesFormat": "markdown",
+      "assets": [],
+      "platformGeneratedSourceArchives": [
+        "v0.18.1.zip",
+        "v0.18.1.tar.gz"
+      ],
+      "assetPolicy": "未上传 Windows 安装包；Gitee 自动生成上述源码归档，安装包仅通过 GitHub 下载",
+      "externalDownloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v0.18.1/Trace_0.18.1_beta_20260927_01.exe",
+      "versionInPackageJson": "0.18.1",
+      "buildStatus": "beta",
+      "builtAt": "2026-09-27T18:47:41+08:00",
+      "commit": "9787e4932b74552a462194a0058754c426b8209e",
+      "publishedAt": "2026-09-27T13:10:08Z",
+      "url": "https://gitee.com/Qore/trace/releases/v0.18.1",
+      "releaseId": 1170435,
+      "verification": {
+        "bodyMatchesLocalNotes": true,
+        "tag": "v0.18.1",
+        "targetCommit": "9787e4932b74552a462194a0058754c426b8209e",
+        "preRelease": true,
+        "installerUploaded": false,
+        "platformGeneratedSourceArchives": [
+          "v0.18.1.zip",
+          "v0.18.1.tar.gz"
+        ],
+        "publicPageStatus": 200
+      }
     }
   ]
 }

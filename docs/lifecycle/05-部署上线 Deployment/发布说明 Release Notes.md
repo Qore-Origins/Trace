@@ -38,5 +38,5 @@
 
 ## 已发布渠道
 
-- GitHub Release（Windows x64 安装包）：<https://github.com/Qore-Origins/Trace/releases/tag/v0.18.1>（发布后核验）。
-- Gitee Release（仅说明，无安装包）：<https://gitee.com/Qore/trace/releases/v0.18.1>（发布后核验）。
+- GitHub Release（Windows x64 安装包）：<https://github.com/Qore-Origins/Trace/releases/tag/v0.18.1>；远端 digest 与本地 SHA-256 一致。
+- Gitee Release（仅说明，无安装包）：<https://gitee.com/Qore/trace/releases/v0.18.1>；公开页面与正文已核验。
