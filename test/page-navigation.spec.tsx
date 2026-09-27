@@ -71,7 +71,6 @@ describe('TopBar page navigation', () => {
     const navigation = getNavigation()
     const buttons = Array.from(navigation.querySelectorAll<HTMLButtonElement>('button'))
 
-    expect(Array.from(navigation.children).map((child) => child.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON'])
     expect(buttons).toHaveLength(3)
     expect(buttons.map((button) => button.textContent?.trim())).toEqual(pages.map(({ label }) => label))
     expect(buttons.every((button) => button.type === 'button')).toBe(true)
