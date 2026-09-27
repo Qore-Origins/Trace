@@ -1,6 +1,6 @@
 # Trace v0.18.1 双平台补丁发布计划
 
-> 状态：实施中（2026-09-27）
+> 状态：已完成（2026-09-27）
 > 版本：v0.18.1 · 公测版 Beta 7 修订
 > 上一发布：v0.18.0 · 公测版 Beta 7
 
@@ -18,7 +18,7 @@ Codex 独占本轮发布元数据：`package.json`、`package-lock.json`、`AGEN
 - [x] 重跑 typecheck、全量测试、构建与 Windows NSIS 打包；核验版本、大小、SHA-256、PlantUML 离线资源与可执行包主路径。未单独执行 NSIS 安装交互，已在发行说明明确记录。
 - [x] 提交发布准备，在该提交创建 annotated tag `v0.18.1`；通过 SSH 推送 `main` 与 tag 至 GitHub/Gitee，并实测远端 refs。
 - [x] GitHub 创建预发布并附安装包；Gitee 仅发布相同说明、不上传安装包。核对正文、tag、预发布状态及 GitHub asset 大小/digest。
-- [ ] 回填 build/release 账本、共享计划与交接；文档提交双端同步，最终复核。
+- [x] 回填 build/release 账本、共享计划与交接；文档提交双端同步，最终复核。
 
 ## 发布门禁
 
@@ -33,4 +33,4 @@ Codex 独占本轮发布元数据：`package.json`、`package-lock.json`、`AGEN
 - 发布准备提交 `9787e4932b74552a462194a0058754c426b8209e`；annotated tag `v0.18.1` 对象 `7b3c673e333c2b2b68d51f99b9cc4f3a88934080` 解引用为该提交。提交前/中断后 `npm run typecheck` 与全量 `npm run test`（40/398）复跑通过，`git diff --cached --check` 通过。提交后工作区仅用户资源未跟踪，发布状态文档新更新尚待收尾提交。
 - 双端 SSH 推送完成：`git ls-remote` 实测 GitHub/Gitee `main`=`9787e4932b74552a462194a0058754c426b8209e`，annotated tag object=`7b3c673e333c2b2b68d51f99b9cc4f3a88934080`，peeled commit=`9787e4932b74552a462194a0058754c426b8209e`。
 - GitHub Release `https://github.com/Qore-Origins/Trace/releases/tag/v0.18.1`，ID `397653862`，预发布/非草稿；正文与本地发行说明一致，唯一安装包 210,580,598 bytes，API digest `sha256:36679588f921f338b8dc27fa229b968f00d11387b2843c2f5db9b7828bf94654`。Gitee Release `https://gitee.com/Qore/trace/releases/v0.18.1`，ID `1170435`，预发布，公开页 HTTP 200；正文一致，目标提交 `9787e49`，无 EXE，仅自动源码归档 `v0.18.1.zip` / `v0.18.1.tar.gz`。
-- 待执行：发布历史与共享交接收尾提交、双端推送和最终复核。
+- 发布历史及前轮修复状态已由 `f618a51` 同步 GitHub/Gitee；本计划与 HANDOFF 的完成态在收尾提交中同步。最终双端 `main`、tag 与 Release 的只读复核记录以收尾提交后的实际结果为准；用户安装版人工复验和 NSIS 安装向导交互仍未执行。

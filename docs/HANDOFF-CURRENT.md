@@ -2,29 +2,30 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-27（Codex：v0.18.1 补丁发布实施中）
+> 更新：2026-09-27（Codex：v0.18.1 补丁发布完成）
 
-## 当前任务：v0.18.1 双平台补丁发布（实施中）
+## 最近完成：v0.18.1 双平台补丁发布
 
 - 用户已明确要求“构建并发布 0.18.1”。范围为已验证的逾期标签布局稳定修复 `fda4972` 与文档提交 `8491c00`，不追加新产品功能。发布计划：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-04-v0.18.1补丁发布/`，Markdown 为真源，JSON 为镜像。
 - 开工实测：本地 `main`=`8491c00`；`origin/main`、`gitee/main` 均=`1b31518`；`v0.18.1` 本地及双远端未占用。工作区只余用户未跟踪 `Resource/pic/`、`Resource/vid/`。
-- 文件所有权：Codex 独占 `package.json`、`package-lock.json`、`AGENTS.md`、`CLAUDE.md`、`docs/changelog/CHANGELOG.md`、`docs/changelog/改动文档_20260926_近期版本累计更新.md`、`docs/lifecycle/05-部署上线 Deployment/发布说明 Release Notes.md`、`builds/release_notes/release_notes_v0.18.1.md`、`builds/build_history.json`、`builds/release_history.json`、`.issues/2026-09-27-任务详情卡片瞬时宽度跳变.md`、`docs/Plan/README.md`、本轮发布计划 Markdown/JSON、前轮逾期标签计划 Markdown/JSON 和本 HANDOFF。构建输出只在忽略的 `release/`、`builds/windows/`；不碰用户资源或其他 worktree。
-- 当前阶段：版本准备提交 `9787e4932b74552a462194a0058754c426b8209e`、annotated tag `v0.18.1` 对象 `7b3c673e333c2b2b68d51f99b9cc4f3a88934080` 已经 SSH 推送双端；`git ls-remote` 实测两端 `main` 和 tag peeled commit 均=`9787e4932b74552a462194a0058754c426b8209e`。GitHub Release ID `397653862` 已发布预览版，唯一 EXE 210,580,598 bytes、digest 与本地 SHA-256 匹配，正文逐字一致；Gitee Release ID `1170435` 已发布预览版，正文/目标提交一致，公开页面 HTTP 200，仅平台自动源码归档，无 EXE。`npm run typecheck` 通过、`npm run test` 40 文件 / 398 项（中断后复跑通过）、`npm run build` 与 `npm run build:win` 均通过。安装包版本 0.18.1，未签名；归档哈希一致。`app.asar` 不含项目 QA 根目录，149/149 PlantUML 文件哈希一致，离线 SVG 和安全 smoke 通过。隔离打包应用首启空库引导、选择测试库、全文搜索与源注释回溯 smoke 通过；NSIS 安装界面未单独执行。发布账本收尾正在提交。
-- 下一步：提交并推送发布历史和共享计划状态；双端 refs 及 Release 再次核验。
-- 等待：无；若外部服务拒绝认证或构建失败，按实际错误暂停对应发布步骤，不冒称成功。
-- 还差：发布账本与交接状态双端同步；NSIS 安装界面交互未单独验收，用户安装版复验可在下载后进行。
+- 文件所有权：本轮 `package.json`、`package-lock.json`、版本与发行说明、`builds/build_history.json`、`builds/release_history.json`、issue、共享计划及本 HANDOFF 的边界在收尾提交双端同步后释放。构建输出仅在忽略的 `release/`、`builds/windows/`；用户资源和其他 worktree 未触碰。
+- 已实现：版本准备提交 `9787e4932b74552a462194a0058754c426b8209e`，annotated tag `v0.18.1` 对象 `7b3c673e333c2b2b68d51f99b9cc4f3a88934080` 解引用到该提交。发布账本提交 `f618a51` 已通过 SSH 推送 GitHub/Gitee `main`；本收尾提交完成后应以 `git ls-remote` 实测最终双端 `main`。GitHub Release ID `397653862` 附唯一 EXE，Gitee Release ID `1170435` 仅附自动源码归档；两端发行说明一致。
+- 已验证：`npm run typecheck` 通过、`npm run test` 40 文件 / 398 项通过（中断后复跑）、`npm run build` 与 `npm run build:win` 通过。安装包 210,580,598 bytes，SHA-256 `36679588F921F338B8DC27FA229B968F00D11387B2843C2F5DB9B7828BF94654`，版本 0.18.1，未签名；GitHub API asset digest 一致。`app.asar` 不含 QA 根目录，随包 PlantUML 149/149 哈希相同、离线 SVG 和安全 smoke 通过。隔离打包应用首启空库引导、选择测试库、全文搜索与源注释回溯 smoke 通过。NSIS 安装界面未单独执行。
+- 下一步：用户可下载 v0.18.1 安装版复验取消勾选时逾期标签布局；后续开发接手前重新核对 `git status --short --branch`、双端 refs 和共享计划。
+- 等待：无。
+- 还差：用户安装版人工复验；NSIS 安装向导交互未单独验收。
 
-## 当前任务：逾期标签布局稳定（本地完成）
+## 最近完成：逾期标签布局稳定
 
 - 最新状态（2026-09-27）：用户所称“预期”是“逾期”标签。取消已完成过期任务的勾选时，标签原 `max-width` 动画使文字中途折行，卡片高度短暂增加 14.56px；任务详情与任务列表同源。实施计划与镜像队列：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-03-逾期标签布局稳定/`，三项任务全部完成。
 - 已实现：产品提交 `fda4972b1c9e148a614376769146d3ea8c6a3cca` 固定已过日期标签槽位，完成态保留槽位并以 `aria-hidden` + 透明度隐藏；禁止标签折行；任务详情和任务列表共用规则。非逾期任务不额外占位，原逾期判定语义不变。
 - 已验证：修复前 `node demo/frontend-foundation/overdue-layout-check.mjs 52831 52832` 的 6/6 浏览器场景按预期 RED；修复后同命令 6/6 通过，1200px 亮色、720px 暗色、720px 减动效中卡片、标题/任务名和标签几何变化均为 0，状态提示与 `aria-hidden` 正确，非逾期任务无槽位，页面无水平溢出。`npm run typecheck` 0 错；`npm run test` 40 文件、398/398；`npm run build` 成功，renderer 7,156 模块；`git diff --check` 通过。
 - 同类检查：单选计划的逾期文案由日期决定，勾选不改变其挂载；心情/注释无逾期标签；卡片样式中不再有占宽入场动画。树的高度过渡属于单独的展开/收拢行为，未改变。
-- 文件所有权：本轮产品代码、测试脚本与 demo README 已提交，边界释放。Codex 仅负责本轮 issue、HANDOFF 和共享计划文档收尾；其他智能体可在读取本文件后接手已释放代码文件。用户 `Resource/pic/`、`Resource/vid/` 未跟踪资源保持原样。
-- Git 状态：起始 `main`、`origin/main`、`gitee/main` 均为 `1b3151815e5af806bf5c98c99191a209653d5c9e`；产品提交后本地 `main` 为 `fda4972b1c9e148a614376769146d3ea8c6a3cca`，未推送。完成态文档将单独提交，不修改 v0.18.0 tag 或已发布包。
-- 下一步：下一次经用户授权推送/发布时纳入该本地修复；用户可在包含该提交的开发版中复验。
+- 文件所有权：产品代码、测试脚本、demo README 与本轮 issue/计划文档均已提交，边界释放。用户 `Resource/pic/`、`Resource/vid/` 未跟踪资源保持原样。
+- Git 状态：产品修复提交 `fda4972b1c9e148a614376769146d3ea8c6a3cca` 已纳入 v0.18.1 发布；未修改 v0.18.0 tag 或旧安装包。
+- 下一步：用户可在 v0.18.1 安装版复验。
 - 等待：无。
-- 还差：当前 v0.18.0 安装包尚不包含修复；未单独执行 NSIS 安装版交互验收。
+- 还差：NSIS 安装版交互未单独验收。
 
 ### 最近完成：v0.18.0 双平台发布
 
