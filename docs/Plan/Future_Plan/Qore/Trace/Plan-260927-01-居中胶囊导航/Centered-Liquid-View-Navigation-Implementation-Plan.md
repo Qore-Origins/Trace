@@ -82,7 +82,7 @@ npm run test -- test/frontend-foundation-css.spec.ts test/app-shell.spec.tsx
 - [x] 启动 Electron 开发版实窗验收：720px、813px、1220px、最大化约 1707px CSS viewport，页面导航始终位于窗口水平中轴，左右菜单/搜索/窗口控件无重叠；三段各约 72.2px。720px 亮/暗主题及宽屏亮/暗主题均检查。最大化测量的中轴偏差约 0.17px。
 - [x] 通过真实鼠标与 Tab + Enter/Space 验证三个页面切换、唯一活动项、快速重定向无动画队列；实测弹性滑块移动后回落。经 Chromium reduced-motion media emulation 验证减少动态效果时 CSS transition 为 none / 0s，页面状态仍即时切换。
 - [x] 验证文件菜单与 Escape、Ctrl+F 搜索与 Escape、Ctrl+, 设置与 Escape、亮暗主题切换、最小化、最大化/还原、关闭、标题栏双击最大化及拖拽移动。
-- [x] 完整实现最终审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor；检查了唯一 view 状态、`aria-current`、溢出裁切、reduced-motion、语义 token 与 no-drag。Electron dev 测试环境的 PlantUML bundled Java runtime 未准备，显示 runtime unavailable；与导航无关，未影响导航与窗口验收。独立 QA profile/测试库实际隔离在 `C:\Users\aaa\AppData\Local\Temp\trace-nav-qa-20260927`，没有加载用户真实计划库。清理操作先前被拒绝，目录保留以供复核；未删除用户数据。
+- [x] 完整实现最终审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor；检查了唯一 view 状态、`aria-current`、溢出裁切、reduced-motion、语义 token 与 no-drag。Electron dev 测试环境的 PlantUML bundled Java runtime 未准备，显示 runtime unavailable；与导航无关，未影响导航与窗口验收。独立 QA profile/测试库未接触用户真实计划库；完成后已对精确临时目录做路径与 reparse-point 核验，并移入 Windows 回收站（可恢复）。
 
 ## 完成标准
 
