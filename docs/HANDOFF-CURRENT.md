@@ -7,12 +7,12 @@
 ## 当前任务：顶栏居中胶囊式页面导航
 
 - 用户已确认视觉方向 B「居中主导航」与动效 C「柔弹回落」，并于 2026-09-27 回复“继续”进入执行计划阶段。设计规格：`docs/superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md`；共享执行真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/Centered-Liquid-View-Navigation-Implementation-Plan.md`，原生镜像为同目录 `plan.json`。
-- 当前阶段：用户已选择子代理驱动。实施计划已进入步骤 1（真实顶栏行为测试）；代码尚未修改。记录时主目录 `main...origin/main [ahead 5]`、HEAD=`486e08e104602b20f47f07a5c810d8e5ca390a7d`；仅有未跟踪用户资源 `Resource/pic/`、`Resource/vid/`，必须保留。已存在旧 worktree `.worktrees/codex/trace-task10-11`，不得复用或覆盖。
+- 当前阶段：用户已选择子代理驱动。实施计划已进入步骤 1（真实顶栏行为测试）；代码尚未修改。记录时主目录 `main...origin/main [ahead 6]`、HEAD=`85b7530cf0939431a8619a41f3387d75f43d18cc`；仅有未跟踪用户资源 `Resource/pic/`、`Resource/vid/`，必须保留。已存在旧 worktree `.worktrees/codex/trace-task10-11`，不得复用或覆盖。
 - 设计与计划：B「居中主导航」+ C「柔弹回落」规格已确认。执行真源 `docs/Plan/Future_Plan/Qore/Trace/Plan-260927-01-居中胶囊导航/Centered-Liquid-View-Navigation-Implementation-Plan.md`，JSON 镜像与 README 已同步；Task1 `in_progress`，Task2–4 `not_started`。步骤1将挂载真实 `TopBar` 与 store，预期当前「查看」aria-label 和缺失 `aria-current` 断言红灯；不得接受模块/夹具错误作为有效 RED。
 - 文件所有权按阶段串行登记，禁止并行实现：Task1 单独实现代理拥有 `test/page-navigation.spec.tsx`；Task2 新代理拥有 `PageNavigation.tsx`、`TopBar.tsx`、`zh-CN.ts`、`en-US.ts`；Task3 新代理拥有 `shell.css`、`test/frontend-foundation-css.spec.ts`、`test/app-shell.spec.tsx`；Task4 由 Codex 协调者拥有计划/HANDOFF 同步、全量验证与用户视角验收。每个阶段的规格审查与质量审查代理只读，前者通过后才启动后者；若需要修复则回到当前实现代理，复审通过后才移交下一阶段。实际代理 ID 与启动前 Git SHA 将在代码首改前补入 HANDOFF。
 - worktree 已创建：`.worktrees/codex/centered-liquid-view-navigation`，分支 `codex/centered-liquid-view-navigation`，基线 HEAD=`486e08e104602b20f47f07a5c810d8e5ca390a7d`。创建前已确认目标目录/分支不存在且 `.worktrees/` 被忽略。因 worktree 未安装依赖时测试优化器找不到本地 `plantuml-encoder/browser-index.js`，按锁文件执行 `npm ci --registry=https://registry.npmmirror.com`（进程设置 Electron 镜像）；安装后 `npm run typecheck` 通过、`npm run test` 39 files / 388 tests 通过；`package.json`、`package-lock.json` 未改变，worktree 代码树干净。不得在 main 或旧 Task10–11 worktree 改应用代码。
 - Task1 实施代理 `/root/nav_task1_red` 已登记，独占 `test/page-navigation.spec.tsx`。它只读确认真实 TopBar 可在 happy-dom 挂载：用 `React.act` 包渲染/点击/卸载并恢复 `IS_REACT_ACT_ENVIRONMENT`、i18n 语言和 ui-store；`WindowControls` IPC 失败会被捕获，不需 mock 导航。报告建议导航名称与唯一 `aria-current` 两项目标断言 RED，按钮顺序和真实 store 切换作为既有行为回归保护。代理尚未获代码修改 kickoff。Task2 与 Task3 仍由后续新代理按上方精确边界负责；审查代理只读。协调者须先将这条代理身份同步并提交，再发 Task1 开工信号。
-- 下一步：同步并提交当前 HANDOFF/计划的 worktree 与基线记录，快进 feature worktree 到最新共享文档提交，然后授权 `/root/nav_task1_red` 只在指定测试文件实施有效 RED。必须先完成规格审查再质量审查；任何未过审项由当前实现代理修复并复审。剩余：PageNavigation 接线、响应式/液态 CSS、完整 typecheck/test/build 与 Electron 人工验收；未授权推送或发布。
+- 下一步：快进 feature worktree 到最新共享文档提交，然后授权 `/root/nav_task1_red` 只在指定测试文件实施有效 RED。必须先完成规格审查再质量审查；任何未过审项由当前实现代理修复并复审。剩余：PageNavigation 接线、响应式/液态 CSS、完整 typecheck/test/build 与 Electron 人工验收；未授权推送或发布。
 
 ## 已完成：v0.17.0 双平台发布闭环
 

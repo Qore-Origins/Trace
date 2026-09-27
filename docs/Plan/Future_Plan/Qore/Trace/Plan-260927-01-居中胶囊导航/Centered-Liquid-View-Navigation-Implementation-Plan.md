@@ -10,7 +10,7 @@
 
 ## 当前状态与已定设计
 
-- 状态：实施中（2026-09-27；用户选择子代理驱动）。当前执行任务：步骤 1，隔离 worktree 与测试基线已就绪；`/root/nav_task1_red` 只读确认真实 TopBar 可在 happy-dom 挂载，并已报告清理与状态恢复方式；尚未写代码，等待共享 HANDOFF 提交后 kickoff。后续步骤仍待开始。设计方向已经由用户确认：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
+- 状态：实施中（2026-09-27；用户选择子代理驱动）。当前执行任务：步骤 1，隔离 worktree 与测试基线已就绪；`/root/nav_task1_red` 只读确认真实 TopBar 可在 happy-dom 挂载，并已报告清理与状态恢复方式；尚未写代码。待 feature worktree 快进到最新共享状态后发送 kickoff。后续步骤仍待开始。设计方向已经由用户确认：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
 - 顶栏保持一行 48px；菜单留在左区，中轴胶囊约 226 × 42px，搜索与窗口控制留在右区。
 - 页面切换由现有 `setView` 立即生效；唯一选中项及 `aria-current="page"` 均由 `view` 派生。动效不能延迟或排队页面切换。
 - 滑块在目标段间柔弹移动并有方向感的轻微拉伸/回落；快速连续点击时从最新位置重新定向。启用系统减少动态效果时取消弹性动效。
