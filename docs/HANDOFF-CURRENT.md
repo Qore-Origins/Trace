@@ -2,21 +2,24 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-27（Codex：v0.18.0 双平台发布与闭环状态同步）
+> 更新：2026-09-27（Codex：逾期标签布局跳动修复与验证完成）
 
-## 当前任务：v0.18.0 双平台发布
+## 当前任务：逾期标签布局稳定（本地完成）
 
-- 最新状态（2026-09-27）：用户授权“构建新版本，推送并发布”。发布版本为 `0.18.0`（公测版 Beta 7），主交付为居中液态胶囊页面导航。初始远端 `main` 均为 `495a9e4ba542899d05e6e1e58818d5505341656a`；版本准备提交 `d91ece4`（`chore(release): prepare v0.18.0`）。`main` 已 SSH 推送至两端，当前 `origin/main` 与 `gitee/main` 均为 `e69e3d25cf0e15ad84ceb334bd5560762018e1f5`；两端 annotated tag 对象均为 `4e0e2d0997f5883abdccf69a18aaa2623d46baf5`，解引用 commit 均为 `d91ece4326ca3a6024644d331c0263b4680fd324`。
+- 最新状态（2026-09-27）：用户所称“预期”是“逾期”标签。取消已完成过期任务的勾选时，标签原 `max-width` 动画使文字中途折行，卡片高度短暂增加 14.56px；任务详情与任务列表同源。实施计划与镜像队列：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-03-逾期标签布局稳定/`，三项任务全部完成。
+- 已实现：产品提交 `fda4972b1c9e148a614376769146d3ea8c6a3cca` 固定已过日期标签槽位，完成态保留槽位并以 `aria-hidden` + 透明度隐藏；禁止标签折行；任务详情和任务列表共用规则。非逾期任务不额外占位，原逾期判定语义不变。
+- 已验证：修复前 `node demo/frontend-foundation/overdue-layout-check.mjs 52831 52832` 的 6/6 浏览器场景按预期 RED；修复后同命令 6/6 通过，1200px 亮色、720px 暗色、720px 减动效中卡片、标题/任务名和标签几何变化均为 0，状态提示与 `aria-hidden` 正确，非逾期任务无槽位，页面无水平溢出。`npm run typecheck` 0 错；`npm run test` 40 文件、398/398；`npm run build` 成功，renderer 7,156 模块；`git diff --check` 通过。
+- 同类检查：单选计划的逾期文案由日期决定，勾选不改变其挂载；心情/注释无逾期标签；卡片样式中不再有占宽入场动画。树的高度过渡属于单独的展开/收拢行为，未改变。
+- 文件所有权：本轮产品代码、测试脚本与 demo README 已提交，边界释放。Codex 仅负责本轮 issue、HANDOFF 和共享计划文档收尾；其他智能体可在读取本文件后接手已释放代码文件。用户 `Resource/pic/`、`Resource/vid/` 未跟踪资源保持原样。
+- Git 状态：起始 `main`、`origin/main`、`gitee/main` 均为 `1b3151815e5af806bf5c98c99191a209653d5c9e`；产品提交后本地 `main` 为 `fda4972b1c9e148a614376769146d3ea8c6a3cca`，未推送。完成态文档将单独提交，不修改 v0.18.0 tag 或已发布包。
+- 下一步：下一次经用户授权推送/发布时纳入该本地修复；用户可在包含该提交的开发版中复验。
+- 等待：无。
+- 还差：当前 v0.18.0 安装包尚不包含修复；未单独执行 NSIS 安装版交互验收。
 
-- 当前阶段：版本元数据、完整验证、安装包构建/验收、annotated tag、双端 SSH 推送、GitHub/Gitee Release、发布账本与文档同步均已完成；闭环状态包含在本轮最后的文档同步中，随即推送并核验 refs。发布计划真源：`docs/Plan/Future_Plan/Qore/Trace/Plan-260927-02-v0.18.0双平台发布/Trace-v0.18.0-Release-Plan.md` 与同目录 `plan.json`。
-- 文件所有权：Codex 独占 `package.json`、`package-lock.json`、`electron-builder.yml`（仅限打包输入边界）、`test/plantuml-packaging.spec.ts`、`AGENTS.md`、`CLAUDE.md`、`docs/changelog/CHANGELOG.md`、累计改动文档、lifecycle Release Notes、`builds/release_notes/release_notes_v0.18.0.md`、`builds/build_history.json`、`builds/release_history.json`、`docs/Plan/README.md`、本计划 MD/JSON、`docs/HANDOFF-CURRENT.md` 及新安装包归档路径。只修复本次安装包意外纳入 QA artifacts 的打包范围，不改产品实现代码。
-- 本地未跟踪 `Resource/pic/`、`Resource/vid/` 是用户资源，必须保留且不得暂存；其他 worktree 不触碰。唯一归档安装包：`builds/windows/Trace_0.18.0_beta_20260927_01.exe`，210,584,915 bytes / 200.83 MiB，SHA-256 `EBDF485209FEFB2FB3E9922BC091AE14C192D26A7E0FDE13F3FCC9867017855B`。包版本 FileVersion/ProductVersion 为 0.18.0，未签名。
-- 首次 `npm run build:win` 曾因原 `electron-builder.yml` 的 `out/**/*` 将 QA profile/cache/log 纳入 `app.asar` 而拒绝（installer 526,840,688 bytes）；这些 QA 文件均保留原样。已收紧 files 输入到三个产品构建目录，并以 `test/plantuml-packaging.spec.ts` 锁定。修正后安装包 210,584,915 bytes，`app.asar` 无项目 QA profile/cache/log。
-- 验证：版本更新后 `npm run typecheck` 通过；全量 `npm run test` 40 files / 397 tests；`npm run build` renderer 7,156 modules；`npm run build:win` 通过。定向 packaging spec 5/5，回归先 RED 后 GREEN。PlantUML runtime 148 文件 hash 全匹配；打包路径 Java 离线 SVG，SANDBOX/loopback/statistics/process-exit smoke 通过。隔离打包 Electron 真窗验证空库 onboarding、首个根目录激活、全文搜索和回溯到原注释组件通过；使用临时 APPDATA/空库，从 `release/win-unpacked` 启动，未单独运行 NSIS 安装交互，临时数据已验证路径后清理。
-- 下一步：无新增开发/发布待办；本轮收尾动作是推送完成状态并核验 main 与 annotated tag 同步。
-- 等待：无。Gitee token 在用户与系统环境变量中均已配置且值一致（值未输出）；当前 PowerShell 未继承进程变量，调用时将从环境作用域临时读取。GitHub CLI 已认证，凭据未读取或打印。
-- 发布提交：版本/发行说明构建提交 `d91ece4`；发布账本提交 `c3a985e`（已推送双端）。最近一次实测（15:51）：GitHub/Gitee main=`c3a985eceee285ef2322083b77283ce3d4f0b650`，annotated tag object=`4e0e2d0997f5883abdccf69a18aaa2623d46baf5`、peeled=`d91ece4326ca3a6024644d331c0263b4680fd324`。GitHub Release 已附安装包，digest 与本地 SHA-256 相同；Gitee Release ID `1169912`、公开页 HTTP 200、正文匹配且未附 exe。未跟踪用户资源 `Resource/pic/`、`Resource/vid/` 未触碰且不得暂存；旧 worktree `.worktrees/codex/trace-task10-11` 未触碰。
-- 还差：无功能或发布工作；完成状态文档推送与最后 refs 核验是本轮收尾动作。
+### 最近完成：v0.18.0 双平台发布
+
+- v0.18.0（公测版 Beta 7）已完成版本更新、验证、Windows 安装包构建、GitHub/Gitee Release 与文档账本同步。Release 细节见下方 v0.18.0 发布计划记录。
+- 最近一次实测：本地 `main`、`origin/main`、`gitee/main` 均为 `1b3151815e5af806bf5c98c99191a209653d5c9e`；工作区仅有用户资源目录未跟踪及本轮新增诊断文档待收尾。`v0.18.0` tag 仍指向发布提交 `d91ece4326ca3a6024644d331c0263b4680fd324`。
 
 ### v0.18.0 发布计划入口
 
