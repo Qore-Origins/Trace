@@ -10,7 +10,7 @@
 
 ## 当前状态与已定设计
 
-- 状态：实现与验证完成（2026-09-27；用户选择子代理驱动），代码尚未集成。步骤 1–4 均已完成。Task1–2 双阶段审查通过；Task3 首尾过冲 Important 已按 TDD 修复。Task3 实现提交 `e5503651a90c3ed5601167cb0254dcacc7622974`，最终修复提交 `a8e5e073858091b5ed985b213e24cf6e55f883b4`；独立 scoped re-review Ready。完整实现最终审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor。功能分支 `codex/centered-liquid-view-navigation` 当前 HEAD `4a85706`，等待用户选择本地集成、推送 PR 或保留分支。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
+- 状态：实现、验证并本地集成完成（2026-09-27；未推送/发布）。步骤 1–4 均完成；实现与最终审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor。合并提交 `efa6941df038ad69d5e505ffa9d7d875253edc85`，产品代码提交 `e550365`、`a8e5e07` 已进入本地 `main`。合并后在 `main` 实测 `npm run typecheck`、`npm run test`（40 files / 396 tests）、`npm run build`（renderer 7,156 modules）均通过。功能分支已删除；Git 清理掉其受跟踪 checkout，但留下旧路径中的 ignored `node_modules`（含 reparse-point 链接），未强行递归删除。其他 worktree 与主目录用户资源未改动。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
 - 顶栏保持一行 48px；菜单留在左区，中轴胶囊约 226 × 42px，搜索与窗口控制留在右区。
 - 页面切换由现有 `setView` 立即生效；唯一选中项及 `aria-current="page"` 均由 `view` 派生。动效不能延迟或排队页面切换。
 - 滑块在目标段间柔弹移动并有方向感的轻微拉伸/回落；快速连续点击时从最新位置重新定向。启用系统减少动态效果时取消弹性动效。
@@ -90,7 +90,7 @@ npm run test -- test/frontend-foundation-css.spec.ts test/app-shell.spec.tsx
 2. 页面状态仍只由 `ui-store.view` 控制；三按钮、页面、`aria-current` 同步，无额外 IPC/持久状态。
 3. 液态动画只发生在胶囊内部；快速切换不排队；减少动态效果仍可正常使用。
 4. 720px 最小窗口、亮暗主题、键盘焦点和标题栏 no-drag 均验收，无覆盖或裁切。
-5. 定向测试、`npm run typecheck`、`npm run test`、`npm run build` 全部有实测通过记录；Markdown、JSON、README、HANDOFF 状态一致。实现分支尚未合并或推送，等待用户选择集成方式。
+5. 定向测试、`npm run typecheck`、`npm run test`、`npm run build` 全部有实测通过记录；Markdown、JSON、README、HANDOFF 状态一致。实现已合入本地 `main`；未经后续授权不推送或发布。
 
 ## 协作与发布边界
 

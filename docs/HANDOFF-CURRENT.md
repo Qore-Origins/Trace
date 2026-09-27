@@ -2,15 +2,15 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-27（Codex：顶栏居中胶囊式页面导航完成，等待集成决策）
+> 更新：2026-09-27（Codex：顶栏居中胶囊式页面导航已本地合入 main）
 
 ## 当前任务：顶栏居中胶囊式页面导航
 
-- 最新状态（2026-09-27）：居中液态胶囊页面导航 Task1–4 实施与验证完成，但尚未集成。功能分支 `.worktrees/codex/centered-liquid-view-navigation` / `codex/centered-liquid-view-navigation` 当前 HEAD `4a85706`；产品代码提交为 `e550365`、`a8e5e07`，Task3 精确边界已释放。最终独立实现审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor。完整验证：`npm run typecheck` 通过；`npm run test` 40 files / 396 tests passed；`npm run build` 成功（renderer 7,156 modules）。Electron 实窗实际鼠标/键盘验收覆盖 720/813/1220/最大化约 1707 CSS px、亮暗主题、三项导航与快速重定向/回落、减少动态效果 media emulation、菜单/搜索/设置、窗口控件、标题栏拖拽/双击；胶囊段宽一致且中轴误差最大约 0.17px，无覆盖。测试使用隔离 profile 和生成的测试库，未加载真实用户库；完成后已核验精确目录并将 QA profile、测试库及截图移入 Windows 回收站（可恢复）。开发版提示 PlantUML bundled Java runtime unavailable，与导航无关。计划 Markdown/JSON、README 已同步；此轮文件所有权仅为共享计划与交接文档。主工作目录原有用户资源 `Resource/pic/`、`Resource/vid/` 保持未触碰。
+- 最新状态（2026-09-27）：居中液态胶囊页面导航 Task1–4 已实现、双阶段审查、实窗验收并本地集成到 `main`。合并提交 `efa6941df038ad69d5e505ffa9d7d875253edc85`；包含产品代码提交 `e550365`、`a8e5e07`。合并后在主工作区重新验证：`npm run typecheck` 通过、`npm run test` 40 files / 396 tests 通过、`npm run build` 成功（renderer 7,156 modules）。最终独立实现审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor。Electron 实窗鼠标/键盘验收覆盖 720/813/1220/最大化约 1707 CSS px、亮暗主题、快速重定向/回落、reduced-motion emulation、菜单/搜索/设置、窗口控件及标题栏拖拽/双击；无覆盖，胶囊中心测量误差最大约 0.17px。开发版 PlantUML bundled Java runtime unavailable 与导航无关。隔离 QA profile/测试库/截图移入 Windows 回收站（可恢复）。功能分支已删除；Git 清理掉其受跟踪 checkout，但旧路径残留 ignored `node_modules`（含 reparse-point 链接），未强行递归删除。主目录 `Resource/pic/`、`Resource/vid/` 原有未跟踪用户资源未触碰；另一 worktree `.worktrees/codex/trace-task10-11` 未触碰。本地 `main` 当前 ahead `origin/main` 30 commits（包含此前本地提交），本轮未推送/发布。
 
-- 下一步：等待用户选择（1）将功能分支本地合入 `main`；（2）推送分支并创建 PR；（3）保持隔离分支不动。未获选择前不合并、不推送、不创建 PR、不清理 worktree，也不发布版本。
-- 等待：仅等待用户决定集成方式。
-- 剩余：无已知实现、验证或临时 QA 文件清理项。版本升级、安装包构建与 Release 不属于本计划。
+- 下一步：实现已本地合入 `main`；此请求到此完成。未经用户另行要求，不推送、不升级版本、不构建安装包或发布 Release。
+- 等待：无当前阻塞或选择项。
+- 剩余：仅旧 worktree 路径中生成的 ignored `node_modules` 缓存待用户决定是否清理；该目录含链接项，故保留以避免误删链接目标。功能实现与验证无剩余项。
 
 ### 前次交接快照（仅供追溯；当前状态以上方“最新状态”为准）
 
