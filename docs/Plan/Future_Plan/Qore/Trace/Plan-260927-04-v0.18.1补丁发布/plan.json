@@ -1,0 +1,33 @@
+{
+  "format_version": "1",
+  "created_at": "2026-09-27T18:42:00+08:00",
+  "updated_at": "2026-09-27T18:55:00+08:00",
+  "components": [
+    {
+      "id": "9c8aa2db05bc4edb94a55c801c50f89a",
+      "type": "heading",
+      "payload": { "title": "Trace v0.18.1 双平台补丁发布", "size": 25 }
+    },
+    {
+      "id": "f31c9b9ee233470abdb455ff1b44e211",
+      "type": "note",
+      "payload": {
+        "content": "v0.18.1 为逾期标签布局跳动的 patch 修订。Codex 独占发布元数据，保留 Resource/pic 与 Resource/vid。先核验与构建，再 SSH 推送 main/tag；GitHub 带 Windows 安装包，Gitee 仅发布说明。",
+        "created_at": "2026-09-27T18:42:00+08:00"
+      }
+    },
+    {
+      "id": "2ae3ac9f1d9443a9b9dfdbaafc27a606",
+      "type": "task_list",
+      "payload": {
+        "title": "发布步骤",
+        "items": [
+          { "id": "3819cd42a9314c78997ca6c268b878d6", "title": "更新 0.18.1 版本元数据和发布说明", "status": "done" },
+          { "id": "9454e9917786452e8801b26f5c39cce2", "title": "完整验证并构建、核验 Windows 安装包", "status": "done" },
+          { "id": "78b63f9d6b604a3e9f654060c184c3dd", "title": "SSH 推送 main 与 annotated tag 至 GitHub/Gitee", "status": "in_progress" },
+          { "id": "74657cedf956472eb020065458937480", "title": "双平台 Release 核验并同步发布账本", "status": "not_started" }
+        ]
+      }
+    }
+  ]
+}
