@@ -60,6 +60,9 @@ const zhCN = {
     devtools: '开发者工具',
     about: '关于 溯源 Trace'
   },
+  navigation: {
+    pages: '页面导航'
+  },
   about: {
     title: '溯源 Trace · 计划有迹可循',
     version: '版本 {{version}}（存储契约 {{format}}）',
