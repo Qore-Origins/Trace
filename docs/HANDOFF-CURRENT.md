@@ -2,11 +2,15 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-27（Codex：顶栏居中胶囊式页面导航实施计划）
+> 更新：2026-09-27（Codex：顶栏居中胶囊式页面导航完成，等待集成决策）
 
 ## 当前任务：顶栏居中胶囊式页面导航
 
-- 最新状态（2026-09-27）：Task3 过冲 Important 已由原实现代理按 TDD 修复，提交 `a8e5e073858091b5ed985b213e24cf6e55f883b4`；实施者报告回归先 RED、定向 21/21、typecheck、全量 396/396 与 diff-check 通过。独立 scoped re-review `/root/nav_task3_fix_rereview` Ready，未发现 Critical/Important/Minor，Task3 四文件边界已释放。Task4 现由 Codex 协调者负责，文档边界为本文件、计划 README/Markdown/JSON 与已批准设计规格；先运行完整 typecheck/test/build，再尝试 Electron 实窗验收。GUI 外观、焦点、动效与 720px 几何仍未验证。若验证发现需改代码，先登记新边界，不直接修改 Task3 文件。
+- 最新状态（2026-09-27）：居中液态胶囊页面导航 Task1–4 实施与验证完成，但尚未集成。功能分支 `.worktrees/codex/centered-liquid-view-navigation` / `codex/centered-liquid-view-navigation` 当前 HEAD `4a85706`；产品代码提交为 `e550365`、`a8e5e07`，Task3 精确边界已释放。最终独立实现审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor。完整验证：`npm run typecheck` 通过；`npm run test` 40 files / 396 tests passed；`npm run build` 成功（renderer 7,156 modules）。Electron 实窗实际鼠标/键盘验收覆盖 720/813/1220/最大化约 1707 CSS px、亮暗主题、三项导航与快速重定向/回落、减少动态效果 media emulation、菜单/搜索/设置、窗口控件、标题栏拖拽/双击；胶囊段宽一致且中轴误差最大约 0.17px，无覆盖。测试使用隔离 profile 和生成的测试库 `C:\Users\aaa\AppData\Local\Temp\trace-nav-qa-20260927`，未加载真实用户库；清理操作被拒后 QA 目录仍保留，待单独复核清理，不影响产品数据。开发版提示 PlantUML bundled Java runtime unavailable，与导航无关。计划 Markdown/JSON、README 已同步；此轮文件所有权仅为共享计划与交接文档。主工作目录原有用户资源 `Resource/pic/`、`Resource/vid/` 保持未触碰。
+
+- 下一步：等待用户选择（1）将功能分支本地合入 `main`；（2）推送分支并创建 PR；（3）保持隔离分支不动。未获选择前不合并、不推送、不创建 PR、不清理 worktree，也不发布版本。
+- 等待：仅等待用户决定集成方式。
+- 剩余：无已知实现或验证项；隔离 Electron QA profile/测试库目录保留待复核清理。版本升级、安装包构建与 Release 不属于本计划。
 
 ### 前次交接快照（仅供追溯；当前状态以上方“最新状态”为准）
 

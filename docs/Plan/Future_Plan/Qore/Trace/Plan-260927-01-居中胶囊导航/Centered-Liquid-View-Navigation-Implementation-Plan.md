@@ -10,7 +10,7 @@
 
 ## 当前状态与已定设计
 
-- 状态：实施中（2026-09-27；用户选择子代理驱动）。步骤 1–3 均已完成，Task1–2 双阶段审查通过，Task3 过冲 Important 已按 TDD 修复。Task3 原实现提交 `e5503651a90c3ed5601167cb0254dcacc7622974`，最终修复提交 `a8e5e073858091b5ed985b213e24cf6e55f883b4`；实施者报告首尾回归先 RED、定向 21/21、typecheck、全量 396/396、diff-check 通过。独立 scoped re-review Ready，无未解决 finding，Task3 四文件边界已释放。当前进入 Task4 完整验证与 Electron 用户视角验收。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
+- 状态：实现与验证完成（2026-09-27；用户选择子代理驱动），代码尚未集成。步骤 1–4 均已完成。Task1–2 双阶段审查通过；Task3 首尾过冲 Important 已按 TDD 修复。Task3 实现提交 `e5503651a90c3ed5601167cb0254dcacc7622974`，最终修复提交 `a8e5e073858091b5ed985b213e24cf6e55f883b4`；独立 scoped re-review Ready。完整实现最终审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor。功能分支 `codex/centered-liquid-view-navigation` 当前 HEAD `4a85706`，等待用户选择本地集成、推送 PR 或保留分支。设计方向：B「居中主导航」+ C「柔弹回落」。正式规格：[`2026-09-27-centered-liquid-view-navigation-design.md`](../../../../../superpowers/specs/2026-09-27-centered-liquid-view-navigation-design.md)。
 - 顶栏保持一行 48px；菜单留在左区，中轴胶囊约 226 × 42px，搜索与窗口控制留在右区。
 - 页面切换由现有 `setView` 立即生效；唯一选中项及 `aria-current="page"` 均由 `view` 派生。动效不能延迟或排队页面切换。
 - 滑块在目标段间柔弹移动并有方向感的轻微拉伸/回落；快速连续点击时从最新位置重新定向。启用系统减少动态效果时取消弹性动效。
@@ -76,13 +76,13 @@ npm run test -- test/frontend-foundation-css.spec.ts test/app-shell.spec.tsx
 预期：新增导航样式/响应式契约与既有前端基础、AppShell 契约全部通过。
 ```
 
-### 4. 运行完整门槛并进行 Electron 用户视角验收（进行中）
+### 4. 运行完整门槛并进行 Electron 用户视角验收（已完成）
 
-- [ ] 运行 `npm run typecheck`、`npm run test`、`npm run build`；任何失败均先修复并重跑，不以定向测试替代全量结果。
-- [ ] 启动 Electron 开发版，在窗口宽 720px 和常用宽屏、亮色和暗色主题下检查中轴居中、段宽一致、菜单/搜索/窗口控件无重叠。
-- [ ] 用鼠标及 Tab + Enter/Space 依次切换三个页面；快速往返切换，确认胶囊有单次柔弹回落、不会排队旧动画，页面和活动段始终一致。
-- [ ] 开启系统减少动态效果后复验切换即时生效、弹性动效退出；确认菜单下拉、搜索打开、窗口最小化/最大化/关闭、空白标题栏拖拽与双击行为未回归。
-- [ ] 将真实命令结果、Electron 实测范围、未能覆盖的场景与提交 hash 同步到本计划、`plan.json`、`docs/Plan/README.md` 和 `docs/HANDOFF-CURRENT.md`。若无法实际看到/操作 Electron 窗口，明确标成“未人工验收”，不声称视觉验收通过。
+- [x] 在隔离 worktree 运行 `npm run typecheck`、`npm run test`、`npm run build`：typecheck 通过；Vitest 40 files / 396 tests 通过；electron-vite build 成功（renderer 7,156 modules）。
+- [x] 启动 Electron 开发版实窗验收：720px、813px、1220px、最大化约 1707px CSS viewport，页面导航始终位于窗口水平中轴，左右菜单/搜索/窗口控件无重叠；三段各约 72.2px。720px 亮/暗主题及宽屏亮/暗主题均检查。最大化测量的中轴偏差约 0.17px。
+- [x] 通过真实鼠标与 Tab + Enter/Space 验证三个页面切换、唯一活动项、快速重定向无动画队列；实测弹性滑块移动后回落。经 Chromium reduced-motion media emulation 验证减少动态效果时 CSS transition 为 none / 0s，页面状态仍即时切换。
+- [x] 验证文件菜单与 Escape、Ctrl+F 搜索与 Escape、Ctrl+, 设置与 Escape、亮暗主题切换、最小化、最大化/还原、关闭、标题栏双击最大化及拖拽移动。
+- [x] 完整实现最终审查 `/root/nav_final_review` Ready，无 Critical/Important/Minor；检查了唯一 view 状态、`aria-current`、溢出裁切、reduced-motion、语义 token 与 no-drag。Electron dev 测试环境的 PlantUML bundled Java runtime 未准备，显示 runtime unavailable；与导航无关，未影响导航与窗口验收。独立 QA profile/测试库实际隔离在 `C:\Users\aaa\AppData\Local\Temp\trace-nav-qa-20260927`，没有加载用户真实计划库。清理操作先前被拒绝，目录保留以供复核；未删除用户数据。
 
 ## 完成标准
 
@@ -90,7 +90,7 @@ npm run test -- test/frontend-foundation-css.spec.ts test/app-shell.spec.tsx
 2. 页面状态仍只由 `ui-store.view` 控制；三按钮、页面、`aria-current` 同步，无额外 IPC/持久状态。
 3. 液态动画只发生在胶囊内部；快速切换不排队；减少动态效果仍可正常使用。
 4. 720px 最小窗口、亮暗主题、键盘焦点和标题栏 no-drag 均验收，无覆盖或裁切。
-5. 定向测试、`npm run typecheck`、`npm run test`、`npm run build` 全部有实测通过记录；Markdown、JSON、README、HANDOFF 状态一致。
+5. 定向测试、`npm run typecheck`、`npm run test`、`npm run build` 全部有实测通过记录；Markdown、JSON、README、HANDOFF 状态一致。实现分支尚未合并或推送，等待用户选择集成方式。
 
 ## 协作与发布边界
 
