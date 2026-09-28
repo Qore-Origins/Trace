@@ -33,9 +33,18 @@ describe('built-in plan name templates', () => {
     }
   })
 
+  it('rejects fixed text that makes every expanded name illegal or too long', () => {
+    for (const template of ['Bad/{title}', '{title}.', `${'x'.repeat(255)}{title}`]) {
+      expect(() => validatePlanNameTemplate(template)).toThrow()
+    }
+
+    expect(() => validatePlanNameTemplate(`${'x'.repeat(254)}{title}`)).not.toThrow()
+  })
+
   it('rejects blank titles and formatted names that violate plan-name rules', () => {
     expect(() => formatPlanNameTemplate('{title}', '   ')).toThrow()
     expect(() => formatPlanNameTemplate('Plan_{title}', 'bad/name')).toThrow()
     expect(() => formatPlanNameTemplate('Plan_{title}', 'ends.')).toThrow()
+    expect(() => formatPlanNameTemplate(`${'x'.repeat(56)}{title}`, 't'.repeat(200))).toThrow()
   })
 })

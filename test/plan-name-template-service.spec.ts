@@ -78,9 +78,24 @@ describe('PlanNameTemplateService', () => {
 
     await expect(service.set(root, 'Daily_Plan', 'Daily_{month}_{title}')).rejects.toMatchObject({ code: ERR.VALIDATION })
     await expect(service.set(root, 'Daily_Plan', 'Daily_{date}')).rejects.toMatchObject({ code: ERR.VALIDATION })
+    await expect(service.set(root, 'Daily_Plan', 'Bad/{title}')).rejects.toMatchObject({ code: ERR.VALIDATION })
+    await expect(service.set(root, 'Daily_Plan', '{title}.')).rejects.toMatchObject({ code: ERR.VALIDATION })
+    await expect(service.set(root, 'Daily_Plan', `${'x'.repeat(255)}{title}`)).rejects.toMatchObject({ code: ERR.VALIDATION })
     await expect(service.set(root, '../outside', 'Plan_{title}')).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
     await expect(service.set(root, 'Missing', 'Plan_{title}')).rejects.toMatchObject({ code: ERR.PATH_NOT_FOUND })
     await expect(fs.access(join(root, '.trace', 'plan-name-templates.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('does not overwrite a valid stored rule when an invalid template is rejected', async () => {
+    const root = await makeLibrary('preserve-valid-rule')
+    await makeFolder(root, 'Notes')
+    await service.set(root, 'Notes', 'Plan_{title}')
+
+    const configPath = join(root, '.trace', 'plan-name-templates.json')
+    const validConfig = await fs.readFile(configPath, 'utf8')
+    await expect(service.set(root, 'Notes', 'Bad/{title}')).rejects.toMatchObject({ code: ERR.VALIDATION })
+    await expect(service.set(root, 'Notes', '{title}.')).rejects.toMatchObject({ code: ERR.VALIDATION })
+    await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(validConfig)
   })
 
   it('preserves malformed configuration when reads and mutations fail', async () => {
@@ -88,7 +103,7 @@ describe('PlanNameTemplateService', () => {
     await makeFolder(root, 'Daily_Plan')
     await fs.mkdir(join(root, '.trace'))
     const configPath = join(root, '.trace', 'plan-name-templates.json')
-    const malformed = '{"format_version":"1","templates":{"Daily_Plan":"{month}"},"disabled_default_paths":[]}'
+    const malformed = '{"format_version":"1","templates":{"Daily_Plan":"Bad/{title}"},"disabled_default_paths":[]}'
     await fs.writeFile(configPath, malformed, 'utf8')
 
     await expect(service.get(root)).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })

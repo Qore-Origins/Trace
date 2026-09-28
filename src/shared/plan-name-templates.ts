@@ -33,6 +33,8 @@ export const BUILT_IN_PLAN_NAME_TEMPLATES = [
 ] as const satisfies readonly PlanNameTemplateDefinition[]
 
 const TEMPLATE_TOKEN = /\{([^{}]+)\}/g
+const VALIDATION_TITLE = 'x'
+const VALIDATION_DATE = '20000101'
 
 export function validatePlanNameTemplate(template: unknown): asserts template is string {
   if (typeof template !== 'string' || template.trim().length === 0) {
@@ -52,6 +54,11 @@ export function validatePlanNameTemplate(template: unknown): asserts template is
   if (titleCount !== 1) {
     throw new TraceError(ERR.VALIDATION, '模板必须且只能包含一个 {title} 占位符')
   }
+
+  const sampleName = template
+    .replace(/\{date\}/g, VALIDATION_DATE)
+    .replace(/\{title\}/g, VALIDATION_TITLE)
+  validatePlanName(sampleName)
 }
 
 export function formatPlanNameTemplate(template: unknown, title: unknown, date = new Date()): string {
