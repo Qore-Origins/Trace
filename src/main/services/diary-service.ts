@@ -1,6 +1,6 @@
-// DiaryService：日记根/今日页幂等创建 + 月枚举聚合 + 日摘要
-// 幂等守卫（ERROR 库 migration-script-not-idempotent 教训）：存在即跳过，只建不补，绝不覆盖用户内容
-// 日计划=普通计划（契约零变更）：读写复用 PlanRepository——原子写/形状校验/错误语义一致
+// DiaryService：日记页幂等创建/缺日补建 + 月枚举聚合 + 日摘要
+// 幂等守卫：存在 plan.json 即跳过，补入缺页但绝不覆盖用户内容
+// 日计划=普通计划：读写复用 PlanRepository——原子写/形状校验/错误语义一致
 import { promises as fs, type Dirent } from 'node:fs'
 import type {
   Component,
@@ -22,10 +22,25 @@ import { resolveWithin } from './path-safety'
 export { DIARY_DIR }
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
-const DATE_FORMAT_RE = /^\d{4}-\d{2}-\d{2}$/
 const NOTE_PREVIEW_LEN = 60
 const TEMPLATE_HEADING_SIZE = 18
-const TEMPLATE_MOOD_SCORE = 50
+const AUTOMATION_REL = '.trace/diary-automation.json'
+const CALENDAR_NOON = 12
+const DAY_WRITES = new Map<string, Promise<void>>()
+const RECONCILE_WRITES = new Map<string, Promise<void>>()
+
+interface DiaryAutomationCheckpoint {
+  format_version: '1'
+  last_reconciled_date: string | null
+}
+
+export interface DiaryReconcileResult {
+  today: string
+  /** 仅本次实际创建 plan.json 的日期，按日期升序；已有页不会出现在这里。 */
+  createdDates: string[]
+  /** 成功完成后的 checkpoint；时钟回退时保持已完成的较新日期。 */
+  lastReconciledDate: string
+}
 
 // 默认自建（测试/未注入环境）；主装配处经 setDiaryRepo 注入共享实例——diary 自写事件才能被
 // watch.markInternalWrite 抑制，否则 chokidar 回声 → trace:fs-external-change 外部变更误报（评审 F1）
@@ -38,37 +53,181 @@ export function setDiaryRepo(r: PlanRepository): void {
 // 日记根绝对路径；幂等（recursive mkdir 已存在无副作用，不触碰已有内容）
 export async function ensureDiaryRoot(planRoot: string): Promise<string> {
   const { abs } = resolveWithin(planRoot, DIARY_DIR)
+  try {
+    if (!(await fs.stat(abs)).isDirectory()) throw new TraceError(ERR.PATH_UNSAFE, '日记根路径不是目录')
+    return abs
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
   // mkdir 前经注入实例登记：首次进日记视图建 Diary/ 目录的 addDir 事件被 watch 抑制（评审 Important-3）
   repo.markInternalWrite(abs)
   await fs.mkdir(abs, { recursive: true })
   return abs
 }
 
-// 今日页目录（Diary/<today>）；无 plan.json 才写模板三件套（heading/mood/note）——已存在绝不覆盖
-export async function ensureTodayPage(planRoot: string): Promise<string> {
-  const today = todayDateStr()
-  const rel = `${DIARY_DIR}/${today}`
+// 日期串以本地日历验真；setFullYear 避开构造器将 00-99 年隐式映射到 1900 年的问题。
+function calendarDate(date: string): Date | null {
+  if (typeof date !== 'string') return null
+  const match = DATE_RE.exec(date)
+  if (!match) return null
+  const [year, month, day] = match.slice(1).map(Number)
+  if (year < 1 || month < 1 || month > 12 || day < 1) return null
+  const value = new Date(0)
+  value.setHours(CALENDAR_NOON, 0, 0, 0)
+  value.setFullYear(year, month - 1, day)
+  return value.getFullYear() === year && value.getMonth() === month - 1 && value.getDate() === day ? value : null
+}
+
+function validateDiaryDate(date: string): void {
+  if (!calendarDate(date)) throw new TraceError(ERR.VALIDATION, '日期无效（需为真实的 YYYY-MM-DD 日期）')
+}
+
+function nextDiaryDate(date: string): string {
+  const value = calendarDate(date)
+  if (!value) throw new TraceError(ERR.VALIDATION, '日期无效')
+  value.setDate(value.getDate() + 1)
+  const pad = (part: number, width = 2): string => String(part).padStart(width, '0')
+  return `${pad(value.getFullYear(), 4)}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+}
+
+function pathLockKey(abs: string): string {
+  return process.platform === 'win32' ? abs.toLowerCase() : abs
+}
+
+// 失败不会堵住后续请求，完成后释放 map 项；不同根/日期互不占用。
+function serialized<T>(pending: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> {
+  const result = (pending.get(key) ?? Promise.resolve()).then(operation)
+  const settled = result.then(() => {}, () => {})
+  pending.set(key, settled)
+  void settled.then(() => { if (pending.get(key) === settled) pending.delete(key) })
+  return result
+}
+
+async function ensureDatePage(planRoot: string, date: string): Promise<{ abs: string; created: boolean }> {
+  validateDiaryDate(date)
+  const rel = `${DIARY_DIR}/${date}`
   const { abs } = resolveWithin(planRoot, rel)
-  if (await repo.hasPlanFile(planRoot, rel)) return abs
-  // 写模板前登记日目录：新建 Diary/<today>/ 的 addDir 事件被 watch 抑制（评审 Important-3）
-  repo.markInternalWrite(abs)
-  const now = new Date().toISOString()
-  const template: PlanDocument = {
-    format_version: '1',
-    created_at: now,
-    updated_at: now,
-    components: [
-      { id: uuid32(), type: 'heading', payload: { title: today, size: TEMPLATE_HEADING_SIZE } as HeadingPayload },
-      {
-        id: uuid32(),
-        type: 'mood',
-        payload: { score: TEMPLATE_MOOD_SCORE, text: '', mood_date: today, created_at: now } as MoodPayload
-      },
-      { id: uuid32(), type: 'note', payload: { content: '', created_at: now } as NotePayload }
-    ]
+  return serialized(DAY_WRITES, pathLockKey(abs), async () => {
+    const { abs: planFile } = resolveWithin(planRoot, `${rel}/plan.json`)
+    try {
+      await fs.lstat(planFile)
+      return { abs, created: false }
+    } catch (error) {
+      // 无法确认文件不存在时必须停止；权限/IO 异常不能解释为缺页。
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    try {
+      if (!(await fs.stat(abs)).isDirectory()) throw new TraceError(ERR.PATH_UNSAFE, '日记日期路径不是目录')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      repo.markInternalWrite(abs)
+    }
+    const now = new Date().toISOString()
+    const template: PlanDocument = {
+      format_version: '1',
+      created_at: now,
+      updated_at: now,
+      components: [
+        { id: uuid32(), type: 'heading', payload: { title: date, size: TEMPLATE_HEADING_SIZE } as HeadingPayload },
+        { id: uuid32(), type: 'mood', payload: { score: null, text: '', mood_date: date, created_at: now } as MoodPayload },
+        { id: uuid32(), type: 'note', payload: { content: '', created_at: now } as NotePayload }
+      ]
+    }
+    // 先在目标日目录内用仓库原子写完成 staging，再用硬链接原子发布。
+    // link 是排他创建：探测后出现的外部文件也不会被 rename 覆盖。
+    const stagingRel = `${rel}/.trace-diary-${uuid32()}`
+    const { abs: stagingAbs } = resolveWithin(planRoot, stagingRel)
+    const { abs: stagedPlanFile } = resolveWithin(planRoot, `${stagingRel}/plan.json`)
+    let operationFailed = false
+    let operationError: unknown
+    try {
+      await repo.writePlanAtomic(planRoot, stagingRel, template)
+      repo.markInternalWrite(planFile)
+      try {
+        await fs.link(stagedPlanFile, planFile)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') return { abs, created: false }
+        throw error // 不支持硬链接/权限/IO 错误均停止，绝不降级成可能覆盖的写入。
+      }
+      repo.markInternalWrite(planFile)
+      return { abs, created: true }
+    } catch (error) {
+      operationFailed = true
+      operationError = error
+      throw error
+    } finally {
+      repo.markInternalWrite(stagingAbs)
+      try {
+        await fs.rm(stagingAbs, { recursive: true, force: true })
+      } catch (cleanupError) {
+        if (operationFailed) {
+          throw new AggregateError([operationError, cleanupError], '创建日记失败且 staging 清理失败', { cause: operationError })
+        }
+        throw cleanupError
+      }
+    }
+  })
+}
+
+// 前台今日页与后台回填共用日页锁；显式日期用于确定性调用，省略仍取本地今天。
+export async function ensureTodayPage(planRoot: string, today = todayDateStr()): Promise<string> {
+  return (await ensureDatePage(planRoot, today)).abs
+}
+
+async function readCheckpoint(planRoot: string): Promise<DiaryAutomationCheckpoint | null> {
+  const { abs } = resolveWithin(planRoot, AUTOMATION_REL)
+  let raw: string
+  try {
+    raw = await fs.readFile(abs, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
   }
-  await repo.writePlanAtomic(planRoot, rel, template)
-  return abs
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('shape')
+    const checkpoint = value as Partial<DiaryAutomationCheckpoint>
+    if (checkpoint.format_version !== '1' ||
+      !(checkpoint.last_reconciled_date === null ||
+        (typeof checkpoint.last_reconciled_date === 'string' && calendarDate(checkpoint.last_reconciled_date)))) {
+      throw new Error('shape')
+    }
+    return checkpoint as DiaryAutomationCheckpoint
+  } catch {
+    throw new TraceError(ERR.FORMAT_INVALID, '日记补建进度文件损坏，已保留原文件')
+  }
+}
+
+/** 补建缺日但保留既有页；请求区间全部成功后才原子推进 checkpoint。 */
+export async function reconcileDiaryPages(planRoot: string, today: string): Promise<DiaryReconcileResult> {
+  validateDiaryDate(today)
+  const { abs: rootAbs } = resolveWithin(planRoot, '')
+  return serialized(RECONCILE_WRITES, pathLockKey(rootAbs), async () => {
+    const checkpoint = await readCheckpoint(rootAbs)
+    const lastDate = checkpoint?.last_reconciled_date ?? null
+    const diaryAbs = await ensureDiaryRoot(rootAbs)
+    const createdDates = new Set<string>()
+    if ((await ensureDatePage(rootAbs, today)).created) createdDates.add(today)
+
+    const dirents = lastDate === null ? await fs.readdir(diaryAbs, { withFileTypes: true }) : []
+    const earliestDate = dirents
+      .filter((entry) => entry.isDirectory() && calendarDate(entry.name) && entry.name <= today)
+      .map((entry) => entry.name)
+      .sort()[0] ?? today
+    const startDate = lastDate === null ? earliestDate : lastDate < today ? nextDiaryDate(lastDate) : null
+    if (startDate !== null) {
+      for (let date = startDate; ; date = nextDiaryDate(date)) {
+        if ((await ensureDatePage(rootAbs, date)).created) createdDates.add(date)
+        if (date === today) break
+      }
+    }
+    const lastReconciledDate = lastDate !== null && lastDate > today ? lastDate : today
+    if (checkpoint === null || lastDate !== lastReconciledDate) {
+      const { abs: checkpointAbs } = resolveWithin(rootAbs, AUTOMATION_REL)
+      await repo.writeAppJson(checkpointAbs, { format_version: '1', last_reconciled_date: lastReconciledDate } satisfies DiaryAutomationCheckpoint)
+    }
+    return { today, createdDates: [...createdDates].sort(), lastReconciledDate }
+  })
 }
 
 // 月枚举聚合：枚举 Diary/YYYY-MM-* 目录读 plan.json——无 plan.json 或坏 JSON 跳过该日
@@ -89,7 +248,7 @@ export async function listMonthEntries(planRoot: string, year: number, month: nu
     .map((d) => d.name)
     .filter((name) => {
       const m = DATE_RE.exec(name)
-      return m !== null && Number(m[1]) === year && Number(m[2]) === month
+      return m !== null && calendarDate(name) !== null && Number(m[1]) === year && Number(m[2]) === month
     })
     .sort() // YYYY-MM-DD 字典序=时间序（升序）
 
@@ -157,7 +316,7 @@ export async function listMemories(planRoot: string): Promise<{
   const names = dirents
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
-    .filter((name) => DATE_RE.exec(name) !== null && name !== today) // 今天不算回忆
+    .filter((name) => calendarDate(name) !== null && name !== today) // 今天不算回忆
     .sort()
 
   const onthisday: DiaryMemoryEntry[] = []
@@ -170,6 +329,7 @@ export async function listMemories(planRoot: string): Promise<{
     } catch {
       continue // 无 plan.json / 坏 JSON 跳过（与 listMonthEntries 同语义）
     }
+    if (!hasDiaryContent(name, doc)) continue
     const entry = aggregateDay(name, doc)
     all.push(entry)
     if (name.slice(5) === md) onthisday.push(entry)
@@ -183,17 +343,32 @@ export async function listMemories(planRoot: string): Promise<{
   return { today, history: all, onthisday, milestones, random }
 }
 
+// 日期标题、一个未填写 mood 和一个空 note 都是模板占位；额外组件或真实文字/分数才是记录。
+function hasDiaryContent(date: string, doc: PlanDocument): boolean {
+  const seen = new Set<Component['type']>()
+  return doc.components.some((component) => {
+    if (seen.has(component.type)) return true
+    seen.add(component.type)
+    if (component.type === 'mood') {
+      const mood = component.payload as MoodPayload
+      return typeof mood.score === 'number' || hasText(mood.text)
+    }
+    if (component.type === 'note') return hasText((component.payload as NotePayload).content)
+    if (component.type === 'heading') {
+      const title = (component.payload as HeadingPayload).title
+      return hasText(title) && title !== date
+    }
+    return true
+  })
+}
+
+function hasText(value: string): boolean {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
 // 单日摘要：读 Diary/<date>/plan.json → 组件映射（缺失/坏 JSON 沿用既有 plan 读取错误语义）
 export async function readDaySummary(planRoot: string, date: string): Promise<DiaryDaySummary> {
-  if (typeof date !== 'string' || !DATE_FORMAT_RE.test(date)) {
-    throw new TraceError(ERR.VALIDATION, '日期格式无效（需为 YYYY-MM-DD）')
-  }
-  // 日历真伪（2026-02-31 类折叠截堵；validateDueDate 文案带"截止"语义，此处内联同法）
-  const [y, m, d] = date.split('-').map(Number)
-  const dt = new Date(y, m - 1, d)
-  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
-    throw new TraceError(ERR.VALIDATION, '日期无效（该日期不存在）')
-  }
+  validateDiaryDate(date)
   const doc = await repo.readPlan(planRoot, `${DIARY_DIR}/${date}`)
   return { date, components: doc.components.map(toDayComponent) }
 }

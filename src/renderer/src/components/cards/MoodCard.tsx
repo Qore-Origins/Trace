@@ -30,8 +30,8 @@ export function MoodCard({ comp, index, total }: CardRenderProps): React.JSX.Ele
   return (
     <CardShell kind="mood" componentId={comp.id} index={index} total={total} extraClass="mood">
       <div className="mood-row">
-        <div className="mood-score" style={{ color: scoreTextColor(p.score) }}>
-          {scoreAnim === 'roll' ? <MoodScoreRoll value={p.score} /> : p.score}
+        <div className="mood-score" style={p.score === null ? undefined : { color: scoreTextColor(p.score) }}>
+          {p.score !== null && (scoreAnim === 'roll' ? <MoodScoreRoll value={p.score} /> : p.score)}
         </div>
         <InputNumber
           min={0} max={100} step={1} precision={2}
@@ -39,7 +39,8 @@ export function MoodCard({ comp, index, total }: CardRenderProps): React.JSX.Ele
           value={p.score}
           onChange={(v) => {
             try {
-              patchComponent(comp.id, (payload) => { (payload as MoodPayload).score = validateScore(v) })
+              const score = v === null ? null : validateScore(v)
+              patchComponent(comp.id, (payload) => { (payload as MoodPayload).score = score })
             } catch {
               // 非法输入静默拒绝（不改 store）
             }

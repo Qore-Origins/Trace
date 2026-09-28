@@ -37,7 +37,7 @@ export function buildMonthGrid(year: number, month: number): MonthCell[] {
 }
 
 /**
- * 月统计聚合。口径：均分/打卡/趋势只统计有 mood 分（score 非 null）的日——无记录天不按 0 计；
+ * 月统计聚合。口径：均分/打卡/趋势只统计有 mood 分（score 非 null）的日；自动空日不按 0 计，真实 0 分仍计；
  * compCount 为当月全部日计划的组件总数；结果与 entries 输入顺序无关。
  */
 export function aggregateStats(entries: DiaryMonthEntry[]): DiaryStats {
