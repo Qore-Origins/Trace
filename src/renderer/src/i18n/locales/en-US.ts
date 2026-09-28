@@ -193,6 +193,9 @@ const enUS: typeof zhCN = {
     indexBuilding: 'Building index',
     indexError: 'Index error',
     indexReady: 'Index ready',
+    diaryPreparing: 'Preparing diary pages',
+    diaryFailed: 'Diary backfill failed',
+    diaryRetry: 'Refocus the window to retry',
     rootDir: 'Root {{dir}}'
   },
   settings: {

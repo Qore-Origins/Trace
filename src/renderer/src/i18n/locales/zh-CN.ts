@@ -190,6 +190,9 @@ const zhCN = {
     indexBuilding: '索引构建中',
     indexError: '索引异常',
     indexReady: '索引就绪',
+    diaryPreparing: '日记补建中',
+    diaryFailed: '日记补建失败',
+    diaryRetry: '重新聚焦窗口后重试',
     rootDir: '根目录 {{dir}}'
   },
   settings: {

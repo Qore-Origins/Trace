@@ -11,7 +11,9 @@ import { ConfigService } from '../services/config-service'
 import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
-import { ensureDiaryRoot, ensureTodayPage, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
+import { DIARY_DIR, ensureDiaryRoot, ensureTodayPage, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
+import { resolveWithin } from '../services/path-safety'
+import { todayDateStr } from '../../shared/validation'
 import { bus } from '../services/event-bus'
 import type { PlantumlService } from '../services/plantuml-service'
 import type { StartupCoordinator } from '../services/startup-coordinator'
@@ -26,6 +28,7 @@ interface Deps {
   search: SearchService
   plantuml?: PlantumlService
   startup: StartupCoordinator
+  captureDiaryRootGuard?: (root: string) => () => boolean
   getWindow: () => BrowserWindow | null
   log: (channel: string, code: number, detail?: string) => void
 }
@@ -83,6 +86,12 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
       return ok(data)
     } catch (e) {
       const { code, message } = toTraceResultError(e)
+      if (name.startsWith('diary:')) {
+        // 文件系统异常可能携带绝对路径/正文；日记边界只返回固定的可重试提示。
+        const safeMessage = name === 'diary:ensure' ? '日记初始化失败，请稍后重试' : '日记读取失败，请稍后重试'
+        log(name, code, safeMessage)
+        return fail(code, safeMessage)
+      }
       log(name, code, message)
       if (code === ERR.INTERNAL) console.error(`[ipc] ${name} internal:`, e)
       return fail(code, message)
@@ -243,8 +252,23 @@ export function registerIpc(deps: Deps): () => void {
   reg('diary:ensure', async () => {
     // 幂等：日记根 + 今日页（模板三件套）——存在即跳过，只建不补
     const root = diaryRoot()
+    const isRootActive = deps.captureDiaryRootGuard?.(root) ?? (() => storage.getRootAbs() === root)
+    const today = todayDateStr()
+    const { abs: planFile } = resolveWithin(root, `${DIARY_DIR}/${today}/plan.json`)
+    let existed = true
+    try {
+      await fs.lstat(planFile)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      existed = false
+    }
     await ensureDiaryRoot(root)
-    await ensureTodayPage(root)
+    await ensureTodayPage(root, today)
+    if (!existed && isRootActive()) {
+      // 前台可能抢先创建今天页，后台此时零创建；同样需要更新缓存与索引。
+      storage.treeCache.invalidatePrefix(DIARY_DIR)
+      bus.emit('trace:plan-changed', { path: `${DIARY_DIR}/${today}` })
+    }
     return null
   })
   reg('diary:month', async (p) => ({ entries: await listMonthEntries(diaryRoot(), p.year, p.month) }))
@@ -264,6 +288,7 @@ export function registerIpc(deps: Deps): () => void {
   forward('trace:save-status')
   forward('trace:fs-external-change')
   forward('trace:index-status')
+  forward('trace:diary-automation-status')
 
   if (plantuml) {
     const unsubscribe = plantuml.onStatus((status) => {
