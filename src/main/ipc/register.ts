@@ -11,6 +11,7 @@ import { ConfigService } from '../services/config-service'
 import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
+import type { PlanNameTemplateService } from '../services/plan-name-template-service'
 import { DIARY_DIR, ensureDiaryRoot, ensureTodayPage, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { resolveWithin } from '../services/path-safety'
 import { todayDateStr } from '../../shared/validation'
@@ -26,6 +27,7 @@ interface Deps {
   transfer: TransferService
   export: ExportService
   search: SearchService
+  planNameTemplates?: PlanNameTemplateService
   plantuml?: PlantumlService
   startup: StartupCoordinator
   captureDiaryRootGuard?: (root: string) => () => boolean
@@ -178,6 +180,20 @@ export function registerIpc(deps: Deps): () => void {
   reg('storage:removeComponent', (p) => storage.removeComponent(p.path, p.component_id).then(() => null))
   reg('storage:moveComponent', (p) => storage.moveComponent(p.path, p.component_id, p.target_index).then(() => null))
   reg('storage:updateTask', (p) => storage.updateTask(p.path, p.component_id, p.task_id, p.patch).then(() => null))
+
+  // ---------- plan-name templates (the active root is derived only in main) ----------
+  const templateService = (): PlanNameTemplateService => {
+    if (!deps.planNameTemplates) throw new TraceError(ERR.INTERNAL, '计划名称模板服务未初始化')
+    return deps.planNameTemplates
+  }
+  const activePlanRoot = (): string => {
+    const root = storage.getRootAbs()
+    if (!root) throw new TraceError(ERR.INTERNAL, '计划库根目录未初始化')
+    return root
+  }
+  regRootState('plan-template:get', () => templateService().get(activePlanRoot()))
+  regRootState('plan-template:set', (p) => templateService().set(activePlanRoot(), p.parent_path, p.template))
+  regRootState('plan-template:remove', (p) => templateService().remove(activePlanRoot(), p.parent_path))
 
   // ---------- window（无边框自绘控制） ----------
   reg('window:minimize', () => {

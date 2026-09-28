@@ -2,6 +2,7 @@
 // 渲染器/主进程共享类型；新增能力：先加类型 → 主进程注册 → preload 暴露
 import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
+import type { PlanNameTemplateSettings } from './plan-name-templates'
 
 // ---------- 统一响应信封 ----------
 
@@ -104,6 +105,10 @@ export interface Channels {
     req: { path: string; component_id: string; task_id: string; patch: Partial<Pick<TaskItem, 'status' | 'title' | 'planned_at' | 'note'>> }
     res: null
   }
+  // plan-template（按当前计划库存储；renderer 不能指定根目录）
+  'plan-template:get': { req: void; res: PlanNameTemplateSettings }
+  'plan-template:set': { req: { parent_path: string; template: string }; res: PlanNameTemplateSettings }
+  'plan-template:remove': { req: { parent_path: string }; res: PlanNameTemplateSettings }
   // search（溯源检索）
   'search:query': { req: { keywords: string[] }; res: SearchHit[] }
   'search:getStatus': { req: void; res: { state: 'building' | 'ready' | 'error'; indexed: number } }

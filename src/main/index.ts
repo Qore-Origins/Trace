@@ -8,6 +8,7 @@ import { AppService } from './services/app-service'
 import { WatchService } from './services/watch-service'
 import { TransferService } from './services/transfer-service'
 import { SearchService } from './services/search-service'
+import { PlanNameTemplateService } from './services/plan-name-template-service'
 import { DIARY_DIR, reconcileDiaryPages, setDiaryRepo } from './services/diary-service'
 import { createDiaryAutomationCoordinator } from './services/diary-automation-coordinator'
 import { ExportService, resolveRendererSource } from './services/export-service'
@@ -38,6 +39,7 @@ const config = new ConfigService(app.getPath('userData'), repo)
 const storage = new StorageService(repo)
 const watch = new WatchService(storage.treeCache)
 watchRef = watch
+const planNameTemplates = new PlanNameTemplateService(repo)
 const search = new SearchService(repo)
 const diaryAutomation = createDiaryAutomationCoordinator({
   reconcile: reconcileDiaryPages,
@@ -191,6 +193,7 @@ if (!app.requestSingleInstanceLock()) {
       transfer,
       export: exportService,
       search,
+      planNameTemplates,
       plantuml: plantumlService,
       startup,
       captureDiaryRootGuard: (root) => diaryAutomation.captureRootGuard(root),
