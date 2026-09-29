@@ -9,6 +9,7 @@ import OnboardingView from './views/OnboardingView'
 import WorkspaceView from './views/WorkspaceView'
 import ExportView from './views/ExportView'
 import NameDialogModal from './components/NameDialogModal'
+import PlanNameTemplateSettingsPanel from './components/PlanNameTemplateSettings'
 import SearchOverlay from './components/SearchOverlay'
 import { UndoNotice } from './components/ui/UndoNotice'
 import AppShell from './components/AppShell'
@@ -620,6 +621,9 @@ function TopBarSettingsHost(): React.JSX.Element {
               {t('settings.switchBtn')}
             </Button>
           </div>
+        </Descriptions.Item>
+        <Descriptions.Item label={t('settings.templateTitle')}>
+          <PlanNameTemplateSettingsPanel active={open} />
         </Descriptions.Item>
         <Descriptions.Item label={t('settings.version')}>{version || '…'}</Descriptions.Item>
         <Descriptions.Item label={t('settings.data')}>
