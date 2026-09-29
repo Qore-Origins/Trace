@@ -12,8 +12,7 @@ import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
 import type { PlanNameTemplateService } from '../services/plan-name-template-service'
-import { DIARY_DIR, ensureDiaryRoot, ensureTodayPage, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
-import { resolveWithin } from '../services/path-safety'
+import { DIARY_DIR, ensureDiaryRoot, ensureTodayPageWithResult, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { todayDateStr } from '../../shared/validation'
 import { bus } from '../services/event-bus'
 import type { PlantumlService } from '../services/plantuml-service'
@@ -270,17 +269,9 @@ export function registerIpc(deps: Deps): () => void {
     const root = diaryRoot()
     const isRootActive = deps.captureDiaryRootGuard?.(root) ?? (() => storage.getRootAbs() === root)
     const today = todayDateStr()
-    const { abs: planFile } = resolveWithin(root, `${DIARY_DIR}/${today}/plan.json`)
-    let existed = true
-    try {
-      await fs.lstat(planFile)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      existed = false
-    }
     await ensureDiaryRoot(root)
-    await ensureTodayPage(root, today)
-    if (!existed && isRootActive()) {
+    const { created } = await ensureTodayPageWithResult(root, today)
+    if (created && isRootActive()) {
       // 前台可能抢先创建今天页，后台此时零创建；同样需要更新缓存与索引。
       storage.treeCache.invalidatePrefix(DIARY_DIR)
       bus.emit('trace:plan-changed', { path: `${DIARY_DIR}/${today}` })

@@ -171,7 +171,12 @@ async function ensureDatePage(planRoot: string, date: string): Promise<{ abs: st
 
 // 前台今日页与后台回填共用日页锁；显式日期用于确定性调用，省略仍取本地今天。
 export async function ensureTodayPage(planRoot: string, today = todayDateStr()): Promise<string> {
-  return (await ensureDatePage(planRoot, today)).abs
+  return (await ensureTodayPageWithResult(planRoot, today)).abs
+}
+
+// created 来自持有日页锁时的排他发布结果，供前台仅刷新自身实际创建的页面。
+export async function ensureTodayPageWithResult(planRoot: string, today = todayDateStr()): Promise<{ abs: string; created: boolean }> {
+  return ensureDatePage(planRoot, today)
 }
 
 async function readCheckpoint(planRoot: string): Promise<DiaryAutomationCheckpoint | null> {

@@ -16,7 +16,8 @@ describe('renderer style boundaries', () => {
       'cards.css',
       'search.css',
       'diary.css',
-      'memories.css'
+      'memories.css',
+      'plan-name-templates.css'
     ]
 
     for (const file of expectedImports) {
@@ -37,12 +38,17 @@ describe('renderer style boundaries', () => {
       'cards.css': ['.export-root', '.ws-content', '.card', '.note-md', '.folder-grid'],
       'search.css': ['.search-mask', '.search-overlay'],
       'diary.css': ['.diary-main', '.diary-layout', '@media (max-width: 959px)'],
-      'memories.css': ['.memories-body', '.memories-preview', '@media (max-width: 959px)']
+      'memories.css': ['.memories-body', '.memories-preview', '@media (max-width: 959px)'],
+      'plan-name-templates.css': ['.plan-name-template-settings', '.name-dialog-template__preview']
     }
 
     for (const [file, selectors] of Object.entries(selectorsByFile)) {
       const css = readFileSync(resolve(stylesRoot, file), 'utf8')
       for (const selector of selectors) expect(css, `${selector} should be owned by ${file}`).toContain(selector)
+      if (file !== 'plan-name-templates.css') {
+        expect(css).not.toContain('.plan-name-template-settings')
+        expect(css).not.toContain('.name-dialog-template__')
+      }
     }
   })
 

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import {
   ensureDiaryRoot,
   ensureTodayPage,
+  ensureTodayPageWithResult,
   listMemories,
   listMonthEntries,
   reconcileDiaryPages,
@@ -20,6 +21,8 @@ import type { Component, MoodPayload, NotePayload, PlanDocument } from '../src/s
 let root: string
 
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(2026, 8, 28, 14))
   setDiaryRepo(new PlanRepository())
   root = join(tmpdir(), `trace-diary-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
   await fs.mkdir(root, { recursive: true })
@@ -27,6 +30,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.useRealTimers()
   setDiaryRepo(new PlanRepository())
   await fs.rm(root, { recursive: true, force: true })
 })
@@ -67,6 +71,19 @@ describe('ensureDiaryRoot', () => {
 })
 
 describe('ensureTodayPage', () => {
+  it('reports exactly one lock-internal creator while preserving the string API', async () => {
+    const date = '2026-09-28'
+    const results = await Promise.all([
+      ensureTodayPageWithResult(root, date),
+      ensureTodayPageWithResult(root, date)
+    ])
+    expect(results).toEqual([
+      { abs: dayDir(date), created: true },
+      { abs: dayDir(date), created: false }
+    ])
+    expect(await ensureTodayPage(root, date)).toBe(dayDir(date))
+    expect(await ensureTodayPageWithResult(root, date)).toEqual({ abs: dayDir(date), created: false })
+  })
   it('生成模板三件套（heading/mood/note 顺序）且 heading title=今日', async () => {
     const dir = await ensureTodayPage(root)
     expect(dir).toBe(join(root, 'Diary', todayDateStr()))

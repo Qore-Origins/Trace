@@ -286,6 +286,75 @@ describe('diary automation IPC and consumers', () => {
     expect(JSON.stringify(win.webContents.send.mock.calls.filter(([event]) => event === 'trace:diary-automation-status'))).not.toContain('private')
   })
 
+  it('refreshes the renderer once when coordinated background creation wins a concurrent foreground ensure', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 28, 14))
+    const { registerIpc } = await import('../src/main/ipc/register')
+    const { PlanRepository } = await import('../src/main/services/plan-repository')
+    const { StorageService } = await import('../src/main/services/storage-service')
+    const { createStartupCoordinator } = await import('../src/main/services/startup-coordinator')
+    const { createDiaryAutomationCoordinator } = await import('../src/main/services/diary-automation-coordinator')
+    const diary = await import('../src/main/services/diary-service')
+    const { bus } = await import('../src/main/services/event-bus')
+    const root = join(temp!, 'concurrent-library')
+    const today = '2026-09-28'
+    await fs.mkdir(root)
+    const repo = new PlanRepository()
+    diary.setDiaryRepo(repo)
+    const storage = new StorageService(repo)
+    storage.setRoot(root)
+    await diary.ensureDiaryRoot(root)
+    await storage.treeGetChildren('Diary')
+    const win = new electron.BrowserWindow({})
+    const statuses: DiaryAutomationStatus[] = []
+    const coordinator = createDiaryAutomationCoordinator({
+      reconcile: diary.reconcileDiaryPages,
+      refresh: (library, date) => {
+        if (storage.getRootAbs() !== library) return
+        storage.treeCache.invalidatePrefix('Diary')
+        bus.emit('trace:plan-changed', { path: `Diary/${date}` })
+      },
+      report: (status) => statuses.push(status)
+    })
+    eventCleanup.push(() => coordinator.dispose())
+    const startup = createStartupCoordinator({ activateConfiguredRoot: async () => true })
+    startup.onWindowShown()
+    disposeIpc = registerIpc({
+      app: {}, storage, config: {}, transfer: {}, export: {}, search: {}, startup,
+      captureDiaryRootGuard: (library: string) => coordinator.captureRootGuard(library),
+      getWindow: () => win as unknown as BrowserWindow, log() {}
+    } as unknown as Parameters<typeof registerIpc>[0])
+    let releaseWrite!: () => void
+    let writeStarted!: () => void
+    const blockedWrite = new Promise<void>((resolve) => { releaseWrite = resolve })
+    const started = new Promise<void>((resolve) => { writeStarted = resolve })
+    const originalWrite = repo.writePlanAtomic.bind(repo)
+    const write = vi.spyOn(repo, 'writePlanAtomic').mockImplementation(async (...args) => {
+      writeStarted()
+      await blockedWrite
+      return originalWrite(...args)
+    })
+    try {
+      coordinator.activateRoot(root)
+      await started // Background holds the shared date lock, before publishing plan.json.
+      const foregroundRoot = vi.spyOn(diary, 'ensureDiaryRoot')
+      const foreground = handler('diary:ensure')({}, undefined)
+      // Foreground has entered ensure while background still owns the date lock.
+      await vi.waitFor(() => expect(foregroundRoot).toHaveBeenCalledWith(root))
+      releaseWrite()
+      expect(await foreground).toMatchObject({ ok: true, data: null })
+      await vi.waitFor(() => expect(statuses.at(-1)).toEqual({ state: 'complete', retryable: false }))
+      expect(write).toHaveBeenCalledTimes(1)
+      expect(await storage.treeGetChildren('Diary')).toMatchObject([{ path: `Diary/${today}` }])
+      const refreshes = win.webContents.send.mock.calls.filter(([event]) => event === 'trace:plan-changed')
+      expect(refreshes).toEqual([['trace:plan-changed', { path: `Diary/${today}` }]])
+    } finally {
+      releaseWrite()
+      coordinator.dispose()
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps foreground ensure serialized with real reconciliation and ignores renderer root input', async () => {
     const { registerIpc } = await import('../src/main/ipc/register')
     const { PlanRepository } = await import('../src/main/services/plan-repository')
