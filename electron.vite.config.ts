@@ -35,8 +35,10 @@ export default defineConfig({
     build: {
       rollupOptions: {
         output: {
+          onlyExplicitManualChunks: true,
           manualChunks(id): string | undefined {
             const moduleId = id.replaceAll('\\', '/')
+            if (moduleId.endsWith('/src/renderer/src/stores/workspace-tabs-store.ts')) return 'workspace-tabs'
             if (!moduleId.includes('/node_modules/')) return undefined
             if (/\/node_modules\/(react|react-dom|scheduler)\//.test(moduleId)) return 'vendor-react'
             if (/\/node_modules\/(@ant-design|@rc-component|antd|rc-[^/]+)\//.test(moduleId)) return 'vendor-antd'

@@ -210,6 +210,32 @@ describe('组件级计划编辑', () => {
     expect(usePlanStore.getState().document).toBeNull()
   })
 
+  it('移动期间继续编辑会等待路径重定向，保存只发往新路径', async () => {
+    const saves: Array<{ path: string; document: PlanDocument }> = []
+    installBridge(vi.fn(async (channel, request) => {
+      expect(channel).toBe('storage:savePlan')
+      const payload = request as { path: string; document: PlanDocument }
+      saves.push(payload)
+      return { ok: true, data: { updated_at: `server-${saves.length}` } }
+    }) as TraceBridge['invoke'])
+    usePlanStore.setState({ currentPath: 'Folder/A', document: createDocument(1), serverUpdatedAt: 'server-0', saveState: 'idle' })
+
+    expect(usePlanStore.getState().beginPathMove('Folder')).toBe(true)
+    usePlanStore.getState().patchComponent('component-0', (component) => ({
+      ...component,
+      payload: { title: '移动期间输入', size: 18 }
+    }))
+    const saving = usePlanStore.getState().flush()
+    expect(saves).toHaveLength(0)
+
+    usePlanStore.getState().finishPathMove('Folder', 'Moved')
+    expect(await saving).toBe(true)
+    expect(usePlanStore.getState().currentPath).toBe('Moved/A')
+    expect(saves).toHaveLength(1)
+    expect(saves[0].path).toBe('Moved/A')
+    expect((saves[0].document.components[0].payload as HeadingPayload).title).toBe('移动期间输入')
+  })
+
   it('进行中的保存失败时切换被阻止且当前输入仍在', async () => {
     vi.useFakeTimers()
     const saving = deferred<{ ok: false; code: number; message: string }>()

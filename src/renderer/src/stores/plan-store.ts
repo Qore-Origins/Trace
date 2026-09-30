@@ -30,6 +30,8 @@ interface PlanState {
   // 计划截止日期：赋值 ''/undefined 时删键（同 mutate 防抖保存路径）
   setDueDate: (due?: string) => void
   flush: () => Promise<boolean>
+  beginPathMove: (oldPrefix: string) => boolean
+  finishPathMove: (oldPrefix: string, newPrefix: string | null) => void
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -39,6 +41,7 @@ let editRevision = 0
 let persistedRevision = 0
 let activeOpenRequest: { path: string; promise: Promise<boolean> } | null = null
 let openRequestRevision = 0
+let pathMove: { oldPrefix: string; session: number; promise: Promise<void>; resolve: () => void } | null = null
 
 interface PendingOperation {
   revision: number
@@ -113,6 +116,8 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
 
   close: () => {
     openRequestRevision += 1
+    pathMove?.resolve()
+    pathMove = null
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
     resetEditingSession()
@@ -180,6 +185,10 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     const targetSession = sessionRevision
     while (true) {
       if (targetSession !== sessionRevision) return false
+      if (pathMove?.session === targetSession) {
+        await pathMove.promise
+        continue
+      }
       if (activeSave?.session === targetSession) {
         if (!(await activeSave.promise)) return false
         continue
@@ -195,6 +204,28 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
       }
       if (!success) return false
     }
+  },
+
+  beginPathMove: (oldPrefix) => {
+    const currentPath = get().currentPath
+    if (!currentPath || (currentPath !== oldPrefix && !currentPath.startsWith(`${oldPrefix}/`)) || pathMove) return false
+    let resolve!: () => void
+    const promise = new Promise<void>((complete) => { resolve = complete })
+    pathMove = { oldPrefix, session: sessionRevision, promise, resolve }
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = null
+    return true
+  },
+
+  finishPathMove: (oldPrefix, newPrefix) => {
+    const move = pathMove
+    if (!move || move.oldPrefix !== oldPrefix) return
+    const currentPath = get().currentPath
+    if (move.session === sessionRevision && newPrefix && currentPath) {
+      set({ currentPath: newPrefix + currentPath.slice(oldPrefix.length) })
+    }
+    pathMove = null
+    move.resolve()
   }
 }))
 

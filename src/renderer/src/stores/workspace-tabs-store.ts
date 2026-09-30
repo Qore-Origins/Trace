@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import type { WorkspaceTabsState } from '@shared/workspace-tabs-types'
 import { invoke } from '../ipc-client'
 import { usePlanStore } from './plan-store'
-import { useTreeStore } from './tree-store'
 
 export interface WorkspaceTabsPort {
   load: () => Promise<WorkspaceTabsState>
@@ -12,6 +11,7 @@ export interface WorkspaceTabsPort {
   closePlan: () => void
   focusComponent?: (componentId: string) => void
   selectPlan?: (path: string) => void
+  currentPlanPath?: () => string | null
 }
 
 type RestoreStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -46,6 +46,7 @@ function focusComponent(componentId: string): void {
 
 export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
   let generation = 0
+  let interactionRevision = 0
   const empty = (rootKey: string | null): Pick<WorkspaceTabsStore, 'rootKey' | 'library_id' | 'open_paths' | 'active_path'> => ({
     rootKey,
     library_id: '',
@@ -56,9 +57,12 @@ export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
   return create<WorkspaceTabsStore>()((set, get) => {
     const save = async (next: WorkspaceTabsState, currentGeneration: number): Promise<boolean> => {
       if (currentGeneration !== generation) return false
+      if (!next.library_id) return false
       try {
         await api.save(next)
-        return currentGeneration === generation
+        if (currentGeneration !== generation) return false
+        if (get().restoreStatus === 'error') set({ restoreStatus: 'ready' })
+        return true
       } catch {
         if (currentGeneration === generation) set({ restoreStatus: 'error' })
         return false
@@ -67,9 +71,10 @@ export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
 
     const activate = async (path: string, add: boolean, componentId?: string): Promise<boolean> => {
       const state = get()
-      if (!state.rootKey || state.restoreStatus !== 'ready') return false
+      if (!state.rootKey) return false
       const exists = state.open_paths.some((item) => item.path === path)
       if (!exists && !add) return false
+      interactionRevision += 1
       if (path === state.active_path) {
         api.selectPlan?.(path)
         if (componentId) (api.focusComponent ?? focusComponent)(componentId)
@@ -81,7 +86,7 @@ export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
       const latest = get()
       const next: WorkspaceTabsState = {
         library_id: latest.library_id,
-        open_paths: exists ? latest.open_paths : [...latest.open_paths, { path }],
+        open_paths: latest.open_paths.some((item) => item.path === path) ? latest.open_paths : [...latest.open_paths, { path }],
         active_path: path
       }
       set(next)
@@ -97,21 +102,38 @@ export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
       hydrate: async (rootKey) => {
         if (rootKey === get().rootKey && get().restoreStatus === 'ready') return true
         const currentGeneration = ++generation
-        if (get().rootKey !== null) api.closePlan()
-        set({ ...empty(rootKey), restoreStatus: rootKey ? 'loading' : 'idle' })
+        const switchingRoot = get().rootKey !== rootKey
+        if (switchingRoot && get().rootKey !== null) api.closePlan()
+        if (switchingRoot) set({ ...empty(rootKey), restoreStatus: rootKey ? 'loading' : 'idle' })
+        else set({ restoreStatus: rootKey ? 'loading' : 'idle' })
         if (!rootKey) return true
+        const startingInteraction = interactionRevision
         try {
           const loaded = await api.load()
           if (currentGeneration !== generation) return false
-          set({ ...loaded, restoreStatus: 'ready' })
-          if (loaded.active_path) {
-            const opened = await api.openPlan(loaded.active_path)
+          const session = get()
+          const paths = [...loaded.open_paths]
+          for (const item of session.open_paths) {
+            if (!paths.some((loadedItem) => loadedItem.path === item.path)) paths.push(item)
+          }
+          const userInteracted = interactionRevision !== startingInteraction
+          const activePath = userInteracted ? session.active_path : (session.active_path ?? loaded.active_path)
+          set({ library_id: loaded.library_id, open_paths: paths, active_path: activePath, restoreStatus: 'ready' })
+          if (userInteracted) {
+            if (session.open_paths.length > 0) await save({ library_id: loaded.library_id, open_paths: paths, active_path: activePath }, currentGeneration)
+            return true
+          }
+          if (activePath && !session.active_path) {
+            const restoringInteraction = interactionRevision
+            const opened = await api.openPlan(activePath)
             if (currentGeneration !== generation) return false
             if (!opened) {
-              set({ active_path: null, restoreStatus: 'error' })
+              if (interactionRevision === restoringInteraction && get().active_path === activePath) {
+                set({ active_path: null, restoreStatus: 'error' })
+              }
               return false
             }
-            api.selectPlan?.(loaded.active_path)
+            if (interactionRevision === restoringInteraction && get().active_path === activePath) api.selectPlan?.(activePath)
           }
           return true
         } catch {
@@ -124,6 +146,7 @@ export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
       closeTab: async (path) => {
         const state = get()
         if (!state.open_paths.some((item) => item.path === path)) return false
+        interactionRevision += 1
         const currentGeneration = generation
         if (path === state.active_path && !(await api.flushPlan())) return false
         if (currentGeneration !== generation) return false
@@ -151,42 +174,50 @@ export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
         if (remaining.length === state.open_paths.length) return true
         const currentGeneration = generation
         const activeRemoved = state.active_path !== null && under(state.active_path, path)
-        let activePath = state.active_path
+        let neighborPath: string | null = null
+        let neighborOpened = false
         if (activeRemoved) {
           const index = state.open_paths.findIndex((item) => item.path === state.active_path)
           const left = state.open_paths.slice(0, index).reverse().find((item) => !under(item.path, path))
           const right = state.open_paths.slice(index + 1).find((item) => !under(item.path, path))
-          activePath = left?.path ?? right?.path ?? null
+          neighborPath = left?.path ?? right?.path ?? null
           api.closePlan()
-          if (activePath && !(await api.openPlan(activePath))) activePath = null
+          if (neighborPath) neighborOpened = await api.openPlan(neighborPath)
         }
         if (currentGeneration !== generation) return false
-        const next = { library_id: state.library_id, open_paths: remaining, active_path: activePath }
+        const latest = get()
+        const latestRemaining = latest.open_paths.filter((item) => !under(item.path, path))
+        const activePath = latest.active_path && under(latest.active_path, path)
+          ? (neighborOpened && neighborPath && latestRemaining.some((item) => item.path === neighborPath) ? neighborPath : null)
+          : latest.active_path
+        const next = { library_id: latest.library_id, open_paths: latestRemaining, active_path: activePath }
         set(next)
         if (activePath) api.selectPlan?.(activePath)
         return save(next, currentGeneration)
       },
       remapPrefix: async (oldPath, newPath) => {
         const state = get()
-        const renamed = state.open_paths.map((item) => under(item.path, oldPath)
-          ? { ...item, path: newPath + item.path.slice(oldPath.length) }
-          : item)
-        if (renamed.every((item, index) => item.path === state.open_paths[index].path)) return true
+        if (!state.open_paths.some((item) => under(item.path, oldPath))) return true
         const currentGeneration = generation
         let opened = true
-        let activePath = state.active_path && under(state.active_path, oldPath)
+        const expectedActivePath = state.active_path && under(state.active_path, oldPath)
           ? newPath + state.active_path.slice(oldPath.length)
           : state.active_path
-        if (activePath !== state.active_path) {
+        if (expectedActivePath !== state.active_path && expectedActivePath !== api.currentPlanPath?.()) {
           if (!(await api.flushPlan()) || currentGeneration !== generation) return false
-          if (activePath && !(await api.openPlan(activePath))) {
-            api.closePlan()
-            activePath = null
-            opened = false
-          }
+          if (expectedActivePath) opened = await api.openPlan(expectedActivePath)
         }
         if (currentGeneration !== generation) return false
-        const next = { library_id: state.library_id, open_paths: renamed, active_path: activePath }
+        const latest = get()
+        const renamed = latest.open_paths.map((item) => under(item.path, oldPath)
+          ? { ...item, path: newPath + item.path.slice(oldPath.length) }
+          : item)
+        const activeAffected = latest.active_path !== null && under(latest.active_path, oldPath)
+        const activePath = activeAffected
+          ? (opened ? newPath + latest.active_path!.slice(oldPath.length) : null)
+          : latest.active_path
+        if (!opened && activeAffected) api.closePlan()
+        const next = { library_id: latest.library_id, open_paths: renamed, active_path: activePath }
         set(next)
         if (activePath) api.selectPlan?.(activePath)
         return (await save(next, currentGeneration)) && opened
@@ -195,11 +226,17 @@ export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
   })
 }
 
-export const useWorkspaceTabsStore = createWorkspaceTabsStore({
+const workspaceTabsPort: WorkspaceTabsPort = {
   load: () => invoke('workspace-tabs:get'),
   save: async (state) => { await invoke('workspace-tabs:set', { state }) },
   flushPlan: () => usePlanStore.getState().flush(),
   openPlan: (path) => usePlanStore.getState().open(path),
   closePlan: () => usePlanStore.getState().close(),
-  selectPlan: (path) => useTreeStore.getState().select(path, 'plan')
-})
+  currentPlanPath: () => usePlanStore.getState().currentPath
+}
+
+export function registerWorkspaceTabSelection(selectPlan: (path: string) => void): void {
+  workspaceTabsPort.selectPlan = selectPlan
+}
+
+export const useWorkspaceTabsStore = createWorkspaceTabsStore(workspaceTabsPort)

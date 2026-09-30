@@ -8,7 +8,7 @@ import type { PlanTreeNode } from '@shared/ipc-contract'
 import { i18n } from '../i18n'
 import { optimisticMove } from '../components/tree-utils'
 import { usePlanStore } from './plan-store'
-import { useWorkspaceTabsStore } from './workspace-tabs-store'
+import { registerWorkspaceTabSelection, useWorkspaceTabsStore } from './workspace-tabs-store'
 
 interface TreeState {
   childrenMap: Record<string, PlanTreeNode[]> // key=父路径（''=顶层）
@@ -121,9 +121,20 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   },
 
   renamePlan: async (path, newName) => {
-    if (!(await usePlanStore.getState().flush())) return
-    const r = await invoke('storage:renamePlan', { path, new_name: newName })
-    await refreshAround(set, get, r.path)
+    if (!(await usePlanStore.getState().flush())) throw new Error(i18n.t('errors.saveFailed'))
+    const activePath = usePlanStore.getState().currentPath
+    if (activePath && isSelfOrDescendant(path, activePath) && !usePlanStore.getState().beginPathMove(path)) {
+      throw new Error(i18n.t('errors.saveFailed'))
+    }
+    let r: { path: string }
+    try {
+      r = await invoke('storage:renamePlan', { path, new_name: newName })
+    } catch (error) {
+      usePlanStore.getState().finishPathMove(path, null)
+      await usePlanStore.getState().flush()
+      throw error
+    }
+    usePlanStore.getState().finishPathMove(path, r.path)
     // 选中/展开键迁移到新路径
     const renameKey = (keys: string[]) => keys.map((k) => (k === path || k.startsWith(path + '/') ? r.path + k.slice(path.length) : k))
     set({
@@ -131,7 +142,10 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
       selectedPath: renameKey([get().selectedPath ?? ''])[0] || null
     })
     // 当前打开的计划路径同步迁移并重开（否则后续保存指向旧路径 404）
-    await useWorkspaceTabsStore.getState().remapPrefix(path, r.path)
+    const remapped = await useWorkspaceTabsStore.getState().remapPrefix(path, r.path)
+    const saved = await usePlanStore.getState().flush()
+    await refreshAround(set, get, r.path)
+    if (!remapped || !saved) throw new Error(i18n.t('errors.saveFailed'))
   },
 
   removePlan: async (path) => {
@@ -194,21 +208,34 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
         selectedPath: snap.selectedPath ? migrateKey(snap.selectedPath) : null
       })
     }
+    const activePath = usePlanStore.getState().currentPath
+    if (activePath && isSelfOrDescendant(dragPath, activePath) && !usePlanStore.getState().beginPathMove(dragPath)) {
+      if (opt) set(snap)
+      return false
+    }
     try {
       await invoke('storage:movePlan', { path: dragPath, target_parent_path: targetParent })
     } catch (e) {
+      usePlanStore.getState().finishPathMove(dragPath, null)
+      await usePlanStore.getState().flush()
       if (opt) {
         set({ childrenMap: snap.childrenMap, loaded: snap.loaded, expandedKeys: snap.expandedKeys, selectedPath: snap.selectedPath })
       }
       getMessage().error(e instanceof ClientError ? e.message : i18n.t('tree.moveFailed'))
       return false
     }
+    usePlanStore.getState().finishPathMove(dragPath, newPath)
+    const remapped = await useWorkspaceTabsStore.getState().remapPrefix(dragPath, newPath)
+    const saved = await usePlanStore.getState().flush()
     await refreshAround(set, get, newPath)
     await refreshAround(set, get, dragPath)
     // 选中/展开键迁移（乐观已迁移时为幂等空转；覆盖不可乐观的分支）
     const migrate = (keys: string[]) => keys.map((k) => (k === dragPath || k.startsWith(dragPath + '/') ? newPath + k.slice(dragPath.length) : k))
     set({ expandedKeys: migrate(get().expandedKeys), selectedPath: migrate([get().selectedPath ?? ''])[0] || null })
-    await useWorkspaceTabsStore.getState().remapPrefix(dragPath, newPath)
+    if (!remapped || !saved) {
+      getMessage().error(i18n.t('errors.saveFailed'))
+      return false
+    }
     return true
   },
 
@@ -286,6 +313,8 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     return reportText('migrate', r)
   }
 }))
+
+registerWorkspaceTabSelection((path) => useTreeStore.getState().select(path, 'plan'))
 
 // 事件订阅：结构变化与外部变更 → 刷新相关层（含祖父层，更新节点自身 has_children/kind 条目）
 export function subscribeTreeEvents(): () => void {

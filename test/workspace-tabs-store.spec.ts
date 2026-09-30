@@ -20,6 +20,12 @@ function setup(initial?: Partial<WorkspaceTabsState>) {
   return { store: createWorkspaceTabsStore(api), api, calls }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((complete) => { resolve = complete })
+  return { promise, resolve }
+}
+
 describe('workspace tabs store', () => {
   it('重复打开同一路径只保留一个标签，并激活已有标签', async () => {
     const { store, api } = setup()
@@ -176,5 +182,79 @@ describe('workspace tabs store', () => {
     expect(await oldHydration).toBe(false)
     expect(store.getState().open_paths).toEqual([])
     expect(store.getState().active_path).toBeNull()
+  })
+
+  it('恢复 A 读取未完成时用户打开 B，迟到 A 不清空 B', async () => {
+    const { store, api } = setup({ open_paths: [{ path: 'A' }], active_path: 'A' })
+    const oldOpen = deferred<boolean>()
+    vi.mocked(api.openPlan).mockImplementationOnce(() => oldOpen.promise).mockResolvedValueOnce(true)
+    const hydrating = store.getState().hydrate('root-a')
+    await vi.waitFor(() => expect(api.openPlan).toHaveBeenCalledWith('A'))
+
+    expect(await store.getState().openPlan('B')).toBe(true)
+    oldOpen.resolve(false)
+    await hydrating
+
+    expect(store.getState().open_paths).toEqual([{ path: 'A' }, { path: 'B' }])
+    expect(store.getState().active_path).toBe('B')
+  })
+
+  it('loading 时可开 B，配置读取失败后仍能开 C 且不写坏配置', async () => {
+    const { store, api } = setup()
+    const loading = deferred<WorkspaceTabsState>()
+    vi.mocked(api.load).mockImplementationOnce(() => loading.promise)
+    const hydrating = store.getState().hydrate('root-a')
+
+    expect(await store.getState().openPlan('B')).toBe(true)
+    loading.resolve({ library_id: 'library-a', open_paths: [{ path: 'A' }], active_path: 'A' })
+    await hydrating
+    expect(store.getState().active_path).toBe('B')
+
+    await store.getState().hydrate(null)
+    vi.mocked(api.load).mockRejectedValueOnce(new Error('malformed config'))
+    expect(await store.getState().hydrate('root-a')).toBe(false)
+    expect(await store.getState().openPlan('C')).toBe(true)
+    expect(store.getState().active_path).toBe('C')
+    expect(api.save).not.toHaveBeenCalledWith(expect.objectContaining({ library_id: '' }))
+  })
+
+  it('标签写盘失败后仍可继续打开计划', async () => {
+    const { store, api } = setup()
+    await store.getState().hydrate('root-a')
+    vi.mocked(api.save).mockRejectedValueOnce(new Error('temporary save failure'))
+
+    await store.getState().openPlan('A')
+    expect(await store.getState().openPlan('B')).toBe(true)
+    expect(store.getState().active_path).toBe('B')
+    expect(store.getState().restoreStatus).toBe('ready')
+  })
+
+  it('删除子树等待邻项读取时，并发打开 B 保留 B', async () => {
+    const { store, api } = setup({ open_paths: [{ path: 'A' }, { path: 'Folder/X' }], active_path: 'Folder/X' })
+    await store.getState().hydrate('root-a')
+    const neighbor = deferred<boolean>()
+    vi.mocked(api.openPlan).mockImplementationOnce(() => neighbor.promise).mockResolvedValueOnce(true)
+
+    const closing = store.getState().closeUnder('Folder')
+    expect(await store.getState().openPlan('B')).toBe(true)
+    neighbor.resolve(false)
+    await closing
+    expect(store.getState().open_paths).toEqual([{ path: 'A' }, { path: 'B' }])
+    expect(store.getState().active_path).toBe('B')
+  })
+
+  it('路径迁移等待读取时，并发打开 B 不丢失 B', async () => {
+    const { store, api } = setup({ open_paths: [{ path: 'Folder/X' }], active_path: 'Folder/X' })
+    await store.getState().hydrate('root-a')
+    const movedOpen = deferred<boolean>()
+    vi.mocked(api.openPlan).mockImplementationOnce(() => movedOpen.promise).mockResolvedValueOnce(true)
+
+    const remapping = store.getState().remapPrefix('Folder', 'Moved')
+    await vi.waitFor(() => expect(api.openPlan).toHaveBeenCalledWith('Moved/X'))
+    expect(await store.getState().openPlan('B')).toBe(true)
+    movedOpen.resolve(false)
+    await remapping
+    expect(store.getState().open_paths).toEqual([{ path: 'Moved/X' }, { path: 'B' }])
+    expect(store.getState().active_path).toBe('B')
   })
 })
