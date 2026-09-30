@@ -3,6 +3,7 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ERR } from '../src/shared/errors'
 import type { PlanNameTemplateSettings } from '../src/shared/plan-name-templates'
 import PlanNameTemplateSettingsPanel from '../src/renderer/src/components/PlanNameTemplateSettings'
 import { i18n } from '../src/renderer/src/i18n'
@@ -65,7 +66,7 @@ function folderSelect(): HTMLSelectElement {
 }
 
 function templateInput(): HTMLInputElement {
-  const input = host.querySelector<HTMLInputElement>('input[aria-label="计划名称模板"]')
+  const input = host.querySelector<HTMLInputElement>('#plan-name-template-value')
   if (!input) throw new Error('Plan name template input is missing')
   return input
 }
@@ -172,8 +173,32 @@ describe('PlanNameTemplateSettings', () => {
     await renderPanel()
     expect(host.querySelector('[role="status"]')?.textContent).toContain('加载中')
     await act(async () => { rejectLoad?.(new Error('Configuration is unreadable')) })
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Configuration is unreadable')
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('读取计划名称模板失败')
+    expect(host.querySelector('[role="alert"]')?.textContent).not.toContain('Configuration is unreadable')
     expect(host.querySelector('select[aria-label="模板文件夹"]')).not.toBeNull()
+  })
+
+  it.each([
+    { language: 'zh-CN', saveButton: '保存模板', expectedError: '计划名称模板格式无效' },
+    { language: 'en-US', saveButton: 'Save template', expectedError: 'The plan name template is invalid' }
+  ])('localizes validator feedback for $language without leaking backend text', async ({ language, saveButton, expectedError }) => {
+    await i18n.changeLanguage(language)
+    installBridge((channel, payload) => {
+      if (channel === 'plan-template:get') return EMPTY_SETTINGS
+      if (channel === 'storage:treeGetChildren') return treeResponse((payload as { parent_path: string }).parent_path)
+      if (channel === 'plan-template:set') {
+        throw Object.assign(new Error('模板只能包含日期和标题占位符'), { code: ERR.VALIDATION })
+      }
+      throw new Error(`Unexpected IPC channel ${channel}`)
+    })
+
+    await renderPanel()
+    await enterTemplate('Plan_{date}_{title}')
+    await clickButton(saveButton)
+
+    const errorText = host.querySelector('[role="alert"]')?.textContent ?? ''
+    expect(errorText).toContain(expectedError)
+    expect(errorText).not.toContain('模板只能包含日期和标题占位符')
   })
 
   it('preserves the last saved rule when edit and remove IPC calls fail', async () => {
@@ -197,11 +222,13 @@ describe('PlanNameTemplateSettings', () => {
 
     await enterTemplate('Unsaved_{date}_{title}')
     await clickButton('保存模板')
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Write is unavailable')
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('保存计划名称模板失败')
+    expect(host.querySelector('[role="alert"]')?.textContent).not.toContain('Write is unavailable')
     expect(templateInput().value).toBe('Unsaved_{date}_{title}')
 
     await clickButton('移除模板')
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Remove is unavailable')
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('移除计划名称模板失败')
+    expect(host.querySelector('[role="alert"]')?.textContent).not.toContain('Remove is unavailable')
     await chooseFolder('Planning')
     await chooseFolder('Planning/Deep')
     expect(templateInput().value).toBe(savedTemplate)

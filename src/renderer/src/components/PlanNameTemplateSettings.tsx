@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, Input, Tooltip } from 'antd'
+import { ERR, TraceError } from '@shared/errors'
 import { formatPlanNameTemplate, validatePlanNameTemplate } from '@shared/plan-name-templates'
 import type { PlanNameTemplateSettings } from '@shared/plan-name-templates'
 import type { PlanTreeNode } from '@shared/ipc-contract'
-import { invoke } from '../ipc-client'
+import { ClientError, invoke } from '../ipc-client'
 import { useTranslation } from '../i18n'
 import { useAppStore } from '../stores/app-store'
 
@@ -38,8 +39,14 @@ async function loadFolders(): Promise<TemplateFolder[]> {
   return folders
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+function templateErrorMessage(
+  error: unknown,
+  fallbackKey: 'settings.templateLoadFailed' | 'settings.templateSaveFailed' | 'settings.templateRemoveFailed',
+  t: (key: string) => string
+): string {
+  const code = error instanceof ClientError || error instanceof TraceError ? error.code : undefined
+  if (code === ERR.VALIDATION) return t('settings.templateValidationFailed')
+  return t(fallbackKey)
 }
 
 export default function PlanNameTemplateSettingsPanel({ active = true }: PlanNameTemplateSettingsProps): React.JSX.Element {
@@ -91,7 +98,7 @@ export default function PlanNameTemplateSettingsPanel({ active = true }: PlanNam
       })
       .catch((loadError: unknown) => {
         if (!isCurrent()) return
-        setError(errorMessage(loadError, t('settings.templateLoadFailed')))
+        setError(templateErrorMessage(loadError, 'settings.templateLoadFailed', t))
       })
       .finally(() => {
         if (isCurrent()) setLoading(false)
@@ -126,7 +133,7 @@ export default function PlanNameTemplateSettingsPanel({ active = true }: PlanNam
       setSettings(nextSettings)
     } catch (saveError) {
       if (generationRef.current === generation && useAppStore.getState().rootDir === rootAtStart) {
-        setError(errorMessage(saveError, t('settings.templateSaveFailed')))
+        setError(templateErrorMessage(saveError, 'settings.templateSaveFailed', t))
       }
     } finally {
       if (generationRef.current === generation && useAppStore.getState().rootDir === rootAtStart) setSaving(false)
@@ -146,7 +153,7 @@ export default function PlanNameTemplateSettingsPanel({ active = true }: PlanNam
       setDraft('')
     } catch (removeError) {
       if (generationRef.current === generation && useAppStore.getState().rootDir === rootAtStart) {
-        setError(errorMessage(removeError, t('settings.templateRemoveFailed')))
+        setError(templateErrorMessage(removeError, 'settings.templateRemoveFailed', t))
       }
     } finally {
       if (generationRef.current === generation && useAppStore.getState().rootDir === rootAtStart) setRemoving(false)

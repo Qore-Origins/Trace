@@ -2,7 +2,7 @@
 
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ERR } from '../src/shared/errors'
 import type { PlanNameTemplateSettings } from '../src/shared/plan-name-templates'
 import NameDialogModal from '../src/renderer/src/components/NameDialogModal'
@@ -126,6 +126,7 @@ afterEach(async () => {
   else Reflect.deleteProperty(window, 'trace')
   if (previousActEnvironment === undefined) Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
   else Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousActEnvironment)
+  vi.useRealTimers()
 })
 
 describe('NameDialogModal plan templates', () => {
@@ -150,6 +151,29 @@ describe('NameDialogModal plan templates', () => {
       name: `Daily-Plan_${localDate}_心情不错`
     })
     expect(useUiStore.getState().nameDialog).toBeNull()
+  })
+
+  it('refreshes the template preview at local midnight and submits the displayed date', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 8, 28, 23, 59, 58))
+    const calls = installBridge(defaultHandler)
+    await act(async () => {
+      useUiStore.getState().openNameDialog({ mode: 'create-plan', targetPath: 'Daily_Plan', initialName: '' })
+    })
+    await renderDialog()
+    await enterName(inputWithLabel('计划标题'), '跨日计划')
+
+    const preview = document.body.querySelector('output')
+    expect(preview?.textContent).toBe('Daily-Plan_20260928_跨日计划')
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+
+    expect(preview?.textContent).toBe('Daily-Plan_20260929_跨日计划')
+    await act(async () => { dialogButton('创建').click() })
+    expect(calls.find((call) => call.channel === 'storage:createPlan')?.payload).toEqual({
+      parent_path: 'Daily_Plan',
+      name: 'Daily-Plan_20260929_跨日计划'
+    })
   })
 
   it('keeps a configured dialog open with localized errors for blank, invalid, and duplicate names', async () => {

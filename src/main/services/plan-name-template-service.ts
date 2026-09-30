@@ -1,5 +1,4 @@
 import { promises as fs } from 'node:fs'
-import { isAbsolute, relative, sep } from 'node:path'
 import {
   BUILT_IN_PLAN_NAME_TEMPLATES,
   validatePlanNameTemplate,
@@ -10,7 +9,7 @@ import {
 import { ERR, TraceError } from '../../shared/errors'
 import { validatePlanName } from '../../shared/validation'
 import { PlanRepository } from './plan-repository'
-import { resolveWithin } from './path-safety'
+import { assertRealPathWithinRoot, resolveWithin } from './path-safety'
 
 const CONFIG_REL_PATH = '.trace/plan-name-templates.json'
 const BUILT_IN_TEMPLATES: ReadonlyMap<string, string> = new Map(
@@ -27,25 +26,6 @@ function invalidConfig(): TraceError {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
-}
-
-function isPathWithin(parent: string, child: string): boolean {
-  const fromParent = relative(parent, child)
-  return fromParent === '' || (fromParent !== '..' && !fromParent.startsWith(`..${sep}`) && !isAbsolute(fromParent))
-}
-
-async function assertRealPathWithinRoot(rootAbs: string, targetAbs: string): Promise<void> {
-  let rootReal: string
-  let targetReal: string
-  try {
-    ;[rootReal, targetReal] = await Promise.all([fs.realpath(rootAbs), fs.realpath(targetAbs)])
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new TraceError(ERR.PATH_NOT_FOUND, '目标文件夹不存在')
-    }
-    throw error
-  }
-  if (!isPathWithin(rootReal, targetReal)) throw new TraceError(ERR.PATH_UNSAFE, '路径越界被拒绝')
 }
 
 function validateStoredParentPath(rootAbs: string, parentPath: unknown): string {

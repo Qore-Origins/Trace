@@ -19,12 +19,16 @@ import { TraceError, ERR } from '../src/shared/errors'
 import type { Component, MoodPayload, NotePayload, PlanDocument } from '../src/shared/plan-types'
 
 let root: string
+let cleanupPaths: string[]
+let linkPaths: string[]
 
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(2026, 8, 28, 14))
   setDiaryRepo(new PlanRepository())
   root = join(tmpdir(), `trace-diary-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
+  cleanupPaths = []
+  linkPaths = []
   await fs.mkdir(root, { recursive: true })
 })
 
@@ -32,7 +36,9 @@ afterEach(async () => {
   vi.restoreAllMocks()
   vi.useRealTimers()
   setDiaryRepo(new PlanRepository())
+  for (const path of linkPaths) await fs.rm(path, { recursive: true, force: true })
   await fs.rm(root, { recursive: true, force: true })
+  for (const path of cleanupPaths) await fs.rm(path, { recursive: true, force: true })
 })
 
 const UUID32_RE = /^[0-9a-f]{32}$/
@@ -40,6 +46,16 @@ const FIXED_ID = '00000000000000000000000000000001'
 
 function dayDir(date: string): string {
   return join(root, 'Diary', date)
+}
+
+async function createDirectoryLink(target: string, linkPath: string): Promise<void> {
+  await fs.symlink(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir')
+  linkPaths.push(linkPath)
+}
+
+async function createFileLink(target: string, linkPath: string): Promise<void> {
+  await fs.symlink(target, linkPath, 'file')
+  linkPaths.push(linkPath)
 }
 
 function sampleDoc(components: PlanDocument['components']): PlanDocument {
@@ -68,6 +84,33 @@ describe('ensureDiaryRoot', () => {
     await ensureDiaryRoot(root)
     expect(await fs.readFile(join(root, 'Diary', '用户文件.txt'), 'utf8')).toBe('保留我')
   })
+
+  it('拒绝指向库外的 Diary 根链接且不触碰目标内容', async () => {
+    const externalRoot = `${root}-external`
+    cleanupPaths.push(externalRoot)
+    await fs.mkdir(externalRoot)
+    await fs.writeFile(join(externalRoot, 'keep.txt'), '外部内容')
+    await createDirectoryLink(externalRoot, join(root, 'Diary'))
+
+    await expect(ensureDiaryRoot(root)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+    expect(await fs.readFile(join(externalRoot, 'keep.txt'), 'utf8')).toBe('外部内容')
+  })
+
+  it('选择的库根本身是链接别名时仍可创建日记与 checkpoint', async () => {
+    const rootAlias = `${root}-alias`
+    cleanupPaths.push(rootAlias)
+    await createDirectoryLink(root, rootAlias)
+
+    const diaryAbs = await ensureDiaryRoot(rootAlias)
+    const result = await reconcileDiaryPages(rootAlias, '2026-09-28')
+
+    expect(diaryAbs).toBe(join(rootAlias, 'Diary'))
+    expect(result.createdDates).toEqual(['2026-09-28'])
+    expect(await fs.readFile(join(root, '.trace', 'diary-automation.json'), 'utf8')).toContain('2026-09-28')
+    expect(await listMonthEntries(rootAlias, 2026, 9)).toHaveLength(1)
+    expect((await listMemories(rootAlias)).history).toEqual([])
+    expect(await readDaySummary(rootAlias, '2026-09-28')).toMatchObject({ date: '2026-09-28' })
+  })
 })
 
 describe('ensureTodayPage', () => {
@@ -77,10 +120,8 @@ describe('ensureTodayPage', () => {
       ensureTodayPageWithResult(root, date),
       ensureTodayPageWithResult(root, date)
     ])
-    expect(results).toEqual([
-      { abs: dayDir(date), created: true },
-      { abs: dayDir(date), created: false }
-    ])
+    expect(results.map((result) => result.abs)).toEqual([dayDir(date), dayDir(date)])
+    expect(results.map((result) => result.created).sort()).toEqual([false, true])
     expect(await ensureTodayPage(root, date)).toBe(dayDir(date))
     expect(await ensureTodayPageWithResult(root, date)).toEqual({ abs: dayDir(date), created: false })
   })
@@ -142,6 +183,48 @@ describe('reconcileDiaryPages', () => {
     expect(entries).toEqual([{ date: '2026-09-28', score: null, notePreview: '', compCount: 3 }])
   })
 
+  it('拒绝指向库外的日期目录链接且不读取其计划或推进 checkpoint', async () => {
+    const date = '2026-09-28'
+    const externalDate = `${root}-external-date`
+    cleanupPaths.push(externalDate)
+    await fs.mkdir(join(root, 'Diary'))
+    await fs.mkdir(externalDate)
+    const outsidePlan = join(externalDate, 'plan.json')
+    await fs.writeFile(outsidePlan, '外部计划原文')
+    await createDirectoryLink(externalDate, dayDir(date))
+
+    await expect(reconcileDiaryPages(root, date)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+    expect(await fs.readFile(outsidePlan, 'utf8')).toBe('外部计划原文')
+    await expect(fs.lstat(checkpointPath())).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('拒绝指向库外的 .trace 目录链接且不读取或推进外部 checkpoint', async () => {
+    const externalTrace = `${root}-external-trace`
+    cleanupPaths.push(externalTrace)
+    await fs.mkdir(externalTrace)
+    const externalCheckpoint = join(externalTrace, 'diary-automation.json')
+    const original = '{"format_version":"1","last_reconciled_date":null}'
+    await fs.writeFile(externalCheckpoint, original)
+    await createDirectoryLink(externalTrace, join(root, '.trace'))
+
+    await expect(reconcileDiaryPages(root, '2026-09-28')).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+    expect(await fs.readFile(externalCheckpoint, 'utf8')).toBe(original)
+    await expect(fs.lstat(dayDir('2026-09-28'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('拒绝指向库外的 checkpoint 文件链接且不读取或推进目标', async () => {
+    const externalCheckpoint = `${root}-external-checkpoint.json`
+    cleanupPaths.push(externalCheckpoint)
+    await fs.mkdir(join(root, '.trace'))
+    const original = '{"format_version":"1","last_reconciled_date":null}'
+    await fs.writeFile(externalCheckpoint, original)
+    await createFileLink(externalCheckpoint, checkpointPath())
+
+    await expect(reconcileDiaryPages(root, '2026-09-28')).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+    expect(await fs.readFile(externalCheckpoint, 'utf8')).toBe(original)
+    await expect(fs.lstat(dayDir('2026-09-28'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('首跑从最早有效日期补到 today，保持已有 plan 字节与目录附件', async () => {
     expect(typeof reconcileDiaryPages).toBe('function')
     await writeDayPlan('2026-09-25', sampleDoc([{ id: FIXED_ID, type: 'note', payload: { content: '原文', created_at: '' } }]))
@@ -156,6 +239,22 @@ describe('reconcileDiaryPages', () => {
     expect(await fs.readFile(join(dayDir('2026-09-25'), 'plan.json'), 'utf8')).toBe(original)
     expect(await fs.readFile(join(dayDir('2026-09-26'), '附件.txt'), 'utf8')).toBe('附件不动')
     expect(await fs.readdir(dayDir('2026-02-31'))).toEqual([])
+  })
+
+  it('首次回填按升序创建缺页，并在同一轮创建 today', async () => {
+    await writeDayPlan('2026-09-25', sampleDoc([]))
+    const publishedDates: string[] = []
+    setDiaryRepo(new PlanRepository({
+      onInternalWrite: (abs) => {
+        const match = /Diary[\\/]([0-9]{4}-[0-9]{2}-[0-9]{2})[\\/]plan\.json$/.exec(abs)
+        if (match && publishedDates[publishedDates.length - 1] !== match[1]) publishedDates.push(match[1])
+      }
+    }))
+
+    const result = await reconcileDiaryPages(root, '2026-09-28')
+
+    expect(publishedDates).toEqual(['2026-09-26', '2026-09-27', '2026-09-28'])
+    expect(result.createdDates).toEqual(publishedDates)
   })
 
   it.each([
@@ -238,11 +337,10 @@ describe('reconcileDiaryPages', () => {
     setDiaryRepo(new FailOneDateRepository())
     await expect(reconcileDiaryPages(root, '2026-09-28')).rejects.toMatchObject({ code: ERR.SAVE_FAILED })
     expect(await checkpoint()).toEqual({ format_version: '1', last_reconciled_date: '2026-09-25' })
-    const todayBeforeRetry = await fs.readFile(join(dayDir('2026-09-28'), 'plan.json'), 'utf8')
     const earlierBeforeRetry = await fs.readFile(join(dayDir('2026-09-26'), 'plan.json'), 'utf8')
+    await expect(fs.stat(join(dayDir('2026-09-28'), 'plan.json'))).rejects.toMatchObject({ code: 'ENOENT' })
     setDiaryRepo(new PlanRepository())
-    expect((await reconcileDiaryPages(root, '2026-09-28')).createdDates).toEqual(['2026-09-27'])
-    expect(await fs.readFile(join(dayDir('2026-09-28'), 'plan.json'), 'utf8')).toBe(todayBeforeRetry)
+    expect((await reconcileDiaryPages(root, '2026-09-28')).createdDates).toEqual(['2026-09-27', '2026-09-28'])
     expect(await fs.readFile(join(dayDir('2026-09-26'), 'plan.json'), 'utf8')).toBe(earlierBeforeRetry)
     expect(await checkpoint()).toEqual({ format_version: '1', last_reconciled_date: '2026-09-28' })
   })
@@ -341,6 +439,45 @@ describe('listMonthEntries', () => {
     expect(await listMonthEntries(root, 2026, 9)).toEqual([])
   })
 
+  it('拒绝从库外 Diary 链接读取月历内容', async () => {
+    const externalLibrary = `${root}-external-month`
+    cleanupPaths.push(externalLibrary)
+    const externalDay = join(externalLibrary, 'Diary', '2026-09-27')
+    await fs.mkdir(externalDay, { recursive: true })
+    await fs.writeFile(join(externalDay, 'plan.json'), JSON.stringify(sampleDoc([
+      { id: FIXED_ID, type: 'note', payload: { content: '库外月历内容', created_at: '' } }
+    ])))
+    await createDirectoryLink(join(externalLibrary, 'Diary'), join(root, 'Diary'))
+
+    await expect(listMonthEntries(root, 2026, 9)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+  })
+
+  it('枚举到库外日期 junction 时拒绝绕过真实路径校验', async () => {
+    const externalDate = `${root}-external-month-date`
+    cleanupPaths.push(externalDate)
+    await fs.mkdir(join(root, 'Diary'))
+    await fs.mkdir(externalDate)
+    await fs.writeFile(join(externalDate, 'plan.json'), JSON.stringify(sampleDoc([
+      { id: FIXED_ID, type: 'note', payload: { content: '库外月历内容', created_at: '' } }
+    ])))
+    await createDirectoryLink(externalDate, join(root, 'Diary', '2026-09-27'))
+
+    await expect(listMonthEntries(root, 2026, 9)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+  })
+
+  it('拒绝从库外 plan.json 链接读取月历内容', async () => {
+    const date = '2026-09-27'
+    const externalPlan = `${root}-external-month-plan.json`
+    cleanupPaths.push(externalPlan)
+    await fs.mkdir(dayDir(date), { recursive: true })
+    await fs.writeFile(externalPlan, JSON.stringify(sampleDoc([
+      { id: FIXED_ID, type: 'note', payload: { content: '库外月历计划文件', created_at: '' } }
+    ])))
+    await createFileLink(externalPlan, join(dayDir(date), 'plan.json'))
+
+    await expect(listMonthEntries(root, 2026, 9)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+  })
+
   it('聚合口径：首张 mood 计分 / 首 note 截断 60 / compCount=组件数', async () => {
     await writeDayPlan(
       '2026-09-01',
@@ -418,6 +555,33 @@ describe('listMonthEntries', () => {
 })
 
 describe('readDaySummary', () => {
+  it('拒绝从库外日期目录链接读取日记摘要', async () => {
+    const date = '2026-09-27'
+    const externalDate = `${root}-external-summary`
+    cleanupPaths.push(externalDate)
+    await fs.mkdir(join(root, 'Diary'))
+    await fs.mkdir(externalDate)
+    await fs.writeFile(join(externalDate, 'plan.json'), JSON.stringify(sampleDoc([
+      { id: FIXED_ID, type: 'note', payload: { content: '库外摘要内容', created_at: '' } }
+    ])))
+    await createDirectoryLink(externalDate, join(root, 'Diary', date))
+
+    await expect(readDaySummary(root, date)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+  })
+
+  it('拒绝从库外 plan.json 链接读取日记摘要', async () => {
+    const date = '2026-09-27'
+    const externalPlan = `${root}-external-summary-plan.json`
+    cleanupPaths.push(externalPlan)
+    await fs.mkdir(dayDir(date), { recursive: true })
+    await fs.writeFile(externalPlan, JSON.stringify(sampleDoc([
+      { id: FIXED_ID, type: 'note', payload: { content: '库外计划文件摘要', created_at: '' } }
+    ])))
+    await createFileLink(externalPlan, join(dayDir(date), 'plan.json'))
+
+    await expect(readDaySummary(root, date)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+  })
+
   it('满组件映射（label/excerpt 规则）', async () => {
     await writeDayPlan(
       '2026-09-01',
@@ -505,6 +669,45 @@ describe('listMemories（F2 回忆视图）', () => {
       milestones: [],
       random: null
     })
+  })
+
+  it('拒绝从库外 Diary 链接读取回忆内容', async () => {
+    const externalLibrary = `${root}-external-memories`
+    cleanupPaths.push(externalLibrary)
+    const externalDay = join(externalLibrary, 'Diary', '2026-09-27')
+    await fs.mkdir(externalDay, { recursive: true })
+    await fs.writeFile(join(externalDay, 'plan.json'), JSON.stringify(sampleDoc([
+      { id: FIXED_ID, type: 'note', payload: { content: '库外回忆内容', created_at: '' } }
+    ])))
+    await createDirectoryLink(join(externalLibrary, 'Diary'), join(root, 'Diary'))
+
+    await expect(listMemories(root)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+  })
+
+  it('枚举到库外日期 junction 时拒绝绕过回忆真实路径校验', async () => {
+    const externalDate = `${root}-external-memory-date`
+    cleanupPaths.push(externalDate)
+    await fs.mkdir(join(root, 'Diary'))
+    await fs.mkdir(externalDate)
+    await fs.writeFile(join(externalDate, 'plan.json'), JSON.stringify(sampleDoc([
+      { id: FIXED_ID, type: 'note', payload: { content: '库外回忆内容', created_at: '' } }
+    ])))
+    await createDirectoryLink(externalDate, join(root, 'Diary', '2026-09-27'))
+
+    await expect(listMemories(root)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+  })
+
+  it('拒绝从库外 plan.json 链接读取回忆内容', async () => {
+    const date = '2026-09-27'
+    const externalPlan = `${root}-external-memory-plan.json`
+    cleanupPaths.push(externalPlan)
+    await fs.mkdir(dayDir(date), { recursive: true })
+    await fs.writeFile(externalPlan, JSON.stringify(sampleDoc([
+      { id: FIXED_ID, type: 'note', payload: { content: '库外回忆计划文件', created_at: '' } }
+    ])))
+    await createFileLink(externalPlan, join(dayDir(date), 'plan.json'))
+
+    await expect(listMemories(root)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
   })
 
   it('onthisday：往年同月同日按年份降序；今年今天排除', async () => {

@@ -17,7 +17,7 @@ import { DIARY_DIR } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { todayDateStr, uuid32 } from '../../shared/validation'
 import { PlanRepository } from './plan-repository'
-import { resolveWithin } from './path-safety'
+import { assertRealPathWithinRoot, resolveWithin } from './path-safety'
 
 export { DIARY_DIR }
 
@@ -52,7 +52,9 @@ export function setDiaryRepo(r: PlanRepository): void {
 
 // 日记根绝对路径；幂等（recursive mkdir 已存在无副作用，不触碰已有内容）
 export async function ensureDiaryRoot(planRoot: string): Promise<string> {
-  const { abs } = resolveWithin(planRoot, DIARY_DIR)
+  const { abs: rootAbs } = resolveWithin(planRoot, '')
+  const { abs } = resolveWithin(rootAbs, DIARY_DIR)
+  await assertRealPathWithinRoot(rootAbs, abs, { allowMissing: true })
   try {
     if (!(await fs.stat(abs)).isDirectory()) throw new TraceError(ERR.PATH_UNSAFE, '日记根路径不是目录')
     return abs
@@ -62,6 +64,7 @@ export async function ensureDiaryRoot(planRoot: string): Promise<string> {
   // mkdir 前经注入实例登记：首次进日记视图建 Diary/ 目录的 addDir 事件被 watch 抑制（评审 Important-3）
   repo.markInternalWrite(abs)
   await fs.mkdir(abs, { recursive: true })
+  await assertRealPathWithinRoot(rootAbs, abs)
   return abs
 }
 
@@ -90,6 +93,29 @@ function nextDiaryDate(date: string): string {
   return `${pad(value.getFullYear(), 4)}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
 }
 
+async function safeDiaryDateDirectoryNames(
+  rootAbs: string,
+  dirents: Dirent[],
+  includeDate: (date: string) => boolean
+): Promise<string[]> {
+  const names: string[] = []
+  for (const entry of dirents) {
+    const { name } = entry
+    if (!calendarDate(name) || !includeDate(name)) continue
+
+    const { abs } = resolveWithin(rootAbs, `${DIARY_DIR}/${name}`)
+    try {
+      await assertRealPathWithinRoot(rootAbs, abs)
+    } catch (error) {
+      if (error instanceof TraceError && error.code === ERR.PATH_NOT_FOUND) continue
+      throw error
+    }
+    if (entry.isSymbolicLink() || !entry.isDirectory()) continue
+    names.push(name)
+  }
+  return names.sort()
+}
+
 function pathLockKey(abs: string): string {
   return process.platform === 'win32' ? abs.toLowerCase() : abs
 }
@@ -107,8 +133,11 @@ async function ensureDatePage(planRoot: string, date: string): Promise<{ abs: st
   validateDiaryDate(date)
   const rel = `${DIARY_DIR}/${date}`
   const { abs } = resolveWithin(planRoot, rel)
+  await assertRealPathWithinRoot(planRoot, abs, { allowMissing: true })
   return serialized(DAY_WRITES, pathLockKey(abs), async () => {
     const { abs: planFile } = resolveWithin(planRoot, `${rel}/plan.json`)
+    await assertRealPathWithinRoot(planRoot, abs, { allowMissing: true })
+    await assertRealPathWithinRoot(planRoot, planFile, { allowMissing: true })
     try {
       await fs.lstat(planFile)
       return { abs, created: false }
@@ -180,7 +209,10 @@ export async function ensureTodayPageWithResult(planRoot: string, today = todayD
 }
 
 async function readCheckpoint(planRoot: string): Promise<DiaryAutomationCheckpoint | null> {
+  const { abs: traceDirectory } = resolveWithin(planRoot, '.trace')
   const { abs } = resolveWithin(planRoot, AUTOMATION_REL)
+  await assertRealPathWithinRoot(planRoot, traceDirectory, { allowMissing: true })
+  await assertRealPathWithinRoot(planRoot, abs, { allowMissing: true })
   let raw: string
   try {
     raw = await fs.readFile(abs, 'utf8')
@@ -212,23 +244,23 @@ export async function reconcileDiaryPages(planRoot: string, today: string): Prom
     const lastDate = checkpoint?.last_reconciled_date ?? null
     const diaryAbs = await ensureDiaryRoot(rootAbs)
     const createdDates = new Set<string>()
-    if ((await ensureDatePage(rootAbs, today)).created) createdDates.add(today)
 
     const dirents = lastDate === null ? await fs.readdir(diaryAbs, { withFileTypes: true }) : []
     const earliestDate = dirents
       .filter((entry) => entry.isDirectory() && calendarDate(entry.name) && entry.name <= today)
       .map((entry) => entry.name)
       .sort()[0] ?? today
-    const startDate = lastDate === null ? earliestDate : lastDate < today ? nextDiaryDate(lastDate) : null
-    if (startDate !== null) {
-      for (let date = startDate; ; date = nextDiaryDate(date)) {
-        if ((await ensureDatePage(rootAbs, date)).created) createdDates.add(date)
-        if (date === today) break
-      }
+    const startDate = lastDate === null ? earliestDate : lastDate < today ? nextDiaryDate(lastDate) : today
+    for (let date = startDate; ; date = nextDiaryDate(date)) {
+      if ((await ensureDatePage(rootAbs, date)).created) createdDates.add(date)
+      if (date === today) break
     }
     const lastReconciledDate = lastDate !== null && lastDate > today ? lastDate : today
     if (checkpoint === null || lastDate !== lastReconciledDate) {
       const { abs: checkpointAbs } = resolveWithin(rootAbs, AUTOMATION_REL)
+      const { abs: traceDirectory } = resolveWithin(rootAbs, '.trace')
+      await assertRealPathWithinRoot(rootAbs, traceDirectory, { allowMissing: true })
+      await assertRealPathWithinRoot(rootAbs, checkpointAbs, { allowMissing: true })
       await repo.writeAppJson(checkpointAbs, { format_version: '1', last_reconciled_date: lastReconciledDate } satisfies DiaryAutomationCheckpoint)
     }
     return { today, createdDates: [...createdDates].sort(), lastReconciledDate }
@@ -240,7 +272,14 @@ export async function listMonthEntries(planRoot: string, year: number, month: nu
   if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
     throw new TraceError(ERR.VALIDATION, '月份需在 1-12 之间')
   }
-  const { abs: diaryAbs } = resolveWithin(planRoot, DIARY_DIR)
+  const { abs: rootAbs } = resolveWithin(planRoot, '')
+  const { abs: diaryAbs } = resolveWithin(rootAbs, DIARY_DIR)
+  try {
+    await assertRealPathWithinRoot(rootAbs, diaryAbs, { allowMissing: true })
+  } catch (error) {
+    if (error instanceof TraceError && error.code === ERR.PATH_NOT_FOUND) return []
+    throw error
+  }
   let dirents: Dirent[]
   try {
     dirents = await fs.readdir(diaryAbs, { withFileTypes: true })
@@ -248,17 +287,15 @@ export async function listMonthEntries(planRoot: string, year: number, month: nu
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [] // 日记根尚不存在 → 空月
     throw e
   }
-  const days = dirents
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
-    .filter((name) => {
-      const m = DATE_RE.exec(name)
-      return m !== null && calendarDate(name) !== null && Number(m[1]) === year && Number(m[2]) === month
-    })
-    .sort() // YYYY-MM-DD 字典序=时间序（升序）
+  const days = await safeDiaryDateDirectoryNames(rootAbs, dirents, (name) => {
+    const match = DATE_RE.exec(name)
+    return match !== null && Number(match[1]) === year && Number(match[2]) === month
+  }) // YYYY-MM-DD 字典序=时间序（升序）
 
   const entries: DiaryMonthEntry[] = []
   for (const name of days) {
+    const { abs: planAbs } = resolveWithin(rootAbs, `${DIARY_DIR}/${name}/plan.json`)
+    await assertRealPathWithinRoot(rootAbs, planAbs, { allowMissing: true })
     let doc: PlanDocument
     try {
       doc = await repo.readPlan(planRoot, `${DIARY_DIR}/${name}`)
@@ -297,7 +334,16 @@ export async function listMemories(planRoot: string): Promise<{
 }> {
   const today = todayDateStr()
   const md = today.slice(5) // MM-DD
-  const { abs: diaryAbs } = resolveWithin(planRoot, DIARY_DIR)
+  const { abs: rootAbs } = resolveWithin(planRoot, '')
+  const { abs: diaryAbs } = resolveWithin(rootAbs, DIARY_DIR)
+  try {
+    await assertRealPathWithinRoot(rootAbs, diaryAbs, { allowMissing: true })
+  } catch (error) {
+    if (error instanceof TraceError && error.code === ERR.PATH_NOT_FOUND) {
+      return { today, history: [], onthisday: [], milestones: [], random: null }
+    }
+    throw error
+  }
   let dirents: Dirent[]
   try {
     dirents = await fs.readdir(diaryAbs, { withFileTypes: true })
@@ -318,16 +364,14 @@ export async function listMemories(planRoot: string): Promise<{
     }
   }
 
-  const names = dirents
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
-    .filter((name) => calendarDate(name) !== null && name !== today) // 今天不算回忆
-    .sort()
+  const names = await safeDiaryDateDirectoryNames(rootAbs, dirents, (name) => name !== today) // 今天不算回忆
 
   const onthisday: DiaryMemoryEntry[] = []
   const milestones: DiaryMemoryMilestone[] = []
   const all: DiaryMemoryEntry[] = []
   for (const name of names) {
+    const { abs: planAbs } = resolveWithin(rootAbs, `${DIARY_DIR}/${name}/plan.json`)
+    await assertRealPathWithinRoot(rootAbs, planAbs, { allowMissing: true })
     let doc: PlanDocument
     try {
       doc = await repo.readPlan(planRoot, `${DIARY_DIR}/${name}`)
@@ -374,6 +418,13 @@ function hasText(value: string): boolean {
 // 单日摘要：读 Diary/<date>/plan.json → 组件映射（缺失/坏 JSON 沿用既有 plan 读取错误语义）
 export async function readDaySummary(planRoot: string, date: string): Promise<DiaryDaySummary> {
   validateDiaryDate(date)
+  const { abs: rootAbs } = resolveWithin(planRoot, '')
+  const { abs: diaryAbs } = resolveWithin(rootAbs, DIARY_DIR)
+  const { abs: dayAbs } = resolveWithin(rootAbs, `${DIARY_DIR}/${date}`)
+  const { abs: planAbs } = resolveWithin(rootAbs, `${DIARY_DIR}/${date}/plan.json`)
+  await assertRealPathWithinRoot(rootAbs, diaryAbs, { allowMissing: true })
+  await assertRealPathWithinRoot(rootAbs, dayAbs, { allowMissing: true })
+  await assertRealPathWithinRoot(rootAbs, planAbs, { allowMissing: true })
   const doc = await repo.readPlan(planRoot, `${DIARY_DIR}/${date}`)
   return { date, components: doc.components.map(toDayComponent) }
 }

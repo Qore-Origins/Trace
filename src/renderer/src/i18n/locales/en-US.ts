@@ -224,6 +224,7 @@ const enUS: typeof zhCN = {
     templateLoadFailed: 'Failed to load plan name templates',
     templateSaveFailed: 'Failed to save plan name template',
     templateRemoveFailed: 'Failed to remove plan name template',
+    templateValidationFailed: 'The plan name template is invalid',
     templateNoFolders: 'There are no folders in this library.',
     templateDefault: 'Built-in template',
     templateCustom: 'Custom template',

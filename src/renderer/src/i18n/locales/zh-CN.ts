@@ -221,6 +221,7 @@ const zhCN = {
     templateLoadFailed: '读取计划名称模板失败',
     templateSaveFailed: '保存计划名称模板失败',
     templateRemoveFailed: '移除计划名称模板失败',
+    templateValidationFailed: '计划名称模板格式无效',
     templateNoFolders: '当前计划库没有可用文件夹。',
     templateDefault: '内置模板',
     templateCustom: '自定义模板',

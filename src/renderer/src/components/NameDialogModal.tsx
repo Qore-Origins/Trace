@@ -36,6 +36,7 @@ export default function NameDialogModal(): React.JSX.Element {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [templateLoad, setTemplateLoad] = useState<TemplateLoadState | null>(null)
   const [loadSequence, setLoadSequence] = useState(0)
+  const [templateDate, setTemplateDate] = useState(() => new Date())
   const loadGenerationRef = useRef(0)
 
   // 每次打开新的 dialog 对象都从 initialName 起步；根目录变化则保留当前输入，只重载该库的模板。
@@ -117,6 +118,24 @@ export default function NameDialogModal(): React.JSX.Element {
   const template = isPlanDialog && isCurrentLoad && templateLoad.status === 'ready' ? templateLoad.template : null
   const templateConfigured = typeof template === 'string'
 
+  useEffect(() => {
+    if (dialog?.mode !== 'create-plan') return
+
+    let midnightTimer: ReturnType<typeof setTimeout> | undefined
+    const refreshAtNextLocalMidnight = (): void => {
+      const now = new Date()
+      setTemplateDate(now)
+      const nextLocalMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+      const delay = Math.max(1, nextLocalMidnight.getTime() - now.getTime())
+      midnightTimer = setTimeout(refreshAtNextLocalMidnight, delay)
+    }
+
+    refreshAtNextLocalMidnight()
+    return () => {
+      if (midnightTimer !== undefined) clearTimeout(midnightTimer)
+    }
+  }, [dialog, rootDir])
+
   const submit = async (): Promise<void> => {
     if (!dialog) return
     const submittedDialog = dialog
@@ -144,7 +163,7 @@ export default function NameDialogModal(): React.JSX.Element {
       }
 
       try {
-        const finalName = templateConfigured ? formatPlanNameTemplate(template, name) : name
+        const finalName = templateConfigured ? formatPlanNameTemplate(template, name, templateDate) : name
         await createPlan(dialog.targetPath, finalName)
         if (isStillCurrent()) close()
       } catch (error) {
@@ -176,7 +195,7 @@ export default function NameDialogModal(): React.JSX.Element {
   let preview = ''
   if (templateConfigured && value.trim()) {
     try {
-      preview = formatPlanNameTemplate(template, value.trim())
+      preview = formatPlanNameTemplate(template, value.trim(), templateDate)
     } catch {
       preview = ''
     }
