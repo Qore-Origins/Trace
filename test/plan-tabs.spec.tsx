@@ -41,7 +41,7 @@ beforeEach(async () => {
   document.body.append(host)
   root = createRoot(host)
   await act(async () => {
-    root.render(createElement(PlanTabs))
+    root.render(createElement('div', { 'data-content-focus-target': '', tabIndex: -1 }, createElement(PlanTabs)))
   })
 })
 
@@ -102,6 +102,53 @@ describe('PlanTabs', () => {
 
     expect(closeTab).toHaveBeenCalledExactlyOnceWith('Daily_Plan/First plan')
     expect(activate).not.toHaveBeenCalled()
+  })
+
+  it('returns keyboard focus to an adjacent surviving tab after close', async () => {
+    const closingPath = openPaths[1]?.path
+    expect(closingPath).toBeDefined()
+    closeTab.mockImplementationOnce(async (path) => {
+      useWorkspaceTabsStore.setState((state) => ({
+        open_paths: state.open_paths.filter((item) => item.path !== path),
+        active_path: openPaths[0]?.path ?? null
+      }))
+      return true
+    })
+    const closeButton = host.querySelector<HTMLButtonElement>(`button[aria-label="关闭计划“Second plan”"]`)
+    expect(closeButton).not.toBeNull()
+
+    await act(async () => {
+      closeButton?.focus()
+      closeButton?.click()
+      await vi.waitFor(() => expect(tabs()).toHaveLength(2))
+    })
+
+    expect(document.activeElement).toBe(tabs()[0])
+  })
+
+  it('moves focus to the content entry when closing the last tab', async () => {
+    await act(async () => {
+      useWorkspaceTabsStore.setState({ open_paths: [openPaths[0]!], active_path: openPaths[0]!.path })
+    })
+    closeTab.mockImplementationOnce(async (path) => {
+      useWorkspaceTabsStore.setState((state) => ({
+        open_paths: state.open_paths.filter((item) => item.path !== path),
+        active_path: null
+      }))
+      return true
+    })
+    const closeButton = host.querySelector<HTMLButtonElement>('button.plan-tabs__close')
+    const contentTarget = host.querySelector<HTMLElement>('[data-content-focus-target]')
+    expect(closeButton).not.toBeNull()
+    expect(contentTarget).not.toBeNull()
+
+    await act(async () => {
+      closeButton?.focus()
+      closeButton?.click()
+      await vi.waitFor(() => expect(tabs()).toHaveLength(0))
+    })
+
+    expect(document.activeElement).toBe(contentTarget)
   })
 
   it('gives the tab list and every keyboard-operable button a localized accessible name', () => {

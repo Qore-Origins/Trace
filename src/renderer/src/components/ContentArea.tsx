@@ -125,7 +125,7 @@ export default function ContentArea(): React.JSX.Element {
     // 空库/未选中：给出可执行的下一步（空库时引导建计划或迁入 Markdown，而非沉默）
     const treeEmpty = (childrenMap[''] ?? []).length === 0 && loaded[''] === true
     return (
-      <div className="ws-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start' }}>
+      <div className="ws-content" tabIndex={-1} data-content-focus-target="" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start' }}>
         <PlanTabs />
         <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Empty description={treeEmpty ? t('content.emptyLibrary') : t('content.emptySelect')}>
@@ -147,7 +147,7 @@ export default function ContentArea(): React.JSX.Element {
     // 纯容器文件夹：内容区显示子项列表
     const children = childrenMap[currentPath] ?? []
     return (
-      <div className="ws-content">
+      <div className="ws-content" tabIndex={-1} data-content-focus-target="">
         <PlanTabs />
         <div className="crumbs">
           <span className="origin-dot" />
@@ -200,7 +200,7 @@ export default function ContentArea(): React.JSX.Element {
     )
   }
   return (
-    <div className="ws-content">
+    <div className="ws-content" tabIndex={-1} data-content-focus-target="">
       <PlanTabs />
       <div className="crumbs">
         <span className="origin-dot" />

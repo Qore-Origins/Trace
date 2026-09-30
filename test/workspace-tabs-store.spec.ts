@@ -218,6 +218,24 @@ describe('workspace tabs store', () => {
     expect(api.save).not.toHaveBeenCalledWith(expect.objectContaining({ library_id: '' }))
   })
 
+  it('启动恢复中的用户打开失败时保留原标签，并可手动重新激活恢复项', async () => {
+    const { store, api } = setup()
+    const loading = deferred<WorkspaceTabsState>()
+    vi.mocked(api.load).mockImplementationOnce(() => loading.promise)
+    vi.mocked(api.openPlan).mockResolvedValueOnce(false)
+
+    const hydrating = store.getState().hydrate('root-a')
+    expect(await store.getState().openPlan('B')).toBe(false)
+    loading.resolve({ library_id: 'library-a', open_paths: [{ path: 'A' }], active_path: 'A' })
+    await hydrating
+
+    expect(store.getState().open_paths).toEqual([{ path: 'A' }])
+    expect(store.getState().active_path).toBeNull()
+    expect(await store.getState().activate('A')).toBe(true)
+    expect(store.getState().active_path).toBe('A')
+    expect(api.openPlan).toHaveBeenLastCalledWith('A')
+  })
+
   it('标签写盘失败后仍可继续打开计划', async () => {
     const { store, api } = setup()
     await store.getState().hydrate('root-a')

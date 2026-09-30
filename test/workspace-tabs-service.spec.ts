@@ -29,6 +29,16 @@ describe('WorkspaceTabsService', () => {
     return { path, id: meta.library_id }
   }
 
+  async function temporaryDirectory(name: string): Promise<string> {
+    const path = await fs.mkdtemp(join(tmpdir(), `trace-tabs-${name}-`))
+    roots.push(path)
+    return path
+  }
+
+  async function directoryLink(linkPath: string, targetPath: string): Promise<void> {
+    await fs.symlink(targetPath, linkPath, process.platform === 'win32' ? 'junction' : 'dir')
+  }
+
   async function plan(path: string, relativePath: string): Promise<void> {
     const directory = join(path, relativePath)
     await fs.mkdir(directory, { recursive: true })
@@ -105,6 +115,84 @@ describe('WorkspaceTabsService', () => {
     await expect(service.load()).resolves.toEqual({
       library_id: first.id,
       open_paths: [{ path: 'B' }],
+      active_path: null
+    })
+  })
+
+  it('rejects an external .trace junction without writing into its target', async () => {
+    const first = await library('trace-junction')
+    const outside = await library('outside-trace')
+    const externalConfig = join(outside.path, '.trace', 'workspace-tabs.json')
+    const canary = Buffer.from('external library config must remain unchanged', 'utf8')
+    await fs.writeFile(externalConfig, canary)
+    await fs.rm(join(first.path, '.trace'), { recursive: true })
+    await directoryLink(join(first.path, '.trace'), join(outside.path, '.trace'))
+    root = first.path
+
+    await expect(service.load()).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+    await expect(service.save({ library_id: outside.id, open_paths: [], active_path: null }))
+      .rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+    await expect(fs.readFile(externalConfig)).resolves.toEqual(canary)
+  })
+
+  it('filters external plan junctions while preserving valid tabs and order', async () => {
+    const first = await library('plan-junction')
+    const outside = await library('outside-plan')
+    await plan(first.path, 'First')
+    await plan(first.path, 'Last')
+    await plan(outside.path, 'Secret')
+    await directoryLink(join(first.path, 'Linked'), join(outside.path, 'Secret'))
+    root = first.path
+    const config = join(first.path, '.trace', 'workspace-tabs.json')
+    await fs.writeFile(config, JSON.stringify({
+      library_id: first.id,
+      open_paths: [{ path: 'First' }, { path: 'Linked', plan_id: 'untrusted-id' }, { path: 'Last' }],
+      active_path: 'Linked'
+    }))
+
+    await expect(service.load()).resolves.toEqual({
+      library_id: first.id,
+      open_paths: [{ path: 'First' }, { path: 'Last' }],
+      active_path: null
+    })
+    await service.save({
+      library_id: first.id,
+      open_paths: [{ path: 'First' }, { path: 'Linked', plan_id: 'untrusted-id' }, { path: 'Last' }],
+      active_path: 'Linked'
+    })
+    await expect(service.load()).resolves.toEqual({
+      library_id: first.id,
+      open_paths: [{ path: 'First' }, { path: 'Last' }],
+      active_path: null
+    })
+  })
+
+  it('keeps a valid library-root junction alias usable for loading and saving tabs', async () => {
+    const first = await library('root-alias')
+    await plan(first.path, 'A')
+    const aliasParent = await temporaryDirectory('root-alias-link')
+    const alias = join(aliasParent, 'library')
+    await directoryLink(alias, first.path)
+    root = alias
+    const expected = { library_id: first.id, open_paths: [{ path: 'A' }], active_path: 'A' }
+
+    await service.save(expected)
+    await expect(service.load()).resolves.toEqual(expected)
+  })
+
+  it('does not repair a missing path from an untrusted plan_id or assign identities during restore', async () => {
+    const first = await library('untrusted-plan-id')
+    await plan(first.path, 'Existing')
+    root = first.path
+    await fs.writeFile(join(first.path, '.trace', 'workspace-tabs.json'), JSON.stringify({
+      library_id: first.id,
+      open_paths: [{ path: 'Missing', plan_id: 'forged-id' }, { path: 'Existing' }],
+      active_path: 'Missing'
+    }))
+
+    await expect(service.load()).resolves.toEqual({
+      library_id: first.id,
+      open_paths: [{ path: 'Existing' }],
       active_path: null
     })
   })
