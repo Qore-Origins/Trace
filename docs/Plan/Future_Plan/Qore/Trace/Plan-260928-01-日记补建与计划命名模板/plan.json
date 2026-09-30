@@ -1,7 +1,7 @@
 {
   "format_version": "1",
   "created_at": "2026-09-28T00:26:55+08:00",
-  "updated_at": "2026-09-30T17:39:26+08:00",
+  "updated_at": "2026-09-30T17:51:25+08:00",
   "components": [
     {
       "id": "7d6c476fa7744a73ac8ec28652284310",
@@ -15,7 +15,7 @@
       "id": "39235e879c744c778c0db9f75b27c312",
       "type": "note",
       "payload": {
-        "content": "Implementation, independent review, automated regression, real Electron UI acceptance, and final QA Temp cleanup verification through Task 5 are complete. Follow-up A/B/UI fixes and reviews completed; accepted Diary TOCTOU and storage cleanup P3 recorded. Full typecheck, 48 files / 512 tests, build and diff-check passed. Real Electron verified template settings save, title-only local-date preview Daily-20260930_Automation QA, and matching isolated plan.json. Focused root-switch coordinator/IPC tests passed 2 files / 22 tests. Real renderer root-switch UI also passed: File menu to native folder picker, exact isolated target confirmation, old plan marker absent in new root, and new Diary/2026-09-30/plan.json with null mood; Diary view showed 3 components and 0 check-in days. After the user's cleanup confirmation, all five exact QA Temp paths were rechecked and Test-Path returned False for each. No directories were deleted by Codex. PlantUML was not tested because the bare build omitted plantuml:prepare. No build:win, version bump, push, or release. See the implementation plan.",
+        "content": "Implementation, independent review, automated regression, real Electron UI acceptance, and final QA Temp cleanup verification through Task 5 are complete. Follow-up A/B/UI fixes and reviews completed; accepted Diary TOCTOU and storage cleanup P3 recorded. Full typecheck, 48 files / 512 tests, build and diff-check passed. Real Electron verified template settings save, title-only local-date preview Daily-20260930_Automation QA, and matching isolated plan.json. Focused root-switch coordinator/IPC tests passed 2 files / 22 tests. Real renderer root-switch UI also passed: File menu to native folder picker, exact isolated target confirmation, old plan marker absent in new root, and new Diary/2026-09-30/plan.json with null mood; Diary view showed 3 components and 0 check-in days. After the user's cleanup confirmation, all five exact QA Temp paths were rechecked and Test-Path returned False for each. No directories were deleted by Codex. PlantUML was not tested because the bare build omitted plantuml:prepare. The feature branch was merged locally into main by merge commit 363dce0; post-merge typecheck, all 512 tests, build, and diff-check passed. No build:win, version bump, push, or release. See the implementation plan.",
         "created_at": "2026-09-28T00:26:55+08:00"
       }
     },

@@ -2,7 +2,7 @@
 
 > 此文件是两个开发智能体的**当前唯一协作状态源**。历史交接文件保留为当时快照，不可用其判断当前任务。
 >
-> 更新：2026-09-30（Codex：日记自动补建与计划命名模板实现、审查、全量回归、真实 Electron UI 验收及五个 QA Temp 目录清理复核全部完成；未发布）
+> 更新：2026-09-30（Codex：日记自动补建与计划命名模板实现、审查、全量回归、真实 Electron UI 验收、QA Temp 清理复核及本地合入均已完成；未推送/发布）
 
 ## 当前任务：日记自动补建与按文件夹命名模板（已完成；实现、独立审查、自动回归、真实模板设置/预览/创建、in-flight 根切换 IPC 回归、真实 renderer 切库 UI 验收及 QA Temp 清理均已核验）
 
@@ -21,7 +21,7 @@
 - Task 2 另有前台兜底验收：`diary:ensure` 新创建今日页时必须 invalidate Diary cache 并发出一次 scoped `trace:plan-changed`，保证树与搜索更新；重复 ensure 不重复发事件，切库 await 返回后不可把旧 root 通知新 root。DiaryView 本身会在 ensure 后读取当月。
 - Task 3 文件所有权已释放：上述九个 Task3 文件实现已通过双阶段审查（初审 Important 由 fix round 1 修复；复审全部 ADDRESSED、无新破坏）。
 - Task 3 约束：六个内置命名格式；`{date}` 使用本地 `YYYYMMDD`，每个模板必须恰好含一个 `{title}`；拒绝未知占位符、无效计划名、路径逃逸、无效/不存在父目录；配置按当前库 `.trace/` 隔离并原子保存；损坏配置必须保留；移除内置模板需持久化显式停用路径，不能静默重现；IPC 从 main 获取 library root，renderer 不传根路径。
-- 当前状态：主目录 `main` HEAD 基线 `2821f1f9baae46a28a673a8f844452d93f65f216`，工作树存在协调者维护的共享计划/HANDOFF 未提交修改；主目录用户资源 `Resource/pic/`、`Resource/vid/` 未跟踪且不触碰。隔离工作区 `.worktrees/codex/diary-backfill-name-templates` 分支 `codex/diary-backfill-name-templates` 已含 Task 1–5 实现提交，HEAD `fda547f56f46612f9b22aa093f50f1bb66e93257`，未合入或推送。不得改动/覆盖用户资源。
+- 当前状态（合入后，2026-09-30）：本地 `main` 已通过 merge commit `363dce0` 合入分支 `codex/diary-backfill-name-templates`（功能分支最终提交 `b5a20f8`）；合并后 typecheck、全量测试、构建及差异检查均通过。未推送、未更新版本、未构建安装包、未发布。功能 worktree `.worktrees/codex/diary-backfill-name-templates` 与分支仍保留且干净；当前环境没有可用的 worktree 归档工具，因此未清理。主工作区仅保留用户未跟踪的 `Resource/pic/`、`Resource/vid/`，未触碰。
 - Task 4 实现提交：`6ffc22b679bf206deeebd60e29cddf800fcd27a6`，提交仅含登记的八个 UI/测试文件；实现者 `/root/diary_task4_impl_resume` 的写权限已释放。聚焦 `4 files / 23 tests`、`npm run typecheck`（node/web）、`git diff --check` 均通过；详细 RED/GREEN 记录见 SDD `task-4-report.md`。
 - Task 4 独立审查已通过：`/root/diary_task4_review` 结论 Approved，无 Critical/Important；原列三项 Minor 中，计划节点可作为父目录由用户确认，英文错误文案与跨午夜预览已由 UI follow-up 修复并 scoped review 通过。Task 4 八文件边界已释放。报告：`.superpowers/sdd/Diary-Backfill-and-Plan-Templates-Implementation-Plan/task-4-review.md`。
 - Task 4 约束：按已确认的 folder-scoped 模板 Settings 流程实现；所有颜色使用 workspace 语义 token，Ant Design 反馈使用 `getMessage()` / `getModal()`，说明悬停 2 秒展示；保护 active-root/dialog stale async；目标父目录有模板时只收标题并用共享 formatter 预览/提交；未配置目录和创建文件夹、重命名、预设保存行为保持不变。
@@ -33,10 +33,10 @@
 - Task 5 最终审查（报告 `.superpowers/sdd/Diary-Backfill-and-Plan-Templates-Implementation-Plan/final-review.md`）曾发现两项 Important 与一项日期排序 Minor；Follow-up A/B 已修复并独立复核。Task 4 UI Minor 已通过 follow-up 修复并 scoped review；Task 1 硬链接错误泛化提示 Minor 仍按 final-review ledger 记录。Task 5 reviewer Approved 无新增问题，但不覆盖这些全分支 findings。
 - Follow-up A 扩展修复与独立复审已通过：精确范围为 `src/main/services/path-safety.ts`、`src/main/services/diary-service.ts`、`src/main/services/plan-name-template-service.ts`、`test/diary-service.spec.ts`。`listMonthEntries`、`listMemories`、`readDaySummary` 均检查 Diary/date/plan.json 真实路径；列表处理 Windows junction 时先按有效日期检查路径，防止 `Dirent.isDirectory() === false` 绕过。focused 4 files / 90 tests、node/web typecheck、scoped diff-check 通过；独立只读复核 PASS、无 P0–P3 findings。库外静态链接拒绝，root symlink alias 保持可用。用户明确接受 realpath 检查与后续文件操作之间的本地 TOCTOU 作为残余，不做 handle/no-follow 架构扩展。
 - Follow-up B `/root/plan_create_rollback_fix` 第二轮实现与 scoped re-review 已完成，仅改 `src/main/services/storage-service.ts`、`test/storage-service.spec.ts`；review 有条件通过。记录 mkdir 后 `dev/ino/birthtimeNs` 身份，只有身份相同才 watcher 标记并非递归回收；替代目录、非空内容、原始错误与同名重试都有回归。23/23 定向、node/web typecheck、授权差异检查通过。残余 P3：身份复查与 `rmdir` 非原子，极窄窗口内的再次替换仍可能竞争；当前 Node 跨平台 API 无法消除此竞态。
-- UI follow-up `/root/diary_ui_minor_fix` 已完成并通过独立复审，六个登记组件/locale/test 文件范围内修改：Settings 改用本地化错误反馈；create-plan 对话框跨本地午夜更新预览并与提交共用日期。focused 2 specs / 15 tests、node/web typecheck、diff-check 通过，scoped review PASS。真实 Electron 自动化已验证 Settings 开启、切换英文、模板英文提示精确断言和合法模板保存；新建计划对话框已打开，标题/日期预览与提交待验。
+- UI follow-up `/root/diary_ui_minor_fix` 已完成并通过独立复审，六个登记组件/locale/test 文件范围内修改：Settings 改用本地化错误反馈；create-plan 对话框跨本地午夜更新预览并与提交共用日期。focused 2 specs / 15 tests、node/web typecheck、diff-check 通过，scoped review PASS。后续真实 Electron 验收已确认模板设置保存、标题/日期预览及匹配目录创建；renderer 切库 UI 也已验收，详情见本计划记录。
 - 两条服务 follow-up 均采用 TDD，测试仅通过已批准计划中的现有公开服务 seam（`ensureDiaryRoot` / `reconcileDiaryPages` / `StorageService.createPlan`），并行文件边界不重叠。UI follow-up 使用已批准的现有 React 测试 seam。超出上述文件需先再次更新 HANDOFF 与计划。
 - Task 5 实现与自动验证：提交 `fda547f56f46612f9b22aa093f50f1bb66e93257`；`npm run typecheck` 通过，`npm run test` 48 files / 492 tests 全通过，`npm run build` 通过（main 27 / preload 1 / renderer 7,158 modules），`git diff --check` 通过。CSS 边界已拆入 `plan-name-templates.css`；并发前后台同建今日页只发一次 scoped refresh，既有 `ensureTodayPage()` 字符串契约保留。
-- 隔离 Electron smoke：一次性 runner 断言 userData 与 library 都位于独立临时目录；实际 BrowserWindow 可见，CDP 能访问真实 renderer/IPC。验证空库仅补今日页、null mood、间隔日补建并保留既有 plan 字节、checkpoint 前被删除的日期重启后不复建、六内置模板 IPC 创建、嵌套规则增改删并重启持久化、idle root switch 事件隔离。未覆盖设置控件/新建对话框的真实鼠标交互、模板预览和标题输入，以及 in-flight root race；一次 DOM harness 因自建选择器等待超时退出 1，非产品测试失败。runner 清理自身数据并确认无 Electron/Java 进程；仍有四个本轮纯测试临时目录因 shell 清理遭策略拒绝而留在系统 Temp，准确路径见本机忽略的 SDD `task-5-report.md`，不含用户数据。
+- 早期隔离 Electron smoke（当时尚非完整 UI 验收）：一次性 runner 断言 userData 与 library 都位于独立临时目录；实际 BrowserWindow 可见，CDP 能访问真实 renderer/IPC。验证空库仅补今日页、null mood、间隔日补建并保留既有 plan 字节、checkpoint 前被删除的日期重启后不复建、六内置模板 IPC 创建、嵌套规则增改删并重启持久化、idle root switch 事件隔离。该轮尚未覆盖设置控件/新建对话框的真实鼠标交互、模板预览和标题输入，以及 in-flight root race；一次 DOM harness 因自建选择器等待超时退出 1，非产品测试失败。后续真实 UI 与 in-flight 回归已分别验收。runner 清理自身数据并确认无 Electron/Java 进程；当时有四个纯测试临时目录尚存，后续用户清理后五个确切 QA 路径均已复核不存在，见下方最终清理记录。
 - Task 5 独立审查：报告 `.superpowers/sdd/Diary-Backfill-and-Plan-Templates-Implementation-Plan/task-5-review.md`；Task 5 改动无新增可操作问题。Task 4 三项 Minor 后续状态：计划节点作为模板父目录已由用户确认；英文错误文案与跨午夜预览已修复并通过 scoped review。
 - 全量协调者验证（2026-09-29）：`npm run typecheck` 通过；`npm run test` 48 files / 512 tests 全通过（stderr 有此前已记录的 happy-dom/PlantUML loopback `ECONNRESET` 噪声，exit 0、无失败）；`npm run build` 通过（main 27 / preload 1 / renderer 7,158 modules）；全工作区 `git diff --check` 与 plan.json JSON 解析通过。未运行 `build:win`、未更新版本、未推送/发布。
 - 合并前复验（2026-09-30，`codex/diary-backfill-name-templates` 完整工作树，含 review follow-up）：`npm run typecheck` 通过；`npm run test` 48 files / 512 tests 全通过；`npm run build` 通过（main 27 / preload 1 / renderer 7,158 modules）；`git diff --check` 与 `plan.json` JSON 解析通过。此验证针对合入前的准确工作树；尚未 `build:win`、更新版本、推送或发布。
@@ -44,9 +44,10 @@
 - 本次真实窗口用的是仅 `npm run build` 生成的开发构建，未执行 `plantuml:prepare`；Settings 显示本地 PlantUML Java 运行时不可用，因此 PlantUML 未在此轮验收。Alt+F4 后窗口消失但 Electron 主进程及三个 Electron helper 仍存活；核对进程命令行均属于本次隔离启动且无 Java 子进程后，仅结束这些精确进程。此观察受未准备 PlantUML 运行时的测试构建限制，不据此判定正式安装包的服务/退出行为。
 - 最终清理核验（2026-09-30，用户反馈已删后只读复核）：五个隔离 QA Temp 目录 `trace-task5-qa-IA1lCG`、`trace-task5-qa-aIFllX`、`trace-task5-qa-KzCVGp`、`trace-task5-qa-tYlwn7`、`trace-electron-ui-qa-82f47c9c09a84e38b2f06f4797a5fd03` 的 `Test-Path -LiteralPath` 均为 `False`。此前仍存在的两个目录及其测试库、profile、日志、截图现均已清除；没有触碰默认用户库。
 - In-flight 根切换定向回归（2026-09-30）：实际运行 `npm exec vitest run test/diary-automation-ipc.spec.ts test/diary-automation-coordinator.spec.ts`，2 files / 22 tests 通过。测试覆盖旧 library reconcile 尚未结束时激活新 library，随后旧操作失败不得再向新 root 发过期状态/刷新通知；真实 renderer 切库 UI 另由下项验收，不以 IPC 测试替代。
-- 下一步：本计划无剩余实施或验收事项；Task 5 已完成。实现工作树尚未合入或推送，版本未变更；后续发布需另行按用户指示执行。
+- 合并后复验（2026-09-30，本地 `main` merge commit `363dce0`）：`npm run typecheck` 通过；`npm run test` 48 files / 512 tests 全通过；`npm run build` 通过（main 27 / preload 1 / renderer 7,158 modules）；`git diff --cached --check`、无冲突标记、plan.json 解析及五项均为 completed 的状态检查通过。未运行 `build:win`、未更新版本、未推送/发布。
+- 下一步：本计划无剩余实施或验收事项，已在本地 `main` 合入。worktree/分支暂保留，待有归档工具时再安全收尾；推送、版本更新和发布需另行按用户指示执行。
 - 等待：本计划没有用户验收或环境清理等待项；无外部凭据等待项。
-- 还差：无。保留的技术风险为已接受并记录的 storage cleanup 低概率 P3 竞态，以及日记 realpath 检查到文件操作之间的 TOCTOU 残余；in-flight 根切换在 coordinator/IPC 测试覆盖，真实 renderer 切库 UI 已单独实测。本计划未执行 build:win、版本更新、推送或发布。
+- 还差：本计划无剩余实现/验收项。保留的技术风险为已接受并记录的 storage cleanup 低概率 P3 竞态，以及日记 realpath 检查到文件操作之间的 TOCTOU 残余；in-flight 根切换由 coordinator/IPC 测试覆盖，真实 renderer 切库 UI 已单独实测。本计划未执行 build:win、版本更新、推送或发布。
 
 ## 最近完成：v0.18.1 双平台补丁发布
 
