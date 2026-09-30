@@ -30,7 +30,7 @@ import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
 import { DIARY_DIR } from '@shared/plan-types'
 import { useTreeStore } from '../stores/tree-store'
-import { usePlanStore } from '../stores/plan-store'
+import { useWorkspaceTabsStore } from '../stores/workspace-tabs-store'
 import { useAppStore } from '../stores/app-store'
 import { useUiStore, confirmRemoveTree } from '../stores/ui-store'
 import { usePrefStore } from '../stores/pref-store'
@@ -435,8 +435,7 @@ export default function PlanTreePanel(): React.JSX.Element {
   const setExpanded = useTreeStore((s) => s.setExpanded)
   const movePlan = useTreeStore((s) => s.movePlan)
   const removePlan = useTreeStore((s) => s.removePlan)
-  const openPlan = usePlanStore((s) => s.open)
-  const closePlan = usePlanStore((s) => s.close)
+  const openPlan = useWorkspaceTabsStore((s) => s.openPlan)
   const openNameDialog = useUiStore((s) => s.openNameDialog)
   const { t } = useTranslation()
 
@@ -528,12 +527,10 @@ export default function PlanTreePanel(): React.JSX.Element {
   const onOpen = useCallback((node: RowView): void => {
     if (node.kind === 'folder') {
       select(node.path, 'folder')
-      closePlan()
     } else {
-      select(node.path, 'plan')
       void openPlan(node.path)
     }
-  }, [closePlan, openPlan, select])
+  }, [openPlan, select])
 
   // 删除=行槽平滑收拢（.slot.removing，独立于折叠 closing 通道——被删行自身收合不弹回），
   // 动画完执行真删除。此前版本复用 closingPaths 失败：被删行所在父组波次表为 null，

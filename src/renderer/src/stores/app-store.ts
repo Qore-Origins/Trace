@@ -6,6 +6,7 @@ import { invoke, onEvent, ClientError } from '../ipc-client'
 import { i18n } from '../i18n'
 import { usePlanStore } from './plan-store'
 import { useTreeStore } from './tree-store'
+import { useWorkspaceTabsStore } from './workspace-tabs-store'
 
 export type AppPhase = 'checking' | 'onboarding' | 'ready'
 export type IndexState = 'building' | 'ready' | 'error'
@@ -47,7 +48,10 @@ export const useAppStore = create<AppState>()((set) => ({
   },
 
   setRootDir: async (dirPath, confirmed) => {
+    if (!(await usePlanStore.getState().flush())) return
     const r = await invoke('app:setRootDir', { dirPath, confirmed })
+    await useWorkspaceTabsStore.getState().hydrate(null)
+    useTreeStore.getState().select(null)
     set({ phase: 'ready', rootDir: r.rootDir })
   },
 
@@ -61,8 +65,11 @@ export const useAppStore = create<AppState>()((set) => ({
       okText: i18n.t('confirm.switchRootBtn'),
       cancelText: i18n.t('common.cancel'),
       onOk: async () => {
-        await invoke('app:setRootDir', { dirPath: picked.dirPath as string, confirmed: true })
-        usePlanStore.getState().close()
+        if (!(await usePlanStore.getState().flush())) return
+        const switched = await invoke('app:setRootDir', { dirPath: picked.dirPath as string, confirmed: true })
+        await useWorkspaceTabsStore.getState().hydrate(null)
+        useTreeStore.getState().select(null)
+        set({ phase: 'ready', rootDir: switched.rootDir })
         await useTreeStore.getState().refreshAll()
         const info = await invoke('app:bootstrap')
         set({

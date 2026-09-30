@@ -21,7 +21,7 @@ interface PlanState {
   saveState: SaveState
   lastError: string | null
   externalAlert: boolean // 计划库在应用外被修改（涉及当前计划时提示）
-  open: (path: string, forceReload?: boolean) => Promise<void>
+  open: (path: string, forceReload?: boolean) => Promise<boolean>
   close: () => void
   // 渲染即编辑入口：mutator 在文档副本上执行，自动调度防抖保存
   mutate: (mutator: (doc: PlanDocument) => void) => void
@@ -29,15 +29,16 @@ interface PlanState {
   patchComponent: (componentId: string, patch: (component: Component) => Component) => void
   // 计划截止日期：赋值 ''/undefined 时删键（同 mutate 防抖保存路径）
   setDueDate: (due?: string) => void
-  flush: () => Promise<void>
+  flush: () => Promise<boolean>
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
-let saving = false
+let activeSave: { session: number; promise: Promise<boolean> } | null = null
 let sessionRevision = 0
 let editRevision = 0
 let persistedRevision = 0
-let activeOpenRequest: { path: string; session: number; promise: Promise<void> } | null = null
+let activeOpenRequest: { path: string; promise: Promise<boolean> } | null = null
+let openRequestRevision = 0
 
 interface PendingOperation {
   revision: number
@@ -79,35 +80,39 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   open: (path, forceReload = false) => {
     const current = get()
     if (activeOpenRequest?.path === path) return activeOpenRequest.promise
-    if (!forceReload && current.currentPath === path && current.document) return Promise.resolve()
-
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = null
-    const openingSession = resetEditingSession()
-    set({ currentPath: path, document: null, saveState: 'idle', lastError: null, externalAlert: false })
+    if (!forceReload && current.currentPath === path && current.document) return Promise.resolve(true)
+    const requestRevision = ++openRequestRevision
     const finishOpenMeasure = startTraceMeasure('trace:plan-open')
-    const promise = (async (): Promise<void> => {
+    const promise = (async (): Promise<boolean> => {
       try {
+        if (!(await get().flush())) return false
+        if (requestRevision !== openRequestRevision) return false
         const doc = await invoke('storage:readPlan', { path })
-        if (sessionRevision !== openingSession) return
+        if (requestRevision !== openRequestRevision) return false
+        if (!(await get().flush())) return false
+        if (requestRevision !== openRequestRevision) return false
+        if (saveTimer) clearTimeout(saveTimer)
+        saveTimer = null
+        resetEditingSession()
         set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
         markTrace('trace:plan-open')
+        return true
       } catch (e) {
-        if (sessionRevision !== openingSession) return
-        getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
-        set({ currentPath: path, document: null })
+        if (requestRevision === openRequestRevision) getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
+        return false
       } finally {
         finishOpenMeasure()
       }
     })()
-    activeOpenRequest = { path, session: openingSession, promise }
+    activeOpenRequest = { path, promise }
     void promise.finally(() => {
-      if (activeOpenRequest?.session === openingSession) activeOpenRequest = null
+      if (activeOpenRequest?.promise === promise) activeOpenRequest = null
     })
     return promise
   },
 
   close: () => {
+    openRequestRevision += 1
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
     resetEditingSession()
@@ -172,13 +177,36 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   },
 
   flush: async () => {
-    const { document, currentPath, serverUpdatedAt } = get()
-    if (!document || !currentPath || editRevision <= persistedRevision || saving) return
-    const flushingSession = sessionRevision
-    const flushingRevision = editRevision
-    let scheduleNext = false
-    const finishCommitMeasure = startTraceMeasure('trace:edit-commit')
-    saving = true
+    const targetSession = sessionRevision
+    while (true) {
+      if (targetSession !== sessionRevision) return false
+      if (activeSave?.session === targetSession) {
+        if (!(await activeSave.promise)) return false
+        continue
+      }
+      if (editRevision <= persistedRevision) return true
+      const save = saveOnce()
+      activeSave = { session: targetSession, promise: save }
+      let success: boolean
+      try {
+        success = await save
+      } finally {
+        if (activeSave?.promise === save) activeSave = null
+      }
+      if (!success) return false
+    }
+  }
+}))
+
+async function saveOnce(): Promise<boolean> {
+  const get = usePlanStore.getState
+  const set = usePlanStore.setState
+  const { document, currentPath, serverUpdatedAt } = get()
+  if (!document || !currentPath) return true
+  const flushingSession = sessionRevision
+  const flushingRevision = editRevision
+  let scheduleNext = false
+  const finishCommitMeasure = startTraceMeasure('trace:edit-commit')
     try {
       const r = await invoke('storage:savePlan', {
         path: currentPath,
@@ -186,33 +214,43 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         expected_updated_at: serverUpdatedAt
       })
       // IPC 往返期间计划被删除/关闭/切换：丢弃结果（防污染新状态）
-      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
+      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return false
       persistedRevision = flushingRevision
       pendingOperations = pendingOperations.filter((operation) => operation.revision > flushingRevision)
       scheduleNext = editRevision > flushingRevision
       set({ serverUpdatedAt: r.updated_at, saveState: scheduleNext ? 'editing' : 'saved', lastError: null })
       markTrace('trace:edit-commit')
+      return true
     } catch (e) {
       // 同上：目标已不在（如被删除）属正常竞态，静默丢弃，不误报
-      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
+      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return false
       if (e instanceof ClientError && e.code === ERR.CONFLICT) {
         // CAS 冲突：以服务端新版本为基底重放尚未落盘的操作，避免覆盖外部改动或丢失本地输入。
-        const fresh = await invoke('storage:readPlan', { path: currentPath })
-        if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
+        let fresh: PlanDocument
+        try {
+          fresh = await invoke('storage:readPlan', { path: currentPath })
+        } catch (readError) {
+          const msg = readError instanceof ClientError ? readError.message : i18n.t('errors.saveFailed')
+          set({ saveState: 'error', lastError: msg })
+          getMessage().error(msg)
+          return false
+        }
+        if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return false
         const rebased = pendingOperations.reduce((next, operation) => operation.apply(next), fresh)
         persistedRevision = 0
         scheduleNext = pendingOperations.length > 0
         set({ document: rebased, serverUpdatedAt: fresh.updated_at, saveState: scheduleNext ? 'editing' : 'idle' })
         getMessage().warning(i18n.t('errors.contentRefreshed'))
+        return true
       } else {
         const msg = e instanceof ClientError ? e.message : i18n.t('errors.saveFailed')
         set({ saveState: 'error', lastError: msg })
         getMessage().error(msg)
         scheduleNext = editRevision > flushingRevision
+        return false
       }
     } finally {
       finishCommitMeasure()
-      saving = false
       const activeSessionChanged = sessionRevision !== flushingSession
       const activeSessionHasPendingEdits = editRevision > persistedRevision
       if ((scheduleNext || activeSessionChanged) && activeSessionHasPendingEdits) {
@@ -220,8 +258,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         saveTimer = setTimeout(() => void get().flush(), DEBOUNCE_MS)
       }
     }
-  }
-}))
+}
 
 // 常用变更便捷方法（组件层调用）
 export function usePlanMutations() {

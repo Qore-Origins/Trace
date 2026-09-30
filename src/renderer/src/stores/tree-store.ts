@@ -8,6 +8,7 @@ import type { PlanTreeNode } from '@shared/ipc-contract'
 import { i18n } from '../i18n'
 import { optimisticMove } from '../components/tree-utils'
 import { usePlanStore } from './plan-store'
+import { useWorkspaceTabsStore } from './workspace-tabs-store'
 
 interface TreeState {
   childrenMap: Record<string, PlanTreeNode[]> // key=父路径（''=顶层）
@@ -120,34 +121,37 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   },
 
   renamePlan: async (path, newName) => {
+    if (!(await usePlanStore.getState().flush())) return
     const r = await invoke('storage:renamePlan', { path, new_name: newName })
     await refreshAround(set, get, r.path)
     // 选中/展开键迁移到新路径
     const renameKey = (keys: string[]) => keys.map((k) => (k === path || k.startsWith(path + '/') ? r.path + k.slice(path.length) : k))
     set({
       expandedKeys: renameKey(get().expandedKeys),
-      selectedPath: get().selectedPath === path ? r.path : get().selectedPath
+      selectedPath: renameKey([get().selectedPath ?? ''])[0] || null
     })
     // 当前打开的计划路径同步迁移并重开（否则后续保存指向旧路径 404）
-    if (usePlanStore.getState().currentPath === path) {
-      await usePlanStore.getState().open(r.path)
-    }
+    await useWorkspaceTabsStore.getState().remapPrefix(path, r.path)
   },
 
   removePlan: async (path) => {
+    if (!(await usePlanStore.getState().flush())) return
     // 先关闭被删子树内打开的计划：删除成功会 emit plan-changed(被删路径)，
     // 若 currentPath 仍指向它，订阅会静默重拉 open() → 读已删文件 → 误报「目标位置不存在」
     const plan = usePlanStore.getState()
+    const previousPath = plan.currentPath
     if (plan.currentPath && (plan.currentPath === path || plan.currentPath.startsWith(path + '/'))) {
       plan.close()
     }
     try {
       await invoke('storage:deletePlan', { path, confirmed: true })
     } catch (e) {
+      if (previousPath && !usePlanStore.getState().currentPath) await usePlanStore.getState().open(previousPath)
       // 删除失败必须提示（此前 onOk 静默吞错，文件被占用/已被外部删除时用户毫无反馈）
       getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.deleteFailed'))
       return
     }
+    await useWorkspaceTabsStore.getState().closeUnder(path)
     // 清理被删子树残留状态：expandedKeys/childrenMap/loaded 中的旧键
     // （否则同名重建文件夹后，expandedKeys 残留导致其意外自动展开、childrenMap 残留脏数据）
     const under = (k: string): boolean => k === path || k.startsWith(path + '/')
@@ -169,6 +173,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     }
     const name = dragPath.slice(dragPath.lastIndexOf('/') + 1)
     const newPath = targetParent === '' ? name : `${targetParent}/${name}`
+    if (!(await usePlanStore.getState().flush())) return false
 
     // 乐观更新（2026-09-07：松手弹回原位修复）：IPC 往返期间 dnd-kit 已复位 transform，
     // 本地先行换位（含子树键/选中/展开迁移）保证松手即落定；失败整体回滚
@@ -203,9 +208,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     // 选中/展开键迁移（乐观已迁移时为幂等空转；覆盖不可乐观的分支）
     const migrate = (keys: string[]) => keys.map((k) => (k === dragPath || k.startsWith(dragPath + '/') ? newPath + k.slice(dragPath.length) : k))
     set({ expandedKeys: migrate(get().expandedKeys), selectedPath: migrate([get().selectedPath ?? ''])[0] || null })
-    if (usePlanStore.getState().currentPath === dragPath) {
-      await usePlanStore.getState().open(newPath)
-    }
+    await useWorkspaceTabsStore.getState().remapPrefix(dragPath, newPath)
     return true
   },
 

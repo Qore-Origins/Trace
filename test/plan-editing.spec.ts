@@ -123,7 +123,7 @@ describe('组件级计划编辑', () => {
 
     firstSave.resolve({ ok: true, data: { updated_at: 'server-1' } })
     await flushing
-    expect(usePlanStore.getState().saveState).toBe('editing')
+    expect(usePlanStore.getState().saveState).toBe('saved')
 
     await vi.advanceTimersByTimeAsync(500)
     expect(requests).toHaveLength(2)
@@ -132,7 +132,7 @@ describe('组件级计划编辑', () => {
     expect(usePlanStore.getState().serverUpdatedAt).toBe('server-2')
   })
 
-  it('切换计划后丢弃旧保存结果与旧计划的待保存编辑', async () => {
+  it('保存进行中且有后续输入时等待两次保存完成再允许切换', async () => {
     vi.useFakeTimers()
     const firstSave = deferred<{ ok: true; data: { updated_at: string } }>()
     const newDocument = createDocument(1)
@@ -154,18 +154,20 @@ describe('组件级计划编辑', () => {
       payload: { ...(component.payload as HeadingPayload), title: '旧计划未保存输入' }
     }))
 
-    await usePlanStore.getState().open('plans/new.json')
+    const opening = usePlanStore.getState().open('plans/new.json')
+    expect(usePlanStore.getState().currentPath).toBe('plans/old.json')
+    expect(usePlanStore.getState().document).not.toBeNull()
     firstSave.resolve({ ok: true, data: { updated_at: 'old-server-1' } })
+    expect(await opening).toBe(true)
     await flushing
-    await vi.advanceTimersByTimeAsync(500)
 
-    expect(saveCount).toBe(1)
+    expect(saveCount).toBe(2)
     expect(usePlanStore.getState().currentPath).toBe('plans/new.json')
     expect(usePlanStore.getState().document).toBe(newDocument)
     expect(usePlanStore.getState().serverUpdatedAt).toBe('new-server-0')
   })
 
-  it('计划切换读取期间立即清空旧文档，阻止把旧内容编辑进新会话', async () => {
+  it('计划切换读取期间保留旧文档，成功后一次性切换', async () => {
     const reading = deferred<{ ok: true; data: PlanDocument }>()
     installBridge(vi.fn(async () => reading.promise) as TraceBridge['invoke'])
     const oldDocument = createDocument(1)
@@ -173,13 +175,75 @@ describe('组件级计划编辑', () => {
 
     const opening = usePlanStore.getState().open('plans/new.json')
 
-    expect(usePlanStore.getState().currentPath).toBe('plans/new.json')
-    expect(usePlanStore.getState().document).toBeNull()
+    expect(usePlanStore.getState().currentPath).toBe('plans/old.json')
+    expect(usePlanStore.getState().document).toBe(oldDocument)
     const newDocument = createDocument(1)
     newDocument.updated_at = 'new-server-0'
     reading.resolve({ ok: true, data: newDocument })
-    await opening
+    expect(await opening).toBe(true)
     expect(usePlanStore.getState().document).toBe(newDocument)
+  })
+
+  it('目标计划读取失败时保留原编辑文档与路径', async () => {
+    installBridge(vi.fn(async () => ({ ok: false, code: ERR.NOT_FOUND, message: 'missing' })) as TraceBridge['invoke'])
+    const oldDocument = createDocument(1)
+    usePlanStore.setState({ currentPath: 'plans/old.json', document: oldDocument, serverUpdatedAt: 'old-server-0', saveState: 'idle' })
+
+    expect(await usePlanStore.getState().open('plans/missing.json')).toBe(false)
+    expect(usePlanStore.getState().currentPath).toBe('plans/old.json')
+    expect(usePlanStore.getState().document).toBe(oldDocument)
+  })
+
+  it('切库关闭当前文档后忽略旧库迟到的计划读取', async () => {
+    const reading = deferred<{ ok: true; data: PlanDocument }>()
+    const invoke = vi.fn(async () => reading.promise)
+    installBridge(invoke as TraceBridge['invoke'])
+    usePlanStore.setState({ currentPath: 'plans/old.json', document: createDocument(1), serverUpdatedAt: 'old-server-0', saveState: 'idle' })
+
+    const opening = usePlanStore.getState().open('plans/late.json')
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1))
+    usePlanStore.getState().close()
+    reading.resolve({ ok: true, data: createDocument(1) })
+
+    expect(await opening).toBe(false)
+    expect(usePlanStore.getState().currentPath).toBeNull()
+    expect(usePlanStore.getState().document).toBeNull()
+  })
+
+  it('进行中的保存失败时切换被阻止且当前输入仍在', async () => {
+    vi.useFakeTimers()
+    const saving = deferred<{ ok: false; code: number; message: string }>()
+    const invoke = vi.fn(async (channel) => channel === 'storage:savePlan' ? saving.promise : { ok: true, data: createDocument(1) })
+    installBridge(invoke as TraceBridge['invoke'])
+    const document = createDocument(1)
+    usePlanStore.setState({ currentPath: 'plans/old.json', document, serverUpdatedAt: 'old-server-0', saveState: 'idle' })
+    usePlanStore.getState().patchComponent('component-0', (component) => ({ ...component, payload: { title: '尚未保存', size: 18 } }))
+    vi.clearAllTimers()
+    const firstFlush = usePlanStore.getState().flush()
+    const opening = usePlanStore.getState().open('plans/new.json')
+    saving.resolve({ ok: false, code: ERR.INTERNAL, message: 'save failed' })
+
+    expect(await firstFlush).toBe(false)
+    expect(await opening).toBe(false)
+    expect(usePlanStore.getState().currentPath).toBe('plans/old.json')
+    expect((usePlanStore.getState().document?.components[0].payload as HeadingPayload).title).toBe('尚未保存')
+    await Promise.resolve()
+    expect(invoke).toHaveBeenCalledTimes(1)
+  })
+
+  it('CAS 冲突后读取新版本失败时 flush 报失败并保留本地输入', async () => {
+    vi.useFakeTimers()
+    installBridge(vi.fn(async (channel) => channel === 'storage:savePlan'
+      ? { ok: false, code: ERR.CONFLICT, message: 'conflict' }
+      : { ok: false, code: ERR.NOT_FOUND, message: 'missing' }) as TraceBridge['invoke'])
+    const document = createDocument(1)
+    usePlanStore.setState({ currentPath: 'plans/a.json', document, serverUpdatedAt: 'server-0', saveState: 'idle' })
+    usePlanStore.getState().patchComponent('component-0', (component) => ({ ...component, payload: { title: '未保存内容', size: 18 } }))
+    vi.clearAllTimers()
+
+    expect(await usePlanStore.getState().flush()).toBe(false)
+    expect((usePlanStore.getState().document?.components[0].payload as HeadingPayload).title).toBe('未保存内容')
+    expect(usePlanStore.getState().saveState).toBe('error')
   })
 
   it('双击同一计划只读取一次；已打开后再次点击不重载', async () => {
@@ -194,8 +258,7 @@ describe('组件级计划编辑', () => {
     const firstOpen = usePlanStore.getState().open('plans/new.json')
     const secondOpen = usePlanStore.getState().open('plans/new.json')
 
-    expect(invoke).toHaveBeenCalledTimes(1)
-    expect(usePlanStore.getState().document).toBeNull()
+    expect(usePlanStore.getState().document).toBe(oldDocument)
     reading.resolve({ ok: true, data: newDocument })
     await Promise.all([firstOpen, secondOpen])
     await usePlanStore.getState().open('plans/new.json')
@@ -237,7 +300,7 @@ describe('组件级计划编辑', () => {
     firstSave.resolve({ ok: false, code: ERR.CONFLICT, message: 'conflict' })
     await flushing
     expect((usePlanStore.getState().document!.components[0].payload as HeadingPayload).title).toBe('冲突后的最后输入')
-    expect(usePlanStore.getState().serverUpdatedAt).toBe('server-fresh')
+    expect(usePlanStore.getState().serverUpdatedAt).toBe('server-final')
 
     await vi.advanceTimersByTimeAsync(500)
     expect(requests).toHaveLength(2)

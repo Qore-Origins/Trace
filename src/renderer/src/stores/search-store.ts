@@ -5,7 +5,7 @@ import { invoke, onEvent, ClientError } from '../ipc-client'
 
 import type { SearchHit } from '@shared/ipc-contract'
 import { useTreeStore } from './tree-store'
-import { usePlanStore } from './plan-store'
+import { useWorkspaceTabsStore } from './workspace-tabs-store'
 import { i18n } from '../i18n'
 import { markTrace, startTraceMeasure, traceNow } from '../perf/marks'
 
@@ -62,20 +62,12 @@ export const useSearchStore = create<SearchState>()((set, get) => ({
     set({ open: false })
     const tree = useTreeStore.getState()
     await tree.expandTo(hit.path)
-    tree.select(hit.path, 'plan')
-    await usePlanStore.getState().open(hit.path)
+    const opened = await useWorkspaceTabsStore.getState().openPlan(hit.path, hit.component_id)
+    if (!opened) return
     if (!hit.component_id) {
       document.querySelector('.ws-content')?.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
-    setTimeout(() => {
-      const el = document.querySelector(`[data-component-id="${hit.component_id}"]`)
-      if (!el) return
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      el.classList.remove('pulse')
-      void (el as HTMLElement).offsetWidth // 重启动画
-      el.classList.add('pulse')
-    }, 200)
   }
 }))
 

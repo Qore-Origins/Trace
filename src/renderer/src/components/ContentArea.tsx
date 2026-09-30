@@ -4,6 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { Alert, Button, Dropdown, Empty, type MenuProps } from 'antd'
 import { CalendarOutlined, DeleteOutlined, FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
+import { useWorkspaceTabsStore } from '../stores/workspace-tabs-store'
 import { useTreeStore } from '../stores/tree-store'
 import { useUiStore } from '../stores/ui-store'
 import { usePrefStore, type CustomPreset } from '../stores/pref-store'
@@ -57,9 +58,11 @@ function itemLabel(items: NonNullable<MenuProps['items']>, key: string, fallback
 
 export default function ContentArea(): React.JSX.Element {
   const { t } = useTranslation()
-  const { currentPath, document: doc, externalAlert, open, setDueDate } = usePlanStore()
+  const { currentPath: planPath, document: doc, externalAlert, open, setDueDate } = usePlanStore()
+  const openPlan = useWorkspaceTabsStore((s) => s.openPlan)
   const { appendComponent } = usePlanMutations()
-  const { selectedKind, childrenMap, loaded, loadChildren } = useTreeStore()
+  const { selectedPath, selectedKind, childrenMap, loaded, loadChildren } = useTreeStore()
+  const currentPath = selectedKind === 'folder' ? selectedPath : planPath
   const customPresets = usePrefStore((s) => s.customPresets)
   const removePreset = usePrefStore((s) => s.removePreset)
   const today = useMemo(() => new Date(), [doc?.updated_at])
@@ -170,8 +173,7 @@ export default function ContentArea(): React.JSX.Element {
               }}
               onClick={() => {
                 if (c.kind === 'plan') {
-                  useTreeStore.getState().select(c.path, 'plan')
-                  void open(c.path)
+                  void openPlan(c.path)
                 } else {
                   useTreeStore.getState().select(c.path, 'folder')
                 }
