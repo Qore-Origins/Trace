@@ -3,6 +3,7 @@
 import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
+import type { WorkspaceTabsState } from './workspace-tabs-types'
 
 // ---------- 统一响应信封 ----------
 
@@ -109,6 +110,9 @@ export interface Channels {
   'plan-template:get': { req: void; res: PlanNameTemplateSettings }
   'plan-template:set': { req: { parent_path: string; template: string }; res: PlanNameTemplateSettings }
   'plan-template:remove': { req: { parent_path: string }; res: PlanNameTemplateSettings }
+  // workspace tabs (the active library is selected in main)
+  'workspace-tabs:get': { req: void; res: WorkspaceTabsState }
+  'workspace-tabs:set': { req: { state: WorkspaceTabsState }; res: null }
   // search（溯源检索）
   'search:query': { req: { keywords: string[] }; res: SearchHit[] }
   'search:getStatus': { req: void; res: { state: 'building' | 'ready' | 'error'; indexed: number } }

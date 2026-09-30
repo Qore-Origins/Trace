@@ -12,6 +12,7 @@ import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
 import type { PlanNameTemplateService } from '../services/plan-name-template-service'
+import type { WorkspaceTabsService } from '../services/workspace-tabs-service'
 import { DIARY_DIR, ensureDiaryRoot, ensureTodayPageWithResult, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { todayDateStr } from '../../shared/validation'
 import { bus } from '../services/event-bus'
@@ -27,6 +28,7 @@ interface Deps {
   export: ExportService
   search: SearchService
   planNameTemplates?: PlanNameTemplateService
+  workspaceTabs?: WorkspaceTabsService
   plantuml?: PlantumlService
   startup: StartupCoordinator
   captureDiaryRootGuard?: (root: string) => () => boolean
@@ -193,6 +195,20 @@ export function registerIpc(deps: Deps): () => void {
   regRootState('plan-template:get', () => templateService().get(activePlanRoot()))
   regRootState('plan-template:set', (p) => templateService().set(activePlanRoot(), p.parent_path, p.template))
   regRootState('plan-template:remove', (p) => templateService().remove(activePlanRoot(), p.parent_path))
+
+  const workspaceTabsService = (): WorkspaceTabsService => {
+    if (!deps.workspaceTabs) throw new TraceError(ERR.INTERNAL, '计划标签服务未初始化')
+    return deps.workspaceTabs
+  }
+  regRootState('workspace-tabs:get', () => workspaceTabsService().load())
+  regRootState('workspace-tabs:set', async (payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+      Object.keys(payload).length !== 1 || !Object.hasOwn(payload, 'state')) {
+      throw new TraceError(ERR.VALIDATION, '计划标签请求无效')
+    }
+    await workspaceTabsService().save(payload.state)
+    return null
+  })
 
   // ---------- window（无边框自绘控制） ----------
   reg('window:minimize', () => {

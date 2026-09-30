@@ -7,6 +7,7 @@ import type { DiaryAutomationStatus, TraceEventsContract } from '../shared/event
 const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:', 'transfer:', 'window:', 'search:', 'diary:']
 const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getStatus', 'plantuml:retry'])
 const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-template:set', 'plan-template:remove'])
+const WORKSPACE_TABS_CHANNELS = new Set<string>(['workspace-tabs:get', 'workspace-tabs:set'])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',
@@ -34,13 +35,16 @@ const bridge = {
   ): Promise<TraceResult<Channels[K]['res']>> => {
     const isPlantumlChannel = typeof channel === 'string' && channel.startsWith('plantuml:')
     const isPlanTemplateChannel = typeof channel === 'string' && channel.startsWith('plan-template:')
+    const isWorkspaceTabsChannel = typeof channel === 'string' && channel.startsWith('workspace-tabs:')
     if (
       typeof channel !== 'string' ||
       (isPlantumlChannel
         ? !PLANTUML_CHANNELS.has(channel)
         : isPlanTemplateChannel
           ? !PLAN_TEMPLATE_CHANNELS.has(channel)
-          : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
+          : isWorkspaceTabsChannel
+            ? !WORKSPACE_TABS_CHANNELS.has(channel)
+            : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
     ) {
       return { ok: false, code: 50, message: '通道未开放', data: null }
     }
