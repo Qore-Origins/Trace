@@ -79,7 +79,7 @@ export interface NotePayload {
 }
 
 export interface MoodPayload {
-  score: number
+  score: number | null // null=尚未填写；不参加日记均分/打卡/趋势统计
   text: string
   mood_date: string
   created_at: string

@@ -2,18 +2,30 @@
 // 仅暴露 invoke(白名单通道) 与 on(事件)；不暴露任何 fs/ipcRenderer 原始能力
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { ChannelName, Channels, EventName, TraceBridge, TraceResult } from '../shared/ipc-contract'
-import type { TraceEventsContract } from '../shared/event-types'
+import type { DiaryAutomationStatus, TraceEventsContract } from '../shared/event-types'
 
 const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:', 'transfer:', 'window:', 'search:', 'diary:']
 const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getStatus', 'plantuml:retry'])
+const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-template:set', 'plan-template:remove'])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',
   'trace:fs-external-change',
   'trace:index-status',
   'trace:window-state',
-  'trace:plantuml-status'
+  'trace:plantuml-status',
+  'trace:diary-automation-status'
 ])
+
+// 首屏/页面切换的订阅可能晚于后台结束；observer 属于 preload 生命周期。
+const DIARY_STATUS_EVENT = 'trace:diary-automation-status'
+let latestDiaryStatus: DiaryAutomationStatus | null = null
+ipcRenderer.on(DIARY_STATUS_EVENT, (_event, payload: unknown) => {
+  if (!payload || typeof payload !== 'object' || !('state' in payload)) return
+  const state = payload.state
+  if (state === 'error') latestDiaryStatus = { state, retryable: true }
+  else if (state === 'running' || state === 'complete') latestDiaryStatus = { state, retryable: false }
+})
 
 const bridge = {
   invoke: async <K extends ChannelName>(
@@ -21,9 +33,14 @@ const bridge = {
     ...args: Channels[K]['req'] extends void ? [] : [Channels[K]['req']]
   ): Promise<TraceResult<Channels[K]['res']>> => {
     const isPlantumlChannel = typeof channel === 'string' && channel.startsWith('plantuml:')
+    const isPlanTemplateChannel = typeof channel === 'string' && channel.startsWith('plan-template:')
     if (
       typeof channel !== 'string' ||
-      (isPlantumlChannel ? !PLANTUML_CHANNELS.has(channel) : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
+      (isPlantumlChannel
+        ? !PLANTUML_CHANNELS.has(channel)
+        : isPlanTemplateChannel
+          ? !PLAN_TEMPLATE_CHANNELS.has(channel)
+          : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
     ) {
       return { ok: false, code: 50, message: '通道未开放', data: null }
     }
@@ -34,6 +51,9 @@ const bridge = {
     const handler = (_e: IpcRendererEvent, payload: TraceEventsContract[K]): void => cb(payload)
     // ipcRenderer 监听器签名为 (...args: any[])，此处按契约收窄后桥接
     ipcRenderer.on(event, handler as unknown as (e: IpcRendererEvent, ...args: unknown[]) => void)
+    if (event === DIARY_STATUS_EVENT && latestDiaryStatus) {
+      cb({ ...latestDiaryStatus } as TraceEventsContract[K])
+    }
     return () => ipcRenderer.removeListener(event, handler as never)
   }
 } as TraceBridge

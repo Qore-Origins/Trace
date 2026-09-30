@@ -287,7 +287,7 @@ describe('PlantUML IPC boundary', () => {
     dispose = undefined
     unsubscribeEvent()
 
-    expect(electronMocks.ipcRenderer.on).toHaveBeenCalledTimes(1)
+    expect(electronMocks.ipcRenderer.on.mock.calls.filter(([event]) => event === 'trace:plantuml-status')).toHaveLength(1)
     expect(electronMocks.ipcRenderer.on).toHaveBeenCalledWith('trace:plantuml-status', expect.any(Function))
     expect(electronMocks.ipcRenderer.removeListener).toHaveBeenCalledWith('trace:plantuml-status', expect.any(Function))
     expect(plantuml.unsubscribe).toHaveBeenCalledTimes(1)

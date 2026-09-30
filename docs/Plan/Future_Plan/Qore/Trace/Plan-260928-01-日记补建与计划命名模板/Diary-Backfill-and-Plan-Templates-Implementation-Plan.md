@@ -2,7 +2,7 @@
 
 > For agentic workers: REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` to execute this plan task-by-task. Keep the registered file boundaries in `docs/HANDOFF-CURRENT.md` authoritative.
 >
-> 状态：Task 1–5 实现与自动验证完成；Follow-up A 四文件扩展修复与独立复审通过，Follow-up B 和 UI Minor scoped review 通过。全量复验和真实 UI 验收待完成。用户接受记录 realpath-操作间 TOCTOU。创建日期：2026-09-28。
+> 状态：Task 1–5 实现、独立审查、自动验证、真实 Electron UI 验收和 QA Temp 清理复核均已完成。创建日期：2026-09-28；完成日期：2026-09-30。
 
 ## Goal
 
@@ -153,7 +153,9 @@ Electron main/preload/renderer, React 19, TypeScript, Zustand, Ant Design, Vites
 
 **实际完成与审查：**提交 `6ffc22b679bf206deeebd60e29cddf800fcd27a6`，提交仅含登记的八个 UI/测试文件。聚焦 4 suites / 23 tests、`npm run typecheck`（node/web）与 `git diff --check` 均通过。独立规格/质量审查 Approved，无 Critical/Important；原记录的三项 Minor 中，计划节点作为模板父目录已由用户明确确认，属于预期行为；英文界面校验错误语言、跨本地午夜的静态日期预览交 Task 5 全分支审查裁定。详细证据见 SDD `task-4-report.md` 与 `task-4-review.md`。
 
-### Task 5 — Full regression, real-window acceptance, and shared handoff（自动回归、计划命名真实 UI、in-flight 根切换主进程/IPC 验收完成；任务仍待五个 QA Temp 目录清理，renderer 切库动线留作人工验收）
+### Task 5 — Full regression, real-window acceptance, and shared handoff（已完成：自动回归、计划命名真实 UI、in-flight 根切换主进程/IPC 回归、renderer 切库 UI 和 QA Temp 清理复核均通过）
+
+**本轮续验边界（2026-09-30，Codex）：**仅通过真实 Electron UI 切换隔离测试库并检查可见根目录和内容刷新；不改生产代码、测试、依赖或版本。复用现存 `trace-electron-ui-qa-82f47c9c09a84e38b2f06f4797a5fd03`，仅在其内部新建第二个测试库；不清理任何 Temp 目录。已完成真实菜单、Windows 目录选择器、切换确认、根目录刷新和日记视图验收。
 
 **Files owned for this task:**
 
@@ -168,6 +170,9 @@ Electron main/preload/renderer, React 19, TypeScript, Zustand, Ant Design, Vites
 - `docs/Plan/README.md`
 - `docs/HANDOFF-CURRENT.md`
 - `docs/changelog/CHANGELOG.md`
+- Final-review path-boundary fix, owned by `/root/diary_path_boundary_fix`: `src/main/services/path-safety.ts` (export shared real-path containment helper), `src/main/services/diary-service.ts` (reject out-of-root Diary/date/checkpoint paths and follow strict date order), `src/main/services/plan-name-template-service.ts` (reuse shared helper), and `test/diary-service.spec.ts`. Regression tests exercise existing public service seams with isolated temporary libraries; no renderer or IPC contract is added.
+- Final-review plan-create rollback fix, owned by `/root/plan_create_rollback_fix`: `src/main/services/storage-service.ts` and `test/storage-service.spec.ts`. The first implementation passed its 22 focused tests and checks; independent review found a P3 identity race if an external process deletes and recreates the same empty directory during the write. Reopen only these two files to record/compare directory identity before non-recursive cleanup, with a regression proving a same-path replacement is preserved.
+- Both follow-up code boundaries use existing public service seams already present in the approved plan; no other source files may be changed without a further handoff update.
 
 **Steps:**
 
@@ -180,7 +185,27 @@ Electron main/preload/renderer, React 19, TypeScript, Zustand, Ant Design, Vites
 5. Verify six built-in name previews and creation, custom nested-folder add/edit/remove, title-only submission, legacy full-name behavior in an unconfigured folder, duplicate/invalid-name feedback, and persistence after app restart.
 6. Mark only genuinely verified tasks done. Record any manual scenario that cannot be exercised locally as pending user acceptance; implementation completion does not authorize a release.
 
-**Done when:** automated checks and build pass, real-window paths are recorded with observed results, docs/Markdown/JSON/HANDOFF agree, and no release/version change is included.
+**实际完成与验证（2026-09-29）：**实现提交 `fda547f56f46612f9b22aa093f50f1bb66e93257`。`npm run typecheck` 通过；`npm run test` 48 files / 492 tests 全通过；`npm run build` 通过（main 27、preload 1、renderer 7,158 modules）；`git diff --check` 通过。针对样式边界失败，新增 `plan-name-templates.css` 并将 `workspace.css` 恢复为有序导入入口。针对前后台并发双刷新，日记服务新增锁内创建结果 API；既有字符串 API 保持不变，IPC 仅实际创建者发一次刷新；联合回归及 service 合约测试通过。
+
+**隔离 Electron smoke（通过但非完整 UI 验收）：**一次性 runner 在加载主进程前设置并断言独立临时 `userData`，同时断言库根目录位于临时测试库；真实 `BrowserWindow` 显示后 `isVisible()` 为 true，并可经 CDP 访问真实 renderer/IPC。已观察空库仅建今日页、未填 mood 保持 null、4 日间隔补建并逐字节保留既有 plan、删除 checkpoint 之前的日期后重启不复建、六个内置模板 IPC 创建、嵌套规则 add/edit/remove 后重启持久化、空闲库切换事件隔离。没有声称验证真实对话框/设置控件交互、模板预览/标题输入流程或 in-flight root switch；一次 DOM harness 因测试选择器等待超时退出 1，不是产品测试失败。隔离 smoke 结果详见 SDD `task-5-report.md`。
+
+**真实窗口验收（2026-09-30）：**本机 Python 3.11.5 / Playwright 1.62.0 可用，无新增依赖。worktree `npm run build` 成功；Electron 以隔离 `APPDATA`、`LOCALAPPDATA`、profile、library 启动，StatusBar 实测根目录为唯一 Temp 测试库。真实 renderer 通过 CDP、`networkidle` 和截图/DOM 检查；在 Settings 将根目录模板保存为 `Daily-{date}_{title}`。使用现场可访问标题唯一定位 `Ctrl+N` 新建对话框，填入 `Automation QA`，断言预览等于本地日期对应的 `Daily-20260930_Automation QA`；观察到中文主按钮文本含字间空格后，按 dialog 内唯一 `.ant-modal-footer button.ant-btn-primary` 点击。对话框关闭，隔离库落盘同名目录与 `plan.json`，格式版本为 `1`。计划树根节点保持折叠，因此未从当前可见树文本确认名称；预览与磁盘名称已逐字一致。英文 `{unknown}` 精确错误和合法规则保存以前一次真实设置验收为准；跨午夜刷新已有组件测试，本次未改系统时钟。
+
+本次真实窗口通过自绘关闭按钮正常退出，随后未发现本轮 Electron/Java 进程或 CDP 监听。测试构建未运行 `plantuml:prepare`，故 PlantUML 服务及正式安装包退出行为不在本轮验证结论内。本次 UI QA Temp 根 `C:\Users\aaa\AppData\Local\Temp\trace-electron-ui-qa-82f47c9c09a84e38b2f06f4797a5fd03` 中含隔离 profile、roaming/local、原测试库、新建 `library-switch-target`、13 张 PNG 与 Electron 日志；执行策略此前拒绝删除，本轮未重试任何删除。`root-switch-picker.png` 和 `root-switch-picker-after-navigation.png` 是全桌面截图，背景可见当时打开的浏览器窗口；建议用户清理 QA 根时一并移除。未触碰默认用户数据、系统时钟或依赖。此前 Task5 服务 smoke 的四个测试 Temp 目录仍按本机忽略的 SDD `task-5-report.md` 记录。
+
+**In-flight 根切换定向回归（2026-09-30）：**重新运行 `npm exec vitest run test/diary-automation-ipc.spec.ts test/diary-automation-coordinator.spec.ts`，2 files / 22 tests 通过。已覆盖旧 root 的 reconcile 未结束时切换到新 root，之后旧操作失败不能向当前窗口发过期状态/刷新通知；该断言位于真实 coordinator/IPC 集成测试，与下面的 renderer UI 切换验收分层记录。
+
+**真实 renderer 切库 UI 验收（2026-09-30）：**从原测试库启动，展开后可见 `Daily-20260930_Automation QA`。通过真实「文件 → 切换计划库目录」菜单打开 Windows 目录选择器；键盘导航至隔离的 `library-switch-target`，确认框显示的完整目标路径匹配后再点击「切换」。切换完成后状态栏根目录为新库，树中旧计划标记消失、新库只显示「日记」根节点。确认新库落盘 `Diary/2026-09-30/plan.json`（组件 3 项，心情 score 为 null）；实际点击「日记」导航后显示 09-30 时间线、3 组件、打卡天数 0。说明真实 UI 根切换后新库内容已刷新，空白自动日记未误计打卡。QA 截图存放于上述隔离 Temp 根。真实 UI 未人为注入慢 reconcile 时序；旧操作过期通知隔离由上方 22 项 coordinator/IPC 回归负责。
+
+**用户反馈清理后的只读复核（2026-09-30）：**原五个 QA Temp 目录中，`trace-task5-qa-IA1lCG`、`trace-task5-qa-KzCVGp`、`trace-task5-qa-tYlwn7` 已不存在；`C:\Users\aaa\AppData\Local\Temp\trace-task5-qa-aIFllX` 仍有 73 个递归子项，`C:\Users\aaa\AppData\Local\Temp\trace-electron-ui-qa-82f47c9c09a84e38b2f06f4797a5fd03` 仍有 122 个递归子项。后者包含 13 张 PNG，其中两张全桌面截图背景可见浏览器窗口。Codex 未删除这两个目录；待用户确认并清理后再做最终存在性核验。
+
+**最终清理复核（2026-09-30）：**用户再次确认清理后，重新逐一检查原五个 QA Temp 路径，五项 `Test-Path -LiteralPath` 均为 `False`。此前两个残留目录及其中的隔离测试库、Electron profile、日志和截图现均已清理。本计划的实现、审查、自动/真实窗口验收及临时数据收尾全部完成。
+
+**合并前复验（2026-09-30）：**在 `codex/diary-backfill-name-templates` 完整工作树（含待合并的 review follow-up）重新运行 `npm run typecheck`、`npm run test`（48 files / 512 tests）和 `npm run build`（main 27、preload 1、renderer 7,158 modules），全部通过；`git diff --check` 与 `plan.json` JSON 解析也通过。未运行 Windows 安装包构建、未更新版本、未推送或发布。
+
+**验收/环境收尾完成：**Task 5 功能、自动回归、真实模板设置/创建 UI、in-flight 根切换 coordinator/IPC 回归、真实 renderer 库切换 UI 均已验证；五个 QA Temp 目录已确认不存在。未运行 `build:win`、未更新版本、未推送或发布；后续发布应作为独立任务处理。
+
+**Done when:** automated checks and build pass, real-window/renderer paths and limits are recorded with observed results, docs/Markdown/JSON/HANDOFF agree, independent review is resolved, manual UI acceptance is either completed or explicitly pending user confirmation, and no release/version change is included.
 
 **In-flight 根切换定向回归（2026-09-30）：**实际运行 `npm exec vitest run test/diary-automation-ipc.spec.ts test/diary-automation-coordinator.spec.ts`，2 files / 22 tests 通过。现有集成场景覆盖旧 root reconcile 未结束时切换到新 root，之后旧操作失败不能向当前窗口发过期状态/刷新通知。此为主进程协调器/IPC 回归，不代表真实 renderer 切库鼠标动线已验收。
 
@@ -192,15 +217,15 @@ Electron main/preload/renderer, React 19, TypeScript, Zustand, Ant Design, Vites
 - Completed: Task 3 implementation commits `daf3ad244240c4c263752042c18880ab46a03cba` and `d00e1eb2c185eb426dab9382a23c4d23d3d0d28f`; independent review/fix re-review clean, nine-file boundary released.
 - Completed implementation: Task 4 commit `6ffc22b679bf206deeebd60e29cddf800fcd27a6`; the eight-file implementation boundary is released. Focused 4 suites / 23 tests, node/web typecheck and diff-check passed; exact evidence is in SDD `task-4-report.md`.
 - Completed and reviewed: Task 4 commit `6ffc22b679bf206deeebd60e29cddf800fcd27a6`; independent review Approved with no Critical/Important findings; eight-file boundary released. Focused 4 suites / 23 tests, node/web typecheck and diff-check passed; three Minor findings are recorded above and in the SDD ledger for final review.
-- Completed implementation: Task 5 commit `fda547f56f46612f9b22aa093f50f1bb66e93257`; full automated verification passed (typecheck, 48 files / 492 tests, build, diff-check). Isolated Electron smoke passed service/IPC paths but did not exercise Settings or plan-dialog interactions. The full-branch review and follow-up findings are recorded below and in the current HANDOFF.
-- Latest acceptance: real Electron verified Settings save, title-only input, local-date preview, and matching plan/plan.json creation. The focused coordinator/IPC root-switch regression passed 2 files / 22 tests; real renderer library-switch interaction remains untested and is explicitly left for optional manual acceptance.
+- Completed implementation: Task 5 commit `fda547f56f46612f9b22aa093f50f1bb66e93257`; its initial source/test boundary is released. Typecheck, all 492 tests, build, diff-check, and the documented isolated renderer/IPC smoke passed.
+- Final review complete: `.superpowers/sdd/Diary-Backfill-and-Plan-Templates-Implementation-Plan/final-review.md`. It found two Important items (symlink boundary and failed-create residue), one date-order Minor, and retained the Task 4/Task 1 Minor observations. No version or release action is authorized.
 - User decision (2026-09-29): plan nodes are directories and may be selected as naming-template parent directories. This resolves the selector-scope review question as intended behavior; no code change is needed for this item.
 - User approved fixing the remaining two UI Minor through the existing React component test seams: English localization of template-setting errors and refreshing the name preview across local midnight. `/root/diary_ui_minor_fix` owns only `PlanNameTemplateSettings.tsx`, `NameDialogModal.tsx`, both locale files, and their existing two component specs; this boundary does not overlap either main-service follow-up.
-- Follow-up A expanded implementation and independent review are complete. All three public reads guard Diary/date/plan.json containment; month/memory traversal checks valid-date junctions before directory-type filtering. Static outside links yield `PATH_UNSAFE`; selected root symlink aliases remain usable. Focused 4 specs / 90 tests, node/web typecheck, and four-file diff-check passed; independent review PASS, no P0–P3 findings. User accepts the local TOCTOU interval between realpath validation and file operations as a documented residual; no handle/no-follow architecture expansion.
-- Follow-up B second-round implementation and scoped review are complete with conditional pass: 23 focused tests, node/web typecheck, diff-check passed. Residual P3 window remains between filesystem identity recheck and non-recursive `rmdir`.
-- UI localization/midnight-preview follow-up is implemented and scoped review passed: 2 component specs / 15 tests, node/web typecheck, diff-check. Real Electron UI acceptance on 2026-09-30 saved the root naming template, asserted the local-date preview `Daily-20260930_Automation QA`, and verified creation of the matching isolated plan directory/`plan.json`. The new Electron UI QA root is one of five isolated QA Temp directories that remain because deletion was blocked by execution policy; no alternate deletion method was attempted. The bare build omitted `plantuml:prepare`, so PlantUML was unavailable and is outside this naming-template acceptance result.
-- Full coordinator verification (2026-09-29): `npm run typecheck` passed; `npm run test` passed all 48 files / 512 tests (exit 0; known happy-dom/PlantUML loopback `ECONNRESET` stderr noise, no failures); `npm run build` passed (main 27 / preload 1 / renderer 7,158 modules). The feature worktree `npm run build` was rerun and passed on 2026-09-30. `git diff --check` and `plan.json` JSON parsing are rechecked during this handoff. `build:win`, version changes, push, and release were not run/authorized.
-- Next: ask the user to remove all five exact QA Temp directories documented in `docs/HANDOFF-CURRENT.md`, then verify no related artifacts/processes remain. Keep the actual renderer library-switch interaction as a clearly labeled optional manual acceptance item.
+- Follow-up A static outside-library read protection is complete and independently reviewed: `listMonthEntries`, `listMemories`, and `readDaySummary` validate real paths, including Windows junction handling before directory type filtering. Focused 4 files / 90 tests, node/web typecheck, and scoped diff-check passed. The user accepts the narrow realpath-to-file-operation TOCTOU window as a documented residual; no handle/no-follow architecture expansion.
+- Follow-up B second-round implementation and scoped re-review are complete with conditional pass: 23 focused tests, node/web typecheck, and scoped diff-check passed. A residual P3 TOCTOU window remains between identity check and non-recursive `rmdir`; portable Node APIs do not make these operations atomic. The UI localization/midnight-preview follow-up is implemented and scoped review passed (2 component specs / 15 tests, node/web typecheck, diff-check). Real Electron UI acceptance on 2026-09-30 saved the root naming template, asserted the local-date preview `Daily-20260930_Automation QA`, and verified creation of the matching isolated plan directory/`plan.json`. The new Electron UI QA root is one of five isolated QA Temp directories that remain because deletion was explicitly blocked by execution policy; no other deletion method was attempted. The bare build omitted `plantuml:prepare`, so PlantUML was unavailable and is outside this naming-template acceptance result.
+- Full coordinator verification (2026-09-29): `npm run typecheck` passed; `npm run test` passed all 48 files / 512 tests (exit 0; known happy-dom/PlantUML loopback `ECONNRESET` stderr noise, no failures); `npm run build` passed (main 27 / preload 1 / renderer 7,158 modules); whole-worktree `git diff --check` and `plan.json` JSON parsing passed. `build:win`, version changes, push, and release were not run/authorized.
+- Focused in-flight root-switch verification (2026-09-30): `npm exec vitest run test/diary-automation-ipc.spec.ts test/diary-automation-coordinator.spec.ts` passed, 2 files / 22 tests. It covers suppressing stale old-root IPC notifications after a switch while reconciliation is pending; the actual renderer mouse flow was not exercised.
+- Next: ask the user to remove all five exact QA Temp directories documented above in an environment that permits it; then verify no related artifacts/processes remain. Keep actual renderer library-switch interaction as a clearly labeled optional manual acceptance item.
 - Baseline finding: before Task 5 implementation, `npm run typecheck` passed; `npm run test` reported 48 files / 490 tests, with 1 failure in `test/style-boundaries.spec.ts`: feature selectors had been appended directly to `workspace.css`, which must remain the ordered compatibility import entry. This exact three-file stylesheet-boundary repair is registered in `docs/HANDOFF-CURRENT.md`.
 - Concurrent refresh RED: a real `createDiaryAutomationCoordinator` + `reconcileDiaryPages` + `diary:ensure` overlap writes one day but emits two identical scoped refreshes. The exact `diary-service.ts` / `register.ts` creation-result contract fix and two service/IPC tests are registered in `docs/HANDOFF-CURRENT.md`; no other production source is authorized.
 - Waiting: user cleanup of all five exact QA Temp directories; no external credentials are needed.

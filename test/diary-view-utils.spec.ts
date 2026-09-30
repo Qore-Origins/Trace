@@ -86,6 +86,18 @@ describe('aggregateStats', () => {
     expect(s.trend).toEqual([])
     expect(s.compCount).toBe(1)
   })
+  it('自动空白日的 null 不算 0，用户真实的 0 分仍是有分日', () => {
+    const stats = aggregateStats([
+      entry('2026-09-25', null, 3),
+      entry('2026-09-26', 0, 3),
+      entry('2026-09-27', 80, 3),
+      entry('2026-09-28', null, 3)
+    ])
+    expect(stats.avg).toBe(40)
+    expect(stats.daysCount).toBe(2)
+    expect(stats.trend).toEqual([{ date: '2026-09-26', score: 0 }, { date: '2026-09-27', score: 80 }])
+    expect(stats.compCount).toBe(12)
+  })
   it('.5 进位：50 与 51 → avg 51', () => {
     expect(aggregateStats([entry('2026-09-01', 50, 0), entry('2026-09-02', 51, 0)]).avg).toBe(51)
   })

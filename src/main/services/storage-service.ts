@@ -1,5 +1,6 @@
 // StorageService：计划树业务逻辑（LLD §2.1）
 // 职责：校验（名称/路径/confirm/CAS）→ 编排 Repository + TreeCache → 事件通知
+import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type { PlanDocument, Component, TaskItem } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
@@ -110,10 +111,24 @@ export class StorageService {
       }
       throw e
     }
+    const createdDirIdentity = await getDirectoryIdentity(dirAbs)
 
     const now = new Date().toISOString()
     const doc: PlanDocument = { format_version: '1', created_at: now, updated_at: now, components: [] }
-    await this.repo.writePlanAtomic(root, parent === '' ? name : `${parent}/${name}`, doc)
+    try {
+      await this.repo.writePlanAtomic(root, parent === '' ? name : `${parent}/${name}`, doc)
+    } catch (writeError) {
+      try {
+        const currentDirIdentity = await getDirectoryIdentity(dirAbs)
+        if (createdDirIdentity && sameDirectoryIdentity(createdDirIdentity, currentDirIdentity)) {
+          this.repo.markInternalWrite(dirAbs)
+          await fs.rmdir(dirAbs)
+        }
+      } catch {
+        // Leave changed/non-empty directories alone; cleanup must not replace the write error.
+      }
+      throw writeError
+    }
 
     this.treeCache.invalidatePrefix(parent)
     const path = parent === '' ? name : `${parent}/${name}`
@@ -271,6 +286,26 @@ export class StorageService {
 
 function targetJoin(rootAbs: string, rel: string): string {
   return rel === '' ? rootAbs : join(rootAbs, rel)
+}
+
+interface DirectoryIdentity {
+  dev: bigint
+  ino: bigint
+  birthtimeNs: bigint
+}
+
+async function getDirectoryIdentity(path: string): Promise<DirectoryIdentity | null> {
+  try {
+    const stat = await fs.lstat(path, { bigint: true })
+    if (!stat.isDirectory()) return null
+    return { dev: stat.dev, ino: stat.ino, birthtimeNs: stat.birthtimeNs }
+  } catch {
+    return null
+  }
+}
+
+function sameDirectoryIdentity(left: DirectoryIdentity, right: DirectoryIdentity | null): boolean {
+  return right !== null && left.dev === right.dev && left.ino === right.ino && left.birthtimeNs === right.birthtimeNs
 }
 
 // 任务定位：task_list 内按 TaskItem.id；task_detail 组件本身即单任务，taskId=组件 id

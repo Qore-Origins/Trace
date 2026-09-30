@@ -1,5 +1,6 @@
 // StorageService 集成测试：CRUD/排序/CAS/状态机/confirm/循环（真实临时目录）
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { existsSync } from 'node:fs'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -43,6 +44,70 @@ describe('createPlan / treeGetChildren', () => {
   it('同级重名 → NAME_CONFLICT(12)', async () => {
     await service.createPlan('', 'A')
     await expect(service.createPlan('', 'A')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
+  })
+  it('初始 plan.json 写入失败后清理新目录，允许同名重试并保留原始错误', async () => {
+    const repo = new PlanRepository()
+    await repo.ensureLibraryRoot(root)
+    service = new StorageService(repo)
+    service.setRoot(root)
+
+    const writeError = new Error('initial plan write failed')
+    vi.spyOn(repo, 'writePlanAtomic').mockRejectedValueOnce(writeError)
+
+    await expect(service.createPlan('', 'Retryable')).rejects.toBe(writeError)
+    await expect(fs.access(join(root, 'Retryable'))).rejects.toMatchObject({ code: 'ENOENT' })
+
+    await expect(service.createPlan('', 'Retryable')).resolves.toMatchObject({ name: 'Retryable', kind: 'plan' })
+    await expect(fs.access(join(root, 'Retryable', 'plan.json'))).resolves.toBeUndefined()
+  })
+  it('写入失败时保留并发出现的目录内容，且回收前登记 watcher 内部写入', async () => {
+    const internalWrites: Array<{ absPath: string; pathExists: boolean }> = []
+    const repo = new PlanRepository({
+      onInternalWrite: (absPath) => internalWrites.push({ absPath, pathExists: existsSync(absPath) })
+    })
+    await repo.ensureLibraryRoot(root)
+    internalWrites.length = 0
+    service = new StorageService(repo)
+    service.setRoot(root)
+
+    const planDir = join(root, 'PreserveMe')
+    const writeError = new Error('initial plan write failed')
+    vi.spyOn(repo, 'writePlanAtomic').mockImplementationOnce(async () => {
+      await fs.writeFile(join(planDir, 'external.txt'), 'keep')
+      throw writeError
+    })
+
+    await expect(service.createPlan('', 'PreserveMe')).rejects.toBe(writeError)
+    await expect(fs.readFile(join(planDir, 'external.txt'), 'utf8')).resolves.toBe('keep')
+    expect(internalWrites.filter(({ absPath }) => absPath === planDir)).toEqual([
+      { absPath: planDir, pathExists: false },
+      { absPath: planDir, pathExists: true }
+    ])
+    await expect(service.createPlan('', 'PreserveMe')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
+  })
+  it('写入失败时不回收外部删除并同路径重建的替代目录', async () => {
+    const internalWrites: Array<{ absPath: string; pathExists: boolean }> = []
+    const repo = new PlanRepository({
+      onInternalWrite: (absPath) => internalWrites.push({ absPath, pathExists: existsSync(absPath) })
+    })
+    await repo.ensureLibraryRoot(root)
+    internalWrites.length = 0
+    service = new StorageService(repo)
+    service.setRoot(root)
+
+    const planDir = join(root, 'ReplacedDuringWrite')
+    const writeError = new Error('initial plan write failed')
+    vi.spyOn(repo, 'writePlanAtomic').mockImplementationOnce(async () => {
+      await fs.rmdir(planDir)
+      await fs.mkdir(planDir)
+      throw writeError
+    })
+
+    await expect(service.createPlan('', 'ReplacedDuringWrite')).rejects.toBe(writeError)
+    await expect(fs.readdir(planDir)).resolves.toEqual([])
+    expect(internalWrites.filter(({ absPath }) => absPath === planDir)).toEqual([
+      { absPath: planDir, pathExists: false }
+    ])
   })
   it('非法名 → VALIDATION(20)', async () => {
     await expect(service.createPlan('', 'a/b')).rejects.toThrow(TraceError)

@@ -1,6 +1,11 @@
 // 事件通道类型（主进程 → 渲染器；接口设计文档 §2.4）
 import type { PlantUmlStatusDto } from './plantuml-types'
 
+// 仅传状态，错误细节可能含正文/本机路径，统一由 renderer 提供本地化文案。
+export type DiaryAutomationStatus =
+  | { state: 'running' | 'complete'; retryable: false }
+  | { state: 'error'; retryable: true }
+
 export interface TraceEventsContract {
   'trace:plan-changed': { path: string }
   'trace:save-status': { path: string; saved: boolean; at: string }
@@ -8,4 +13,5 @@ export interface TraceEventsContract {
   'trace:index-status': { state: 'building' | 'ready' | 'error'; progress?: number }
   'trace:window-state': { maximized: boolean }
   'trace:plantuml-status': PlantUmlStatusDto
+  'trace:diary-automation-status': DiaryAutomationStatus
 }

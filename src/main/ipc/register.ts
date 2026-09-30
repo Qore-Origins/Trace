@@ -11,7 +11,9 @@ import { ConfigService } from '../services/config-service'
 import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
-import { ensureDiaryRoot, ensureTodayPage, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
+import type { PlanNameTemplateService } from '../services/plan-name-template-service'
+import { DIARY_DIR, ensureDiaryRoot, ensureTodayPageWithResult, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
+import { todayDateStr } from '../../shared/validation'
 import { bus } from '../services/event-bus'
 import type { PlantumlService } from '../services/plantuml-service'
 import type { StartupCoordinator } from '../services/startup-coordinator'
@@ -24,8 +26,10 @@ interface Deps {
   transfer: TransferService
   export: ExportService
   search: SearchService
+  planNameTemplates?: PlanNameTemplateService
   plantuml?: PlantumlService
   startup: StartupCoordinator
+  captureDiaryRootGuard?: (root: string) => () => boolean
   getWindow: () => BrowserWindow | null
   log: (channel: string, code: number, detail?: string) => void
 }
@@ -83,6 +87,12 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
       return ok(data)
     } catch (e) {
       const { code, message } = toTraceResultError(e)
+      if (name.startsWith('diary:')) {
+        // 文件系统异常可能携带绝对路径/正文；日记边界只返回固定的可重试提示。
+        const safeMessage = name === 'diary:ensure' ? '日记初始化失败，请稍后重试' : '日记读取失败，请稍后重试'
+        log(name, code, safeMessage)
+        return fail(code, safeMessage)
+      }
       log(name, code, message)
       if (code === ERR.INTERNAL) console.error(`[ipc] ${name} internal:`, e)
       return fail(code, message)
@@ -170,6 +180,20 @@ export function registerIpc(deps: Deps): () => void {
   reg('storage:moveComponent', (p) => storage.moveComponent(p.path, p.component_id, p.target_index).then(() => null))
   reg('storage:updateTask', (p) => storage.updateTask(p.path, p.component_id, p.task_id, p.patch).then(() => null))
 
+  // ---------- plan-name templates (the active root is derived only in main) ----------
+  const templateService = (): PlanNameTemplateService => {
+    if (!deps.planNameTemplates) throw new TraceError(ERR.INTERNAL, '计划名称模板服务未初始化')
+    return deps.planNameTemplates
+  }
+  const activePlanRoot = (): string => {
+    const root = storage.getRootAbs()
+    if (!root) throw new TraceError(ERR.INTERNAL, '计划库根目录未初始化')
+    return root
+  }
+  regRootState('plan-template:get', () => templateService().get(activePlanRoot()))
+  regRootState('plan-template:set', (p) => templateService().set(activePlanRoot(), p.parent_path, p.template))
+  regRootState('plan-template:remove', (p) => templateService().remove(activePlanRoot(), p.parent_path))
+
   // ---------- window（无边框自绘控制） ----------
   reg('window:minimize', () => {
     getWindow()?.minimize()
@@ -243,8 +267,15 @@ export function registerIpc(deps: Deps): () => void {
   reg('diary:ensure', async () => {
     // 幂等：日记根 + 今日页（模板三件套）——存在即跳过，只建不补
     const root = diaryRoot()
+    const isRootActive = deps.captureDiaryRootGuard?.(root) ?? (() => storage.getRootAbs() === root)
+    const today = todayDateStr()
     await ensureDiaryRoot(root)
-    await ensureTodayPage(root)
+    const { created } = await ensureTodayPageWithResult(root, today)
+    if (created && isRootActive()) {
+      // 前台可能抢先创建今天页，后台此时零创建；同样需要更新缓存与索引。
+      storage.treeCache.invalidatePrefix(DIARY_DIR)
+      bus.emit('trace:plan-changed', { path: `${DIARY_DIR}/${today}` })
+    }
     return null
   })
   reg('diary:month', async (p) => ({ entries: await listMonthEntries(diaryRoot(), p.year, p.month) }))
@@ -264,6 +295,7 @@ export function registerIpc(deps: Deps): () => void {
   forward('trace:save-status')
   forward('trace:fs-external-change')
   forward('trace:index-status')
+  forward('trace:diary-automation-status')
 
   if (plantuml) {
     const unsubscribe = plantuml.onStatus((status) => {

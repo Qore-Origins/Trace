@@ -8,7 +8,9 @@ import { AppService } from './services/app-service'
 import { WatchService } from './services/watch-service'
 import { TransferService } from './services/transfer-service'
 import { SearchService } from './services/search-service'
-import { setDiaryRepo } from './services/diary-service'
+import { PlanNameTemplateService } from './services/plan-name-template-service'
+import { DIARY_DIR, reconcileDiaryPages, setDiaryRepo } from './services/diary-service'
+import { createDiaryAutomationCoordinator } from './services/diary-automation-coordinator'
 import { ExportService, resolveRendererSource } from './services/export-service'
 import { registerIpc } from './ipc/register'
 import { bus } from './services/event-bus'
@@ -37,7 +39,18 @@ const config = new ConfigService(app.getPath('userData'), repo)
 const storage = new StorageService(repo)
 const watch = new WatchService(storage.treeCache)
 watchRef = watch
+const planNameTemplates = new PlanNameTemplateService(repo)
 const search = new SearchService(repo)
+const diaryAutomation = createDiaryAutomationCoordinator({
+  reconcile: reconcileDiaryPages,
+  refresh: (root, today) => {
+    if (storage.getRootAbs() !== root) return
+    storage.treeCache.invalidatePrefix(DIARY_DIR)
+    // 单次批量通知复用树的父层刷新与搜索索引防抖；不按补建日期逐个通知。
+    bus.emit('trace:plan-changed', { path: `${DIARY_DIR}/${today}` })
+  },
+  report: (status) => bus.emit('trace:diary-automation-status', status)
+})
 const transfer = new TransferService(repo, storage.treeCache, () => {
   const r = storage.getRootAbs()
   if (!r) throw new Error('计划库根目录未初始化')
@@ -45,7 +58,9 @@ const transfer = new TransferService(repo, storage.treeCache, () => {
 })
 const appService = new AppService(config, repo, storage, (rootAbs) => {
   watch.start(rootAbs)
+  search.stop()
   search.start(rootAbs) // 根目录变化 → 索引重建（含首启全量）
+  diaryAutomation.activateRoot(rootAbs)
 }, () => search.getState())
 // 导出为（BR-008）：离屏窗口渲染，PDF/PNG 双路；渲染层源与主窗口同源加载
 const exportService = new ExportService(repo, () => storage.getRootAbs() ?? '', resolveRendererSource(__dirname), join(__dirname, '../preload/index.js'))
@@ -67,6 +82,10 @@ const plantumlService = createPlantumlService({
 let mainWindow: BrowserWindow | null = null
 let appMayCloseWindows = false
 
+function onWindowFocus(): void {
+  diaryAutomation.onFocus()
+}
+
 function createWindow(bounds: { width: number; height: number }, startup: ReturnType<typeof createStartupCoordinator>): void {
   const window = new BrowserWindow({
     width: bounds?.width ?? 1200,
@@ -87,6 +106,7 @@ function createWindow(bounds: { width: number; height: number }, startup: Return
     }
   })
   mainWindow = window
+  window.on('focus', onWindowFocus)
 
   // 最大化状态推送（自绘按钮图标切换）
   window.on('maximize', () => bus.emit('trace:window-state', { maximized: true }))
@@ -129,6 +149,7 @@ function createWindow(bounds: { width: number; height: number }, startup: Return
   })
 
   window.on('closed', () => {
+    window.removeListener('focus', onWindowFocus)
     mainWindow = null
   })
 
@@ -172,8 +193,10 @@ if (!app.requestSingleInstanceLock()) {
       transfer,
       export: exportService,
       search,
+      planNameTemplates,
       plantuml: plantumlService,
       startup,
+      captureDiaryRootGuard: (root) => diaryAutomation.captureRootGuard(root),
       getWindow: () => mainWindow,
       log: (channel, code, detail) => {
         // 日志脱敏：仅通道/错误码/消息，不含计划正文（LLD §7.2）
@@ -182,7 +205,11 @@ if (!app.requestSingleInstanceLock()) {
     })
     const quitCoordinator = createApplicationQuitCoordinator({
       shutdown: () => plantumlService.shutdown(),
-      disposeIpc,
+      disposeIpc: () => {
+        diaryAutomation.dispose()
+        mainWindow?.removeListener('focus', onWindowFocus)
+        disposeIpc()
+      },
       quit: () => {
         appMayCloseWindows = true
         app.quit()
@@ -204,6 +231,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('window-all-closed', () => {
+    diaryAutomation.dispose()
     watch.stop()
     search.stop()
     if (process.platform === 'darwin') {

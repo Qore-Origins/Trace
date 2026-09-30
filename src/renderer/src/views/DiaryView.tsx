@@ -5,7 +5,7 @@ import { getMessage, getModal } from '../antd-host'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Spin } from 'antd'
 import type { TFunction } from 'i18next'
-import { invoke, ClientError } from '../ipc-client'
+import { invoke, onEvent } from '../ipc-client'
 import { i18n, useTranslation } from '../i18n'
 import type { DiaryDayComponent, DiaryDaySummary, DiaryMonthEntry } from '@shared/ipc-contract'
 import { todayDateStr } from '@shared/validation'
@@ -93,23 +93,33 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
   // 挂载/切月：确保日记根（幂等）→ 拉当月条目；切月同时清空当日预览
   useEffect(() => {
     let alive = true
+    let monthReq = 0
     setLoading(true)
     dayReq.current++ // 作废在途日摘要请求（响应晚到不得写入新月/新状态的预览态）
     setSelected(null)
     setDaySummary(null)
-    void invoke('diary:ensure', {})
-      .then(() => invoke('diary:month', { year, month }))
-      .then((res) => {
-        if (alive) setEntries(res.entries)
-      })
-      .catch((e) => {
-        if (alive) getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'))
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
+    const loadMonth = (ensureToday: boolean): void => {
+      const request = ++monthReq
+      const ready = ensureToday ? invoke('diary:ensure', {}) : Promise.resolve()
+      void ready
+        .then(() => invoke('diary:month', { year, month }))
+        .then((res) => {
+          if (alive && request === monthReq) setEntries(res.entries)
+        })
+        .catch(() => {
+          if (alive && request === monthReq) getMessage().error(i18n.t('errors.opFailed'))
+        })
+        .finally(() => {
+          if (alive && request === monthReq) setLoading(false)
+        })
+    }
+    const off = onEvent('trace:plan-changed', ({ path }) => {
+      if (path === 'Diary' || path.startsWith('Diary/')) loadMonth(false)
+    })
+    loadMonth(true)
     return () => {
       alive = false
+      off()
     }
   }, [year, month])
 
@@ -136,11 +146,11 @@ export default function DiaryView({ onOpenInTree }: DiaryViewProps): React.JSX.E
       .then((s) => {
         if (dayReq.current === id) setDaySummary(s)
       })
-      .catch((e) => {
+      .catch(() => {
         if (dayReq.current !== id) return
         // 读取失败降级空态（防预览列永久 spinner——selected 已置而 daySummary 恒 null 会死等）；toast 说明原因
         setDaySummary({ date, components: [] })
-        getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'))
+        getMessage().error(i18n.t('errors.opFailed'))
       })
   }
 
