@@ -9,6 +9,7 @@ import { useTreeStore } from '../stores/tree-store'
 import { useUiStore } from '../stores/ui-store'
 import { usePrefStore, type CustomPreset } from '../stores/pref-store'
 import { ComponentRenderer } from './cards'
+import PlanTabs from './PlanTabs'
 import { uuid32 } from '@shared/validation'
 import { ERR, TraceError } from '@shared/errors'
 import { useTranslation } from '../i18n'
@@ -124,15 +125,18 @@ export default function ContentArea(): React.JSX.Element {
     // 空库/未选中：给出可执行的下一步（空库时引导建计划或迁入 Markdown，而非沉默）
     const treeEmpty = (childrenMap[''] ?? []).length === 0 && loaded[''] === true
     return (
-      <div className="ws-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Empty description={treeEmpty ? t('content.emptyLibrary') : t('content.emptySelect')}>
-          {treeEmpty && (
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <ActionButton intent="primary" label={t('content.createFirst')} onClick={() => useUiStore.getState().openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })} />
-              <ActionButton intent="secondary" label={t('content.importMd')} onClick={() => void useTreeStore.getState().importMarkdown('')} />
-            </div>
-          )}
-        </Empty>
+      <div className="ws-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start' }}>
+        <PlanTabs />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Empty description={treeEmpty ? t('content.emptyLibrary') : t('content.emptySelect')}>
+            {treeEmpty && (
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <ActionButton intent="primary" label={t('content.createFirst')} onClick={() => useUiStore.getState().openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })} />
+                <ActionButton intent="secondary" label={t('content.importMd')} onClick={() => void useTreeStore.getState().importMarkdown('')} />
+              </div>
+            )}
+          </Empty>
+        </div>
       </div>
     )
   }
@@ -144,6 +148,7 @@ export default function ContentArea(): React.JSX.Element {
     const children = childrenMap[currentPath] ?? []
     return (
       <div className="ws-content">
+        <PlanTabs />
         <div className="crumbs">
           <span className="origin-dot" />
           <span>{t('content.origin')}</span>
@@ -196,6 +201,7 @@ export default function ContentArea(): React.JSX.Element {
   }
   return (
     <div className="ws-content">
+      <PlanTabs />
       <div className="crumbs">
         <span className="origin-dot" />
         <span>{t('content.origin')}</span>

@@ -66,6 +66,11 @@ const enUS: typeof zhCN = {
   navigation: {
     pages: 'Page navigation'
   },
+  workspaceTabs: {
+    listLabel: 'Open plans',
+    activate: 'Switch to plan “{{name}}”',
+    close: 'Close plan “{{name}}”'
+  },
   about: {
     title: 'Trace · Every plan leaves a trace',
     version: 'Version {{version}} (storage contract {{format}})',

@@ -17,7 +17,8 @@ describe('renderer style boundaries', () => {
       'search.css',
       'diary.css',
       'memories.css',
-      'plan-name-templates.css'
+      'plan-name-templates.css',
+      'plan-tabs.css'
     ]
 
     for (const file of expectedImports) {
@@ -39,7 +40,8 @@ describe('renderer style boundaries', () => {
       'search.css': ['.search-mask', '.search-overlay'],
       'diary.css': ['.diary-main', '.diary-layout', '@media (max-width: 959px)'],
       'memories.css': ['.memories-body', '.memories-preview', '@media (max-width: 959px)'],
-      'plan-name-templates.css': ['.plan-name-template-settings', '.name-dialog-template__preview']
+      'plan-name-templates.css': ['.plan-name-template-settings', '.name-dialog-template__preview'],
+      'plan-tabs.css': ['.plan-tabs', '.plan-tabs__item', '.plan-tabs__select', '.plan-tabs__close']
     }
 
     for (const [file, selectors] of Object.entries(selectorsByFile)) {
@@ -55,5 +57,15 @@ describe('renderer style boundaries', () => {
   it('loads action styles only through the workspace entry', () => {
     const actionButton = readFileSync(resolve(rendererRoot, 'components/ui/ActionButton.tsx'), 'utf8')
     expect(actionButton).not.toContain("import '../../styles/actions.css'")
+  })
+
+  it('keeps plan tabs scrollable at narrow widths, theme-token based, and reduced-motion safe', () => {
+    const planTabs = readFileSync(resolve(stylesRoot, 'plan-tabs.css'), 'utf8')
+
+    expect(planTabs).toMatch(/\.plan-tabs\s*\{[^}]*min-width:\s*0;[^}]*overflow-x:\s*auto;/s)
+    expect(planTabs).toContain('@media (max-width: 720px)')
+    expect(planTabs).toContain('@media (prefers-reduced-motion: reduce)')
+    expect(planTabs).toContain('transition: none;')
+    expect(planTabs).not.toMatch(/#[\da-f]{3,8}\b|rgba?\(/i)
   })
 })
