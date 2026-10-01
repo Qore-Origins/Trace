@@ -8,6 +8,9 @@ const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:', 'transfer:', 'window:',
 const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getStatus', 'plantuml:retry'])
 const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-template:set', 'plan-template:remove'])
 const WORKSPACE_TABS_CHANNELS = new Set<string>(['workspace-tabs:get', 'workspace-tabs:set'])
+const PLAN_REFERENCE_CHANNELS = new Set<string>([
+  'plan-reference:search', 'plan-reference:resolve', 'plan-reference:commitTarget', 'plan-reference:inbound'
+])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',
@@ -36,6 +39,7 @@ const bridge = {
     const isPlantumlChannel = typeof channel === 'string' && channel.startsWith('plantuml:')
     const isPlanTemplateChannel = typeof channel === 'string' && channel.startsWith('plan-template:')
     const isWorkspaceTabsChannel = typeof channel === 'string' && channel.startsWith('workspace-tabs:')
+    const isPlanReferenceChannel = typeof channel === 'string' && channel.startsWith('plan-reference:')
     if (
       typeof channel !== 'string' ||
       (isPlantumlChannel
@@ -44,6 +48,8 @@ const bridge = {
           ? !PLAN_TEMPLATE_CHANNELS.has(channel)
           : isWorkspaceTabsChannel
             ? !WORKSPACE_TABS_CHANNELS.has(channel)
+            : isPlanReferenceChannel
+              ? !PLAN_REFERENCE_CHANNELS.has(channel)
             : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
     ) {
       return { ok: false, code: 50, message: '通道未开放', data: null }

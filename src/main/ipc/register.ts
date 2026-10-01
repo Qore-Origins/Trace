@@ -13,6 +13,7 @@ import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
 import type { PlanNameTemplateService } from '../services/plan-name-template-service'
 import type { WorkspaceTabsService } from '../services/workspace-tabs-service'
+import type { PlanReferenceService } from '../services/plan-reference-service'
 import { DIARY_DIR, ensureDiaryRoot, ensureTodayPageWithResult, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { todayDateStr } from '../../shared/validation'
 import { bus } from '../services/event-bus'
@@ -29,6 +30,7 @@ interface Deps {
   search: SearchService
   planNameTemplates?: PlanNameTemplateService
   workspaceTabs?: WorkspaceTabsService
+  planReferences?: PlanReferenceService
   plantuml?: PlantumlService
   startup: StartupCoordinator
   captureDiaryRootGuard?: (root: string) => () => boolean
@@ -92,6 +94,12 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
       if (name.startsWith('diary:')) {
         // 文件系统异常可能携带绝对路径/正文；日记边界只返回固定的可重试提示。
         const safeMessage = name === 'diary:ensure' ? '日记初始化失败，请稍后重试' : '日记读取失败，请稍后重试'
+        log(name, code, safeMessage)
+        return fail(code, safeMessage)
+      }
+      if (name.startsWith('plan-reference:')) {
+        // Filesystem failures may contain absolute paths; reference responses and logs never echo them.
+        const safeMessage = e instanceof TraceError ? message : '引用操作失败，请重试'
         log(name, code, safeMessage)
         return fail(code, safeMessage)
       }
@@ -209,6 +217,28 @@ export function registerIpc(deps: Deps): () => void {
     await workspaceTabsService().save(payload.state)
     return null
   })
+
+  const referenceService = (): PlanReferenceService => {
+    if (!deps.planReferences) throw new TraceError(ERR.INTERNAL, '引用服务未初始化')
+    return deps.planReferences
+  }
+  const referenceRequest = <T extends Record<string, unknown>>(payload: unknown, keys: readonly string[]): T => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+      Object.getPrototypeOf(payload) !== Object.prototype ||
+      Object.keys(payload).some((key) => !keys.includes(key)) ||
+      !keys.filter((key) => key !== 'component_id').every((key) => Object.hasOwn(payload, key))) {
+      throw new TraceError(ERR.VALIDATION, '引用请求无效')
+    }
+    return payload as T
+  }
+  reg('plan-reference:search', (payload) =>
+    referenceService().search(referenceRequest(payload, ['library_id', 'query'])))
+  reg('plan-reference:resolve', (payload) =>
+    referenceService().resolve(referenceRequest(payload, ['library_id', 'plan_id', 'component_id'])))
+  reg('plan-reference:commitTarget', (payload) =>
+    referenceService().commitTarget(referenceRequest(payload, ['library_id', 'path', 'component_id', 'mode'])))
+  reg('plan-reference:inbound', (payload) =>
+    referenceService().inbound(referenceRequest(payload, ['library_id', 'plan_id', 'component_id'])))
 
   // ---------- window（无边框自绘控制） ----------
   reg('window:minimize', () => {
