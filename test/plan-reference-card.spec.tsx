@@ -17,6 +17,7 @@ const TARGET_PLAN_ID = '33333333333333333333333333333333'
 const TARGET_COMPONENT_ID = '44444444444444444444444444444444'
 const SOURCE_PATH = 'Daily_Plan/Source'
 const TARGET_PATH = 'Future_Plan/Current Target'
+const RENAMED_TARGET_PATH = 'Future_Plan/Renamed Target'
 
 function reference(
   id: string,
@@ -49,12 +50,12 @@ function targetComponent(title: string): Component {
   }
 }
 
-function found(component?: Component): PlanReferenceResolution {
+function found(component?: Component, path = TARGET_PATH): PlanReferenceResolution {
   return {
     status: 'found',
     target: {
       plan_id: TARGET_PLAN_ID,
-      path: TARGET_PATH,
+      path,
       plan_name: 'Current target',
       ...(component ? { component_id: component.id, component_type: component.type as Exclude<Component['type'], 'plan_reference'>, component_name: 'Current component' } : {})
     },
@@ -223,6 +224,39 @@ describe('PlanReferenceCard', () => {
     })
 
     expect(invokeMock.mock.calls.filter(([channel]) => channel === 'plan-reference:resolve')).toHaveLength(2)
+  })
+
+  it('re-resolves a moved target by stable IDs and refreshes later saves at its new path', async () => {
+    let targetPath = TARGET_PATH
+    let revision = 0
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel !== 'plan-reference:resolve') throw new Error(`Unexpected channel: ${channel}`)
+      revision += 1
+      const title = revision === 1 ? 'Before move' : revision === 2 ? 'After move' : 'After later save'
+      return { ok: true, data: found(targetComponent(title), targetPath) }
+    })
+    await renderCard(reference('source-ref-moved-target', 'embed', TARGET_COMPONENT_ID))
+    await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('Before move'))
+
+    await act(async () => {
+      targetPath = RENAMED_TARGET_PATH
+      eventCallbacks.get('trace:plan-changed')?.({ path: RENAMED_TARGET_PATH })
+      await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('After move'))
+    })
+
+    await act(async () => {
+      eventCallbacks.get('trace:plan-changed')?.({ path: RENAMED_TARGET_PATH })
+      await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('After later save'))
+    })
+
+    const resolveRequests = invokeMock.mock.calls
+      .filter(([channel]) => channel === 'plan-reference:resolve')
+      .map(([, request]) => request)
+    expect(resolveRequests).toEqual(Array.from({ length: 3 }, () => ({
+      library_id: LIBRARY_ID,
+      plan_id: TARGET_PLAN_ID,
+      component_id: TARGET_COMPONENT_ID
+    })))
   })
 
   it('renders embedded native components without interactive source controls', async () => {

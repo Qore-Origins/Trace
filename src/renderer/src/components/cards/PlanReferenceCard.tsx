@@ -221,10 +221,12 @@ export function PlanReferenceCard({ comp, index, total }: CardRenderProps): Reac
 
     let unsubscribe: (() => void) | undefined
     if (payload.mode === 'embed') {
-      unsubscribe = onEvent('trace:plan-changed', ({ path }) => {
+      unsubscribe = onEvent('trace:plan-changed', () => {
         const current = usePlanReferenceStore.getState().resolutions[entryKey]
         if (current?.status === 'found') {
-          if (current.resolution.target.path === path) void load(true)
+          // Rename/move events carry the new path, so the cached path cannot identify the target.
+          // Re-resolve by stable plan/component IDs instead of trusting either path snapshot.
+          void load(true)
         } else if (current?.status === 'loading' || !current) {
           changeWhileLoading = true
         }
