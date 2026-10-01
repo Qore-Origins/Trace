@@ -212,7 +212,7 @@ export function PlanReferenceCard({ comp, index, total }: CardRenderProps): Reac
       if (!mounted || !isCurrentSource()) return undefined
       const result = await resolve(entryKey, request, isCurrentSource, force)
       if (!mounted || !isCurrentSource()) return undefined
-      if (changeWhileLoading && result?.status === 'found') {
+      if (changeWhileLoading) {
         changeWhileLoading = false
         void load(true)
       }
@@ -221,7 +221,8 @@ export function PlanReferenceCard({ comp, index, total }: CardRenderProps): Reac
 
     let unsubscribe: (() => void) | undefined
     if (payload.mode === 'embed') {
-      unsubscribe = onEvent('trace:plan-changed', () => {
+      const unsubscribeTargetChanges = onEvent('trace:reference-target-changed', ({ plan_ids }) => {
+        if (!plan_ids.includes(payload.target_plan_id)) return
         const current = usePlanReferenceStore.getState().resolutions[entryKey]
         if (current?.status === 'found') {
           // Rename/move events carry the new path, so the cached path cannot identify the target.
@@ -231,6 +232,14 @@ export function PlanReferenceCard({ comp, index, total }: CardRenderProps): Reac
           changeWhileLoading = true
         }
       })
+      const unsubscribePlanChanges = onEvent('trace:plan-changed', () => {
+        const current = usePlanReferenceStore.getState().resolutions[entryKey]
+        if (current?.status === 'loading' || !current) changeWhileLoading = true
+      })
+      unsubscribe = () => {
+        unsubscribeTargetChanges()
+        unsubscribePlanChanges()
+      }
     }
 
     void load()

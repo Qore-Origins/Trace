@@ -14,6 +14,7 @@ interface LibrarySnapshot {
   root: string
   libraryId: string
   generation: number
+  changeRevision: number
 }
 
 interface ScannedPlan {
@@ -52,7 +53,11 @@ function targetOf(plan: ScannedPlan, component?: Component): PlanReferenceTarget
 export class PlanReferenceService {
   private generation = 0
   private activeRoot: string | null = null
-  private reverseCache: { generation: number; items: PlanReferenceInbound[] } | null = null
+  private reverseCache: { generation: number; changeRevision: number; items: PlanReferenceInbound[] } | null = null
+  private scanCache: { root: string; generation: number; changeRevision: number; plans: ScannedPlan[] } | null = null
+  private scanInFlight: {
+    root: string; generation: number; changeRevision: number; promise: Promise<ScannedPlan[]>
+  } | null = null
   private changeRevision = 0
   private commitQueue: Promise<void> = Promise.resolve()
   private switchingRoot = false
@@ -60,9 +65,15 @@ export class PlanReferenceService {
 
   constructor(private repo: PlanRepository, private getRoot: () => string | null) {
     this.unsubscribe = [
-      bus.on('trace:plan-changed', () => { this.changeRevision += 1; this.reverseCache = null }),
-      bus.on('trace:fs-external-change', () => { this.changeRevision += 1; this.reverseCache = null })
+      bus.on('trace:plan-changed', () => this.invalidateScans()),
+      bus.on('trace:fs-external-change', () => this.invalidateScans())
     ]
+  }
+
+  private invalidateScans(): void {
+    this.changeRevision += 1
+    this.reverseCache = null
+    this.scanCache = null
   }
 
   activateRoot(root: string): void {
@@ -70,6 +81,7 @@ export class PlanReferenceService {
     this.generation += 1
     this.changeRevision += 1
     this.reverseCache = null
+    this.scanCache = null
     this.switchingRoot = false
   }
 
@@ -99,18 +111,25 @@ export class PlanReferenceService {
     }
   }
 
+  private currentRevision(snapshot: LibrarySnapshot): void {
+    this.current(snapshot)
+    if (this.changeRevision !== snapshot.changeRevision) {
+      throw new TraceError(ERR.CONFLICT, '计划内容已变化，请重试')
+    }
+  }
+
   private async snapshot(libraryId: unknown): Promise<LibrarySnapshot> {
     if (typeof libraryId !== 'string' || !isUuid32(libraryId)) {
       throw new TraceError(ERR.VALIDATION, '计划库标识无效')
     }
     const root = this.getRoot()
     if (!root || root !== this.activeRoot) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
-    const snapshot = { root, libraryId, generation: this.generation }
+    const snapshot = { root, libraryId, generation: this.generation, changeRevision: this.changeRevision }
     const metaFile = resolveWithin(root, '.trace/plan-library.json').abs
     await assertRealPathWithinRoot(root, metaFile)
-    this.current(snapshot)
+    this.currentRevision(snapshot)
     const meta = await this.repo.readLibraryMeta(root)
-    this.current(snapshot)
+    this.currentRevision(snapshot)
     if (meta.library_id !== libraryId) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
     return snapshot
   }
@@ -134,41 +153,74 @@ export class PlanReferenceService {
     const pending = ['']
     while (pending.length > 0) {
       const parent = pending.pop() as string
-      this.current(snapshot)
+      this.currentRevision(snapshot)
       const directory = resolveWithin(snapshot.root, parent).abs
       let names: string[]
       try {
         await assertRealPathWithinRoot(snapshot.root, directory)
-        this.current(snapshot)
+        this.currentRevision(snapshot)
         names = await this.repo.listPlanDirs(snapshot.root, parent)
       } catch (error) {
-        this.current(snapshot)
+        this.currentRevision(snapshot)
         if (parent) continue
         throw error
       }
-      this.current(snapshot)
+      this.currentRevision(snapshot)
       for (const name of names) {
         const path = parent ? `${parent}/${name}` : name
         const child = resolveWithin(snapshot.root, path).abs
         try {
           await assertRealPathWithinRoot(snapshot.root, child)
-          this.current(snapshot)
+          this.currentRevision(snapshot)
           // A safe folder is traversed even if its own plan file is absent or malformed.
           pending.push(path)
           const planFile = resolveWithin(snapshot.root, `${path}/plan.json`).abs
           await assertRealPathWithinRoot(snapshot.root, planFile)
-          this.current(snapshot)
+          this.currentRevision(snapshot)
           const document = await this.repo.readPlan(snapshot.root, path)
-          this.current(snapshot)
+          this.currentRevision(snapshot)
           found.push({ path, document })
         } catch (error) {
-          this.current(snapshot)
+          this.currentRevision(snapshot)
           // An unreadable or damaged child does not make its healthy siblings disappear.
           if (error instanceof TraceError && error.code === ERR.CONFLICT) throw error
         }
       }
     }
     return found
+  }
+
+  private async scanForSnapshot(snapshot: LibrarySnapshot): Promise<ScannedPlan[]> {
+    this.currentRevision(snapshot)
+    const matches = (entry: { root: string; generation: number; changeRevision: number }): boolean =>
+      entry.root === snapshot.root && entry.generation === snapshot.generation &&
+      entry.changeRevision === snapshot.changeRevision
+    if (this.scanCache && matches(this.scanCache)) return this.scanCache.plans
+
+    let flight = this.scanInFlight
+    if (!flight || !matches(flight)) {
+      flight = {
+        root: snapshot.root,
+        generation: snapshot.generation,
+        changeRevision: snapshot.changeRevision,
+        promise: this.scan(snapshot)
+      }
+      this.scanInFlight = flight
+    }
+
+    try {
+      const plans = await flight.promise
+      this.currentRevision(snapshot)
+      this.scanCache = {
+        root: snapshot.root,
+        generation: snapshot.generation,
+        changeRevision: snapshot.changeRevision,
+        plans
+      }
+      return plans
+    } finally {
+      if (this.scanInFlight === flight) this.scanInFlight = null
+    }
   }
 
   private findById(plans: ScannedPlan[], planId: string): ScannedPlan | null | 'conflict' {
@@ -184,7 +236,7 @@ export class PlanReferenceService {
     }
     const query = request.query.trim().toLocaleLowerCase()
     const targets: PlanReferenceCandidate[] = []
-    for (const plan of await this.scan(snapshot)) {
+    for (const plan of await this.scanForSnapshot(snapshot)) {
       const planName = plan.path.split('/').at(-1) ?? plan.path
       const idCounts = new Map<string, number>()
       for (const component of plan.document.components) {
@@ -203,7 +255,7 @@ export class PlanReferenceService {
         })
       }
     }
-    this.current(snapshot)
+    this.currentRevision(snapshot)
     return { targets }
   }
 
@@ -212,7 +264,9 @@ export class PlanReferenceService {
     if (!isUuid32(request.plan_id) || (request.component_id !== undefined && !isUuid32(request.component_id))) {
       throw new TraceError(ERR.VALIDATION, '引用目标标识无效')
     }
-    const plan = this.findById(await this.scan(snapshot), request.plan_id)
+    const plans = await this.scanForSnapshot(snapshot)
+    this.currentRevision(snapshot)
+    const plan = this.findById(plans, request.plan_id)
     if (plan === 'conflict') return { status: 'conflict' }
     if (!plan) return { status: 'missing' }
     const component = request.component_id
@@ -260,14 +314,16 @@ export class PlanReferenceService {
       document.components.filter((entry) => entry.id === request.component_id).length !== 1)) {
       throw new TraceError(ERR.VALIDATION, '引用组件无效')
     }
-    const plans = await this.scan(snapshot)
+    const plans = await this.scanForSnapshot(snapshot)
+    this.currentRevision(snapshot)
     if (document.plan_id && this.findById(plans, document.plan_id) === 'conflict') {
       throw new TraceError(ERR.CONFLICT, '计划标识冲突，请先处理重复项')
     }
     // Re-read immediately before writing so unrelated edits are preserved.
     let assigned = false
+    let assignedPlanId: string | undefined
     const latest = await this.repo.mutatePlanAtomic(snapshot.root, path, (current) => {
-      this.current(snapshot)
+      this.currentRevision(snapshot)
       if (this.switchingRoot) throw new TraceError(ERR.CONFLICT, '计划库正在切换，请重试')
       if (current.updated_at !== document.updated_at || current.plan_id !== document.plan_id) {
         throw new TraceError(ERR.CONFLICT, '目标计划已变化，请重试')
@@ -282,10 +338,14 @@ export class PlanReferenceService {
       while (used.has(id)) id = uuid32()
       current.plan_id = id
       assigned = true
+      assignedPlanId = id
       return current
     })
     this.current(snapshot)
-    if (assigned) bus.emit('trace:plan-changed', { path })
+    if (assigned) {
+      bus.emit('trace:plan-changed', { path })
+      if (assignedPlanId) bus.emit('trace:reference-target-changed', { plan_ids: [assignedPlanId] })
+    }
     const latestComponent = request.component_id
       ? latest.components.find((entry) => entry.id === request.component_id)
       : undefined
@@ -297,10 +357,10 @@ export class PlanReferenceService {
     if (!isUuid32(request.plan_id) || (request.component_id !== undefined && !isUuid32(request.component_id))) {
       throw new TraceError(ERR.VALIDATION, '引用目标标识无效')
     }
-    if (!this.reverseCache || this.reverseCache.generation !== snapshot.generation) {
-      const revision = this.changeRevision
+    if (!this.reverseCache || this.reverseCache.generation !== snapshot.generation ||
+      this.reverseCache.changeRevision !== snapshot.changeRevision) {
       const items: PlanReferenceInbound[] = []
-      for (const plan of await this.scan(snapshot)) {
+      for (const plan of await this.scanForSnapshot(snapshot)) {
         for (const component of plan.document.components) {
           if (component.type !== 'plan_reference' || !isPlanReferencePayload(component.payload)) continue
           items.push({
@@ -311,9 +371,8 @@ export class PlanReferenceService {
           })
         }
       }
-      this.current(snapshot)
-      if (revision !== this.changeRevision) throw new TraceError(ERR.CONFLICT, '计划内容已变化，请重试')
-      this.reverseCache = { generation: snapshot.generation, items }
+      this.currentRevision(snapshot)
+      this.reverseCache = { generation: snapshot.generation, changeRevision: snapshot.changeRevision, items }
     }
     return { references: this.reverseCache.items.filter((reference) =>
       reference.target_plan_id === request.plan_id &&

@@ -32,7 +32,10 @@ vi.mock('electron', () => ({
   dialog: electronMocks.dialog
 }))
 
-type Bridge = { invoke(channel: string, payload?: unknown): Promise<unknown> }
+type Bridge = {
+  invoke(channel: string, payload?: unknown): Promise<unknown>
+  on(event: string, callback: (payload: unknown) => void): () => void
+}
 
 describe('plan reference IPC boundary', () => {
   const roots: string[] = []
@@ -54,11 +57,12 @@ describe('plan reference IPC boundary', () => {
   })
 
   it('exposes only allowed reference channels and keeps absolute roots out of request and response DTOs', async () => {
-    const [{ registerIpc }, { PlanRepository }, { StorageService }, { PlanReferenceService }] = await Promise.all([
+    const [{ registerIpc }, { PlanRepository }, { StorageService }, { PlanReferenceService }, { bus }] = await Promise.all([
       import('../src/main/ipc/register'),
       import('../src/main/services/plan-repository'),
       import('../src/main/services/storage-service'),
-      import('../src/main/services/plan-reference-service')
+      import('../src/main/services/plan-reference-service'),
+      import('../src/main/services/event-bus')
     ])
     await import('../src/preload/index')
     const bridge = electronMocks.contextBridge.exposeInMainWorld.mock.calls.at(-1)?.[1] as Bridge
@@ -82,9 +86,13 @@ describe('plan reference IPC boundary', () => {
       runAfterRootActivation: (operation: () => unknown) => Promise.resolve().then(operation),
       markRootActivated: vi.fn(), onWindowShown: vi.fn()
     }
+    const send = vi.fn()
     dispose = registerIpc({
       app: {}, storage, config: {}, transfer: {}, export: {}, search: {},
-      planReferences: referenceService, startup, getWindow: () => null, log: vi.fn()
+      planReferences: referenceService,
+      startup,
+      getWindow: () => ({ webContents: { isDestroyed: () => false, send } }),
+      log: vi.fn()
     } as unknown as Parameters<typeof registerIpc>[0])
 
     const search = await bridge.invoke('plan-reference:search', { library_id: libraryId, query: 'Tar' })
@@ -101,6 +109,28 @@ describe('plan reference IPC boundary', () => {
       .toMatchObject({ ok: true, data: { status: 'found', target: { path: 'Target' } } })
     expect(await bridge.invoke('plan-reference:inbound', { library_id: libraryId, plan_id: planId }))
       .toEqual({ ok: true, code: 0, message: 'ok', data: { references: [] } })
+
+    const referenceEvent = { plan_ids: [planId] }
+    const received = vi.fn()
+    const unsubscribe = bridge.on('trace:reference-target-changed', received)
+    const preloadListener = electronMocks.ipcRenderer.on.mock.calls
+      .find(([channel]) => channel === 'trace:reference-target-changed')?.[1] as
+      | ((event: unknown, payload: unknown) => void)
+      | undefined
+    expect(preloadListener).toBeDefined()
+    preloadListener?.({}, referenceEvent)
+    expect(received).toHaveBeenCalledExactlyOnceWith(referenceEvent)
+    bus.emit('trace:reference-target-changed', referenceEvent)
+    expect(send).toHaveBeenCalledWith('trace:reference-target-changed', referenceEvent)
+    const sentReferenceEventCount = (): number => send.mock.calls
+      .filter(([channel]) => channel === 'trace:reference-target-changed').length
+    const referenceEventsBeforeDispose = sentReferenceEventCount()
+    expect(referenceEventsBeforeDispose).toBe(2)
+    unsubscribe()
+    expect(electronMocks.ipcRenderer.removeListener).toHaveBeenCalledWith(
+      'trace:reference-target-changed', preloadListener
+    )
+
     expect(await bridge.invoke('plan-reference:eraseLibrary', { library_id: libraryId }))
       .toEqual({ ok: false, code: 50, message: '通道未开放', data: null })
     expect(electronMocks.ipcRenderer.invoke.mock.calls.some(([channel]) => channel === 'plan-reference:eraseLibrary')).toBe(false)
@@ -109,5 +139,10 @@ describe('plan reference IPC boundary', () => {
       .toMatchObject({ ok: false, code: 22 })
     expect(await bridge.invoke('plan-reference:search', { library_id: libraryId, root, query: '' }))
       .toMatchObject({ ok: false, code: 20 })
+
+    dispose?.()
+    dispose = undefined
+    bus.emit('trace:reference-target-changed', referenceEvent)
+    expect(sentReferenceEventCount()).toBe(referenceEventsBeforeDispose)
   })
 })

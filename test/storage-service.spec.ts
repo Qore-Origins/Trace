@@ -184,6 +184,43 @@ describe('renamePlan / deletePlan', () => {
     }
     expect(events).toContain('A')
   })
+
+  it('notifies stable IDs in the affected nested subtree before rename, move, and delete', async () => {
+    const planIds = [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      'cccccccccccccccccccccccccccccccc'
+    ]
+    await service.createFolder('', 'Archive')
+    await service.createFolder('', 'Target')
+    await service.createPlan('Archive', 'Parent')
+    await service.createPlan('Archive/Parent', 'Nested')
+    await fs.mkdir(join(root, 'Archive', 'Parent', 'Broken'))
+    await fs.writeFile(join(root, 'Archive', 'Parent', 'Broken', 'plan.json'), '{')
+    await service.createPlan('Archive/Parent/Broken', 'Healthy under broken plan')
+
+    for (const [path, planId] of [
+      ['Archive/Parent', planIds[0]],
+      ['Archive/Parent/Nested', planIds[1]],
+      ['Archive/Parent/Broken/Healthy under broken plan', planIds[2]]
+    ] as const) {
+      const document = await service.readPlan(path)
+      document.plan_id = planId
+      await service.savePlan(path, document, document.updated_at)
+    }
+
+    const events: string[][] = []
+    const off = bus.on('trace:reference-target-changed', (event) => events.push(event.plan_ids))
+    try {
+      await service.renamePlan('Archive/Parent', 'Renamed')
+      await service.movePlan('Archive/Renamed', 'Target')
+      await service.deletePlan('Target/Renamed', true)
+    } finally {
+      off()
+    }
+
+    expect(events).toEqual([planIds, planIds, planIds])
+  })
 })
 
 describe('movePlan', () => {
@@ -237,6 +274,30 @@ describe('movePlan', () => {
 })
 
 describe('savePlan CAS', () => {
+  it('notifies only the prior and resulting stable target IDs for document saves', async () => {
+    await service.createPlan('', 'Target')
+    const document = await service.readPlan('Target')
+    document.plan_id = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    await service.savePlan('Target', document, document.updated_at)
+
+    const events: string[][] = []
+    const off = bus.on('trace:reference-target-changed', (event) => events.push(event.plan_ids))
+    try {
+      const latest = await service.readPlan('Target')
+      latest.plan_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+      await service.savePlan('Target', latest, latest.updated_at)
+      await service.createPlan('', 'No stable identity')
+      await service.appendComponent('No stable identity', { id: 'component', type: 'note', payload: { content: 'plain' } })
+    } finally {
+      off()
+    }
+
+    expect(events).toEqual([[
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    ]])
+  })
+
   it('expected_updated_at 不匹配 → CONFLICT(22)', async () => {
     await service.createPlan('', 'A')
     const doc = await service.readPlan('A')

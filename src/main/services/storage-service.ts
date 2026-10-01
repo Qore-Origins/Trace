@@ -4,12 +4,12 @@ import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type { PlanDocument, Component, TaskItem } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
-import { validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
+import { isUuid32, validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
 import { applyStatusChange } from '../../shared/task-state'
 import type { PlanTreeNode } from '../../shared/ipc-contract'
 import { PlanRepository } from './plan-repository'
 import { TreeCache } from './tree-cache'
-import { resolveWithin, isSelfOrDescendant, parentRel } from './path-safety'
+import { assertRealPathWithinRoot, resolveWithin, isSelfOrDescendant, parentRel } from './path-safety'
 import { bus } from './event-bus'
 
 export class StorageService {
@@ -36,6 +36,56 @@ export class StorageService {
 
   private safe(rel: string): string {
     return resolveWithin(this.root(), rel).rel
+  }
+
+  private emitReferenceTargetChanges(ids: unknown[]): void {
+    const plan_ids = [...new Set(ids.filter((id): id is string =>
+      typeof id === 'string' && isUuid32(id)))].sort()
+    if (plan_ids.length > 0) bus.emit('trace:reference-target-changed', { plan_ids })
+  }
+
+  private async collectSubtreePlanIds(root: string, rel: string): Promise<string[]> {
+    const ids = new Set<string>()
+    const pending = [rel]
+    while (pending.length > 0) {
+      const current = pending.pop() as string
+      const directory = resolveWithin(root, current).abs
+      try {
+        await assertRealPathWithinRoot(root, directory)
+      } catch (error) {
+        if (current === rel) throw error
+        continue
+      }
+
+      if (current) {
+        const planFile = resolveWithin(root, `${current}/plan.json`).abs
+        try {
+          await assertRealPathWithinRoot(root, planFile)
+          const document = await this.repo.readPlan(root, current)
+          if (document.plan_id && isUuid32(document.plan_id)) ids.add(document.plan_id)
+        } catch {
+          // A malformed or unreadable plan does not hide valid descendants or siblings.
+        }
+      }
+
+      let children: string[]
+      try {
+        children = await this.repo.listPlanDirs(root, current)
+      } catch (error) {
+        if (current === rel) throw error
+        continue
+      }
+      for (const name of children) {
+        const childRel = current ? `${current}/${name}` : name
+        try {
+          await assertRealPathWithinRoot(root, resolveWithin(root, childRel).abs)
+          pending.push(childRel)
+        } catch {
+          // Skip links or children that are no longer safely inside this library.
+        }
+      }
+    }
+    return [...ids].sort()
   }
 
   // ---------- 树 ----------
@@ -149,11 +199,13 @@ export class StorageService {
       throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
     }
 
+    const affectedPlanIds = await this.collectSubtreePlanIds(root, rel)
     await this.repo.renamePlanDir(root, rel, newName)
 
     this.treeCache.invalidatePrefix(rel)
     const newPath = parent === '' ? newName : `${parent}/${newName}`
     bus.emit('trace:plan-changed', { path: newPath })
+    this.emitReferenceTargetChanges(affectedPlanIds)
     return { path: newPath }
   }
 
@@ -165,10 +217,12 @@ export class StorageService {
     if (!(await this.repo.existsDir(root, rel))) {
       throw new TraceError(ERR.PATH_NOT_FOUND, '目标位置不存在（可能已被移动或删除）')
     }
+    const affectedPlanIds = await this.collectSubtreePlanIds(root, rel)
     await this.repo.rmRecursive(root, rel)
     this.treeCache.invalidatePrefix(rel)
     // 与其余结构变更一致：通知树刷新与搜索索引重建（否则索引残留已删计划的幽灵条目）
     bus.emit('trace:plan-changed', { path: rel })
+    this.emitReferenceTargetChanges(affectedPlanIds)
   }
 
   async movePlan(pathRel: string, targetParentRel: string): Promise<void> {
@@ -187,6 +241,7 @@ export class StorageService {
       if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
     }
 
+    const affectedPlanIds = await this.collectSubtreePlanIds(root, rel)
     const fromAbs = targetJoin(root, rel)
     const toAbs = targetJoin(root, targetParent === '' ? name : `${targetParent}/${name}`)
     await this.repo.moveDir(fromAbs, toAbs)
@@ -194,6 +249,7 @@ export class StorageService {
     this.treeCache.invalidatePrefix(rel)
     this.treeCache.invalidatePrefix(targetParent)
     bus.emit('trace:plan-changed', { path: targetParent === '' ? name : `${targetParent}/${name}` })
+    this.emitReferenceTargetChanges(affectedPlanIds)
   }
 
   // ---------- 计划读写（CAS） ----------
@@ -206,13 +262,16 @@ export class StorageService {
     const rel = this.safe(pathRel)
     if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录无内容可保存')
     const root = this.root()
+    let previousPlanId: unknown
     const saved = await this.repo.mutatePlanAtomic(root, rel, (current) => {
       if (current.updated_at !== expectedUpdatedAt) {
         throw new TraceError(ERR.CONFLICT, '数据已被修改（外部或并发），请刷新后重试')
       }
+      previousPlanId = current.plan_id
       return document
     })
     bus.emit('trace:plan-changed', { path: rel })
+    this.emitReferenceTargetChanges([previousPlanId, saved.plan_id])
     bus.emit('trace:save-status', { path: rel, saved: true, at: new Date().toISOString() })
     return { updated_at: saved.updated_at }
   }
@@ -270,11 +329,16 @@ export class StorageService {
 
   private async commitMutation(pathRel: string, mutate: (doc: PlanDocument) => void): Promise<void> {
     const rel = this.safe(pathRel)
+    let previousPlanId: unknown
+    let resultingPlanId: unknown
     await this.repo.mutatePlanAtomic(this.root(), rel, (doc) => {
+      previousPlanId = doc.plan_id
       mutate(doc)
+      resultingPlanId = doc.plan_id
       return doc
     })
     bus.emit('trace:plan-changed', { path: rel })
+    this.emitReferenceTargetChanges([previousPlanId, resultingPlanId])
   }
 }
 

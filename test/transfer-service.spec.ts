@@ -10,6 +10,8 @@ import { TransferService, parseMdFileName, markdownToPlanDocument } from '../src
 import { TreeCache } from '../src/main/services/tree-cache'
 import { TraceError, ERR } from '../src/shared/errors'
 import type { PlanDocument, Component } from '../src/shared/plan-types'
+import { bus } from '../src/main/services/event-bus'
+import { PlanReferenceService } from '../src/main/services/plan-reference-service'
 
 let root: string
 let repo: PlanRepository
@@ -58,6 +60,45 @@ describe('.plan 导出/导入 roundtrip', () => {
     expect(doc.components.some((c) => c.type === 'task_list')).toBe(true)
     expect(await storage.treeGetChildren('学期A (2)').then((ns) => ns.map((n) => n.name))).toEqual(['子计划B'])
     await fs.rm(saveTo, { force: true })
+  })
+
+  it('announces valid stable IDs from imported .plan documents but not Markdown documents', async () => {
+    await storage.createPlan('', 'Reference bundle')
+    await storage.createPlan('Reference bundle', 'Nested')
+    const expectedIds = [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    ]
+    for (const [path, planId] of [
+      ['Reference bundle', expectedIds[0]],
+      ['Reference bundle/Nested', expectedIds[1]]
+    ] as const) {
+      const document = await storage.readPlan(path)
+      document.plan_id = planId
+      await storage.savePlan(path, document, document.updated_at)
+    }
+
+    const saveTo = join(root, 'references.plan')
+    await transfer.exportPlan('Reference bundle', saveTo)
+    const libraryId = (await repo.readLibraryMeta(root)).library_id
+    const references = new PlanReferenceService(repo, () => root)
+    references.activateRoot(root)
+    await expect(references.resolve({ library_id: libraryId, plan_id: expectedIds[0] }))
+      .resolves.toMatchObject({ status: 'found' })
+    const events: string[][] = []
+    const off = bus.on('trace:reference-target-changed', (event) => events.push(event.plan_ids))
+    try {
+      await transfer.importPlan('', saveTo)
+      await expect(references.resolve({ library_id: libraryId, plan_id: expectedIds[0] }))
+        .resolves.toEqual({ status: 'conflict' })
+      await transfer.importMarkdown('', [{ name: 'Daily_Plan-20261001-Without ID.md', content: '# Plain markdown' }])
+    } finally {
+      off()
+      references.dispose()
+      await fs.rm(saveTo, { force: true })
+    }
+
+    expect(events).toEqual([expectedIds])
   })
 
   it('非 .plan 文件 → FORMAT_INVALID(14)', async () => {

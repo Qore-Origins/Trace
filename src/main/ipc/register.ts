@@ -338,6 +338,7 @@ export function registerIpc(deps: Deps): () => void {
     unsubscribeListeners.push(unsubscribe)
   }
   forward('trace:plan-changed')
+  forward('trace:reference-target-changed')
   forward('trace:save-status')
   forward('trace:fs-external-change')
   forward('trace:index-status')

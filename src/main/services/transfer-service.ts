@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path'
 import { zipSync, unzipSync, type Zippable } from 'fflate'
 import type { PlanDocument, Component, PlanLibraryMeta, TaskItem } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
-import { validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
+import { isUuid32, validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
 import { normalizeRel } from '../../shared/path-utils'
 import type { PlanRepository } from './plan-repository'
 import type { TreeCache } from './tree-cache'
@@ -138,6 +138,7 @@ export class TransferService {
 
     // 落盘：解出子树到目标父级（plan.json 内容原样；目录自建）
     const report: ImportReport = { imported: [], plans: 0, components: 0, tasks: 0, notes: 0, skipped: [] }
+    const importedPlanIds = new Set<string>()
     for (const key of planEntries) {
       const relUnderBundle = normalizeZipPath(key) as string // 已校验非 null
       // <bundleRoot>/rest → <finalName>/rest
@@ -153,6 +154,7 @@ export class TransferService {
         continue
       }
       await fs.writeFile(abs, content)
+      if (typeof doc.plan_id === 'string' && isUuid32(doc.plan_id)) importedPlanIds.add(doc.plan_id)
       report.plans++
       report.components += doc.components.length
       for (const c of doc.components) {
@@ -166,6 +168,9 @@ export class TransferService {
     report.imported.push({ path: importedPath, renamedFrom: finalName !== bundleRootName ? bundleRootName : undefined })
     this.treeCache.invalidatePrefix(targetParent)
     bus.emit('trace:plan-changed', { path: importedPath })
+    if (importedPlanIds.size > 0) {
+      bus.emit('trace:reference-target-changed', { plan_ids: [...importedPlanIds].sort() })
+    }
     return report
   }
 

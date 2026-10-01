@@ -8,6 +8,7 @@ export type DiaryAutomationStatus =
 
 export interface TraceEventsContract {
   'trace:plan-changed': { path: string }
+  'trace:reference-target-changed': { plan_ids: string[] }
   'trace:save-status': { path: string; saved: boolean; at: string }
   'trace:fs-external-change': { paths: string[]; type: 'created' | 'changed' | 'removed' }
   'trace:index-status': { state: 'building' | 'ready' | 'error'; progress?: number }

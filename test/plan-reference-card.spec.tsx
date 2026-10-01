@@ -14,6 +14,7 @@ import { useWorkspaceTabsStore } from '../src/renderer/src/stores/workspace-tabs
 
 const LIBRARY_ID = '11111111111111111111111111111111'
 const TARGET_PLAN_ID = '33333333333333333333333333333333'
+const UNRELATED_PLAN_ID = '55555555555555555555555555555555'
 const TARGET_COMPONENT_ID = '44444444444444444444444444444444'
 const SOURCE_PATH = 'Daily_Plan/Source'
 const TARGET_PATH = 'Future_Plan/Current Target'
@@ -219,11 +220,93 @@ describe('PlanReferenceCard', () => {
     await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('Before save'))
 
     await act(async () => {
-      eventCallbacks.get('trace:plan-changed')?.({ path: TARGET_PATH })
+      eventCallbacks.get('trace:reference-target-changed')?.({ plan_ids: [TARGET_PLAN_ID] })
       await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('After save'))
     })
 
     expect(invokeMock.mock.calls.filter(([channel]) => channel === 'plan-reference:resolve')).toHaveLength(2)
+  })
+
+  it('ignores unrelated plan saves and refreshes only when its stable target ID changes', async () => {
+    let revision = 0
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel !== 'plan-reference:resolve') throw new Error(`Unexpected channel: ${channel}`)
+      revision += 1
+      return { ok: true, data: found(targetComponent(revision === 1 ? 'Initial target' : 'Updated target')) }
+    })
+    await renderCard(reference('source-ref-targeted-refresh', 'embed', TARGET_COMPONENT_ID))
+    await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('Initial target'))
+
+    await act(async () => {
+      eventCallbacks.get('trace:plan-changed')?.({ path: 'Unrelated' })
+      await Promise.resolve()
+    })
+    expect(invokeMock.mock.calls.filter(([channel]) => channel === 'plan-reference:resolve')).toHaveLength(1)
+
+    await act(async () => {
+      eventCallbacks.get('trace:reference-target-changed')?.({ plan_ids: [UNRELATED_PLAN_ID] })
+      await Promise.resolve()
+    })
+    expect(invokeMock.mock.calls.filter(([channel]) => channel === 'plan-reference:resolve')).toHaveLength(1)
+
+    await act(async () => {
+      eventCallbacks.get('trace:reference-target-changed')?.({ plan_ids: [TARGET_PLAN_ID] })
+      await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('Updated target'))
+    })
+    expect(invokeMock.mock.calls.filter(([channel]) => channel === 'plan-reference:resolve')).toHaveLength(2)
+  })
+
+  it('retries once when its target changes while the initial resolve is pending', async () => {
+    const pending = deferred<{ ok: true; data: PlanReferenceResolution }>()
+    let resolveCalls = 0
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel !== 'plan-reference:resolve') throw new Error(`Unexpected channel: ${channel}`)
+      resolveCalls += 1
+      if (resolveCalls === 1) return pending.promise
+      return { ok: true, data: found(targetComponent('Fresh after in-flight change')) }
+    })
+    await renderCard(reference('source-ref-inflight-refresh', 'embed', TARGET_COMPONENT_ID))
+    await vi.waitFor(() => expect(resolveCalls).toBe(1))
+
+    await act(async () => {
+      eventCallbacks.get('trace:reference-target-changed')?.({ plan_ids: [TARGET_PLAN_ID] })
+      pending.resolve({ ok: true, data: found(targetComponent('Stale in-flight result')) })
+      await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent)
+        .toContain('Fresh after in-flight change'))
+    })
+
+    expect(host.querySelector('.plan-reference__preview')?.textContent).not.toContain('Stale in-flight result')
+    expect(resolveCalls).toBe(2)
+  })
+
+  it('recovers an initial resolve invalidated by an unrelated plan change without refreshing found embeds', async () => {
+    let rejectFirstResolve: (error: Error) => void = () => {}
+    let resolveCalls = 0
+    const invalidated = new Promise<{ ok: true; data: PlanReferenceResolution }>((_resolve, reject) => {
+      rejectFirstResolve = reject
+    })
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel !== 'plan-reference:resolve') throw new Error(`Unexpected channel: ${channel}`)
+      resolveCalls += 1
+      if (resolveCalls === 1) return invalidated
+      return { ok: true, data: found(targetComponent('Loaded after unrelated change')) }
+    })
+    await renderCard(reference('source-ref-initial-unrelated-change', 'embed', TARGET_COMPONENT_ID))
+    await vi.waitFor(() => expect(resolveCalls).toBe(1))
+
+    await act(async () => {
+      eventCallbacks.get('trace:plan-changed')?.({ path: 'Unrelated' })
+      rejectFirstResolve(new Error('Plan revision changed during scan'))
+      await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent)
+        .toContain('Loaded after unrelated change'))
+    })
+    expect(resolveCalls).toBe(2)
+
+    await act(async () => {
+      eventCallbacks.get('trace:plan-changed')?.({ path: 'Unrelated again' })
+      await Promise.resolve()
+    })
+    expect(resolveCalls).toBe(2)
   })
 
   it('re-resolves a moved target by stable IDs and refreshes later saves at its new path', async () => {
@@ -240,12 +323,12 @@ describe('PlanReferenceCard', () => {
 
     await act(async () => {
       targetPath = RENAMED_TARGET_PATH
-      eventCallbacks.get('trace:plan-changed')?.({ path: RENAMED_TARGET_PATH })
+      eventCallbacks.get('trace:reference-target-changed')?.({ plan_ids: [TARGET_PLAN_ID] })
       await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('After move'))
     })
 
     await act(async () => {
-      eventCallbacks.get('trace:plan-changed')?.({ path: RENAMED_TARGET_PATH })
+      eventCallbacks.get('trace:reference-target-changed')?.({ plan_ids: [TARGET_PLAN_ID] })
       await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('After later save'))
     })
 

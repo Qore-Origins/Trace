@@ -13,6 +13,7 @@ const PLAN_REFERENCE_CHANNELS = new Set<string>([
 ])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
+  'trace:reference-target-changed',
   'trace:save-status',
   'trace:fs-external-change',
   'trace:index-status',

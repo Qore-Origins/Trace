@@ -67,13 +67,31 @@ describe('PlanReferenceService', () => {
     expect(before).not.toContain('plan_id')
   })
 
+  it('announces a newly assigned stable target ID after the generic save invalidation', async () => {
+    await plan('Legacy')
+    const eventOrder: string[] = []
+    const offPlan = bus.on('trace:plan-changed', () => eventOrder.push('plan'))
+    const offTarget = bus.on('trace:reference-target-changed', (event) => {
+      eventOrder.push(`target:${event.plan_ids.join(',')}`)
+    })
+    try {
+      const target = await service.commitTarget({ library_id: libraryId, path: 'Legacy', mode: 'link' })
+      expect(eventOrder).toEqual(['plan', `target:${target.plan_id}`])
+    } finally {
+      offPlan()
+      offTarget()
+    }
+  })
+
   it('resolves the same target after rename and move, and reports missing plan or component', async () => {
     await plan('A', document([note()], fixedPlanId))
     expect(await service.resolve({ library_id: libraryId, plan_id: fixedPlanId, component_id: NOTE_ID }))
       .toMatchObject({ status: 'found', target: { path: 'A', component_id: NOTE_ID } })
     await fs.rename(join(root as string, 'A'), join(root as string, 'Renamed'))
+    bus.emit('trace:plan-changed', { path: 'Renamed' })
     await fs.mkdir(join(root as string, 'Group'))
     await fs.rename(join(root as string, 'Renamed'), join(root as string, 'Group', 'Renamed'))
+    bus.emit('trace:plan-changed', { path: 'Group/Renamed' })
     expect(await service.resolve({ library_id: libraryId, plan_id: fixedPlanId, component_id: NOTE_ID }))
       .toMatchObject({ status: 'found', target: { path: 'Group/Renamed', component_id: NOTE_ID } })
     expect(await service.resolve({ library_id: libraryId, plan_id: fixedPlanId, component_id: otherId }))
@@ -96,6 +114,7 @@ describe('PlanReferenceService', () => {
     await expect(service.commitTarget({ library_id: libraryId, path: 'A', component_id: otherId, mode: 'embed' }))
       .rejects.toMatchObject({ code: ERR.VALIDATION })
     await plan('A', document([note(), note()], fixedPlanId))
+    bus.emit('trace:plan-changed', { path: 'A' })
     expect((await service.search({ library_id: libraryId, query: 'A' })).targets
       .some((candidate) => candidate.component_id === NOTE_ID)).toBe(false)
     expect(await service.resolve({ library_id: libraryId, plan_id: fixedPlanId, component_id: NOTE_ID }))
@@ -108,6 +127,85 @@ describe('PlanReferenceService', () => {
     expect(await service.resolve({ library_id: libraryId, plan_id: fixedPlanId })).toEqual({ status: 'conflict' })
     await expect(service.commitTarget({ library_id: libraryId, path: 'A', mode: 'link' }))
       .rejects.toMatchObject({ code: ERR.CONFLICT })
+  })
+
+  it('shares one safe library scan across concurrent resolves and preserves duplicate-ID conflicts', async () => {
+    await plan('TargetA', document([note()], fixedPlanId))
+    await plan('TargetB', document([note(otherId)], fixedPlanId))
+    await plan('TargetC', document([note()], otherId))
+    const listPlanDirs = vi.spyOn(repo, 'listPlanDirs')
+    const readPlan = vi.spyOn(repo, 'readPlan')
+
+    const results = await Promise.all([
+      service.resolve({ library_id: libraryId, plan_id: fixedPlanId }),
+      service.resolve({ library_id: libraryId, plan_id: fixedPlanId }),
+      service.resolve({ library_id: libraryId, plan_id: otherId })
+    ])
+
+    expect(results).toEqual([{ status: 'conflict' }, { status: 'conflict' }, {
+      status: 'found', target: expect.objectContaining({ plan_id: otherId, path: 'TargetC' })
+    }])
+    expect(listPlanDirs).toHaveBeenCalledTimes(4)
+    expect(readPlan).toHaveBeenCalledTimes(3)
+
+    await expect(service.resolve({ library_id: libraryId, plan_id: otherId })).resolves.toMatchObject({ status: 'found' })
+    expect(listPlanDirs).toHaveBeenCalledTimes(4)
+    expect(readPlan).toHaveBeenCalledTimes(3)
+
+    bus.emit('trace:plan-changed', { path: 'TargetC' })
+    await expect(service.resolve({ library_id: libraryId, plan_id: otherId })).resolves.toMatchObject({ status: 'found' })
+    expect(listPlanDirs).toHaveBeenCalledTimes(8)
+    expect(readPlan).toHaveBeenCalledTimes(6)
+  })
+
+  it('rejects an in-flight scan after a plan revision and never caches that stale result', async () => {
+    await plan('First', document([note()], fixedPlanId))
+    let releaseScan: () => void = () => {}
+    let signalScan: () => void = () => {}
+    const held = new Promise<void>((resolve) => { releaseScan = resolve })
+    const started = new Promise<void>((resolve) => { signalScan = resolve })
+    const originalListPlanDirs = repo.listPlanDirs.bind(repo)
+    let holdNextRootScan = true
+    vi.spyOn(repo, 'listPlanDirs').mockImplementation(async (libraryRoot, path) => {
+      if (holdNextRootScan && path === '') {
+        holdNextRootScan = false
+        signalScan()
+        await held
+      }
+      return originalListPlanDirs(libraryRoot, path)
+    })
+
+    const pending = service.resolve({ library_id: libraryId, plan_id: fixedPlanId })
+    await started
+    bus.emit('trace:plan-changed', { path: 'First' })
+    releaseScan()
+    await expect(pending).rejects.toMatchObject({ code: ERR.CONFLICT })
+
+    await plan('Duplicate', document([note(otherId)], fixedPlanId))
+    bus.emit('trace:plan-changed', { path: 'Duplicate' })
+    await expect(service.resolve({ library_id: libraryId, plan_id: fixedPlanId })).resolves.toEqual({ status: 'conflict' })
+  })
+
+  it('does not report ID assignment as failed after an unrelated event arrives during its atomic write', async () => {
+    await plan('Target')
+    service.dispose()
+    let shouldNotify = true
+    const targetFile = join(root as string, 'Target', 'plan.json')
+    repo = new PlanRepository({
+      renameFn: async (from, to) => {
+        await fs.rename(from, to)
+        if (shouldNotify && to === targetFile) {
+          shouldNotify = false
+          bus.emit('trace:plan-changed', { path: 'Unrelated' })
+        }
+      }
+    })
+    service = new PlanReferenceService(repo, () => root)
+    service.activateRoot(root as string)
+
+    await expect(service.commitTarget({ library_id: libraryId, path: 'Target', mode: 'link' }))
+      .resolves.toMatchObject({ path: 'Target', plan_id: expect.stringMatching(/^[0-9a-f]{32}$/) })
+    expect((await repo.readPlan(root as string, 'Target')).plan_id).toMatch(/^[0-9a-f]{32}$/)
   })
 
   it('continues past malformed plans while rejecting external directory and plan-file links', async () => {
