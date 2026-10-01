@@ -67,13 +67,7 @@ export class AppService {
     const releaseSwitch = await this.rootSwitch?.beginRootSwitch()
     try {
       await this.repo.ensureLibraryRoot(abs)
-      try {
-        await this.config.setRootDir(abs)
-      } catch (error) {
-        // ConfigService changes its memory cache before disk persistence; restore the active root.
-        if (currentRoot !== null) await this.config.setRootDir(currentRoot).catch(() => {})
-        throw error
-      }
+      await this.config.setRootDir(abs)
       this.storage.setRoot(abs)
       this.onRootChanged(abs)
       return { rootDir: abs }

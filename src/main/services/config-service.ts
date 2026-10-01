@@ -49,9 +49,16 @@ export class ConfigService {
   }
 
   async setRootDir(dirAbs: string): Promise<void> {
-    const config = await this.load()
-    config.root_dir = dirAbs
-    await this.repo.writeAppJson(this.configFile(), config)
+    const previous = await this.load()
+    const next = { ...previous, root_dir: dirAbs }
+    try {
+      await this.repo.writeAppJson(this.configFile(), next)
+    } catch (error) {
+      // The writer can fail after replacing the file; restore the previous persisted root if possible.
+      await this.repo.writeAppJson(this.configFile(), previous).catch(() => {})
+      throw error
+    }
+    this.cache = next
   }
 
   async getWindowState(): Promise<WindowState> {

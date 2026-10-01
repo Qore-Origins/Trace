@@ -129,4 +129,30 @@ describe('AppService reference commit handoff', () => {
     expect(await referenceService.commitTarget({ library_id: firstMeta.library_id, path: 'Target', mode: 'link' }))
       .toMatchObject({ path: 'Target' })
   })
+
+  it('does not activate a first root after config failure and accepts a retry', async () => {
+    const first = await fs.mkdtemp(join(tmpdir(), 'trace-app-first-failed-'))
+    const retry = await fs.mkdtemp(join(tmpdir(), 'trace-app-first-retry-'))
+    const userData = await fs.mkdtemp(join(tmpdir(), 'trace-app-first-config-'))
+    roots.push(first, retry, userData)
+    const repo = new PlanRepository()
+    const config = new ConfigService(userData, repo)
+    const storage = new StorageService(repo)
+    referenceService = new PlanReferenceService(repo, () => storage.getRootAbs())
+    const onRootChanged = vi.fn((root: string) => referenceService?.activateRoot(root))
+    const appService = new AppService(config, repo, storage, onRootChanged,
+      () => 'ready', referenceService)
+    vi.spyOn(repo, 'writeAppJson').mockRejectedValueOnce(new Error('config write failed'))
+
+    await expect(appService.setRootDir(first, false)).rejects.toThrow('config write failed')
+    expect(config.getRootDir()).toBeNull()
+    expect(await appService.getAppInfo()).toMatchObject({ rootDir: null, rootConfigured: false })
+    expect(storage.getRootAbs()).toBeNull()
+    expect(onRootChanged).not.toHaveBeenCalled()
+
+    await expect(appService.setRootDir(retry, false)).resolves.toEqual({ rootDir: retry })
+    expect(config.getRootDir()).toBe(retry)
+    expect(storage.getRootAbs()).toBe(retry)
+    expect(onRootChanged).toHaveBeenCalledExactlyOnceWith(retry)
+  })
 })
