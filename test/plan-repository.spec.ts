@@ -85,6 +85,13 @@ describe('writePlanAtomic + readPlan', () => {
     await expect(repo.readPlan(root, '坏扩展')).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })
   })
 
+  it('rejects a null component in the document array', async () => {
+    const doc = sampleDoc()
+    await fs.mkdir(join(root, '空组件'))
+    await fs.writeFile(join(root, '空组件', 'plan.json'), JSON.stringify({ ...doc, components: [null] }))
+    await expect(repo.readPlan(root, '空组件')).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })
+  })
+
   it('keeps siblings readable and malformed remark data intact through read and save', async () => {
     const doc = sampleDoc()
     const components = [

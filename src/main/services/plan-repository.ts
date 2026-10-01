@@ -117,8 +117,9 @@ export class PlanRepository {
     }
     try {
       const doc = JSON.parse(raw) as PlanDocument
-      // 组件扩展字段只影响该组件；保留畸形 remark 原文，避免阻断同计划其他组件。
-      if (doc.format_version !== '1' || !Array.isArray(doc.components) || !isPlanId(doc.plan_id)) {
+      // 保留畸形 remark 原文；组件本身仍须是对象，避免后续读取 type 时崩溃。
+      if (doc.format_version !== '1' || !Array.isArray(doc.components) || !isPlanId(doc.plan_id) ||
+        doc.components.some((component) => typeof component !== 'object' || component === null)) {
         throw new Error('shape')
       }
       return doc
