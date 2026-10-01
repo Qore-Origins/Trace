@@ -1,5 +1,5 @@
 // TransferService 测试：.plan roundtrip / 冲突改名 / zip 穿越防护 / MD 迁入解析
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -126,6 +126,52 @@ describe('.plan 导出/导入 roundtrip', () => {
 })
 
 describe('Markdown 迁入', () => {
+  it('invalidates reference search once when a same-level import fails after a plan was written', async () => {
+    const firstPath = 'Daily_Plan/20261001-Partial first'
+    const references = new PlanReferenceService(repo, () => root)
+    references.activateRoot(root)
+    const libraryId = (await repo.readLibraryMeta(root)).library_id
+    await expect(references.search({ library_id: libraryId, query: 'Partial first' }))
+      .resolves.toEqual({ targets: [] })
+
+    const originalWritePlanAtomic = repo.writePlanAtomic.bind(repo)
+    let writeCount = 0
+    const writePlanSpy = vi.spyOn(repo, 'writePlanAtomic').mockImplementation(async (writeRoot, rel, document) => {
+      writeCount += 1
+      if (writeCount === 2) throw new Error('simulated second write failure')
+      await originalWritePlanAtomic(writeRoot, rel, document)
+    })
+    const changedPaths: string[] = []
+    const unsubscribe = bus.on('trace:plan-changed', ({ path }) => changedPaths.push(path))
+    try {
+      await expect(transfer.importMarkdown('', [
+        { name: 'Daily_Plan-20261001-Partial first.md', content: '# First plan' },
+        { name: 'Daily_Plan-20261002-Partial second.md', content: '# Second plan' }
+      ])).rejects.toThrow('simulated second write failure')
+
+      expect(writeCount).toBe(2)
+      await expect(storage.readPlan(firstPath)).resolves.toMatchObject({
+        components: expect.arrayContaining([
+          expect.objectContaining({ payload: expect.objectContaining({ title: 'Partial first' }) })
+        ])
+      })
+      const refreshedCandidates = await references.search({ library_id: libraryId, query: 'Partial first' })
+      expect(refreshedCandidates.targets.some((target) => target.path === firstPath)).toBe(true)
+      expect(changedPaths).toEqual(['Daily_Plan'])
+
+      changedPaths.length = 0
+      await transfer.importMarkdown('', [
+        { name: 'Daily_Plan-20261003-Complete first.md', content: '# First complete plan' },
+        { name: 'Daily_Plan-20261004-Complete second.md', content: '# Second complete plan' }
+      ])
+      expect(changedPaths).toEqual(['Daily_Plan'])
+    } finally {
+      unsubscribe()
+      writePlanSpy.mockRestore()
+      references.dispose()
+    }
+  })
+
   it('文件名解析：类型段含连字符 + 日期 + 标题', () => {
     expect(parseMdFileName('Long-Term_Plan-20260101-买房')).toEqual({ level: 'Long-Term_Plan', ymd: '20260101', title: '买房' })
     expect(parseMdFileName('随手记')).toBeNull()

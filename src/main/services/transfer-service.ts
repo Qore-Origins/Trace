@@ -214,18 +214,25 @@ export class TransferService {
     for (const [level, plans] of byLevel) {
       // 层级文件夹（顶层在 targetParent 下；无则创建）
       const levelPath = await this.ensureLevelFolder(targetParentRel, level)
-      for (const p of plans) {
-        const finalName = await this.uniqueName(levelPath, p.planName)
-        const rel = `${levelPath}/${finalName}`
-        const root = this.getRoot()
-        await fs.mkdir(join(root, rel), { recursive: true })
-        await this.repo.writePlanAtomic(root, rel, p.doc)
-        report.plans++
-        report.components += p.doc.components.length
-        report.imported.push({ path: rel, renamedFrom: finalName !== p.planName ? p.planName : undefined })
+      let planWriteAttempted = false
+      try {
+        for (const p of plans) {
+          const finalName = await this.uniqueName(levelPath, p.planName)
+          const rel = `${levelPath}/${finalName}`
+          const root = this.getRoot()
+          planWriteAttempted = true
+          await fs.mkdir(join(root, rel), { recursive: true })
+          await this.repo.writePlanAtomic(root, rel, p.doc)
+          report.plans++
+          report.components += p.doc.components.length
+          report.imported.push({ path: rel, renamedFrom: finalName !== p.planName ? p.planName : undefined })
+        }
+      } finally {
+        if (planWriteAttempted) {
+          this.treeCache.invalidatePrefix(levelPath)
+          bus.emit('trace:plan-changed', { path: levelPath })
+        }
       }
-      this.treeCache.invalidatePrefix(levelPath)
-      bus.emit('trace:plan-changed', { path: levelPath })
     }
     return report
   }
