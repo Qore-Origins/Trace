@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import type { PlanDocument, PlanLibraryMeta } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { uuid32 } from '../../shared/validation'
+import { isPlanId } from '../../shared/plan-reference-validation'
 
 const LIB_DIR = '.trace'
 const LIB_FILE = 'plan-library.json'
@@ -116,7 +117,9 @@ export class PlanRepository {
     }
     try {
       const doc = JSON.parse(raw) as PlanDocument
-      if (doc.format_version !== '1' || !Array.isArray(doc.components)) {
+      if (doc.format_version !== '1' || !Array.isArray(doc.components) || !isPlanId(doc.plan_id) ||
+        doc.components.some((component) => typeof component !== 'object' || component === null ||
+          ('remark' in component && component.remark !== undefined && typeof component.remark !== 'string'))) {
         throw new Error('shape')
       }
       return doc

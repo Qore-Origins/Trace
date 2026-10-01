@@ -40,6 +40,52 @@ describe('ensureLibraryRoot', () => {
 })
 
 describe('writePlanAtomic + readPlan', () => {
+  it('round-trips legacy plans and new optional reference fields without dropping them', async () => {
+    const legacy = sampleDoc()
+    await repo.writePlanAtomic(root, '旧计划', legacy)
+    expect(await repo.readPlan(root, '旧计划')).not.toHaveProperty('plan_id')
+
+    const doc: PlanDocument = {
+      ...sampleDoc(),
+      plan_id: '0123456789abcdef0123456789abcdef',
+      components: [{
+        id: 'abcdef0123456789abcdef0123456789',
+        type: 'plan_reference',
+        remark: 'local remark',
+        payload: {
+          mode: 'link', target_plan_id: 'fedcba9876543210fedcba9876543210',
+          target_path_snapshot: 'Old/Path', target_name_snapshot: 'Custom label'
+        }
+      }]
+    }
+    await repo.writePlanAtomic(root, '新计划', doc)
+    const read = await repo.readPlan(root, '新计划')
+    expect(read.plan_id).toBe(doc.plan_id)
+    expect(read.components[0]).toEqual(doc.components[0])
+    expect(structuredClone(JSON.parse(JSON.stringify(read))).components[0]).toEqual(doc.components[0])
+  })
+
+  it('keeps malformed references local and preserves their raw payload on save', async () => {
+    const doc = sampleDoc()
+    doc.components = [
+      { id: '1', type: 'note', payload: { content: 'sibling', created_at: doc.created_at } },
+      { id: '2', type: 'plan_reference', payload: { mode: 'unknown', target_plan_id: 'bad', target_path_snapshot: '', target_name_snapshot: '' } }
+    ] as unknown as PlanDocument['components']
+    await repo.writePlanAtomic(root, '坏引用', doc)
+    const read = await repo.readPlan(root, '坏引用')
+    expect(read.components).toEqual(doc.components)
+    await repo.writePlanAtomic(root, '坏引用', read)
+    expect((await repo.readPlan(root, '坏引用')).components).toEqual(doc.components)
+  })
+
+  it('rejects invalid shapes of new plan and remark fields', async () => {
+    const doc = sampleDoc()
+    await fs.mkdir(join(root, '坏扩展'))
+    await fs.writeFile(join(root, '坏扩展', 'plan.json'), JSON.stringify({ ...doc, plan_id: 17 }))
+    await expect(repo.readPlan(root, '坏扩展')).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })
+    await fs.writeFile(join(root, '坏扩展', 'plan.json'), JSON.stringify({ ...doc, components: [{ id: '1', type: 'note', remark: 17, payload: {} }] }))
+    await expect(repo.readPlan(root, '坏扩展')).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })
+  })
   it('写入后可读回且无临时文件残留', async () => {
     await repo.ensureLibraryRoot(root)
     await repo.writePlanAtomic(root, '计划A', sampleDoc())

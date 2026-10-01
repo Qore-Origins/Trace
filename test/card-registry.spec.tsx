@@ -15,12 +15,14 @@ describe('card registry', () => {
       'note',
       'mood',
       'heading',
-      'custom'
+      'custom',
+      'plan_reference'
     ]
 
     expect(Object.keys(registry)).toEqual(persistedTypes)
     expect((registry.note as unknown as { type: CardRenderer }).type).toBe(noteRenderer)
     expect((registry.custom as unknown as { type: CardRenderer }).type).toBe(FallbackBlock)
+    expect((registry.plan_reference as unknown as { type: CardRenderer }).type).toBe(FallbackBlock)
   })
 
   it('routes runtime-unknown component types to the fallback renderer', () => {

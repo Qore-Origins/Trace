@@ -1,12 +1,15 @@
 // 存储契约 v1 类型（唯一事实源：docs/lifecycle/02-系统设计 Design/数据库设计说明书 DB Design.md §5.2）
 // 双进程共享：主进程读写、渲染器类型校验均引用本文件
 
-export type ComponentType = 'single_plan' | 'multi_plan' | 'task_list' | 'task_detail' | 'note' | 'mood' | 'heading' | 'custom'
+import type { PlanReferencePayload } from './plan-reference-types'
+
+export type ComponentType = 'single_plan' | 'multi_plan' | 'task_list' | 'task_detail' | 'note' | 'mood' | 'heading' | 'custom' | 'plan_reference'
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'done'
 
 export interface PlanDocument {
   format_version: '1'
+  plan_id?: string // 首次成为引用目标时按需分配
   created_at: string // ISO 8601 UTC
   updated_at: string // 每次原子写更新；savePlan CAS 锚点
   components: Component[] // 渲染顺序 = 数组顺序
@@ -27,6 +30,7 @@ export interface Component {
   id: string // uuid32
   type: ComponentType
   payload: ComponentPayload
+  remark?: string // Markdown 备注；旧组件无此字段
 }
 
 export interface SinglePlanPayload {
@@ -104,6 +108,7 @@ export type ComponentPayload =
   | MoodPayload
   | HeadingPayload
   | CustomPayload
+  | PlanReferencePayload
 
 // 日记根目录名（BR-007；ASCII 保路径安全，显示名走 i18n——main 与 renderer 单点共享）
 export const DIARY_DIR = 'Diary'

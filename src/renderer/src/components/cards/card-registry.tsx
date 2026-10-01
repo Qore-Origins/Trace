@@ -21,7 +21,8 @@ export function createCardRegistry(noteRenderer: CardRenderer): CardRegistry {
     note: memo(noteRenderer),
     mood: memo(MoodCard),
     heading: memo(HeadingCard),
-    custom: memo(FallbackBlock)
+    custom: memo(FallbackBlock),
+    plan_reference: memo(FallbackBlock)
   }
 }
 

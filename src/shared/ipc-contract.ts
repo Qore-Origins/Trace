@@ -4,6 +4,8 @@ import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
 import type { WorkspaceTabsState } from './workspace-tabs-types'
+// 引用数据通过现有 storage:readPlan/savePlan 合约往返；独立引用 IPC 留待服务层实现。
+export type { PlanReferenceMode, PlanReferencePayload, PlanReferenceTarget } from './plan-reference-types'
 
 // ---------- 统一响应信封 ----------
 
