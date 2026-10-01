@@ -180,13 +180,19 @@ export function registerIpc(deps: Deps): () => void {
   reg('storage:treeGetChildren', (p) => storage.treeGetChildren(p.parent_path))
   reg('storage:createPlan', (p) => storage.createPlan(p.parent_path, p.name))
   reg('storage:createFolder', (p) => storage.createFolder(p.parent_path, p.name))
-  reg('storage:renamePlan', (p) => storage.renamePlan(p.path, p.new_name))
-  reg('storage:deletePlan', (p) => storage.deletePlan(p.path, p.confirmed).then(() => null))
+  reg('storage:renamePlan', async () => {
+    throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程重命名计划')
+  })
+  reg('storage:deletePlan', async () => {
+    throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除计划')
+  })
   reg('storage:movePlan', (p) => storage.movePlan(p.path, p.target_parent_path).then(() => null))
   reg('storage:readPlan', (p) => storage.readPlan(p.path))
   reg('storage:savePlan', (p) => storage.savePlan(p.path, p.document, p.expected_updated_at))
   reg('storage:appendComponent', (p) => storage.appendComponent(p.path, p.component).then(() => null))
-  reg('storage:removeComponent', (p) => storage.removeComponent(p.path, p.component_id).then(() => null))
+  reg('storage:removeComponent', async () => {
+    throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除组件')
+  })
   reg('storage:moveComponent', (p) => storage.moveComponent(p.path, p.component_id, p.target_index).then(() => null))
   reg('storage:updateTask', (p) => storage.updateTask(p.path, p.component_id, p.task_id, p.patch).then(() => null))
 
@@ -239,6 +245,8 @@ export function registerIpc(deps: Deps): () => void {
     referenceService().commitTarget(referenceRequest(payload, ['library_id', 'path', 'component_id', 'mode'])))
   reg('plan-reference:inbound', (payload) =>
     referenceService().inbound(referenceRequest(payload, ['library_id', 'plan_id', 'component_id'])))
+  reg('plan-reference:previewImpact', (payload) => referenceService().previewImpact(payload))
+  reg('plan-reference:commitImpact', (payload) => referenceService().commitImpact(payload, storage))
 
   // ---------- window（无边框自绘控制） ----------
   reg('window:minimize', () => {

@@ -9,7 +9,8 @@ const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getSt
 const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-template:set', 'plan-template:remove'])
 const WORKSPACE_TABS_CHANNELS = new Set<string>(['workspace-tabs:get', 'workspace-tabs:set'])
 const PLAN_REFERENCE_CHANNELS = new Set<string>([
-  'plan-reference:search', 'plan-reference:resolve', 'plan-reference:commitTarget', 'plan-reference:inbound'
+  'plan-reference:search', 'plan-reference:resolve', 'plan-reference:commitTarget', 'plan-reference:inbound',
+  'plan-reference:previewImpact', 'plan-reference:commitImpact'
 ])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',

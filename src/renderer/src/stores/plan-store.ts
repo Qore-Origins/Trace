@@ -1,5 +1,6 @@
 // planStore：当前计划文档 + 渲染即编辑（防抖保存 + CAS 冲突处理）
 import { getMessage, getModal } from '../antd-host'
+import { useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
 
@@ -8,6 +9,8 @@ import { validateDueDate } from '@shared/validation'
 import { ERR } from '@shared/errors'
 import { i18n } from '../i18n'
 import { markTrace, startTraceMeasure } from '../perf/marks'
+import { requestReferenceImpactDecision } from '../components/ReferenceImpactDialog'
+import { useWorkspaceTabsStore } from './workspace-tabs-store'
 
 export type SaveState = 'idle' | 'editing' | 'saved' | 'error'
 
@@ -32,6 +35,8 @@ interface PlanState {
   // 计划截止日期：赋值 ''/undefined 时删键（同 mutate 防抖保存路径）
   setDueDate: (due?: string) => void
   flush: () => Promise<boolean>
+  renameComponent: (componentId: string, title: string) => Promise<boolean>
+  removeComponentWithImpact: (componentId: string) => Promise<boolean>
   beginPathMove: (oldPrefix: string) => boolean
   finishPathMove: (oldPrefix: string, newPrefix: string | null) => void
 }
@@ -209,6 +214,66 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     }
   },
 
+  renameComponent: async (componentId, title) => {
+    const source = get()
+    if (!source.currentPath || !source.document) return false
+    const original = source.document.components.find((entry) => entry.id === componentId)
+    if (!original || !['single_plan', 'multi_plan', 'task_list', 'task_detail', 'heading'].includes(original.type)) return false
+    const oldTitle = (original.payload as { title: string }).title
+    if (oldTitle === title) return true
+    if (!(await get().flush())) return false
+    const current = get()
+    if (current.currentPath !== source.currentPath) return false
+    const libraryId = useWorkspaceTabsStore.getState().library_id
+    if (!libraryId) return false
+    try {
+      const preview = await invoke('plan-reference:previewImpact', {
+        library_id: libraryId, operation: 'rename-component', path: source.currentPath,
+        component_id: componentId, new_title: title, expected_updated_at: current.serverUpdatedAt,
+        locale: i18n.language === 'en-US' ? 'en-US' : 'zh-CN'
+      })
+      const choice = await requestReferenceImpactDecision(preview, libraryId)
+      if (!choice || !('rename_action' in choice)) return false
+      if (!(await get().flush())) return false
+      await invoke('plan-reference:commitImpact', {
+        library_id: libraryId, preview, rename_action: choice.rename_action
+      })
+      if (get().currentPath === source.currentPath) await get().open(source.currentPath, true)
+      return true
+    } catch (error) {
+      getMessage().warning(error instanceof ClientError ? error.message : i18n.t('references.impactStale'))
+      return false
+    }
+  },
+
+  removeComponentWithImpact: async (componentId) => {
+    const source = get()
+    if (!source.currentPath || !source.document) return false
+    if (!(await get().flush())) return false
+    const current = get()
+    if (current.currentPath !== source.currentPath) return false
+    const libraryId = useWorkspaceTabsStore.getState().library_id
+    if (!libraryId) return false
+    try {
+      const preview = await invoke('plan-reference:previewImpact', {
+        library_id: libraryId, operation: 'delete-component', path: source.currentPath,
+        component_id: componentId, expected_updated_at: current.serverUpdatedAt,
+        locale: i18n.language === 'en-US' ? 'en-US' : 'zh-CN'
+      })
+      const choice = await requestReferenceImpactDecision(preview, libraryId)
+      if (!choice || !('decisions' in choice)) return false
+      if (!(await get().flush())) return false
+      await invoke('plan-reference:commitImpact', {
+        library_id: libraryId, preview, decisions: choice.decisions
+      })
+      if (get().currentPath === source.currentPath) await get().open(source.currentPath, true)
+      return true
+    } catch (error) {
+      getMessage().warning(error instanceof ClientError ? error.message : i18n.t('references.impactStale'))
+      return false
+    }
+  },
+
   beginPathMove: (oldPrefix) => {
     const currentPath = get().currentPath
     if (!currentPath || (currentPath !== oldPrefix && !currentPath.startsWith(`${oldPrefix}/`)) || pathMove) return false
@@ -327,6 +392,31 @@ export function usePlanMutations() {
   }
 }
 
+export function useReferenceAwareTitle(component: Component): {
+  value: string
+  setValue: (value: string) => void
+  commit: () => Promise<void>
+} {
+  const sourceTitle = (component.payload as { title: string }).title
+  const [value, setValue] = useState(sourceTitle)
+  const [dirty, setDirty] = useState(false)
+  const committing = useRef(false)
+  const rename = usePlanStore((state) => state.renameComponent)
+  useEffect(() => {
+    if (!dirty) setValue(sourceTitle)
+  }, [dirty, sourceTitle])
+  const commit = async (): Promise<void> => {
+    if (committing.current || !dirty) return
+    committing.current = true
+    try {
+      if (await rename(component.id, value)) setDirty(false)
+    } finally {
+      committing.current = false
+    }
+  }
+  return { value, setValue: (next) => { setValue(next); setDirty(true) }, commit }
+}
+
 // 事件订阅：保存状态回执 / 计划被外部或他处修改
 export function subscribePlanEvents(): () => void {
   const off1 = onEvent('trace:save-status', (p) => {
@@ -337,6 +427,8 @@ export function subscribePlanEvents(): () => void {
   })
   const off2 = onEvent('trace:plan-changed', (p) => {
     const s = usePlanStore.getState()
+    if (pathMove?.session === sessionRevision &&
+      (p.path === pathMove.oldPrefix || p.path.startsWith(`${pathMove.oldPrefix}/`))) return
     if (s.currentPath === p.path && s.saveState === 'idle') {
       // 非本端编辑引起的变更（如 IPC 直改）：静默重拉
       void s.open(p.path, true)

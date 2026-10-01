@@ -186,13 +186,14 @@ export class StorageService {
     return { path, name, has_children: false, order: Number.MAX_SAFE_INTEGER, kind: 'plan' }
   }
 
-  async renamePlan(pathRel: string, newName: string): Promise<{ path: string }> {
+  async renamePlan(pathRel: string, newName: string, expectedUpdatedAt?: string): Promise<{ path: string }> {
     validatePlanName(newName)
     const rel = this.safe(pathRel)
     if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录不可重命名')
     const root = this.root()
     const parent = parentRel(rel)
     const oldName = rel.slice(rel.lastIndexOf('/') + 1)
+    if (expectedUpdatedAt !== undefined) await this.assertPlanRevision(root, rel, expectedUpdatedAt)
 
     const siblings = await this.repo.listPlanDirs(root, parent)
     if (siblings.includes(newName) && newName !== oldName) {
@@ -209,7 +210,7 @@ export class StorageService {
     return { path: newPath }
   }
 
-  async deletePlan(pathRel: string, confirmed: boolean): Promise<void> {
+  async deletePlan(pathRel: string, confirmed: boolean, expectedUpdatedAt?: string): Promise<void> {
     if (confirmed !== true) throw new TraceError(ERR.CONFIRMATION_REQUIRED, '危险操作需确认后执行')
     const rel = this.safe(pathRel)
     if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录不可删除')
@@ -217,6 +218,7 @@ export class StorageService {
     if (!(await this.repo.existsDir(root, rel))) {
       throw new TraceError(ERR.PATH_NOT_FOUND, '目标位置不存在（可能已被移动或删除）')
     }
+    if (expectedUpdatedAt !== undefined) await this.assertPlanRevision(root, rel, expectedUpdatedAt)
     const affectedPlanIds = await this.collectSubtreePlanIds(root, rel)
     await this.repo.rmRecursive(root, rel)
     this.treeCache.invalidatePrefix(rel)
@@ -256,6 +258,15 @@ export class StorageService {
 
   async readPlan(pathRel: string): Promise<PlanDocument> {
     return this.repo.readPlan(this.root(), this.safe(pathRel))
+  }
+
+  private async assertPlanRevision(root: string, rel: string, expectedUpdatedAt: string): Promise<void> {
+    const file = resolveWithin(root, `${rel}/plan.json`).abs
+    await assertRealPathWithinRoot(root, file)
+    const current = await this.repo.readPlan(root, rel)
+    if (current.updated_at !== expectedUpdatedAt) {
+      throw new TraceError(ERR.CONFLICT, '目标计划已变化，请重新预览确认')
+    }
   }
 
   async savePlan(pathRel: string, document: PlanDocument, expectedUpdatedAt: string): Promise<{ updated_at: string }> {

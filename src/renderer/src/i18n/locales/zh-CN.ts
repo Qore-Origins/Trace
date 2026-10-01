@@ -189,6 +189,17 @@ const zhCN = {
     dueDateOverdue: '已过期'
   },
   references: {
+    impactTitle: '关联影响',
+    impactDescription: '有 {{count}} 条仍会保留的关联受到影响，请确认处理方式。',
+    impactChoice: '关联处理方式',
+    impactUpdate: '更新关联显示',
+    impactKeepDisplay: '保留原显示',
+    impactReplace: '选择替代目标',
+    impactKeepBroken: '保留失效引用',
+    impactReplacement: '替代目标',
+    impactConfirm: '确认并继续',
+    impactChooseAll: '请为每条关联选择处理方式和替代目标。',
+    impactStale: '关联影响已变化，请重新预览后再试。',
     pickerTitle: '插入计划引用',
     searchLabel: '搜索计划和组件',
     searchPlaceholder: '按计划或组件名称搜索…',

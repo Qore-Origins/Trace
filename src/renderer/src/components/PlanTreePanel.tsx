@@ -446,7 +446,8 @@ export default function PlanTreePanel(): React.JSX.Element {
   // 收拢中路径（延迟卸载）：状态已翻转但组保留播完收牌动画；中途再点=取消回弹
   const [closingPaths, setClosingPaths] = useState<Set<string>>(() => new Set())
   const closeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
-  const removeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const removeTimers = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; abort: () => void }>())
+  const pendingRemovals = useRef(new Set<string>())
   // 删除中路径（行槽平滑收拢后真删——2026-09-10 用户反馈：删除此前瞬间消失）
   const [removingPaths, setRemovingPaths] = useState<Set<string>>(() => new Set())
   useEffect(() => {
@@ -454,7 +455,7 @@ export default function PlanTreePanel(): React.JSX.Element {
     const rTimers = removeTimers.current
     return () => {
       timers.forEach((t) => clearTimeout(t)) // 卸载清残留
-      rTimers.forEach((t) => clearTimeout(t))
+      rTimers.forEach(({ timer, abort }) => { clearTimeout(timer); abort() })
     }
   }, [])
 
@@ -536,28 +537,38 @@ export default function PlanTreePanel(): React.JSX.Element {
   // 动画完执行真删除。此前版本复用 closingPaths 失败：被删行所在父组波次表为 null，
   // 其 Slot 的 closing 恒 false（首版"没看到动画"的根因，2026-09-10）
   const removeWithAnimation = useCallback((path: string): void => {
-    if (removeTimers.current.has(path)) return
+    if (pendingRemovals.current.has(path)) return
+    pendingRemovals.current.add(path)
     const rootDir = useAppStore.getState().rootDir
     const rows = Array.from(document.querySelectorAll<HTMLElement>('.tree-row'))
     const sameLevel = rows.filter(row => parentRel(row.dataset.path ?? '') === parentRel(path) && !isSelfOrDescendant(path, row.dataset.path ?? ''))
     const index = rows.findIndex(row => row.dataset.path === path)
     const next = sameLevel.find(row => rows.indexOf(row) > index) ?? sameLevel.at(-1)
-    setRemovingPaths((prev) => new Set(prev).add(path))
-    const total = Math.max(tokenMs('--t-gather', 260) + 60, 200)
-    const timer = setTimeout(() => {
-      removeTimers.current.delete(path)
-      setRemovingPaths((prev) => {
-        const n = new Set(prev)
-        n.delete(path)
-        return n
-      })
+    void removePlan(path, () => new Promise<void>((resolve, reject) => {
+      setRemovingPaths((prev) => new Set(prev).add(path))
+      const total = Math.max(tokenMs('--t-gather', 260) + 60, 200)
+      const clear = (): void => {
+        removeTimers.current.delete(path)
+        setRemovingPaths((previous) => {
+          const updated = new Set(previous)
+          updated.delete(path)
+          return updated
+        })
+      }
+      const timer = setTimeout(() => {
+        clear()
+        if (useAppStore.getState().rootDir !== rootDir) {
+          reject(new Error('plan library changed'))
+          return
+        }
+        resolve()
+      }, total)
+      removeTimers.current.set(path, { timer, abort: () => { clear(); reject(new Error('tree unmounted')) } })
+    })).then(() => {
       if (useAppStore.getState().rootDir !== rootDir) return
-      void removePlan(path).then(() => {
-        const target = next?.isConnected ? next : document.querySelector<HTMLElement>('.tree-scroll')
-        if (target) { target.tabIndex = -1; target.focus() }
-      })
-    }, total)
-    removeTimers.current.set(path, timer)
+      const target = next?.isConnected ? next : document.querySelector<HTMLElement>('.tree-scroll')
+      if (target) { target.tabIndex = -1; target.focus() }
+    }).catch(() => {}).finally(() => { pendingRemovals.current.delete(path) })
   }, [removePlan])
 
   // Delete 快捷键等面板外入口的动画删除请求（seq 变化即触发；同路径重复删除也生效）

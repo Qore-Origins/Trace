@@ -4,8 +4,14 @@ import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
 import type { WorkspaceTabsState } from './workspace-tabs-types'
-import type { PlanReferenceMode, PlanReferenceTarget } from './plan-reference-types'
-export type { PlanReferenceMode, PlanReferencePayload, PlanReferenceTarget } from './plan-reference-types'
+import type {
+  PlanReferenceMode, PlanReferenceTarget, ReferenceImpactCommit, ReferenceImpactPreview,
+  ReferenceImpactRequest
+} from './plan-reference-types'
+export type {
+  PlanReferenceMode, PlanReferencePayload, PlanReferenceTarget, ReferenceImpactCommit,
+  ReferenceImpactPreview, ReferenceImpactRequest, ReferenceImpactDecision, ReferenceImpactItem
+} from './plan-reference-types'
 
 // ---------- 统一响应信封 ----------
 
@@ -108,6 +114,7 @@ export interface Channels {
   'storage:treeGetChildren': { req: { parent_path: string }; res: PlanTreeNode[] }
   'storage:createPlan': { req: { parent_path: string; name: string }; res: PlanTreeNode }
   'storage:createFolder': { req: { parent_path: string; name: string }; res: PlanTreeNode }
+  // Legacy destructive channels remain typed for old callers, but main rejects them; use plan-reference impact channels.
   'storage:renamePlan': { req: { path: string; new_name: string }; res: { path: string } }
   'storage:deletePlan': { req: { path: string; confirmed: boolean }; res: null }
   'storage:movePlan': { req: { path: string; target_parent_path: string }; res: null }
@@ -144,6 +151,8 @@ export interface Channels {
     req: { library_id: string; plan_id: string; component_id?: string }
     res: { references: PlanReferenceInbound[] }
   }
+  'plan-reference:previewImpact': { req: ReferenceImpactRequest; res: ReferenceImpactPreview }
+  'plan-reference:commitImpact': { req: ReferenceImpactCommit; res: { path?: string } }
   // search（溯源检索）
   'search:query': { req: { keywords: string[] }; res: SearchHit[] }
   'search:getStatus': { req: void; res: { state: 'building' | 'ready' | 'error'; indexed: number } }

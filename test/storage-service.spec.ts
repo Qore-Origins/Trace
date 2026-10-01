@@ -155,6 +155,19 @@ describe('文件夹容器（folder，无 plan.json）', () => {
 })
 
 describe('renamePlan / deletePlan', () => {
+  it('keeps the target when a confirmed structural change uses a stale plan revision', async () => {
+    await service.createPlan('', 'Target')
+    const original = await service.readPlan('Target')
+    const latest = structuredClone(original)
+    latest.components.push({ id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', type: 'heading', payload: { title: 'New', size: 18 } })
+    await service.savePlan('Target', latest, original.updated_at)
+
+    await expect(service.renamePlan('Target', 'Renamed', original.updated_at))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(service.deletePlan('Target', true, original.updated_at))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    expect((await service.readPlan('Target')).components).toHaveLength(1)
+  })
   it('重命名同步磁盘', async () => {
     await service.createPlan('', '旧名')
     const r = await service.renamePlan('旧名', '新名')

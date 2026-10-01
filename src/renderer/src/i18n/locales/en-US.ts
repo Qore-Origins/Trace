@@ -192,6 +192,17 @@ const enUS: typeof zhCN = {
     dueDateOverdue: 'Overdue'
   },
   references: {
+    impactTitle: 'Reference impact',
+    impactDescription: '{{count}} surviving references are affected. Choose how to handle them.',
+    impactChoice: 'Reference action',
+    impactUpdate: 'Update displayed references',
+    impactKeepDisplay: 'Keep previous display',
+    impactReplace: 'Choose replacement',
+    impactKeepBroken: 'Keep broken reference',
+    impactReplacement: 'Replacement target',
+    impactConfirm: 'Confirm and continue',
+    impactChooseAll: 'Choose an action and replacement for every reference.',
+    impactStale: 'The affected references changed. Preview them again before retrying.',
     pickerTitle: 'Insert plan reference',
     searchLabel: 'Search plans and components',
     searchPlaceholder: 'Search by plan or component name…',
