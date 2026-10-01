@@ -89,12 +89,14 @@ describe('组件级计划编辑', () => {
 
   it('由注册表统一提供 memo 卡片，稳定属性不会重渲染无关卡片', () => {
     const NoteCard = (): React.JSX.Element => createElement('div')
-    const registry = createCardRegistry(NoteCard)
+    const PlanReferenceCard = (): React.JSX.Element => createElement('div')
+    const registry = createCardRegistry(NoteCard, PlanReferenceCard)
     const memoType = Symbol.for('react.memo')
 
     for (const renderer of Object.values(registry)) {
       expect((renderer as unknown as { $$typeof?: symbol }).$$typeof).toBe(memoType)
     }
+    expect((registry.plan_reference as unknown as { type?: unknown }).type).toBe(PlanReferenceCard)
   })
 
   it('保存中继续输入时保留 editing 状态并用新锚点保存最后一次输入', async () => {

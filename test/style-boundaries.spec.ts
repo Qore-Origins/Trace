@@ -18,7 +18,8 @@ describe('renderer style boundaries', () => {
       'diary.css',
       'memories.css',
       'plan-name-templates.css',
-      'plan-tabs.css'
+      'plan-tabs.css',
+      'plan-reference.css'
     ]
 
     for (const file of expectedImports) {

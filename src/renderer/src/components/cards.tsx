@@ -15,6 +15,7 @@ import { resolvePlantumlRenderConfig } from './muya-note/muya-config'
 import { NoteMarkdown } from './note-md'
 import { MuyaNoteEditor } from './muya-note/MuyaNoteEditor'
 import { CardShell } from './cards/CardShell'
+import { PlanReferenceCard } from './cards/PlanReferenceCard'
 import { createCardRegistry, resolveCardRenderer } from './cards/card-registry'
 
 export { scoreColor, scoreTextColor } from './cards/MoodCard'
@@ -132,7 +133,7 @@ function NoteCard({ comp, index, total }: { comp: Component; index: number; tota
   )
 }
 
-const CARD_REGISTRY = createCardRegistry(NoteCard)
+const CARD_REGISTRY = createCardRegistry(NoteCard, PlanReferenceCard)
 
 export function ComponentRenderer({ components, today }: { components: Component[]; today: Date }): React.JSX.Element {
   const { moveComponent } = usePlanMutations()

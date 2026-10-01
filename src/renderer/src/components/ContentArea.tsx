@@ -1,6 +1,6 @@
 // ContentArea（§2.2）：面包屑 + 组件序列 + 空态 + 外部变更提示 + 插入组件；文件夹=容器视图
 import { getMessage, getModal } from '../antd-host'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Dropdown, Empty, type MenuProps } from 'antd'
 import { CalendarOutlined, DeleteOutlined, FolderOutlined, PlusOutlined, ReadOutlined } from '@ant-design/icons'
 import { usePlanStore, usePlanMutations } from '../stores/plan-store'
@@ -9,6 +9,7 @@ import { useTreeStore } from '../stores/tree-store'
 import { useUiStore } from '../stores/ui-store'
 import { usePrefStore, type CustomPreset } from '../stores/pref-store'
 import { ComponentRenderer } from './cards'
+import { PlanReferencePicker, type PlanReferencePickerSource } from './PlanReferencePicker'
 import PlanTabs from './PlanTabs'
 import { uuid32 } from '@shared/validation'
 import { ERR, TraceError } from '@shared/errors'
@@ -61,12 +62,30 @@ export default function ContentArea(): React.JSX.Element {
   const { t } = useTranslation()
   const { currentPath: planPath, document: doc, externalAlert, open, setDueDate } = usePlanStore()
   const openPlan = useWorkspaceTabsStore((s) => s.openPlan)
+  const rootKey = useWorkspaceTabsStore((s) => s.rootKey)
+  const libraryId = useWorkspaceTabsStore((s) => s.library_id)
+  const sessionRevision = usePlanStore((s) => s.sessionRevision)
   const { appendComponent } = usePlanMutations()
   const { selectedPath, selectedKind, childrenMap, loaded, loadChildren } = useTreeStore()
   const currentPath = selectedKind === 'folder' ? selectedPath : planPath
   const customPresets = usePrefStore((s) => s.customPresets)
   const removePreset = usePrefStore((s) => s.removePreset)
+  const [referencePickerSource, setReferencePickerSource] = useState<PlanReferencePickerSource | null>(null)
+  const [referencePickerOpen, setReferencePickerOpen] = useState(false)
   const today = useMemo(() => new Date(), [doc?.updated_at])
+
+  const openReferencePicker = (): void => {
+    const plan = usePlanStore.getState()
+    const tabs = useWorkspaceTabsStore.getState()
+    if (!plan.currentPath || !plan.document || !tabs.rootKey || !tabs.library_id || tabs.active_path !== plan.currentPath) return
+    setReferencePickerSource({
+      path: plan.currentPath,
+      rootKey: tabs.rootKey,
+      libraryId: tabs.library_id,
+      sessionRevision: plan.sessionRevision
+    })
+    setReferencePickerOpen(true)
+  }
 
   // 插入预设快照：复制 content 到新卡、source=预设名（改预设不影响已插入卡）
   const insertCustomWithPreset = (preset: CustomPreset): void => {
@@ -83,6 +102,7 @@ export default function ContentArea(): React.JSX.Element {
     { key: 'multi_plan', label: t('cards.kindMultiPlan') },
     { key: 'task_list', label: t('cards.kindTaskList') },
     { key: 'task_detail', label: t('cards.kindTaskDetail') },
+    { key: 'plan-reference', label: t('references.insert'), disabled: !rootKey || !libraryId },
     { key: 'note', label: t('content.noteShort') },
     { key: 'mood', label: t('content.insertMood') },
     { key: 'heading', label: t('content.insertHeading') },
@@ -256,10 +276,21 @@ export default function ContentArea(): React.JSX.Element {
       {doc ? (
         <>
           <ComponentRenderer components={doc.components} today={today} />
+          {referencePickerSource && (
+            <PlanReferencePicker
+              open={referencePickerOpen}
+              source={referencePickerSource}
+              onClose={() => setReferencePickerOpen(false)}
+            />
+          )}
           <Dropdown
             menu={{
               items: insertItems,
               onClick: ({ key }) => {
+                if (key === 'plan-reference') {
+                  openReferencePicker()
+                  return
+                }
                 if (key === 'custom-new') {
                   appendComponent(newComponent('custom'))
                   getMessage().success(t('content.inserted', { label: t('content.customNew') }))

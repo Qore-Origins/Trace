@@ -40,6 +40,8 @@ export function CardShell(props: {
               ? t('cards.moodLabel')
               : props.kind === 'heading'
                 ? t('content.insertHeading')
+                : props.kind === 'plan_reference'
+                  ? t('cards.kindPlanReference')
                 : t('cards.kindNote')
   const { moveComponent, removeComponent } = usePlanMutations()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.componentId })

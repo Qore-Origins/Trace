@@ -16,6 +16,8 @@ const DEBOUNCE_MS = 500
 interface PlanState {
   currentPath: string | null
   document: PlanDocument | null
+  // 仅在打开/关闭计划会话时变化，供异步界面丢弃跨计划迟到结果。
+  sessionRevision: number
   // 服务器端最新 updated_at（CAS 锚点）
   serverUpdatedAt: string
   saveState: SaveState
@@ -75,6 +77,7 @@ function patchDocumentComponent(
 export const usePlanStore = create<PlanState>()((set, get) => ({
   currentPath: null,
   document: null,
+  sessionRevision: 0,
   serverUpdatedAt: '',
   saveState: 'idle',
   lastError: null,
@@ -96,8 +99,8 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         if (requestRevision !== openRequestRevision) return false
         if (saveTimer) clearTimeout(saveTimer)
         saveTimer = null
-        resetEditingSession()
-        set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
+        const nextSessionRevision = resetEditingSession()
+        set({ currentPath: path, document: doc, sessionRevision: nextSessionRevision, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
         markTrace('trace:plan-open')
         return true
       } catch (e) {
@@ -120,9 +123,9 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     pathMove = null
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
-    resetEditingSession()
+    const nextSessionRevision = resetEditingSession()
     activeOpenRequest = null
-    set({ currentPath: null, document: null, saveState: 'idle', externalAlert: false })
+    set({ currentPath: null, document: null, sessionRevision: nextSessionRevision, saveState: 'idle', externalAlert: false })
   },
 
   mutate: (mutator) => {

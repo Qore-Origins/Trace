@@ -12,7 +12,7 @@ import { TaskListCard } from './TaskListCard'
 export type CardRenderer = ReactComponentType<CardRenderProps>
 export type CardRegistry = Record<ComponentType, CardRenderer>
 
-export function createCardRegistry(noteRenderer: CardRenderer): CardRegistry {
+export function createCardRegistry(noteRenderer: CardRenderer, planReferenceRenderer: CardRenderer = FallbackBlock): CardRegistry {
   return {
     single_plan: memo(SinglePlanCard),
     multi_plan: memo(MultiPlanCard),
@@ -22,7 +22,7 @@ export function createCardRegistry(noteRenderer: CardRenderer): CardRegistry {
     mood: memo(MoodCard),
     heading: memo(HeadingCard),
     custom: memo(FallbackBlock),
-    plan_reference: memo(FallbackBlock)
+    plan_reference: memo(planReferenceRenderer)
   }
 }
 
