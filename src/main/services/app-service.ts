@@ -15,7 +15,8 @@ export class AppService {
     private repo: PlanRepository,
     private storage: StorageService,
     private onRootChanged: (rootAbs: string) => void,
-    private getIndexState: () => 'building' | 'ready' | 'error' = () => 'ready'
+    private getIndexState: () => 'building' | 'ready' | 'error' = () => 'ready',
+    private rootSwitch?: { beginRootSwitch: () => Promise<() => void> }
   ) {}
 
   async getAppInfo(): Promise<AppInfo> {
@@ -63,12 +64,22 @@ export class AppService {
       throw new TraceError(ERR.PATH_UNSAFE, '目录不可用，请重选')
     }
     const { abs } = resolveWithin(dirPath, '')
-    const meta = await this.repo.ensureLibraryRoot(abs)
-    void meta
-    await this.config.setRootDir(abs)
-    this.storage.setRoot(abs)
-    this.onRootChanged(abs)
-    return { rootDir: abs }
+    const releaseSwitch = await this.rootSwitch?.beginRootSwitch()
+    try {
+      await this.repo.ensureLibraryRoot(abs)
+      try {
+        await this.config.setRootDir(abs)
+      } catch (error) {
+        // ConfigService changes its memory cache before disk persistence; restore the active root.
+        if (currentRoot !== null) await this.config.setRootDir(currentRoot).catch(() => {})
+        throw error
+      }
+      this.storage.setRoot(abs)
+      this.onRootChanged(abs)
+      return { rootDir: abs }
+    } finally {
+      releaseSwitch?.()
+    }
   }
 
   // 启动时若已配置根目录则激活（含根目录失效检测）
@@ -80,9 +91,14 @@ export class AppService {
     } catch {
       return false // rootInvalid → 渲染器引导重选
     }
-    await this.repo.ensureLibraryRoot(rootDir)
-    this.storage.setRoot(rootDir)
-    this.onRootChanged(rootDir)
-    return true
+    const releaseSwitch = await this.rootSwitch?.beginRootSwitch()
+    try {
+      await this.repo.ensureLibraryRoot(rootDir)
+      this.storage.setRoot(rootDir)
+      this.onRootChanged(rootDir)
+      return true
+    } finally {
+      releaseSwitch?.()
+    }
   }
 }

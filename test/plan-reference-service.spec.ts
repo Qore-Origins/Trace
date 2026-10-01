@@ -7,6 +7,8 @@ import { PlanReferenceService } from '../src/main/services/plan-reference-servic
 import type { Component, PlanDocument } from '../src/shared/plan-types'
 import { ERR } from '../src/shared/errors'
 import { bus } from '../src/main/services/event-bus'
+import { StorageService } from '../src/main/services/storage-service'
+import { vi } from 'vitest'
 
 const NOTE_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const otherId = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -190,5 +192,88 @@ describe('PlanReferenceService', () => {
     await plan('Healthy', document([note(otherId)]))
     expect((await service.search({ library_id: libraryId, query: 'Healthy' })).targets)
       .toContainEqual(expect.objectContaining({ path: 'Healthy', component_id: otherId }))
+  })
+
+  it('keeps a committed stable ID when a stale user save races the same plan', async () => {
+    await plan('Target')
+    service.dispose()
+    let releaseWrite: () => void = () => {}
+    let signalWrite: () => void = () => {}
+    const writeHeld = new Promise<void>((resolve) => { releaseWrite = resolve })
+    const writeStarted = new Promise<void>((resolve) => { signalWrite = resolve })
+    let holdNextTargetWrite = true
+    repo = new PlanRepository({
+      renameFn: async (from, to) => {
+        if (holdNextTargetWrite && to === join(root as string, 'Target', 'plan.json')) {
+          holdNextTargetWrite = false
+          signalWrite()
+          await writeHeld
+        }
+        await fs.rename(from, to)
+      }
+    })
+    service = new PlanReferenceService(repo, () => root)
+    service.activateRoot(root as string)
+    const storage = new StorageService(repo)
+    storage.setRoot(root as string)
+    const stale = await storage.readPlan('Target')
+    const pendingReference = service.commitTarget({ library_id: libraryId, path: 'Target', mode: 'link' })
+    await writeStarted
+    const staleSave = storage.savePlan('Target', {
+      ...stale, components: [...stale.components, note(otherId)]
+    }, stale.updated_at)
+    releaseWrite()
+
+    const committed = await pendingReference
+    await expect(staleSave).rejects.toMatchObject({ code: ERR.CONFLICT })
+    expect((await storage.readPlan('Target')).plan_id).toBe(committed.plan_id)
+    expect((await storage.readPlan('Target')).components).toEqual(stale.components)
+  })
+
+  it('rebases a component mutation after a stable-ID write on the same plan', async () => {
+    await plan('Target')
+    service.dispose()
+    let releaseWrite: () => void = () => {}
+    let signalWrite: () => void = () => {}
+    const writeHeld = new Promise<void>((resolve) => { releaseWrite = resolve })
+    const writeStarted = new Promise<void>((resolve) => { signalWrite = resolve })
+    let holdNextTargetWrite = true
+    repo = new PlanRepository({
+      renameFn: async (from, to) => {
+        if (holdNextTargetWrite && to === join(root as string, 'Target', 'plan.json')) {
+          holdNextTargetWrite = false
+          signalWrite()
+          await writeHeld
+        }
+        await fs.rename(from, to)
+      }
+    })
+    service = new PlanReferenceService(repo, () => root)
+    service.activateRoot(root as string)
+    const storage = new StorageService(repo)
+    storage.setRoot(root as string)
+    const pendingReference = service.commitTarget({ library_id: libraryId, path: 'Target', mode: 'link' })
+    await writeStarted
+    const append = storage.appendComponent('Target', note(otherId))
+    releaseWrite()
+
+    const committed = await pendingReference
+    await append
+    const result = await storage.readPlan('Target')
+    expect(result.plan_id).toBe(committed.plan_id)
+    expect(result.components.map((component) => component.id)).toEqual([NOTE_ID, otherId])
+  })
+
+  it('skips a queued child removed during the scan without hiding a healthy sibling', async () => {
+    await plan('AQueued')
+    await plan('ZHealthy', document([note(otherId)], fixedPlanId))
+    const originalRead = repo.readPlan.bind(repo)
+    vi.spyOn(repo, 'readPlan').mockImplementation(async (libraryRoot, path) => {
+      if (path === 'ZHealthy') await fs.rm(join(root as string, 'AQueued'), { recursive: true })
+      return originalRead(libraryRoot, path)
+    })
+
+    expect((await service.search({ library_id: libraryId, query: '' })).targets)
+      .toContainEqual(expect.objectContaining({ path: 'ZHealthy', plan_id: fixedPlanId }))
   })
 })

@@ -1,12 +1,13 @@
 // PlanRepository：计划库文件访问层（LLD §2.1.2）
 // 铁律：一切落盘走原子写（tmp → fsync → rename）；跨盘 rename EXDEV → copy+rm fallback（SPIKE-3 实证）
 import { promises as fs, type Dirent } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { PlanDocument, PlanLibraryMeta } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { uuid32 } from '../../shared/validation'
 import { isPlanId } from '../../shared/plan-reference-validation'
+import { assertRealPathWithinRoot, resolveWithin } from './path-safety'
 
 const LIB_DIR = '.trace'
 const LIB_FILE = 'plan-library.json'
@@ -39,6 +40,7 @@ export class PlanRepository {
   private rename: RenameFn
   // updated_at 单调性保障：CAS 锚点必须每次写都变化（同毫秒并发写时 +1ms）
   private lastWriteMs = 0
+  private readonly planWriteQueues = new Map<string, Promise<void>>()
 
   constructor(deps: RepoDeps = {}) {
     // 注意顺序：类字段初始化器先于构造体执行，依赖必须在此显式赋值（不能用字段初始化器引用 this.deps）
@@ -130,6 +132,48 @@ export class PlanRepository {
 
   // 原子写（LLD §6.1）：同目录临时文件 → fsync → rename
   async writePlanAtomic(rootAbs: string, rel: string, doc: PlanDocument): Promise<void> {
+    await this.withPlanWriteLock(rootAbs, rel, () => this.writePlanUnlocked(rootAbs, rel, doc))
+  }
+
+  // 同实例的所有计划写共享同一路径锁；读/比较/写在锁内完成，避免丢失 plan_id 或新组件。
+  async mutatePlanAtomic(
+    rootAbs: string,
+    rel: string,
+    mutate: (current: PlanDocument) => PlanDocument | null
+  ): Promise<PlanDocument> {
+    return this.withPlanWriteLock(rootAbs, rel, async () => {
+      const directory = resolveWithin(rootAbs, rel)
+      if (!directory.rel) throw new TraceError(ERR.PATH_UNSAFE, '计划路径无效')
+      await assertRealPathWithinRoot(rootAbs, directory.abs)
+      await assertRealPathWithinRoot(rootAbs, resolveWithin(rootAbs, `${directory.rel}/${PLAN_FILE}`).abs)
+      const current = await this.readPlan(rootAbs, directory.rel)
+      const next = mutate(current)
+      if (!next) return current
+      await assertRealPathWithinRoot(rootAbs, directory.abs)
+      await assertRealPathWithinRoot(rootAbs, resolveWithin(rootAbs, `${directory.rel}/${PLAN_FILE}`).abs)
+      await this.writePlanUnlocked(rootAbs, directory.rel, next)
+      return next
+    })
+  }
+
+  private async withPlanWriteLock<T>(rootAbs: string, rel: string, action: () => Promise<T>): Promise<T> {
+    const absoluteFile = resolve(rootAbs, rel, PLAN_FILE)
+    const key = process.platform === 'win32' ? absoluteFile.toLowerCase() : absoluteFile
+    const previous = this.planWriteQueues.get(key) ?? Promise.resolve()
+    let release: () => void = () => {}
+    const completed = new Promise<void>((resolve) => { release = resolve })
+    const tail = previous.then(() => completed)
+    this.planWriteQueues.set(key, tail)
+    await previous
+    try {
+      return await action()
+    } finally {
+      release()
+      if (this.planWriteQueues.get(key) === tail) this.planWriteQueues.delete(key)
+    }
+  }
+
+  private async writePlanUnlocked(rootAbs: string, rel: string, doc: PlanDocument): Promise<void> {
     const target = join(rootAbs, rel, PLAN_FILE)
     doc.updated_at = this.nextTimestamp()
     await this.writeJsonAtomic(target, doc)

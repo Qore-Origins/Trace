@@ -66,7 +66,7 @@ const appService = new AppService(config, repo, storage, (rootAbs) => {
   search.stop()
   search.start(rootAbs) // 根目录变化 → 索引重建（含首启全量）
   diaryAutomation.activateRoot(rootAbs)
-}, () => search.getState())
+}, () => search.getState(), planReferences)
 // 导出为（BR-008）：离屏窗口渲染，PDF/PNG 双路；渲染层源与主窗口同源加载
 const exportService = new ExportService(repo, () => storage.getRootAbs() ?? '', resolveRendererSource(__dirname), join(__dirname, '../preload/index.js'))
 const plantumlService = createPlantumlService({

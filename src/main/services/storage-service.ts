@@ -206,42 +206,40 @@ export class StorageService {
     const rel = this.safe(pathRel)
     if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录无内容可保存')
     const root = this.root()
-    const current = await this.repo.readPlan(root, rel)
-    if (current.updated_at !== expectedUpdatedAt) {
-      throw new TraceError(ERR.CONFLICT, '数据已被修改（外部或并发），请刷新后重试')
-    }
-    await this.repo.writePlanAtomic(root, rel, document)
+    const saved = await this.repo.mutatePlanAtomic(root, rel, (current) => {
+      if (current.updated_at !== expectedUpdatedAt) {
+        throw new TraceError(ERR.CONFLICT, '数据已被修改（外部或并发），请刷新后重试')
+      }
+      return document
+    })
     bus.emit('trace:plan-changed', { path: rel })
     bus.emit('trace:save-status', { path: rel, saved: true, at: new Date().toISOString() })
-    const fresh = await this.repo.readPlan(root, rel)
-    return { updated_at: fresh.updated_at }
+    return { updated_at: saved.updated_at }
   }
 
   // ---------- 组件与任务 ----------
 
   async appendComponent(pathRel: string, component: Component): Promise<void> {
     if (!component.id) component.id = uuid32()
-    const doc = await this.mutatePlan(pathRel)
-    doc.components.push(component)
-    await this.commitMutation(pathRel, doc)
+    await this.commitMutation(pathRel, (doc) => { doc.components.push(component) })
   }
 
   async removeComponent(pathRel: string, componentId: string): Promise<void> {
-    const doc = await this.mutatePlan(pathRel)
-    const idx = doc.components.findIndex((c) => c.id === componentId)
-    if (idx === -1) throw new TraceError(ERR.PATH_NOT_FOUND, '组件不存在')
-    doc.components.splice(idx, 1)
-    await this.commitMutation(pathRel, doc)
+    await this.commitMutation(pathRel, (doc) => {
+      const idx = doc.components.findIndex((c) => c.id === componentId)
+      if (idx === -1) throw new TraceError(ERR.PATH_NOT_FOUND, '组件不存在')
+      doc.components.splice(idx, 1)
+    })
   }
 
   async moveComponent(pathRel: string, componentId: string, targetIndex: number): Promise<void> {
-    const doc = await this.mutatePlan(pathRel)
-    const idx = doc.components.findIndex((c) => c.id === componentId)
-    if (idx === -1) throw new TraceError(ERR.PATH_NOT_FOUND, '组件不存在')
-    const [moved] = doc.components.splice(idx, 1)
-    const clamped = Math.max(0, Math.min(targetIndex, doc.components.length))
-    doc.components.splice(clamped, 0, moved)
-    await this.commitMutation(pathRel, doc)
+    await this.commitMutation(pathRel, (doc) => {
+      const idx = doc.components.findIndex((c) => c.id === componentId)
+      if (idx === -1) throw new TraceError(ERR.PATH_NOT_FOUND, '组件不存在')
+      const [moved] = doc.components.splice(idx, 1)
+      const clamped = Math.max(0, Math.min(targetIndex, doc.components.length))
+      doc.components.splice(clamped, 0, moved)
+    })
   }
 
   async updateTask(
@@ -252,32 +250,30 @@ export class StorageService {
   ): Promise<void> {
     if (patch.title !== undefined) validateTitle(patch.title, '任务标题')
     if (patch.note !== undefined) validateNoteText(patch.note, '任务备注')
-    const doc = await this.mutatePlan(pathRel)
-    const comp = doc.components.find((c) => c.id === componentId)
-    if (!comp) throw new TraceError(ERR.PATH_NOT_FOUND, '组件不存在')
+    await this.commitMutation(pathRel, (doc) => {
+      const comp = doc.components.find((c) => c.id === componentId)
+      if (!comp) throw new TraceError(ERR.PATH_NOT_FOUND, '组件不存在')
 
-    const task = findTask(comp, taskId)
-    if (!task) throw new TraceError(ERR.PATH_NOT_FOUND, '任务不存在')
+      const task = findTask(comp, taskId)
+      if (!task) throw new TraceError(ERR.PATH_NOT_FOUND, '任务不存在')
 
-    if (patch.status !== undefined && patch.status !== task.status) {
-      applyStatusChange(task, patch.status) // 状态机内含 completed_at 维护
-    }
-    if (patch.title !== undefined) task.title = patch.title
-    if (patch.planned_at !== undefined) task.planned_at = patch.planned_at
-    if (patch.note !== undefined) task.note = patch.note
-    await this.commitMutation(pathRel, doc)
+      if (patch.status !== undefined && patch.status !== task.status) {
+        applyStatusChange(task, patch.status) // 状态机内含 completed_at 维护
+      }
+      if (patch.title !== undefined) task.title = patch.title
+      if (patch.planned_at !== undefined) task.planned_at = patch.planned_at
+      if (patch.note !== undefined) task.note = patch.note
+    })
   }
 
   // ---------- 内部：读-改-写三明治 ----------
 
-  // 读出文档供修改（mutate 后必须 commitMutation）
-  private async mutatePlan(pathRel: string): Promise<PlanDocument> {
-    return this.repo.readPlan(this.root(), this.safe(pathRel))
-  }
-
-  private async commitMutation(pathRel: string, doc: PlanDocument): Promise<void> {
+  private async commitMutation(pathRel: string, mutate: (doc: PlanDocument) => void): Promise<void> {
     const rel = this.safe(pathRel)
-    await this.repo.writePlanAtomic(this.root(), rel, doc)
+    await this.repo.mutatePlanAtomic(this.root(), rel, (doc) => {
+      mutate(doc)
+      return doc
+    })
     bus.emit('trace:plan-changed', { path: rel })
   }
 }

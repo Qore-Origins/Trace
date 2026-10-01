@@ -1,4 +1,3 @@
-import { promises as fs, type Dirent } from 'node:fs'
 import { ERR, TraceError } from '../../shared/errors'
 import type { Component, PlanDocument } from '../../shared/plan-types'
 import type {
@@ -56,6 +55,7 @@ export class PlanReferenceService {
   private reverseCache: { generation: number; items: PlanReferenceInbound[] } | null = null
   private changeRevision = 0
   private commitQueue: Promise<void> = Promise.resolve()
+  private switchingRoot = false
   private readonly unsubscribe: Array<() => void>
 
   constructor(private repo: PlanRepository, private getRoot: () => string | null) {
@@ -70,6 +70,22 @@ export class PlanReferenceService {
     this.generation += 1
     this.changeRevision += 1
     this.reverseCache = null
+    this.switchingRoot = false
+  }
+
+  beginRootSwitch(): Promise<() => void> {
+    if (this.switchingRoot) throw new TraceError(ERR.CONFLICT, '计划库正在切换，请重试')
+    this.switchingRoot = true
+    const generation = this.generation
+    return this.commitQueue.then(() => {
+      if (this.generation !== generation) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+      return () => {
+        if (this.generation === generation) this.switchingRoot = false
+      }
+    }, (error) => {
+      this.switchingRoot = false
+      throw error
+    })
   }
 
   dispose(): void {
@@ -120,19 +136,19 @@ export class PlanReferenceService {
       const parent = pending.pop() as string
       this.current(snapshot)
       const directory = resolveWithin(snapshot.root, parent).abs
-      await assertRealPathWithinRoot(snapshot.root, directory)
-      this.current(snapshot)
-      let entries: Dirent[]
+      let names: string[]
       try {
-        entries = await fs.readdir(directory, { withFileTypes: true })
+        await assertRealPathWithinRoot(snapshot.root, directory)
+        this.current(snapshot)
+        names = await this.repo.listPlanDirs(snapshot.root, parent)
       } catch (error) {
+        this.current(snapshot)
         if (parent) continue
         throw error
       }
       this.current(snapshot)
-      for (const entry of entries) {
-        if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name.startsWith('.')) continue
-        const path = parent ? `${parent}/${entry.name}` : entry.name
+      for (const name of names) {
+        const path = parent ? `${parent}/${name}` : name
         const child = resolveWithin(snapshot.root, path).abs
         try {
           await assertRealPathWithinRoot(snapshot.root, child)
@@ -213,9 +229,12 @@ export class PlanReferenceService {
   async commitTarget(request: {
     library_id: string; path: string; component_id?: string; mode: PlanReferenceMode
   }): Promise<PlanReferenceTarget> {
+    if (this.switchingRoot) throw new TraceError(ERR.CONFLICT, '计划库正在切换，请重试')
     const expectedGeneration = this.generation
     const operation = this.commitQueue.then(() => {
-      if (this.generation !== expectedGeneration) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+      if (this.generation !== expectedGeneration || this.switchingRoot) {
+        throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+      }
       return this.commitTargetNow(request)
     })
     this.commitQueue = operation.then(() => undefined, () => undefined)
@@ -246,27 +265,31 @@ export class PlanReferenceService {
       throw new TraceError(ERR.CONFLICT, '计划标识冲突，请先处理重复项')
     }
     // Re-read immediately before writing so unrelated edits are preserved.
-    const latest = await this.securePlan(snapshot, path)
-    if (latest.updated_at !== document.updated_at || latest.plan_id !== document.plan_id) {
-      throw new TraceError(ERR.CONFLICT, '目标计划已变化，请重试')
-    }
-    const latestComponents = request.component_id
-      ? latest.components.filter((entry) => entry.id === request.component_id && isReferenceTargetType(entry.type))
-      : []
-    if (request.component_id && latestComponents.length !== 1) {
-      throw new TraceError(ERR.CONFLICT, '目标组件已变化，请重试')
-    }
-    if (!latest.plan_id) {
+    let assigned = false
+    const latest = await this.repo.mutatePlanAtomic(snapshot.root, path, (current) => {
+      this.current(snapshot)
+      if (this.switchingRoot) throw new TraceError(ERR.CONFLICT, '计划库正在切换，请重试')
+      if (current.updated_at !== document.updated_at || current.plan_id !== document.plan_id) {
+        throw new TraceError(ERR.CONFLICT, '目标计划已变化，请重试')
+      }
+      if (request.component_id && current.components.filter((entry) =>
+        entry.id === request.component_id && isReferenceTargetType(entry.type)).length !== 1) {
+        throw new TraceError(ERR.CONFLICT, '目标组件已变化，请重试')
+      }
+      if (current.plan_id) return null
       const used = new Set(plans.map((plan) => plan.document.plan_id).filter((id): id is string => !!id))
       let id = uuid32()
       while (used.has(id)) id = uuid32()
-      latest.plan_id = id
-      this.current(snapshot)
-      await this.repo.writePlanAtomic(snapshot.root, path, latest)
-      this.current(snapshot)
-      bus.emit('trace:plan-changed', { path })
-    }
-    return targetOf({ path, document: latest }, latestComponents[0])
+      current.plan_id = id
+      assigned = true
+      return current
+    })
+    this.current(snapshot)
+    if (assigned) bus.emit('trace:plan-changed', { path })
+    const latestComponent = request.component_id
+      ? latest.components.find((entry) => entry.id === request.component_id)
+      : undefined
+    return targetOf({ path, document: latest }, latestComponent)
   }
 
   async inbound(request: { library_id: string; plan_id: string; component_id?: string }): Promise<{ references: PlanReferenceInbound[] }> {

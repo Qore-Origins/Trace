@@ -40,6 +40,56 @@ describe('ensureLibraryRoot', () => {
 })
 
 describe('writePlanAtomic + readPlan', () => {
+  it('serializes same-plan mutations and preserves both changes after a deferred write', async () => {
+    const firstComponent = { id: 'a', type: 'note' as const, payload: { content: 'first', created_at: '2026-09-30T00:00:00.000Z' } }
+    const secondComponent = { id: 'b', type: 'note' as const, payload: { content: 'second', created_at: '2026-09-30T00:00:00.000Z' } }
+    let releaseWrite: () => void = () => {}
+    let signalWrite: () => void = () => {}
+    const held = new Promise<void>((resolve) => { releaseWrite = resolve })
+    const started = new Promise<void>((resolve) => { signalWrite = resolve })
+    let holdFirst = false
+    const lockedRepo = new PlanRepository({
+      renameFn: async (from, to) => {
+        if (holdFirst && to === join(root, 'A', 'plan.json')) {
+          holdFirst = false
+          signalWrite()
+          await held
+        }
+        await fs.rename(from, to)
+      }
+    })
+    await fs.mkdir(join(root, 'A'))
+    await lockedRepo.writePlanAtomic(root, 'A', sampleDoc())
+    holdFirst = true
+    const first = lockedRepo.mutatePlanAtomic(root, 'A', (current) => {
+      current.components.push(firstComponent)
+      return current
+    })
+    await started
+    const second = lockedRepo.mutatePlanAtomic(root, 'A', (current) => {
+      current.components.push(secondComponent)
+      return current
+    })
+    releaseWrite()
+    await Promise.all([first, second])
+
+    expect((await lockedRepo.readPlan(root, 'A')).components.map((component) => component.id)).toEqual(['a', 'b'])
+  })
+
+  it('releases a plan lock after a failed mutation so a retry can write', async () => {
+    await fs.mkdir(join(root, 'A'))
+    await repo.writePlanAtomic(root, 'A', sampleDoc())
+    await expect(repo.mutatePlanAtomic(root, 'A', () => { throw new Error('rejected update') }))
+      .rejects.toThrow('rejected update')
+
+    const saved = await repo.mutatePlanAtomic(root, 'A', (current) => {
+      current.plan_id = '0123456789abcdef0123456789abcdef'
+      return current
+    })
+    expect(saved.plan_id).toBe('0123456789abcdef0123456789abcdef')
+    expect((await repo.readPlan(root, 'A')).plan_id).toBe(saved.plan_id)
+  })
+
   it('round-trips legacy plans and new optional reference fields without dropping them', async () => {
     const legacy = sampleDoc()
     await repo.writePlanAtomic(root, '旧计划', legacy)
