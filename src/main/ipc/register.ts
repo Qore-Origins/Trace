@@ -188,8 +188,15 @@ export function registerIpc(deps: Deps): () => void {
   })
   reg('storage:movePlan', (p) => storage.movePlan(p.path, p.target_parent_path).then(() => null))
   reg('storage:readPlan', (p) => storage.readPlan(p.path))
-  reg('storage:savePlan', (p) => storage.savePlan(p.path, p.document, p.expected_updated_at))
-  reg('storage:appendComponent', (p) => storage.appendComponent(p.path, p.component).then(() => null))
+  // Renderer document writes share the reference mutation queue and reject bypass edits to
+  // currently referenced target identities/display names before the CAS write is attempted.
+  reg('storage:savePlan', (p) => referenceService().saveRendererPlan(
+    storage, p.path, p.document, p.expected_updated_at
+  ))
+  // Serialize the legacy single-component route with reference confirmation and verify reference
+  // targets at write time, so an append waiting behind deletion cannot create a dangling link.
+  reg('storage:appendComponent', (p) => referenceService()
+    .appendRendererComponent(storage, p.path, p.component).then(() => null))
   reg('storage:removeComponent', async () => {
     throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除组件')
   })
@@ -302,7 +309,11 @@ export function registerIpc(deps: Deps): () => void {
   reg('transfer:exportPlan', (p) => transfer.exportPlan(p.path, p.saveTo))
   reg('transfer:exportPdf', (p) => deps.export.exportPdf(p.path, p.saveTo))
   reg('transfer:exportPng', (p) => deps.export.exportPng(p.path, p.saveTo))
-  reg('transfer:importPlan', (p) => transfer.importPlan(p.target_parent_path, p.filePath))
+  // Bundle imports write plan documents; serialize them with reference commits so an in-flight
+  // import cannot change the inbound set between final impact validation and target mutation.
+  reg('transfer:importPlan', (p) => referenceService().runRendererMutation(
+    () => transfer.importPlan(p.target_parent_path, p.filePath)
+  ))
   reg('transfer:importMarkdown', async (p) => {
     // 文件读取在主进程（渲染器无 fs 权限）
     const files = await Promise.all(

@@ -188,6 +188,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     if (!choice || !('decisions' in choice)) return
     if (!(await usePlanStore.getState().flush())) return
     if (beforeCommit) await beforeCommit()
+    if (!(await usePlanStore.getState().flush())) return
     // 先关闭被删子树内打开的计划：删除成功会 emit plan-changed(被删路径)，
     // 若 currentPath 仍指向它，订阅会静默重拉 open() → 读已删文件 → 误报「目标位置不存在」
     const plan = usePlanStore.getState()

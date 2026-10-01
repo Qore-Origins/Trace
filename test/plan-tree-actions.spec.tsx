@@ -46,6 +46,54 @@ afterEach(() => {
 })
 
 describe('plan tree reference actions', () => {
+  it('saves an edit made during the delete animation before closing the target plan', async () => {
+    usePlanStore.setState({ currentPath: TARGET_PATH, document: document(), serverUpdatedAt: 'stamp-0' })
+    const calls: string[] = []
+    Object.defineProperty(window, 'trace', { configurable: true, value: {
+      invoke: vi.fn(async (channel: string, request: unknown) => {
+        calls.push(channel)
+        if (channel === 'plan-reference:previewImpact') return { ok: true, data: {
+          operation: 'delete-plan', path: TARGET_PATH, target_plan_ids: [], references: []
+        } }
+        if (channel === 'storage:savePlan') {
+          expect((request as { document: PlanDocument }).document.due_date).toBe('2026-10-02')
+          return { ok: true, data: { updated_at: 'stamp-1' } }
+        }
+        if (channel === 'plan-reference:commitImpact') return { ok: true, data: {} }
+        if (channel === 'workspace-tabs:set') return { ok: true, data: null }
+        if (channel === 'storage:treeGetChildren') return { ok: true, data: [] }
+        throw new Error(`Unexpected channel ${channel}`)
+      }), on: vi.fn(() => () => undefined)
+    } })
+    await useTreeStore.getState().removePlan(TARGET_PATH, async () => {
+      usePlanStore.getState().setDueDate('2026-10-02')
+    })
+    expect(calls.indexOf('storage:savePlan')).toBeGreaterThan(calls.indexOf('plan-reference:previewImpact'))
+    expect(calls.indexOf('storage:savePlan')).toBeLessThan(calls.indexOf('plan-reference:commitImpact'))
+    expect(usePlanStore.getState().currentPath).toBeNull()
+  })
+
+  it('retains the edit session and aborts deletion if the post-animation save fails', async () => {
+    usePlanStore.setState({ currentPath: TARGET_PATH, document: document(), serverUpdatedAt: 'stamp-0' })
+    const calls: string[] = []
+    Object.defineProperty(window, 'trace', { configurable: true, value: {
+      invoke: vi.fn(async (channel: string) => {
+        calls.push(channel)
+        if (channel === 'plan-reference:previewImpact') return { ok: true, data: {
+          operation: 'delete-plan', path: TARGET_PATH, target_plan_ids: [], references: []
+        } }
+        if (channel === 'storage:savePlan') return { ok: false, code: 30, message: 'save failed', data: null }
+        throw new Error(`Unexpected channel ${channel}`)
+      }), on: vi.fn(() => () => undefined)
+    } })
+    await useTreeStore.getState().removePlan(TARGET_PATH, async () => {
+      usePlanStore.getState().setDueDate('2026-10-02')
+    })
+    expect(calls).toEqual(['plan-reference:previewImpact', 'storage:savePlan'])
+    expect(usePlanStore.getState().currentPath).toBe(TARGET_PATH)
+    expect(usePlanStore.getState().document?.due_date).toBe('2026-10-02')
+  })
+
   it('flushes the active editor before previewing a plan rename and commits without a second dialog when no inbound references survive', async () => {
     const calls: string[] = []
     Object.defineProperty(window, 'trace', { configurable: true, value: {

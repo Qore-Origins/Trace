@@ -75,6 +75,36 @@ afterEach(async () => {
 })
 
 describe('reference-aware component title editing', () => {
+  it('restores the committed title when the user cancels the inbound-reference confirmation', async () => {
+    const confirm = vi.fn((options: { onCancel: () => void }) => {
+      options.onCancel()
+      return {} as never
+    })
+    bindAntdHost({ confirm } as never, { warning: vi.fn(), error: vi.fn() } as never)
+    const calls: string[] = []
+    Object.defineProperty(window, 'trace', { configurable: true, value: {
+      invoke: vi.fn(async (channel: string) => {
+        calls.push(channel)
+        if (channel === 'plan-reference:previewImpact') return { ok: true, data: {
+          operation: 'rename-component', path: PATH, component_id: COMPONENT_ID,
+          new_title: 'Cancelled title', expected_updated_at: 'stamp-0', target_updated_at: 'stamp-0',
+          target_plan_ids: [], references: [{ source_path: 'Source', source_component_id: '44444444444444444444444444444444',
+            source_updated_at: 'stamp-0', target_plan_id: plan().plan_id, target_component_id: COMPONENT_ID,
+            mode: 'embed', target_path_snapshot: PATH, target_name_snapshot: 'Old title' }]
+        } }
+        throw new Error(`Unexpected channel ${channel}`)
+      }), on: vi.fn(() => () => undefined)
+    } })
+    const input = host.querySelector<HTMLInputElement>('input.heading-input')!
+    await typeTitle(input, 'Cancelled title')
+    await act(async () => { input.focus(); input.blur() })
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce())
+    expect(input.value).toBe('Old title')
+    expect(calls).toEqual(['plan-reference:previewImpact'])
+    await act(async () => { input.focus(); input.blur() })
+    expect(confirm).toHaveBeenCalledOnce()
+  })
+
   it('keeps a title draft until blur and commits through typed impact preview', async () => {
     const calls: string[] = []
     Object.defineProperty(window, 'trace', { configurable: true, value: {

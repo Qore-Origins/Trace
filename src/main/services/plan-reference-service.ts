@@ -121,6 +121,23 @@ export class PlanReferenceService {
     }
   }
 
+  private enqueueCommit<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.switchingRoot) throw new TraceError(ERR.CONFLICT, '计划库正在切换，请重试')
+    const expectedGeneration = this.generation
+    const queued = this.commitQueue.then(() => {
+      if (this.generation !== expectedGeneration || this.switchingRoot) {
+        throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+      }
+      return operation()
+    })
+    this.commitQueue = queued.then(() => undefined, () => undefined)
+    return queued
+  }
+
+  runRendererMutation<T>(operation: () => Promise<T>): Promise<T> {
+    return this.enqueueCommit(operation)
+  }
+
   private async snapshot(libraryId: unknown): Promise<LibrarySnapshot> {
     if (typeof libraryId !== 'string' || !isUuid32(libraryId)) {
       throw new TraceError(ERR.VALIDATION, '计划库标识无效')
@@ -135,6 +152,20 @@ export class PlanReferenceService {
     this.currentRevision(snapshot)
     if (meta.library_id !== libraryId) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
     return snapshot
+  }
+
+  private async activeSnapshot(): Promise<LibrarySnapshot> {
+    const root = this.getRoot()
+    if (!root || root !== this.activeRoot) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+    const metaFile = resolveWithin(root, '.trace/plan-library.json').abs
+    await assertRealPathWithinRoot(root, metaFile)
+    const initial: LibrarySnapshot = {
+      root, libraryId: '', generation: this.generation, changeRevision: this.changeRevision
+    }
+    this.currentRevision(initial)
+    const meta = await this.repo.readLibraryMeta(root)
+    this.currentRevision(initial)
+    return this.snapshot(meta.library_id)
   }
 
   private async securePlan(snapshot: LibrarySnapshot, path: string): Promise<PlanDocument> {
@@ -286,16 +317,7 @@ export class PlanReferenceService {
   async commitTarget(request: {
     library_id: string; path: string; component_id?: string; mode: PlanReferenceMode
   }): Promise<PlanReferenceTarget> {
-    if (this.switchingRoot) throw new TraceError(ERR.CONFLICT, '计划库正在切换，请重试')
-    const expectedGeneration = this.generation
-    const operation = this.commitQueue.then(() => {
-      if (this.generation !== expectedGeneration || this.switchingRoot) {
-        throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
-      }
-      return this.commitTargetNow(request)
-    })
-    this.commitQueue = operation.then(() => undefined, () => undefined)
-    return operation
+    return this.enqueueCommit(() => this.commitTargetNow(request))
   }
 
   private async commitTargetNow(request: {
@@ -382,6 +404,136 @@ export class PlanReferenceService {
       (request.component_id === undefined || reference.target_component_id === request.component_id)) }
   }
 
+  async saveRendererPlan(
+    storage: StorageService,
+    path: string,
+    document: PlanDocument,
+    expectedUpdatedAt: string
+  ): Promise<{ updated_at: string }> {
+    return this.enqueueCommit(async () => {
+      await this.assertRendererSaveDoesNotChangeReferencedTargets(path, document, expectedUpdatedAt)
+      return storage.savePlan(path, document, expectedUpdatedAt)
+    })
+  }
+
+  async appendRendererComponent(storage: StorageService, path: string, component: Component): Promise<void> {
+    return this.enqueueCommit(async () => {
+      if (component.type === 'plan_reference') {
+        const snapshot = await this.activeSnapshot()
+        await this.assertReferenceTargetsExist(snapshot, [component])
+      }
+      return storage.appendComponent(path, component)
+    })
+  }
+
+  private async assertRendererSaveDoesNotChangeReferencedTargets(
+    path: string,
+    nextDocument: PlanDocument,
+    expectedUpdatedAt: string
+  ): Promise<void> {
+    const snapshot = await this.activeSnapshot()
+    const rel = resolveWithin(snapshot.root, path).rel
+    if (!rel) throw new TraceError(ERR.VALIDATION, '根目录无内容可保存')
+    const current = await this.securePlan(snapshot, rel)
+    if (current.updated_at !== expectedUpdatedAt) {
+      throw new TraceError(ERR.CONFLICT, '数据已被修改（外部或并发），请刷新后重试')
+    }
+    if (!nextDocument || !Array.isArray(nextDocument.components)) {
+      throw new TraceError(ERR.VALIDATION, '计划内容无效')
+    }
+
+    const targetSignature = (document: PlanDocument): Map<string, string> => {
+      const values = new Map<string, string[]>()
+      for (const component of document.components) {
+        if (!isReferenceTargetType(component.type) || typeof component.id !== 'string') continue
+        const entries = values.get(component.id) ?? []
+        entries.push(JSON.stringify({ type: component.type, name: referenceComponentDisplayName(component) }))
+        values.set(component.id, entries)
+      }
+      return new Map([...values].map(([id, entries]) => [id, JSON.stringify(entries.sort())]))
+    }
+    const previousTargets = targetSignature(current)
+    const nextTargets = targetSignature(nextDocument)
+    const changedComponentIds = new Set([...previousTargets.keys(), ...nextTargets.keys()]
+      .filter((id) => previousTargets.get(id) !== nextTargets.get(id)))
+    const previousReferenceCounts = new Map<string, number>()
+    const previousComponentsById = new Map<string, Component[]>()
+    const referenceIdentity = (component: Component): string | null => {
+      const payload = component.payload
+      if (component.type !== 'plan_reference' || !isPlanReferencePayload(payload)) return null
+      return JSON.stringify({ id: component.id, plan_id: payload.target_plan_id,
+        component_id: payload.target_component_id })
+    }
+    for (const component of current.components) {
+      const identity = referenceIdentity(component)
+      if (identity) previousReferenceCounts.set(identity, (previousReferenceCounts.get(identity) ?? 0) + 1)
+      if (component.type === 'plan_reference') {
+        const entries = previousComponentsById.get(component.id) ?? []
+        entries.push(component)
+        previousComponentsById.set(component.id, entries)
+      }
+    }
+    const newReferences: Component[] = []
+    for (const component of nextDocument.components) {
+      if (component.type !== 'plan_reference') continue
+      const identity = referenceIdentity(component)
+      if (!identity) {
+        const unchangedInvalidReference = previousComponentsById.get(component.id)?.some((previous) =>
+          JSON.stringify(previous) === JSON.stringify(component))
+        if (unchangedInvalidReference) continue
+        throw new TraceError(ERR.VALIDATION, '计划引用内容无效')
+      }
+      const count = previousReferenceCounts.get(identity) ?? 0
+      if (count > 0) previousReferenceCounts.set(identity, count - 1)
+      else newReferences.push(component)
+    }
+    const changedPlanId = current.plan_id !== nextDocument.plan_id
+    if (!changedPlanId && changedComponentIds.size === 0 && newReferences.length === 0) return
+
+    const plans = await this.scanForSnapshot(snapshot)
+    this.currentRevision(snapshot)
+    const planIds = new Set([current.plan_id, nextDocument.plan_id]
+      .filter((id): id is string => typeof id === 'string'))
+    const hasAffectedReference = plans.some((plan) => plan.document.components.some((component) => {
+      if (component.type !== 'plan_reference' || !isPlanReferencePayload(component.payload)) return false
+      const payload = component.payload
+      if (!planIds.has(payload.target_plan_id)) return false
+      if (changedPlanId) return true
+      return typeof payload.target_component_id === 'string' && changedComponentIds.has(payload.target_component_id)
+    }))
+    this.currentRevision(snapshot)
+    if (hasAffectedReference) {
+      throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程修改被引用的计划或组件')
+    }
+    await this.assertReferenceTargetsExistInPlans(plans, newReferences)
+    this.currentRevision(snapshot)
+  }
+
+  private async assertReferenceTargetsExist(snapshot: LibrarySnapshot, components: Component[]): Promise<void> {
+    const plans = await this.scanForSnapshot(snapshot)
+    this.currentRevision(snapshot)
+    await this.assertReferenceTargetsExistInPlans(plans, components)
+    this.currentRevision(snapshot)
+  }
+
+  private async assertReferenceTargetsExistInPlans(plans: ScannedPlan[], components: Component[]): Promise<void> {
+    for (const component of components) {
+      const payload = component.payload
+      if (component.type !== 'plan_reference' || !isPlanReferencePayload(payload)) {
+        throw new TraceError(ERR.VALIDATION, '计划引用内容无效')
+      }
+      const target = this.findById(plans, payload.target_plan_id)
+      if (target === 'conflict') throw new TraceError(ERR.CONFLICT, '引用目标计划标识冲突')
+      if (!target) throw new TraceError(ERR.PATH_NOT_FOUND, '引用目标已不存在，请重新选择')
+      if (payload.target_component_id !== undefined) {
+        const matches = target.document.components.filter((entry) => entry.id === payload.target_component_id)
+        if (matches.length !== 1 || !isReferenceTargetType(matches[0].type)) {
+          throw new TraceError(ERR.PATH_NOT_FOUND, '引用目标组件已不存在，请重新选择')
+        }
+      }
+    }
+  }
+
   async previewImpact(request: ReferenceImpactRequest): Promise<ReferenceImpactPreview> {
     const snapshot = await this.snapshot(request?.library_id)
     if (!request || typeof request.path !== 'string' ||
@@ -437,8 +589,18 @@ export class PlanReferenceService {
         throw new TraceError(ERR.CONFLICT, '目标组件已变化，请刷新后重试')
       }
     }
-    const affectedPlans = new Set(plans.filter((plan) =>
-      isPlanOperation && isSelfOrDescendant(path, plan.path)).map((plan) => plan.document.plan_id))
+    const affectedPlanRecords = plans.filter((plan) => isPlanOperation && isSelfOrDescendant(path, plan.path))
+    const affectedIds = affectedPlanRecords.map((plan) => plan.document.plan_id)
+      .filter((id): id is string => typeof id === 'string')
+    const planIdCounts = new Map<string, number>()
+    for (const plan of plans) {
+      const id = plan.document.plan_id
+      if (typeof id === 'string') planIdCounts.set(id, (planIdCounts.get(id) ?? 0) + 1)
+    }
+    if (affectedIds.some((id) => planIdCounts.get(id) !== 1)) {
+      throw new TraceError(ERR.CONFLICT, '受影响计划存在重复标识，请先处理重复项')
+    }
+    const affectedPlans = new Set(affectedIds)
     const references: ReferenceImpactItem[] = []
     for (const source of plans) {
       if (request.operation === 'delete-plan' && isSelfOrDescendant(path, source.path)) continue
@@ -480,16 +642,7 @@ export class PlanReferenceService {
   }
 
   async commitImpact(request: ReferenceImpactCommit, storage: StorageService): Promise<{ path?: string }> {
-    if (this.switchingRoot) throw new TraceError(ERR.CONFLICT, '计划库正在切换，请重试')
-    const expectedGeneration = this.generation
-    const operation = this.commitQueue.then(() => {
-      if (this.generation !== expectedGeneration || this.switchingRoot) {
-        throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
-      }
-      return this.commitImpactNow(request, storage)
-    })
-    this.commitQueue = operation.then(() => undefined, () => undefined)
-    return operation
+    return this.enqueueCommit(() => this.commitImpactNow(request, storage))
   }
 
   private async commitImpactNow(request: ReferenceImpactCommit, storage: StorageService): Promise<{ path?: string }> {
@@ -596,6 +749,7 @@ export class PlanReferenceService {
     const usedIds = new Set(plansBefore.map((plan) => plan.document.plan_id).filter((id): id is string => !!id))
     const assignedDocs = new Map<string, PlanDocument>()
     const assignedPaths = [...new Set([...replacements.values()].filter((item) => !item.document.plan_id).map((item) => item.path))]
+    const writtenRevisions = new Map<string, string>()
     let writes = 0
     try {
       for (const path of assignedPaths) {
@@ -612,6 +766,7 @@ export class PlanReferenceService {
         })
         writes += 1
         assignedDocs.set(path, assigned)
+        writtenRevisions.set(path, assigned.updated_at)
         if (sourceDocs.has(path)) sourceDocs.set(path, assigned)
         bus.emit('trace:plan-changed', { path })
         bus.emit('trace:reference-target-changed', { plan_ids: [id] })
@@ -674,25 +829,64 @@ export class PlanReferenceService {
       const documentWrites = [...sourceDocs].sort(([left], [right]) =>
         Number(left === preview.path) - Number(right === preview.path))
       for (const [path, draft] of documentWrites) {
+        if (preview.operation.endsWith('-component') && path === preview.path) continue
         if (path !== preview.path && !fresh.references.some((reference) =>
           reference.source_path === path && (isRename ? request.rename_action === 'update' :
             decisionMap.get(impactKey(reference))?.action === 'replace'))) continue
         if (path === preview.path && !preview.operation.endsWith('-component') &&
           !fresh.references.some((reference) => reference.source_path === path &&
             (isRename ? request.rename_action === 'update' : decisionMap.get(impactKey(reference))?.action === 'replace'))) continue
-        await storage.savePlan(path, draft, draft.updated_at)
+        const saved = await storage.savePlan(path, draft, draft.updated_at)
+        writtenRevisions.set(path, saved.updated_at)
         writes += 1
+      }
+      // Keep a component target unwritten until this check passes. Other plans may have added
+      // inbound refs while their atomic source writes were awaited above.
+      const remaining = await this.previewImpact({
+        library_id: request.library_id, operation: preview.operation, path: preview.path,
+        component_id: preview.component_id, new_name: preview.new_name, new_title: preview.new_title,
+        expected_updated_at: preview.expected_updated_at, locale: preview.locale
+      })
+      const expectedReferences = fresh.references.filter((reference) => isRename ||
+        reference.source_path === preview.path || decisionMap.get(impactKey(reference))?.action === 'keep')
+        .map((reference) => ({
+          ...reference,
+          source_updated_at: writtenRevisions.get(reference.source_path) ??
+            sourceDocs.get(reference.source_path)?.updated_at ?? reference.source_updated_at
+        }))
+      const referenceSignature = (references: ReferenceImpactItem[]): string => JSON.stringify(references.map((reference) => ({
+        key: impactKey(reference), target_plan_id: reference.target_plan_id,
+        target_component_id: reference.target_component_id, mode: reference.mode,
+        source_updated_at: reference.source_updated_at
+      })).sort((left, right) => left.key.localeCompare(right.key)))
+      const observedSignature = JSON.stringify(remaining.references.map((reference) => ({
+        key: impactKey(reference), target_plan_id: reference.target_plan_id,
+        target_component_id: reference.target_component_id, mode: reference.mode,
+        source_updated_at: reference.source_updated_at
+      })).sort((left, right) => left.key.localeCompare(right.key)))
+      if (remaining.target_updated_at !== (writtenRevisions.get(preview.path) ??
+        sourceDocs.get(preview.path)?.updated_at ?? fresh.target_updated_at) ||
+        JSON.stringify(remaining.target_plan_ids) !== JSON.stringify(fresh.target_plan_ids) ||
+        observedSignature !== referenceSignature(expectedReferences)) {
+        throw new TraceError(ERR.CONFLICT, '关联影响已变化，请重新预览确认')
       }
       if (preview.operation === 'rename-plan') return await storage.renamePlan(
         preview.path, preview.new_name as string,
-        sourceDocs.get(preview.path)?.updated_at ?? fresh.target_updated_at
+        writtenRevisions.get(preview.path) ?? sourceDocs.get(preview.path)?.updated_at ?? fresh.target_updated_at
       )
+      if (preview.operation.endsWith('-component')) {
+        const target = sourceDocs.get(preview.path)!
+        const saved = await storage.savePlan(preview.path, target, target.updated_at)
+        writtenRevisions.set(preview.path, saved.updated_at)
+        writes += 1
+      }
       if (preview.operation === 'delete-plan') {
         // A newly created inbound reference must not be silently orphaned during the write sequence.
         const remaining = await this.previewImpact({
           library_id: request.library_id, operation: 'delete-plan', path: preview.path
         })
-        if (remaining.target_updated_at !== fresh.target_updated_at ||
+        const targetUpdatedAt = writtenRevisions.get(preview.path) ?? fresh.target_updated_at
+        if (remaining.target_updated_at !== targetUpdatedAt ||
           JSON.stringify(remaining.target_plan_ids) !== JSON.stringify(fresh.target_plan_ids)) {
           throw new TraceError(ERR.CONFLICT, '待删除计划已变化，请重新预览确认')
         }
@@ -701,7 +895,7 @@ export class PlanReferenceService {
         if (remaining.references.some((reference) => !allowed.has(impactKey(reference)))) {
           throw new TraceError(ERR.CONFLICT, '关联影响已变化，请重新预览确认')
         }
-        await storage.deletePlan(preview.path, true, fresh.target_updated_at)
+        await storage.deletePlan(preview.path, true, targetUpdatedAt)
       }
       return {}
     } catch (error) {

@@ -35,7 +35,7 @@ interface PlanState {
   // 计划截止日期：赋值 ''/undefined 时删键（同 mutate 防抖保存路径）
   setDueDate: (due?: string) => void
   flush: () => Promise<boolean>
-  renameComponent: (componentId: string, title: string) => Promise<boolean>
+  renameComponent: (componentId: string, title: string) => Promise<'committed' | 'cancelled' | 'failed'>
   removeComponentWithImpact: (componentId: string) => Promise<boolean>
   beginPathMove: (oldPrefix: string) => boolean
   finishPathMove: (oldPrefix: string, newPrefix: string | null) => void
@@ -216,16 +216,16 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
 
   renameComponent: async (componentId, title) => {
     const source = get()
-    if (!source.currentPath || !source.document) return false
+    if (!source.currentPath || !source.document) return 'failed'
     const original = source.document.components.find((entry) => entry.id === componentId)
-    if (!original || !['single_plan', 'multi_plan', 'task_list', 'task_detail', 'heading'].includes(original.type)) return false
+    if (!original || !['single_plan', 'multi_plan', 'task_list', 'task_detail', 'heading'].includes(original.type)) return 'failed'
     const oldTitle = (original.payload as { title: string }).title
-    if (oldTitle === title) return true
-    if (!(await get().flush())) return false
+    if (oldTitle === title) return 'committed'
+    if (!(await get().flush())) return 'failed'
     const current = get()
-    if (current.currentPath !== source.currentPath) return false
+    if (current.currentPath !== source.currentPath) return 'failed'
     const libraryId = useWorkspaceTabsStore.getState().library_id
-    if (!libraryId) return false
+    if (!libraryId) return 'failed'
     try {
       const preview = await invoke('plan-reference:previewImpact', {
         library_id: libraryId, operation: 'rename-component', path: source.currentPath,
@@ -233,16 +233,16 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         locale: i18n.language === 'en-US' ? 'en-US' : 'zh-CN'
       })
       const choice = await requestReferenceImpactDecision(preview, libraryId)
-      if (!choice || !('rename_action' in choice)) return false
-      if (!(await get().flush())) return false
+      if (!choice || !('rename_action' in choice)) return 'cancelled'
+      if (!(await get().flush())) return 'failed'
       await invoke('plan-reference:commitImpact', {
         library_id: libraryId, preview, rename_action: choice.rename_action
       })
       if (get().currentPath === source.currentPath) await get().open(source.currentPath, true)
-      return true
+      return 'committed'
     } catch (error) {
       getMessage().warning(error instanceof ClientError ? error.message : i18n.t('references.impactStale'))
-      return false
+      return 'failed'
     }
   },
 
@@ -409,7 +409,9 @@ export function useReferenceAwareTitle(component: Component): {
     if (committing.current || !dirty) return
     committing.current = true
     try {
-      if (await rename(component.id, value)) setDirty(false)
+      const result = await rename(component.id, value)
+      if (result === 'cancelled') setValue(sourceTitle)
+      if (result !== 'failed') setDirty(false)
     } finally {
       committing.current = false
     }

@@ -106,6 +106,38 @@ describe('reference impact workflow', () => {
     expect(await repo.readPlan(root, 'Target')).toMatchObject({ plan_id: TARGET_ID })
   })
 
+  it('rejects a plan rename when the affected plan ID is duplicated elsewhere in the library', async () => {
+    await plan('Target', document(TARGET_ID))
+    await plan('Duplicate', document(TARGET_ID))
+    await plan('Source', document(SOURCE_ID, [reference(REF_ID)]))
+    const targetBefore = await repo.readPlan(root, 'Target')
+    const sourceBefore = await repo.readPlan(root, 'Source')
+
+    await expect(references.previewImpact({
+      library_id: libraryId, operation: 'rename-plan', path: 'Target', new_name: 'Renamed'
+    })).rejects.toMatchObject({ code: ERR.CONFLICT })
+
+    expect(await repo.readPlan(root, 'Target')).toEqual(targetBefore)
+    expect(await repo.readPlan(root, 'Source')).toEqual(sourceBefore)
+    expect(await fs.stat(join(root, 'Duplicate', 'plan.json'))).toBeDefined()
+  })
+
+  it('rejects deleting a subtree when an affected plan ID is duplicated outside that subtree', async () => {
+    await plan('Group/Target', document(TARGET_ID))
+    await plan('Outside', document(TARGET_ID))
+    await plan('Source', document(SOURCE_ID, [reference(REF_ID)]))
+    const targetBefore = await repo.readPlan(root, 'Group/Target')
+    const sourceBefore = await repo.readPlan(root, 'Source')
+
+    await expect(references.previewImpact({
+      library_id: libraryId, operation: 'delete-plan', path: 'Group'
+    })).rejects.toMatchObject({ code: ERR.CONFLICT })
+
+    expect(await repo.readPlan(root, 'Group/Target')).toEqual(targetBefore)
+    expect(await repo.readPlan(root, 'Outside')).toMatchObject({ plan_id: TARGET_ID })
+    expect(await repo.readPlan(root, 'Source')).toEqual(sourceBefore)
+  })
+
   it('excludes references deleted within the same plan subtree', async () => {
     await plan('Group/Target', document(TARGET_ID))
     await plan('Group/Source', document(SOURCE_ID, [reference(REF_ID)]))
@@ -181,6 +213,60 @@ describe('reference impact workflow', () => {
     const current = await repo.readPlan(root, 'Target')
     expect(current.components[0].payload).toMatchObject({ title: 'New title' })
     expect(current.components[1].payload).toMatchObject({ target_name_snapshot: 'New title' })
+  })
+
+  it('keeps a component title unchanged when a new inbound reference appears during source writes', async () => {
+    const heading: Component = { id: COMPONENT_ID, type: 'heading', payload: { title: 'Old title', size: 18 } }
+    await plan('Target', document(TARGET_ID, [heading]))
+    await plan('SourceA', document(SOURCE_ID, [reference(REF_ID, TARGET_ID, COMPONENT_ID)]))
+    await plan('SourceB', document(REPLACEMENT_ID, [reference(EXTRA_REF_ID, TARGET_ID, COMPONENT_ID)]))
+    await plan('Late', document('11111111111111111111111111111111'))
+    const target = await repo.readPlan(root, 'Target')
+    const preview = await references.previewImpact({
+      library_id: libraryId, operation: 'rename-component', path: 'Target', component_id: COMPONENT_ID,
+      new_title: 'New title', expected_updated_at: target.updated_at
+    })
+    const original = storage.savePlan.bind(storage)
+    vi.spyOn(storage, 'savePlan').mockImplementation(async (path, doc, expected) => {
+      const result = await original(path, doc, expected)
+      if (path === 'SourceA') await storage.appendComponent('Late', reference('22222222222222222222222222222222', TARGET_ID, COMPONENT_ID))
+      return result
+    })
+    await expect(references.commitImpact({ library_id: libraryId, preview, rename_action: 'update' }, storage))
+      .rejects.toMatchObject({ code: ERR.SAVE_FAILED })
+    expect((await repo.readPlan(root, 'Target')).components[0].payload).toMatchObject({ title: 'Old title' })
+  })
+
+  it('keeps a component present when a new inbound reference appears during replacement writes', async () => {
+    const heading: Component = { id: COMPONENT_ID, type: 'heading', payload: { title: 'Title', size: 18 } }
+    const replacement: Component = { id: REPLACEMENT_ID, type: 'heading', payload: { title: 'Replacement', size: 18 } }
+    await plan('Target', document(TARGET_ID, [heading]))
+    await plan('Replacement', document(SOURCE_ID, [replacement]))
+    await plan('SourceA', document('11111111111111111111111111111111', [reference(REF_ID, TARGET_ID, COMPONENT_ID)]))
+    await plan('SourceB', document('22222222222222222222222222222222', [reference(EXTRA_REF_ID, TARGET_ID, COMPONENT_ID)]))
+    await plan('Late', document('33333333333333333333333333333333'))
+    const targetBefore = await repo.readPlan(root, 'Target')
+    const preview = await references.previewImpact({
+      library_id: libraryId, operation: 'delete-component', path: 'Target', component_id: COMPONENT_ID
+    })
+    const original = storage.savePlan.bind(storage)
+    vi.spyOn(storage, 'savePlan').mockImplementation(async (path, doc, expected) => {
+      const result = await original(path, doc, expected)
+      if (path === 'SourceA') await storage.appendComponent('Late', reference('44444444444444444444444444444444', TARGET_ID, COMPONENT_ID))
+      return result
+    })
+
+    await expect(references.commitImpact({
+      library_id: libraryId, preview, decisions: preview.references.map((item) => ({
+        source_path: item.source_path, source_component_id: item.source_component_id,
+        action: 'replace' as const, replacement: { path: 'Replacement', component_id: REPLACEMENT_ID }
+      }))
+    }, storage)).rejects.toMatchObject({ code: ERR.SAVE_FAILED })
+
+    expect(await repo.readPlan(root, 'Target')).toEqual(targetBefore)
+    expect((await repo.readPlan(root, 'Late')).components[0].payload).toMatchObject({
+      target_plan_id: TARGET_ID, target_component_id: COMPONENT_ID
+    })
   })
 
   it('lets each surviving reference choose its own replacement or remain visibly missing', async () => {
