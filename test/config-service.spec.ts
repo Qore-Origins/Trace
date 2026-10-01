@@ -64,4 +64,65 @@ describe('ConfigService root persistence', () => {
     expect(config.getRootDir()).toBeNull()
     expect((await new ConfigService(userData, repo).load()).root_dir).toBeNull()
   })
+
+  it('persists a new root and a concurrent window update without losing either field', async () => {
+    const userData = await fs.mkdtemp(join(tmpdir(), 'trace-config-overlap-'))
+    directories.push(userData)
+    const repo = new PlanRepository()
+    const config = new ConfigService(userData, repo)
+    const oldRoot = join(userData, 'Old')
+    const newRoot = join(userData, 'New')
+    await config.setRootDir(oldRoot)
+    let releaseRootWrite: () => void = () => {}
+    let signalRootWrite: () => void = () => {}
+    let signalRootWritten: () => void = () => {}
+    const rootHeld = new Promise<void>((resolve) => { releaseRootWrite = resolve })
+    const rootWriteStarted = new Promise<void>((resolve) => { signalRootWrite = resolve })
+    const rootWritten = new Promise<void>((resolve) => { signalRootWritten = resolve })
+    const originalWrite = repo.writeAppJson.bind(repo)
+    vi.spyOn(repo, 'writeAppJson').mockImplementation(async (filePath, data) => {
+      const candidate = data as { root_dir: string | null; window: { width: number } }
+      if (candidate.root_dir === newRoot) {
+        signalRootWrite()
+        await rootHeld
+        await originalWrite(filePath, data)
+        signalRootWritten()
+        return
+      }
+      if (candidate.root_dir === oldRoot && candidate.window.width === 1440) await rootWritten
+      await originalWrite(filePath, data)
+    })
+
+    const changeRoot = config.setRootDir(newRoot)
+    await rootWriteStarted
+    const changeWindow = config.saveWindowState({ width: 1440, height: 900, maximized: true })
+    await Promise.resolve()
+    releaseRootWrite()
+    await Promise.all([changeRoot, changeWindow])
+
+    const reloaded = await new ConfigService(userData, repo).load()
+    expect(reloaded.root_dir).toBe(newRoot)
+    expect(reloaded.window).toEqual({ width: 1440, height: 900, maximized: true })
+  })
+
+  it('preserves the prior cache and original error if rollback persistence also fails', async () => {
+    const userData = await fs.mkdtemp(join(tmpdir(), 'trace-config-double-failure-'))
+    directories.push(userData)
+    const repo = new PlanRepository()
+    const config = new ConfigService(userData, repo)
+    const oldRoot = join(userData, 'Old')
+    const attemptedRoot = join(userData, 'Attempted')
+    await config.setRootDir(oldRoot)
+    const originalWrite = repo.writeAppJson.bind(repo)
+    vi.spyOn(repo, 'writeAppJson')
+      .mockImplementationOnce(async (filePath, data) => {
+        await originalWrite(filePath, data)
+        throw new Error('original write failed after replacement')
+      })
+      .mockRejectedValueOnce(new Error('rollback write failed'))
+
+    await expect(config.setRootDir(attemptedRoot)).rejects.toThrow('original write failed after replacement')
+    expect(config.getRootDir()).toBe(oldRoot)
+    expect((await new ConfigService(userData, repo).load()).root_dir).toBe(attemptedRoot)
+  })
 })

@@ -23,6 +23,7 @@ const DEFAULT_CONFIG: AppConfig = {
 
 export class ConfigService {
   private cache: AppConfig | null = null
+  private mutationQueue: Promise<void> = Promise.resolve()
 
   constructor(
     private userDataDir: string,
@@ -49,16 +50,7 @@ export class ConfigService {
   }
 
   async setRootDir(dirAbs: string): Promise<void> {
-    const previous = await this.load()
-    const next = { ...previous, root_dir: dirAbs }
-    try {
-      await this.repo.writeAppJson(this.configFile(), next)
-    } catch (error) {
-      // The writer can fail after replacing the file; restore the previous persisted root if possible.
-      await this.repo.writeAppJson(this.configFile(), previous).catch(() => {})
-      throw error
-    }
-    this.cache = next
+    return this.mutateConfig((previous) => ({ ...previous, root_dir: dirAbs }))
   }
 
   async getWindowState(): Promise<WindowState> {
@@ -67,8 +59,23 @@ export class ConfigService {
   }
 
   async saveWindowState(state: WindowState): Promise<void> {
-    const config = await this.load()
-    config.window = state
-    await this.repo.writeAppJson(this.configFile(), config)
+    return this.mutateConfig((previous) => ({ ...previous, window: state }))
+  }
+
+  private mutateConfig(change: (previous: AppConfig) => AppConfig): Promise<void> {
+    const operation = this.mutationQueue.then(async () => {
+      const previous = await this.load()
+      const next = change(previous)
+      try {
+        await this.repo.writeAppJson(this.configFile(), next)
+      } catch (error) {
+        // A failed writer may have already replaced the file; keep recovery before the next mutation.
+        await this.repo.writeAppJson(this.configFile(), previous).catch(() => {})
+        throw error
+      }
+      this.cache = next
+    })
+    this.mutationQueue = operation.then(() => undefined, () => undefined)
+    return operation
   }
 }
