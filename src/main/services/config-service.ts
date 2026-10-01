@@ -36,12 +36,15 @@ export class ConfigService {
 
   async load(): Promise<AppConfig> {
     if (this.cache) return this.cache
+    let loaded: AppConfig
     try {
       const raw = await fs.readFile(this.configFile(), 'utf8')
-      this.cache = { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as AppConfig) }
+      loaded = { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as AppConfig) }
     } catch {
-      this.cache = { ...DEFAULT_CONFIG }
+      loaded = { ...DEFAULT_CONFIG }
     }
+    // A concurrent load or mutation may have committed a newer config while this read was pending.
+    this.cache ??= loaded
     return this.cache
   }
 

@@ -125,4 +125,39 @@ describe('ConfigService root persistence', () => {
     expect(config.getRootDir()).toBe(oldRoot)
     expect((await new ConfigService(userData, repo).load()).root_dir).toBe(attemptedRoot)
   })
+
+  it('does not let a delayed cold read replace a newer committed root', async () => {
+    const userData = await fs.mkdtemp(join(tmpdir(), 'trace-config-cold-load-'))
+    directories.push(userData)
+    const repo = new PlanRepository()
+    const oldRoot = join(userData, 'Old')
+    const newRoot = join(userData, 'New')
+    await new ConfigService(userData, repo).setRootDir(oldRoot)
+    const oldSnapshot = await fs.readFile(join(userData, 'config.json'), 'utf8')
+    const config = new ConfigService(userData, repo)
+    let releaseOldRead: () => void = () => {}
+    let signalOldRead: () => void = () => {}
+    const oldReadHeld = new Promise<void>((resolve) => { releaseOldRead = resolve })
+    const oldReadStarted = new Promise<void>((resolve) => { signalOldRead = resolve })
+    const readSpy = vi.spyOn(fs, 'readFile').mockImplementationOnce(async () => {
+      signalOldRead()
+      await oldReadHeld
+      return oldSnapshot
+    })
+
+    const delayedLoad = config.load()
+    try {
+      await oldReadStarted
+      await config.setRootDir(newRoot)
+    } finally {
+      releaseOldRead()
+      readSpy.mockRestore()
+    }
+    expect((await delayedLoad).root_dir).toBe(newRoot)
+    expect(config.getRootDir()).toBe(newRoot)
+    await config.saveWindowState({ width: 1440, height: 900, maximized: true })
+    const reloaded = await new ConfigService(userData, repo).load()
+    expect(reloaded.root_dir).toBe(newRoot)
+    expect(reloaded.window).toEqual({ width: 1440, height: 900, maximized: true })
+  })
 })
