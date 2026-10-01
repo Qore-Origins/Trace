@@ -78,13 +78,25 @@ describe('writePlanAtomic + readPlan', () => {
     expect((await repo.readPlan(root, '坏引用')).components).toEqual(doc.components)
   })
 
-  it('rejects invalid shapes of new plan and remark fields', async () => {
+  it('rejects an invalid plan identity', async () => {
     const doc = sampleDoc()
     await fs.mkdir(join(root, '坏扩展'))
     await fs.writeFile(join(root, '坏扩展', 'plan.json'), JSON.stringify({ ...doc, plan_id: 17 }))
     await expect(repo.readPlan(root, '坏扩展')).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })
-    await fs.writeFile(join(root, '坏扩展', 'plan.json'), JSON.stringify({ ...doc, components: [{ id: '1', type: 'note', remark: 17, payload: {} }] }))
-    await expect(repo.readPlan(root, '坏扩展')).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })
+  })
+
+  it('keeps siblings readable and malformed remark data intact through read and save', async () => {
+    const doc = sampleDoc()
+    const components = [
+      { id: '1', type: 'note', payload: { content: 'sibling', created_at: doc.created_at } },
+      { id: '2', type: 'plan_reference', remark: 17, payload: { mode: 'unknown', target_plan_id: 'bad' } }
+    ]
+    await fs.mkdir(join(root, '坏备注'))
+    await fs.writeFile(join(root, '坏备注', 'plan.json'), JSON.stringify({ ...doc, components }))
+    const read = await repo.readPlan(root, '坏备注')
+    expect(read.components).toEqual(components)
+    await repo.writePlanAtomic(root, '坏备注', read)
+    expect((await repo.readPlan(root, '坏备注')).components).toEqual(components)
   })
   it('写入后可读回且无临时文件残留', async () => {
     await repo.ensureLibraryRoot(root)
