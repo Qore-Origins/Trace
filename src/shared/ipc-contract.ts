@@ -3,6 +3,7 @@
 import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
+import type { AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
 
 // ---------- 统一响应信封 ----------
 
@@ -78,6 +79,14 @@ export interface DiaryMemoryMilestone extends DiaryMemoryEntry {
 // ---------- 请求/响应载荷 ----------
 
 export interface Channels {
+  'agent:provider:list': { req: void; res: readonly AgentProviderPreset[] }
+  'agent:profile:list': { req: void; res: AgentProfileList }
+  'agent:profile:create': { req: AgentProfileInput; res: AgentProfile }
+  'agent:profile:update': { req: AgentProfileInput & { id: string }; res: AgentProfile }
+  'agent:profile:delete': { req: { id: string }; res: AgentProfileList }
+  'agent:profile:setDefault': { req: { id: string }; res: AgentProfile }
+  'agent:key:set': { req: { id: string; key: string }; res: AgentProfile }
+  'agent:key:remove': { req: { id: string }; res: AgentProfile }
   // app
   'app:getAppInfo': { req: void; res: AppInfo }
   'app:bootstrap': { req: void; res: BootstrapInfo }

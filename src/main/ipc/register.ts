@@ -17,6 +17,7 @@ import { todayDateStr } from '../../shared/validation'
 import { bus } from '../services/event-bus'
 import type { PlantumlService } from '../services/plantuml-service'
 import type { StartupCoordinator } from '../services/startup-coordinator'
+import { AgentProfileService } from '../services/agent-profile-service'
 import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlStatusDto } from '../../shared/plantuml-types'
 
 interface Deps {
@@ -32,6 +33,8 @@ interface Deps {
   captureDiaryRootGuard?: (root: string) => () => boolean
   getWindow: () => BrowserWindow | null
   log: (channel: string, code: number, detail?: string) => void
+  agentProfiles?: AgentProfileService
+  agentUserDataDir?: string
 }
 
 type Handler<K extends ChannelName> = (payload: Channels[K]['req']) => Promise<Channels[K]['res']>
@@ -87,6 +90,11 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
       return ok(data)
     } catch (e) {
       const { code, message } = toTraceResultError(e)
+      if (name.startsWith('agent:')) {
+        const safeMessage = code === ERR.VALIDATION || code === ERR.PATH_NOT_FOUND ? message : '服务配置操作失败'
+        log(name, code, safeMessage)
+        return fail(code, safeMessage)
+      }
       if (name.startsWith('diary:')) {
         // 文件系统异常可能携带绝对路径/正文；日记边界只返回固定的可重试提示。
         const safeMessage = name === 'diary:ensure' ? '日记初始化失败，请稍后重试' : '日记读取失败，请稍后重试'
@@ -119,6 +127,24 @@ export function registerIpc(deps: Deps): () => void {
     })
     registeredChannels.push(name)
   }
+
+  // Constructor performs no disk or OS encryption work; first request creates the service.
+  let agentProfiles = deps.agentProfiles
+  const agent = (): AgentProfileService => {
+    if (!agentProfiles) {
+      if (!deps.agentUserDataDir) throw new TraceError(ERR.INTERNAL, '服务配置目录不可用')
+      agentProfiles = new AgentProfileService(deps.agentUserDataDir)
+    }
+    return agentProfiles
+  }
+  reg('agent:provider:list', async () => agent().providers())
+  reg('agent:profile:list', () => agent().list())
+  reg('agent:profile:create', (payload) => agent().create(payload))
+  reg('agent:profile:update', (payload) => agent().update(payload))
+  reg('agent:profile:delete', (payload) => agent().delete(payload?.id))
+  reg('agent:profile:setDefault', (payload) => agent().setDefault(payload?.id))
+  reg('agent:key:set', (payload) => agent().setKey(payload?.id, payload?.key))
+  reg('agent:key:remove', (payload) => agent().removeKey(payload?.id))
 
   // ---------- app ----------
   reg('app:getAppInfo', () => app.getAppInfo())

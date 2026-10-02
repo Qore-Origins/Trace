@@ -7,6 +7,7 @@ import type { DiaryAutomationStatus, TraceEventsContract } from '../shared/event
 const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:', 'transfer:', 'window:', 'search:', 'diary:']
 const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getStatus', 'plantuml:retry'])
 const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-template:set', 'plan-template:remove'])
+const AGENT_CHANNELS = new Set<string>(['agent:provider:list', 'agent:profile:list', 'agent:profile:create', 'agent:profile:update', 'agent:profile:delete', 'agent:profile:setDefault', 'agent:key:set', 'agent:key:remove'])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',
@@ -34,9 +35,12 @@ const bridge = {
   ): Promise<TraceResult<Channels[K]['res']>> => {
     const isPlantumlChannel = typeof channel === 'string' && channel.startsWith('plantuml:')
     const isPlanTemplateChannel = typeof channel === 'string' && channel.startsWith('plan-template:')
+    const isAgentChannel = typeof channel === 'string' && channel.startsWith('agent:')
     if (
       typeof channel !== 'string' ||
-      (isPlantumlChannel
+      (isAgentChannel
+        ? !AGENT_CHANNELS.has(channel)
+        : isPlantumlChannel
         ? !PLANTUML_CHANNELS.has(channel)
         : isPlanTemplateChannel
           ? !PLAN_TEMPLATE_CHANNELS.has(channel)

@@ -194,6 +194,7 @@ if (!app.requestSingleInstanceLock()) {
       export: exportService,
       search,
       planNameTemplates,
+      agentUserDataDir: app.getPath('userData'),
       plantuml: plantumlService,
       startup,
       captureDiaryRootGuard: (root) => diaryAutomation.captureRootGuard(root),
