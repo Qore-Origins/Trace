@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, Input } from 'antd'
 import type { AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from '@shared/agent-types'
-import { invoke } from '../ipc-client'
+import { ERR } from '@shared/errors'
+import { ClientError, invoke } from '../ipc-client'
 import { getMessage, getModal } from '../antd-host'
 import { useTranslation } from '../i18n'
 
@@ -19,6 +20,8 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   const [keyDraft, setKeyDraft] = useState('')
+  const [recoveryProfileId, setRecoveryProfileId] = useState<string | null>(null)
+  const [recoveryRefreshFailed, setRecoveryRefreshFailed] = useState(false)
   const current = list.profiles.find((profile) => profile.id === selectedId)
 
   const selectProfile = (profile?: AgentProfile): void => {
@@ -29,6 +32,7 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
   useEffect(() => {
     const token = ++generation.current
     setError(false); setBusy(false); setList(EMPTY_LIST); selectProfile()
+    setRecoveryProfileId(null); setRecoveryRefreshFailed(false)
     if (!active) { setLoading(false); return }
     setLoading(true)
     void Promise.all([invoke('agent:provider:list'), invoke('agent:profile:list')]).then(([catalog, profiles]) => {
@@ -43,7 +47,14 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
     const token = generation.current
     if (!active || busy || loading) return
     setBusy(true); setError(false)
-    try { await operation(token) } catch { if (generation.current === token) { setError(true); getMessage().error(t('agentSettings.operationFailed')) } }
+    try { await operation(token) } catch (failure) {
+      if (generation.current !== token) return
+      if (failure instanceof ClientError && failure.code === ERR.CREDENTIAL_RECOVERY_REQUIRED) {
+        setRecoveryProfileId(selectedId); setRecoveryRefreshFailed(true); setKeyDraft('')
+        getMessage().error(t('agentSettings.recoveryRequired'))
+        try { await refresh(selectedId, token, true) } catch { /* Keep the warning and mask stale status until a successful refresh. */ }
+      } else { setError(true); getMessage().error(t('agentSettings.operationFailed')) }
+    }
     finally { if (generation.current === token) setBusy(false) }
   }
   const refresh = async (preferredId: string, token: number, preserveDraft = false): Promise<void> => {
@@ -51,6 +62,7 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
     const profiles = await invoke('agent:profile:list')
     if (generation.current !== token) return
     setList(profiles)
+    setRecoveryRefreshFailed(false)
     if (preserveDraft && profiles.profiles.some((profile) => profile.id === preferredId)) return
     selectProfile(profiles.profiles.find((profile) => profile.id === preferredId) ?? profiles.profiles.find((profile) => profile.id === profiles.defaultProfileId))
   }
@@ -68,7 +80,10 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
   const saveKey = (): void => {
     const key = keyDraft
     setKeyDraft('')
-    void operate(async (token) => { await invoke('agent:key:set', { id: selectedId, key }); await refresh(selectedId, token, true) })
+    void operate(async (token) => {
+      await invoke('agent:key:set', { id: selectedId, key }); await refresh(selectedId, token, true)
+      if (generation.current === token && recoveryProfileId === selectedId) setRecoveryProfileId(null)
+    })
   }
   const testCapability = (): void => {
     const id = selectedId, token = generation.current
@@ -79,12 +94,20 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
   }
   const savedConfiguration = Boolean(current && draft.endpoint === current.endpoint && draft.model === current.model && draft.name === current.name && draft.presetId === current.presetId)
   const safeCategory = current?.capability.errorCategory
+  const uncertainStatus = recoveryRefreshFailed && recoveryProfileId === selectedId
   const knownCategories = ['missing-key', 'unsupported', 'authentication', 'http', 'protocol', 'limit', 'timeout', 'network', 'validation', 'cancelled', 'internal']
   if (!active) return <></>
   return <section className="agent-settings" aria-label={t('agentSettings.title')}>
     <p className="agent-settings-hint">{t('agentSettings.description')}</p>
     {loading && <div role="status">{t('common.loading')}</div>}
     {error && <div role="alert">{t('agentSettings.operationFailed')}</div>}
+    {recoveryProfileId && <div role="alert">
+      {t('agentSettings.recoveryRequired')}
+      {recoveryRefreshFailed && <>
+        <p>{t('agentSettings.recoveryRefreshFailed')}</p>
+        <Button disabled={busy || loading} onClick={() => { void operate(async (token) => { await refresh(recoveryProfileId, token, true) }) }}>{t('agentSettings.retryStatus')}</Button>
+      </>}
+    </div>}
     <fieldset disabled={loading || busy}>
       <label>{t('agentSettings.profiles')}<select aria-label={t('agentSettings.profiles')} value={selectedId} onChange={(event) => selectProfile(list.profiles.find((profile) => profile.id === event.target.value))}>
         <option value="">{t('agentSettings.newProfile')}</option>
@@ -110,18 +133,18 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
         <Button danger disabled={!current} onClick={remove}>{t('agentSettings.delete')}</Button>
       </div>
       {current && <>
-        <div role="status">{t(`agentSettings.keyStatus.${current.keyStatus}`)}</div>
+        <div role="status">{t(uncertainStatus ? 'agentSettings.statusUnknown' : `agentSettings.keyStatus.${current.keyStatus}`)}</div>
         <label>API Key<Input type="password" aria-label="API Key" autoComplete="new-password" value={keyDraft} maxLength={4096} onChange={(event) => setKeyDraft(event.target.value)} /></label>
         <p className="agent-settings-hint">{t('agentSettings.keyHint')}</p>
         <div className="agent-settings-actions">
           <Button disabled={!keyDraft.trim()} onClick={saveKey}>{t('agentSettings.saveKey')}</Button>
-          <Button disabled={current.keyStatus === 'missing'} onClick={() => { setKeyDraft(''); void operate(async (token) => { await invoke('agent:key:remove', { id: selectedId }); await refresh(selectedId, token, true) }) }}>{t('agentSettings.removeKey')}</Button>
+          <Button disabled={uncertainStatus || current.keyStatus === 'missing'} onClick={() => { setKeyDraft(''); void operate(async (token) => { await invoke('agent:key:remove', { id: selectedId }); await refresh(selectedId, token, true) }) }}>{t('agentSettings.removeKey')}</Button>
         </div>
-        <div role="status">{t(`agentSettings.capability.${current.capability.status}`)}
-          {current.capability.testedAt && <time dateTime={current.capability.testedAt}> · {t('agentSettings.testedAt')}: {new Date(current.capability.testedAt).toLocaleString(i18n.language)}</time>}
-          {safeCategory && <span> · {t(`agentSettings.errors.${knownCategories.includes(safeCategory) ? safeCategory : 'internal'}`)}</span>}
+        <div role="status">{t(uncertainStatus ? 'agentSettings.statusUnknown' : `agentSettings.capability.${current.capability.status}`)}
+          {!uncertainStatus && current.capability.testedAt && <time dateTime={current.capability.testedAt}> · {t('agentSettings.testedAt')}: {new Date(current.capability.testedAt).toLocaleString(i18n.language)}</time>}
+          {!uncertainStatus && safeCategory && <span> · {t(`agentSettings.errors.${knownCategories.includes(safeCategory) ? safeCategory : 'internal'}`)}</span>}
         </div>
-        <Button disabled={!savedConfiguration} onClick={testCapability}>{t('agentSettings.test')}</Button>
+        <Button disabled={uncertainStatus || !savedConfiguration} onClick={testCapability}>{t('agentSettings.test')}</Button>
         <p className="agent-settings-hint">{t(savedConfiguration ? 'agentSettings.chatHint' : 'agentSettings.saveFirst')}</p>
       </>}
     </fieldset>

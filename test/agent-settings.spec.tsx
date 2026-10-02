@@ -83,6 +83,64 @@ describe('model service settings interactions', () => {
     await render(); await settle()
     return profile.data.id
   }
+  it.each([
+    { language: 'zh-CN', deleteButton: '删除服务', confirmButton: '删除', warning: '密钥恢复失败', guidance: '重新配置密钥并重测工具能力', missing: '未配置密钥', retest: '需重测', passed: '测试通过', saved: '密钥已保存', unknown: '当前状态无法确认', refreshError: '无法刷新当前服务状态', retry: '重试刷新状态' },
+    { language: 'en-US', deleteButton: 'Delete service', confirmButton: 'Delete', warning: 'Credential recovery failed', guidance: 'configure the credential again and retest tool support', missing: 'Credential missing', retest: 'Needs retest', passed: 'Test passed', saved: 'Credential saved', unknown: 'Current status unknown', refreshError: 'Unable to refresh the service status', retry: 'Retry status refresh' }
+  ].flatMap((labels) => [{ ...labels, refreshFails: false }, { ...labels, refreshFails: true }]))('shows local recovery in $language with failed refresh: $refreshFails', async (labels) => {
+    await i18n.changeLanguage(labels.language)
+    const profile = await bridge.invoke('agent:profile:create', { name: 'recovery-profile', endpoint: 'http://localhost:11434/v1', model: 'local' })
+    if (!profile.ok) throw new Error('Setup failed')
+    const id = profile.data.id
+    await bridge.invoke('agent:key:set', { id, key: 'synthetic-recovery-key' })
+    const metadataPath = join(directory, 'agent-profiles.json')
+    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'))
+    metadata.profiles[0].capability = { status: 'passed', testedAt: '2026-10-02T00:00:00.000Z', errorCategory: null }
+    await fs.writeFile(metadataPath, JSON.stringify(metadata))
+    await render()
+    expect(host.textContent).toContain(labels.passed)
+    expect(host.textContent).toContain(labels.saved)
+    const blockedTarget = join(directory, 'nonempty-ui-recovery-target')
+    await fs.mkdir(blockedTarget); await fs.writeFile(join(blockedTarget, 'sentinel'), 'block-recovery')
+    const credentialPath = join(directory, 'agent-credentials', `${id}.bin`)
+    const realRename = fs.rename.bind(fs)
+    const realReadFile = fs.readFile.bind(fs)
+    let profileCommits = 0
+    let recoveryAttempted = false
+    const failedRefresh = vi.spyOn(fs, 'readFile').mockImplementation(async (path, options) => {
+      return realReadFile(path === metadataPath && recoveryAttempted && labels.refreshFails ? blockedTarget : path, options)
+    })
+    const failure = vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      if (destination === metadataPath) profileCommits += 1
+      if (destination === credentialPath) recoveryAttempted = true
+      const block = (destination === metadataPath && profileCommits === 2) || destination === credentialPath
+      await realRename(source, block ? blockedTarget : destination)
+    })
+    try { await click(labels.deleteButton); await click(labels.confirmButton, document.body) }
+    finally { failure.mockRestore(); failedRefresh.mockRestore() }
+    expect(host.textContent).toContain(labels.warning)
+    expect(host.textContent).toContain(labels.guidance)
+    if (labels.refreshFails) {
+      expect(host.textContent).toContain(labels.unknown)
+      expect(host.textContent).toContain(labels.refreshError)
+      expect(host.querySelector('time')).toBeNull()
+      const testButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes(labels.language === 'zh-CN' ? '测试工具能力' : 'Test tool support'))!
+      expect(testButton.disabled).toBe(true)
+    } else {
+      expect(host.textContent).toContain(labels.missing)
+      expect(host.textContent).toContain(labels.retest)
+    }
+    expect(host.textContent).not.toContain(labels.passed)
+    expect(host.textContent).not.toContain(labels.saved)
+    expect(host.textContent).not.toMatch(/服务配置操作失败|服务删除部分失败|synthetic-recovery-key/)
+    expect(electron.calls.filter((call) => call.name === 'agent:profile:list').length).toBeGreaterThan(1)
+    if (labels.refreshFails) {
+      await click(labels.retry)
+      expect(host.textContent).toContain(labels.missing)
+      expect(host.textContent).toContain(labels.retest)
+      expect(host.textContent).toContain(labels.warning)
+      expect(host.textContent).not.toContain(labels.unknown)
+    }
+  })
   it('prefills an editable preset and supports creating, editing, defaulting and deleting profiles', async () => {
     await render(); await settle()
     await choose('服务商预设', 'deepseek')
@@ -162,6 +220,7 @@ describe('model service settings interactions', () => {
     expect(host.querySelector('[role="alert"]')?.textContent).toContain(labels.operationError)
     expect(host.querySelector('[role="alert"]')?.textContent).not.toContain('远程服务地址须使用 HTTPS')
     expect(host.textContent).not.toContain('missing-key')
+    expect(host.textContent).not.toMatch(/密钥恢复失败|Credential recovery failed/)
   })
   it('loads only while active and drops a late load from a previous Settings opening', async () => {
     await render(false)

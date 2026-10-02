@@ -113,7 +113,7 @@ describe('agent profile typed IPC', () => {
     if (restoreSucceeds) expect(await fs.readFile(credentialPath)).toEqual(before)
     else {
       await expect(fs.access(credentialPath)).rejects.toThrow()
-      expect(result).toMatchObject({ message: '服务删除部分失败，密钥未能恢复；请重新配置密钥并重测能力' })
+      expect(result).toMatchObject({ code: 25, message: '服务配置操作失败' })
     }
     dispose?.()
     const [{ registerIpc }, { AgentProfileService }] = await Promise.all([import('../src/main/ipc/register'), import('../src/main/services/agent-profile-service')])

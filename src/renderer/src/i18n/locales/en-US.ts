@@ -8,6 +8,7 @@ const enUS: typeof zhCN = {
     direct: 'Direct providers', aggregator: 'Aggregators', protocol: 'Protocol: OpenAI Chat Completions',
     name: 'Service name', endpoint: 'Endpoint', model: 'Model', save: 'Save service', setDefault: 'Set as default', delete: 'Delete service',
     deleteTitle: 'Delete model service?', deleteWarning: 'This removes the service and its credential.', operationFailed: 'Model service operation failed. Check the configuration and retry.',
+    recoveryRequired: 'Credential recovery failed. Please configure the credential again and retest tool support.', recoveryRefreshFailed: 'Unable to refresh the service status. Previous credential and capability status cannot be trusted. Retry the refresh or reopen Settings.', retryStatus: 'Retry status refresh', statusUnknown: 'Current status unknown',
     keyHint: 'Existing credentials never return to the interface. Without OS encryption, a credential lasts only until the app exits.', saveKey: 'Save or replace credential', removeKey: 'Remove credential',
     test: 'Test tool support', testTitle: 'Test structured streaming tool support?', testWarning: 'A fixed synthetic test will be sent to the saved model service and may incur charges. No plans, diary, history, or personal preferences are sent. The test tool is never executed.', startTest: 'Start test',
     testedAt: 'Tested at', chatHint: 'A failed capability test does not block regular chat.', saveFirst: 'Save the service configuration before testing the saved model.',

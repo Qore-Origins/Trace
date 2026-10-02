@@ -167,7 +167,7 @@ export class AgentProfileService {
       } catch (error) {
         if (originalKey !== null) {
           try { await this.credentials.set(removed.id, originalKey) }
-          catch { throw new TraceError(ERR.VALIDATION, '服务删除部分失败，密钥未能恢复；请重新配置密钥并重测能力') }
+          catch { throw new TraceError(ERR.CREDENTIAL_RECOVERY_REQUIRED, '服务删除部分失败，密钥未能恢复；请重新配置密钥并重测能力') }
         }
         throw error
       }

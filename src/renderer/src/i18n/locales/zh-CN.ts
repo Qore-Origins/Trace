@@ -6,6 +6,7 @@ const zhCN = {
     direct: '直连服务商', aggregator: '聚合服务', protocol: '协议：OpenAI Chat Completions',
     name: '服务名称', endpoint: '服务地址', model: '模型', save: '保存服务', setDefault: '设为默认', delete: '删除服务',
     deleteTitle: '删除模型服务？', deleteWarning: '将删除此服务及其密钥。', operationFailed: '模型服务操作失败，请检查配置后重试。',
+    recoveryRequired: '密钥恢复失败。请重新配置密钥并重测工具能力。', recoveryRefreshFailed: '无法刷新当前服务状态。旧的密钥与能力状态暂不可信，请重试刷新或重新打开设置。', retryStatus: '重试刷新状态', statusUnknown: '当前状态无法确认',
     keyHint: '已有密钥不会返回界面。系统加密不可用时，密钥仅保留到本次应用退出。', saveKey: '保存或替换密钥', removeKey: '移除密钥',
     test: '测试工具能力', testTitle: '测试结构化流式工具能力？', testWarning: '将向已保存的模型服务发送固定合成测试，可能产生费用。不会发送计划、日记、历史或个人偏好；测试工具不会执行。', startTest: '开始测试',
     testedAt: '测试时间', chatHint: '能力测试失败不影响普通聊天。', saveFirst: '请先保存服务配置，再测试已保存的模型。',
