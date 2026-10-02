@@ -7,7 +7,7 @@ interface PageNavigationProps {
   ariaLabel: string
 }
 
-const pageViews: readonly ViewName[] = ['workspace', 'diary', 'memories']
+const pageViews: readonly ViewName[] = ['workspace', 'diary', 'memories', 'agent']
 
 export default function PageNavigation({ currentView, onNavigate, labels, ariaLabel }: PageNavigationProps): React.JSX.Element {
   return (

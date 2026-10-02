@@ -55,6 +55,14 @@
     padding-right: 3px;
     padding-left: 3px;
   }
+
+  .app-shell .brand {
+    flex: 0 1 auto;
+    min-width: 10px;
+    overflow: hidden;
+  }
+
+  .app-shell .brand-dot { flex: none; }
 }
 
 /* ---------- 工作台内容骨架（应用壳见 shell.css） ---------- */
@@ -87,7 +95,7 @@
 
 /* 顶栏：无边框标题栏——整体为拖拽区，交互控件 no-drag（双击空白=最大化/还原 系统行为）
    注意：新增顶栏交互元素必须加进 no-drag 白名单，否则点击被拖拽区吞掉（menu-title 2026-09-06 实证） */
-.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: grid; grid-template-columns: minmax(0, 1fr) 226px minmax(0, 1fr); align-items: center; gap: 12px; padding-inline: 16px; -webkit-app-region: drag; user-select: none; }
+.ws-top { height: 48px; flex: none; background: var(--paper); border-bottom: 1px solid var(--split); display: grid; grid-template-columns: minmax(0, 1fr) 294px minmax(0, 1fr); align-items: center; gap: 12px; padding-inline: 16px; -webkit-app-region: drag; user-select: none; }
 .ws-top button, .ws-top input, .ws-top .ant-dropdown, .ws-top .ant-btn, .ws-top .ant-input, .ws-top .menu-title, .ws-top .menubar, .ws-top .view-nav { -webkit-app-region: no-drag; }
 .top-left, .top-right { display: flex; align-items: center; min-width: 0; gap: 12px; }
 .top-center { display: flex; justify-content: center; min-width: 0; }
@@ -116,7 +124,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  width: 226px;
+  width: 294px;
   height: 42px;
   padding: 4px;
   background: var(--fill);
@@ -126,13 +134,14 @@
 }
 .view-nav:has(.nav-btn.active:nth-child(2)) { --nav-position: 1; --nav-target: 1; }
 .view-nav:has(.nav-btn.active:nth-child(3)) { --nav-position: 2; --nav-target: 2; }
+.view-nav:has(.nav-btn.active:nth-child(4)) { --nav-position: 3; --nav-target: 3; }
 .view-nav::before {
   content: '';
   position: absolute;
   top: 4px;
   bottom: 4px;
-  left: calc(4px + (100% - 8px) / 3 * var(--nav-position) - max(0, var(--nav-position) - var(--nav-target)) * 3px);
-  width: calc((100% - 8px) / 3 + abs(var(--nav-target) - var(--nav-position)) * 3px);
+  left: calc(4px + (100% - 8px) / 4 * var(--nav-position) - max(0, var(--nav-position) - var(--nav-target)) * 3px);
+  width: calc((100% - 8px) / 4 + abs(var(--nav-target) - var(--nav-position)) * 3px);
   border-radius: 999px;
   background: var(--trace-bg);
   transition: --nav-position 560ms var(--ease-spring);

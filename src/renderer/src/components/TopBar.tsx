@@ -55,7 +55,8 @@ function ViewNav(): React.JSX.Element {
       labels={{
         workspace: t('diary.navPlans'),
         diary: t('diary.nav'),
-        memories: t('diary.navMemories')
+        memories: t('diary.navMemories'),
+        agent: t('agentChat.nav')
       }}
       ariaLabel={t('navigation.pages')}
     />

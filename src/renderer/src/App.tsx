@@ -31,6 +31,7 @@ import { markTrace, startTraceMeasure } from './perf/marks'
 
 const DiaryView = lazy(() => import('./views/DiaryView'))
 const MemoriesView = lazy(() => import('./views/MemoriesView'))
+const AgentView = lazy(() => import('./views/AgentView'))
 const AgentSettingsSection = lazy(() => import('./components/AgentSettingsSection'))
 const PLANTUML_BADGE_STATUS = {
   stopped: 'default',
@@ -274,6 +275,8 @@ export default function App(): React.JSX.Element {
             <DiaryView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
           ) : view === 'memories' ? (
             <MemoriesView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
+          ) : view === 'agent' ? (
+            <AgentView key={rootDir ?? 'none'} />
           ) : (
             <WorkspaceView />
           )}

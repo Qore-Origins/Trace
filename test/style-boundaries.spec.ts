@@ -18,7 +18,8 @@ describe('renderer style boundaries', () => {
       'diary.css',
       'memories.css',
       'plan-name-templates.css',
-      'agent-settings.css'
+      'agent-settings.css',
+      'agent-view.css'
     ]
 
     for (const file of expectedImports) {
@@ -41,7 +42,8 @@ describe('renderer style boundaries', () => {
       'diary.css': ['.diary-main', '.diary-layout', '@media (max-width: 959px)'],
       'memories.css': ['.memories-body', '.memories-preview', '@media (max-width: 959px)'],
       'plan-name-templates.css': ['.plan-name-template-settings', '.name-dialog-template__preview'],
-      'agent-settings.css': ['.agent-settings', '.agent-settings-actions', '.agent-settings-hint']
+      'agent-settings.css': ['.agent-settings', '.agent-settings-actions', '.agent-settings-hint'],
+      'agent-view.css': ['.agent-view', '.agent-context-picker', '.agent-preview']
     }
 
     for (const [file, selectors] of Object.entries(selectorsByFile)) {

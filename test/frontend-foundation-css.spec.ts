@@ -79,9 +79,10 @@ describe('frontend information and interaction foundation', () => {
     expect(search).toContain('SEARCH_PAGE_SIZE')
   })
 
-  it('keeps the page navigation on a three-segment token-based capsule', () => {
+  it('keeps four readable page labels on a four-segment token-based capsule', () => {
     const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
-    expect(shell).toMatch(/\.view-nav\s*\{[^}]*width:\s*226px;[^}]*height:\s*42px;/)
+    expect(shell).toMatch(/\.view-nav\s*\{[^}]*width:\s*294px;[^}]*height:\s*42px;/)
+    expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*left:[^;]*\/ 4[^;]*;[^}]*width:[^;]*\/ 4/)
     expect(shell).toMatch(/\.view-nav\s*\{[^}]*background:\s*var\(--fill\);[^}]*border:\s*1px solid var\(--border\);/)
     expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*background:\s*var\(--trace-bg\);/)
     expect(shell).toMatch(/\.nav-btn\s*\{[^}]*flex:\s*1;/)
@@ -94,6 +95,7 @@ describe('frontend information and interaction foundation', () => {
     expect(shell).toMatch(/@property\s+--nav-position\s*\{/)
     expect(shell).toMatch(/\.view-nav:has\(\.nav-btn\.active:nth-child\(2\)\)\s*\{[^}]*--nav-position:\s*1;/)
     expect(shell).toMatch(/\.view-nav:has\(\.nav-btn\.active:nth-child\(3\)\)\s*\{[^}]*--nav-position:\s*2;/)
+    expect(shell).toMatch(/\.view-nav:has\(\.nav-btn\.active:nth-child\(4\)\)\s*\{[^}]*--nav-position:\s*3;/)
     expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*transition:\s*--nav-position\s+5[0-9]{2}ms\s+var\(--ease-spring\);/)
     expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*abs\(/)
     expect(shell).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.view-nav::before\s*\{[^}]*transition:\s*none/)
@@ -102,8 +104,8 @@ describe('frontend information and interaction foundation', () => {
   it('contains first-to-last and last-to-first spring overshoot inside the capsule', () => {
     const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
     const overshootProgress = 1.06
-    expect(2 * overshootProgress).toBeGreaterThan(2)
-    expect(2 - 2 * overshootProgress).toBeLessThan(0)
+    expect(3 * overshootProgress).toBeGreaterThan(3)
+    expect(3 - 3 * overshootProgress).toBeLessThan(0)
     expect(shell).toMatch(/\.view-nav\s*\{[^}]*overflow:\s*hidden;/)
     expect(shell).toMatch(/\.nav-btn:focus-visible\s*\{[^}]*outline-offset:\s*-2px;/)
   })

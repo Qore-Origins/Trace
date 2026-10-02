@@ -1,5 +1,6 @@
 // zh-CN 语料（源头语言；en-US 以此为形状约束，键缺失编译期报错）
 const zhCN = {
+  agentChat: { nav: '小沅' },
   agentSettings: {
     title: '小沅模型服务', description: '预设只提供连接信息，工具能力需要单独测试。服务与密钥分别保存。',
     profiles: '模型服务', newProfile: '新建服务', default: '默认', preset: '服务商预设', custom: '自定义 OpenAI 兼容服务',

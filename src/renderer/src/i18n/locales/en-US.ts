@@ -2,6 +2,7 @@
 import type zhCN from './zh-CN'
 
 const enUS: typeof zhCN = {
+  agentChat: { nav: 'Xiao Yuan' },
   agentSettings: {
     title: 'Xiao Yuan model services', description: 'Presets only supply connection details. Test tool support separately. Save profiles and credentials independently.',
     profiles: 'Model services', newProfile: 'New service', default: 'Default', preset: 'Provider preset', custom: 'Custom OpenAI-compatible service',

@@ -77,7 +77,7 @@ describe('AppShell structure contract', () => {
     expect(topBar).toMatch(/className="top-left"[\s\S]*?<MenuBar \/>/)
     expect(topBar).toMatch(/className="top-center"[\s\S]*?<ViewNav \/>/)
     expect(topBar).toMatch(/className="top-right"[\s\S]*?className="search"[\s\S]*?<WindowControls \/>/)
-    expect(css).toMatch(/\.ws-top\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 226px minmax\(0, 1fr\);/)
+    expect(css).toMatch(/\.ws-top\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 294px minmax\(0, 1fr\);/)
     expect(css).toMatch(/\.ws-top \.search\s*\{[^}]*min-width:\s*0;[^}]*flex:\s*1 1 0;/)
     expect(css).toMatch(/@media\s*\(max-width:\s*959px\)[\s\S]*?\.menubar\s*\{[^}]*gap:\s*0;/)
   })

@@ -7,7 +7,7 @@ import { confirmAction } from '../components/ui/ConfirmAction'
 export type NameDialogMode = 'create-plan' | 'create-folder' | 'rename' | 'preset'
 
 // 顶栏视图（纯 session 态，不持久化）：workspace 默认；diary 路由由 App 渲染（导航入口 Task 5 接线）
-export type ViewName = 'workspace' | 'diary' | 'memories'
+export type ViewName = 'workspace' | 'diary' | 'memories' | 'agent'
 
 // 命名对话框的定制分支（如预设保存）：title/placeholder/okText/校验/提交动作全部由调用方注入，
 // mode:'preset' 仅作判别（preset 分支完全由 customize 驱动）
