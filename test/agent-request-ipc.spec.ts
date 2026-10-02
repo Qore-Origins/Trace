@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TraceBridge, TraceResult } from '../src/shared/ipc-contract'
-import type { AgentOutboundPreview, AgentRequestEvent, AgentRequestIdentity } from '../src/shared/agent-types'
+import type { AgentMessageStatus, AgentOutboundPreview, AgentRequestEvent, AgentRequestIdentity } from '../src/shared/agent-types'
+import type { AgentConversationService } from '../src/main/services/agent-conversation-service'
 import type { StorageService } from '../src/main/services/storage-service'
 import { AGENT_MAX_MESSAGE_LENGTH } from '../src/main/services/agent-session-repository'
 
@@ -183,6 +184,46 @@ describe('agent request public IPC and loopback SSE', () => {
     expect(data(await bridge.invoke('agent:session:read', { id: identity.sessionId })).messages[1]).toMatchObject({ content: 'prefix', status: 'user-interrupted' })
     expect(data(await bridge.invoke('agent:session:read', { id: other.sessionId })).messages).toEqual([])
     await until(() => responses[0].destroyed)
+    expect(bodies).toHaveLength(1)
+  })
+  it.each(['complete', 'error-interrupted', 'user-interrupted'] as const)('rejects cancellation after %s finalization is claimed but real terminal persistence is pending', async (status) => {
+    const { AgentConversationService } = await import('../src/main/services/agent-conversation-service')
+    const original = AgentConversationService.prototype.settleAssistant
+    let release!: () => void, entered!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const pending = new Promise<void>((resolve) => { entered = resolve })
+    // Control scheduling only: every settlement still calls the original service and
+    // writes the real temporary session through the existing repository/filesystem.
+    vi.spyOn(AgentConversationService.prototype, 'settleAssistant').mockImplementation(function (this: AgentConversationService, ...args: Parameters<AgentConversationService['settleAssistant']>) {
+      if (args[3] !== status) return original.apply(this, args)
+      entered()
+      return gate.then(() => original.apply(this, args))
+    })
+    respond = (response) => {
+      response.write(chunk('persisted-prefix'))
+      if (status === 'user-interrupted') return
+      response.end(status === 'complete' ? end : 'data: malformed\n\n')
+    }
+    const identity = await send(await createPreview())
+    let firstCancellation: TraceResult<null> | undefined
+    if (status === 'user-interrupted') {
+      await until(() => events.some((event) => event.type === 'delta' && event.requestId === identity.requestId))
+      firstCancellation = await bridge.invoke('agent:request:cancel', { sessionId: identity.sessionId, requestId: identity.requestId })
+    }
+    await pending
+    const before = data(await bridge.invoke('agent:session:read', { id: identity.sessionId })).messages[1]
+    expect(before).toMatchObject({ content: 'persisted-prefix', status: 'streaming' })
+    expect(events.filter((event) => event.type === 'terminal' && event.requestId === identity.requestId)).toEqual([])
+    const lateCancellation = await bridge.invoke('agent:request:cancel', { sessionId: identity.sessionId, requestId: identity.requestId })
+    release()
+    const final = await terminal(identity)
+    expect(lateCancellation.ok).toBe(false)
+    if (firstCancellation) expect(firstCancellation.ok).toBe(true)
+    const marker = status === 'complete' ? null : status === 'user-interrupted' ? '【用户中断】' : '【异常中断】'
+    expect(final).toMatchObject({ ...identity, status, marker, errorCategory: status === 'error-interrupted' ? 'protocol' : null })
+    expect(data(await bridge.invoke('agent:session:read', { id: identity.sessionId })).messages[1]).toMatchObject({ content: 'persisted-prefix', status: status as AgentMessageStatus })
+    expect(events.filter((event) => event.type === 'terminal' && event.requestId === identity.requestId)).toHaveLength(1)
+    expect((await bridge.invoke('agent:request:cancel', { sessionId: identity.sessionId, requestId: identity.requestId })).ok).toBe(false)
     expect(bodies).toHaveLength(1)
   })
   it('isolates simultaneous sessions and consumes a concurrently replayed token only once', async () => {

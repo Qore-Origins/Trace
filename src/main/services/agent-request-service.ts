@@ -81,6 +81,9 @@ export class AgentRequestService {
     try { await provider } catch (error) {
       if (!active.errorCategory && !active.userStopped) active.errorCategory = error instanceof AgentStreamError && error.category !== 'cancelled' ? error.category : 'network'
     }
+    // Claim finalization synchronously: cancellation cannot be accepted while the
+    // already settled provider's incremental or terminal persistence is pending.
+    this.active.delete(active.identity.requestId)
     active.acceptingText = false
     await active.persistence
     let status: 'complete' | 'user-interrupted' | 'error-interrupted' = active.errorCategory ? 'error-interrupted' : active.userStopped ? 'user-interrupted' : 'complete'
@@ -90,14 +93,13 @@ export class AgentRequestService {
       status = 'error-interrupted'
       active.errorCategory = 'storage'
     }
-    this.active.delete(active.identity.requestId)
     this.publish({ ...active.identity, type: 'terminal', status, marker: status === 'complete' ? null : status === 'user-interrupted' ? '【用户中断】' : '【异常中断】', errorCategory: active.errorCategory })
   }
 
   async cancel(payload: unknown): Promise<null> {
     const input = metadata(payload, ['sessionId', 'requestId']) as unknown as AgentRequestCancelInput
     const active = this.active.get(input.requestId)
-    if (!active || active.identity.sessionId !== input.sessionId) throw new TraceError(ERR.STATE_MACHINE, '当前请求不存在')
+    if (!active || active.identity.sessionId !== input.sessionId || active.errorCategory) throw new TraceError(ERR.STATE_MACHINE, '当前请求不存在')
     active.userStopped = true
     active.acceptingText = false
     active.controller.abort()
