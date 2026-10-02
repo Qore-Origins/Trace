@@ -10,6 +10,7 @@ import { App as AntdApp } from 'antd'
 import AgentSettingsSection from '../src/renderer/src/components/AgentSettingsSection'
 import { bindAntdHost } from '../src/renderer/src/antd-host'
 import { i18n } from '../src/renderer/src/i18n'
+import { ERR } from '../src/shared/errors'
 import type { TraceBridge } from '../src/shared/ipc-contract'
 
 const electron = vi.hoisted(() => {
@@ -55,6 +56,12 @@ async function click(label: string, scope: ParentNode = host): Promise<void> {
   await act(async () => { button.click() })
   await settle()
   if (!electron.encryption.gate && !electron.ipcGate.list) await ready()
+}
+function failAgentCall(channel: string, code: number): () => void {
+  const original = electron.handlers.get(channel)
+  if (!original) throw new Error(`Missing IPC handler ${channel}`)
+  electron.handlers.set(channel, async () => ({ ok: false, code, message: 'synthetic failure' }))
+  return () => { electron.handlers.set(channel, original) }
 }
 beforeEach(async () => {
   Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true)
@@ -140,6 +147,43 @@ describe('model service settings interactions', () => {
       expect(host.textContent).toContain(labels.warning)
       expect(host.textContent).not.toContain(labels.unknown)
     }
+  })
+  const recoveryLabels = [
+    { language: 'zh-CN', warning: '密钥恢复失败', saveKey: '保存或替换密钥', deleteButton: '删除服务', confirmButton: '删除', operationError: '模型服务操作失败' },
+    { language: 'en-US', warning: 'Credential recovery failed', saveKey: 'Save or replace credential', deleteButton: 'Delete service', confirmButton: 'Delete', operationError: 'Model service operation failed' }
+  ]
+  it.each(recoveryLabels)('clears the recovery warning after deleting its profile in $language', async (labels) => {
+    await i18n.changeLanguage(labels.language)
+    await savedProfile()
+    await input('API Key', 'test-only-recovery-key')
+    const restore = failAgentCall('agent:key:set', ERR.CREDENTIAL_RECOVERY_REQUIRED)
+    try { await click(labels.saveKey) } finally { restore() }
+    expect(host.textContent).toContain(labels.warning)
+
+    await click(labels.deleteButton)
+    await click(labels.confirmButton, document.body)
+
+    expect(host.textContent).not.toContain(labels.warning)
+    expect((await bridge.invoke('agent:profile:list')).data.profiles).toHaveLength(0)
+    expect(host.textContent).not.toContain('test-only-recovery-key')
+  })
+  it.each(recoveryLabels)('keeps the recovery warning when deleting its profile fails in $language', async (labels) => {
+    await i18n.changeLanguage(labels.language)
+    const id = await savedProfile()
+    await input('API Key', 'test-only-recovery-key')
+    const restoreKeyFailure = failAgentCall('agent:key:set', ERR.CREDENTIAL_RECOVERY_REQUIRED)
+    try { await click(labels.saveKey) } finally { restoreKeyFailure() }
+    expect(host.textContent).toContain(labels.warning)
+
+    const restoreDeleteFailure = failAgentCall('agent:profile:delete', ERR.INTERNAL)
+    try {
+      await click(labels.deleteButton)
+      await click(labels.confirmButton, document.body)
+    } finally { restoreDeleteFailure() }
+
+    expect(host.textContent).toContain(labels.warning)
+    expect(host.textContent).toContain(labels.operationError)
+    expect((await bridge.invoke('agent:profile:list')).data.profiles).toMatchObject([{ id }])
   })
   it('prefills an editable preset and supports creating, editing, defaulting and deleting profiles', async () => {
     await render(); await settle()

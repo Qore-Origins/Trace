@@ -74,7 +74,14 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
     const id = selectedId, token = generation.current
     getModal().confirm({ title: t('agentSettings.deleteTitle'), content: t('agentSettings.deleteWarning'), okText: t('common.delete'), cancelText: t('common.cancel'), onOk: async () => {
       if (generation.current !== token) return
-      await operate(async (currentToken) => { await invoke('agent:profile:delete', { id }); await refresh('', currentToken) })
+      await operate(async (currentToken) => {
+        await invoke('agent:profile:delete', { id })
+        if (generation.current === currentToken && recoveryProfileId === id) {
+          setRecoveryProfileId(null)
+          setRecoveryRefreshFailed(false)
+        }
+        await refresh('', currentToken)
+      })
     } })
   }
   const saveKey = (): void => {

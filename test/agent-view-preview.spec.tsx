@@ -172,6 +172,7 @@ it(
   await plan('Folder/PrivatePlan', 'LOCAL_PLAN_SENTINEL')
   await plan('Diary/2026-10-02', 'LOCAL_DIARY_SENTINEL')
   await startConversation()
+  await until(() => !button('选择计划 / 日记', host).disabled)
   await click('选择计划 / 日记')
   await until(() => document.body.textContent!.includes('Folder'))
   await click('浏览 Folder')
