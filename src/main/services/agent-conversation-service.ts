@@ -3,11 +3,12 @@ import type { AgentHistoryItem, AgentMessageStatus, AgentOutboundPreview, AgentP
 import { ERR, TraceError } from '../../shared/errors'
 import { AgentContextService, parseContextSelection } from './agent-context-service'
 import { AgentSessionRepository, agentRecord, assertAgentMessageText, assertAgentSessionId, parseSessionInput } from './agent-session-repository'
+import { serializeAgentChatRequest } from './agent-provider'
+import { AgentStreamError } from './agent-sse'
 
 export const AGENT_PREVIEW_TTL_MS = 5 * 60 * 1000
 const MAX_PREVIEWS = 32
 const MAX_CONTEXT_SELECTIONS = 32
-const MAX_OUTBOUND_BYTES = 4 * 1024 * 1024
 type ResolveProfile = (id: string) => Promise<AgentProfile | null>
 function target(profile: AgentProfile): AgentTarget {
   return { id: profile.id, name: profile.name, presetId: profile.presetId, protocol: profile.protocol, endpoint: profile.endpoint, model: profile.model }
@@ -87,14 +88,19 @@ export class AgentConversationService {
       const session = await this.sessions.read(input.sessionId)
       if (session.messages.some((message) => message.status === 'streaming')) throw new TraceError(ERR.STATE_MACHINE, '请先停止当前生成')
       const currentTarget = target(await this.profile(session.profileId))
-      const contexts = await Promise.all(input.selections.map((selection) => this.contexts.read(selection)))
+      const resolved = await Promise.all(input.selections.map((selection) => this.contexts.readResolved(selection)))
+      if (new Set(resolved.map((item) => item.sourceIdentity)).size !== resolved.length) throw new TraceError(ERR.VALIDATION, '上下文条目重复')
+      const contexts = resolved.map((item) => item.entry)
       const items = history(session, input)
       const messages = [
         ...items.map(({ role, content }) => ({ role, content })),
         ...contexts.map((item) => ({ role: 'system' as const, content: `用户授权上下文（${item.kind}：${item.path}，版本 ${item.version}）：\n${item.content}` })),
         { role: 'user' as const, content: input.message }
       ]
-      if (Buffer.byteLength(JSON.stringify(messages)) > MAX_OUTBOUND_BYTES) throw new TraceError(ERR.VALIDATION, '本次外发内容过长，请减少历史或上下文')
+      try { serializeAgentChatRequest(currentTarget.model, messages) } catch (error) {
+        if (error instanceof AgentStreamError && error.category === 'limit') throw new TraceError(ERR.VALIDATION, '本次外发内容过长，请减少历史或上下文')
+        throw error
+      }
       const preview: AgentOutboundPreview = { token: randomUUID(), sessionId: session.id, sessionRevision: session.revision, expiresAt: new Date(this.now() + AGENT_PREVIEW_TTL_MS).toISOString(), target: currentTarget, message: input.message, history: items, contexts, messages }
       for (const [token, item] of this.previews) if (Date.parse(item.expiresAt) <= this.now()) this.previews.delete(token)
       if (this.previews.size >= MAX_PREVIEWS) throw new TraceError(ERR.STATE_MACHINE, '待确认预览过多，请先取消旧预览')

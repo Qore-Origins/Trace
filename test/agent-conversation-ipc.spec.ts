@@ -7,6 +7,8 @@ import type { TraceBridge, TraceResult } from '../src/shared/ipc-contract'
 import type { AgentConversationService } from '../src/main/services/agent-conversation-service'
 import type { StorageService } from '../src/main/services/storage-service'
 import type { AgentOutboundPreview, AgentSession, AgentPreviewInput } from '../src/shared/agent-types'
+import { ERR } from '../src/shared/errors'
+import { AGENT_REQUEST_BODY_LIMIT_BYTES } from '../src/main/services/agent-provider'
 
 const electron = vi.hoisted(() => {
   const handlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>()
@@ -127,6 +129,36 @@ describe('agent conversation typed IPC', () => {
     const hidden = await (bridge as unknown as { invoke(channel: string, payload: unknown): Promise<unknown> }).invoke('agent:preview:confirm', { token: first.token, content: 'tampered' })
     expect(hidden).toMatchObject({ ok: false, message: '通道未开放' })
   })
+  it('rejects an oversized valid selected plan before returning a confirmation token', async () => {
+    const content = 'private-oversized-source-' + 'x'.repeat(300 * 1024)
+    await plan('large', content)
+    expect(value(await bridge.invoke('agent:context:read', { kind: 'plan', path: 'large' })).content).toContain(content)
+    const created = await session()
+    const result = await bridge.invoke('agent:preview:create', { sessionId: created.id, message: 'test', selections: [{ kind: 'plan', path: 'large' }] })
+    expect(result).toMatchObject({ ok: false, code: ERR.VALIDATION, message: '本次外发内容过长，请减少历史或上下文' })
+    expect(result.data).toBeNull()
+    expect(JSON.stringify(result)).not.toContain('private-oversized-source')
+    expect(value(await bridge.invoke('agent:session:read', { id: created.id })).messages).toEqual([])
+  })
+  it('accepts selected context at the exact provider envelope limit and rejects one more byte', async () => {
+    value(await bridge.invoke('agent:profile:update', { id: profileId, name: '本机测试', endpoint: 'http://127.0.0.1:11434/v1', model: 'm'.repeat(160) }))
+    const created = await session()
+    const selections = [{ kind: 'plan' as const, path: 'boundary' }]
+    await plan('boundary', '')
+    const baseline = await preview(created.id, { selections })
+    const envelopeSize = Buffer.byteLength(JSON.stringify({ model: baseline.target.model, messages: baseline.messages, stream: true }), 'utf8')
+    const contextText = 'x'.repeat(AGENT_REQUEST_BODY_LIMIT_BYTES - envelopeSize)
+    await plan('boundary', contextText)
+    const outbound = await preview(created.id, { selections })
+    const serialized = JSON.stringify({ model: outbound.target.model, messages: outbound.messages, stream: true })
+    expect(Buffer.byteLength(serialized, 'utf8')).toBe(AGENT_REQUEST_BODY_LIMIT_BYTES)
+    const { serializeAgentChatRequest } = await import('../src/main/services/agent-provider')
+    expect(serializeAgentChatRequest(outbound.target.model, outbound.messages)).toBe(serialized)
+    expect(outbound.contexts[0].content).toContain(contextText)
+    expect((await service.consumePreview(outbound.token)).messages).toEqual(outbound.messages)
+    await plan('boundary', contextText + 'x')
+    expect(await bridge.invoke('agent:preview:create', { sessionId: created.id, message: '今天怎么安排？', selections })).toMatchObject({ ok: false, code: ERR.VALIDATION, data: null })
+  })
   it('cancels or expires tokens without creating messages', async () => {
     const created = await session()
     const cancelled = await preview(created.id)
@@ -184,29 +216,40 @@ describe('agent conversation typed IPC', () => {
     expect(await fs.readFile(join(directory, 'agent-sessions', `${created.id}.json`), 'utf8')).not.toContain('source-body-not-persisted')
   })
   it('rejects traversal and static symlink or junction context reads and session paths', async () => {
-    await plan('one', 'safe')
+    await plan('one', 'outside-sentinel')
+    expect(value(await bridge.invoke('agent:context:read', { kind: 'plan', path: 'one' })).content).toContain('outside-sentinel')
+    const outsideContent = await fs.readFile(join(root, 'one', 'plan.json'), 'utf8')
     await fs.mkdir(join(directory, 'outside'))
-    await fs.writeFile(join(directory, 'outside', 'plan.json'), 'outside-sentinel')
+    await fs.writeFile(join(directory, 'outside', 'plan.json'), outsideContent)
     await fs.symlink(join(directory, 'outside'), join(root, 'escaped'), process.platform === 'win32' ? 'junction' : 'dir')
     for (const result of [
       await bridge.invoke('agent:context:read', { kind: 'plan', path: '../outside' }),
       await bridge.invoke('agent:context:read', { kind: 'plan', path: 'escaped' }),
-      await bridge.invoke('agent:context:browse', { parentPath: 'escaped' }),
-      await bridge.invoke('agent:session:read', { id: '../outside' }),
-      await bridge.invoke('agent:session:delete', { id: '../outside' })
-    ]) { expect(result.ok).toBe(false); expect(JSON.stringify(result)).not.toContain('outside-sentinel') }
-    expect(await fs.readFile(join(directory, 'outside', 'plan.json'), 'utf8')).toBe('outside-sentinel')
+      await bridge.invoke('agent:context:browse', { parentPath: 'escaped' })
+    ]) { expect(result).toMatchObject({ ok: false, code: ERR.PATH_UNSAFE }); expect(JSON.stringify(result)).not.toContain('outside-sentinel') }
+    for (const result of [await bridge.invoke('agent:session:read', { id: '../outside' }), await bridge.invoke('agent:session:delete', { id: '../outside' })]) {
+      expect(result).toMatchObject({ ok: false, code: ERR.VALIDATION })
+    }
+    expect(await fs.readFile(join(directory, 'outside', 'plan.json'), 'utf8')).toBe(outsideContent)
   })
-  it('rejects linked session directories and corrupted records without overwriting them', async () => {
+  it('rejects malformed session records with FORMAT_INVALID without overwriting them', async () => {
     const created = await session()
     const file = join(directory, 'agent-sessions', `${created.id}.json`)
     await fs.writeFile(file, '{broken')
-    expect((await bridge.invoke('agent:session:read', { id: created.id })).ok).toBe(false)
+    expect(await bridge.invoke('agent:session:read', { id: created.id })).toMatchObject({ ok: false, code: ERR.FORMAT_INVALID })
+    expect(await bridge.invoke('agent:session:delete', { id: created.id })).toMatchObject({ ok: false, code: ERR.FORMAT_INVALID })
     expect(await fs.readFile(file, 'utf8')).toBe('{broken')
+  })
+  it('rejects linked session directories containing valid readable records', async () => {
+    const created = await session()
+    expect(value(await bridge.invoke('agent:session:read', { id: created.id }))).toEqual(created)
+    const record = await fs.readFile(join(directory, 'agent-sessions', `${created.id}.json`), 'utf8')
     await fs.rename(join(directory, 'agent-sessions'), join(directory, 'outside-sessions'))
     await fs.symlink(join(directory, 'outside-sessions'), join(directory, 'agent-sessions'), process.platform === 'win32' ? 'junction' : 'dir')
-    expect((await bridge.invoke('agent:session:list')).ok).toBe(false)
-    expect((await bridge.invoke('agent:session:delete', { id: created.id })).ok).toBe(false)
+    for (const result of [await bridge.invoke('agent:session:list'), await bridge.invoke('agent:session:read', { id: created.id }), await bridge.invoke('agent:session:delete', { id: created.id })]) {
+      expect(result).toMatchObject({ ok: false, code: ERR.PATH_UNSAFE })
+    }
+    expect(await fs.readFile(join(directory, 'outside-sessions', `${created.id}.json`), 'utf8')).toBe(record)
   })
   it('rejects malformed payloads and duplicate aliases before storing a preview', async () => {
     const created = await session()
@@ -221,6 +264,34 @@ describe('agent conversation typed IPC', () => {
       expect(result.ok).toBe(false)
       expect(JSON.stringify(result)).not.toContain('private-source')
     }
+  })
+  it('rejects selecting the same Diary entry as both diary and plan', async () => {
+    await plan('Diary/2026-10-02', 'private-diary-source')
+    const created = await session()
+    expect(value(await bridge.invoke('agent:context:read', { kind: 'diary', path: 'Diary/2026-10-02' })).kind).toBe('diary')
+    expect(await bridge.invoke('agent:context:read', { kind: 'plan', path: 'Diary/2026-10-02' })).toMatchObject({ ok: false, code: ERR.VALIDATION })
+    const result = await bridge.invoke('agent:preview:create', { sessionId: created.id, message: 'test', selections: [{ kind: 'diary', path: 'Diary/2026-10-02' }, { kind: 'plan', path: 'Diary/2026-10-02' }] })
+    expect(result).toMatchObject({ ok: false, code: ERR.VALIDATION, data: null })
+    expect(JSON.stringify(result)).not.toContain('private-diary-source')
+  })
+  it.skipIf(process.platform !== 'win32')('rejects Windows case aliases while preserving a single selected display path', async () => {
+    await plan('CasePlan', 'private-case-source')
+    const created = await session()
+    expect((await preview(created.id, { selections: [{ kind: 'plan', path: 'caseplan' }] })).contexts[0].path).toBe('caseplan')
+    const result = await bridge.invoke('agent:preview:create', { sessionId: created.id, message: 'test', selections: [{ kind: 'plan', path: 'CasePlan' }, { kind: 'plan', path: 'caseplan' }] })
+    expect(result).toMatchObject({ ok: false, code: ERR.VALIDATION, data: null })
+    expect(JSON.stringify(result)).not.toContain('private-case-source')
+  })
+  it('rejects resolved file aliases and validates a Diary source behind a plan alias', async () => {
+    await plan('one', 'private-alias-source')
+    await plan('Diary/2026-10-02', 'private-diary-source')
+    await fs.mkdir(join(root, 'alias'))
+    await fs.symlink(join(root, 'one', 'plan.json'), join(root, 'alias', 'plan.json'), 'file')
+    const created = await session()
+    expect((await preview(created.id, { selections: [{ kind: 'plan', path: 'alias' }] })).contexts[0].path).toBe('alias')
+    expect(await bridge.invoke('agent:preview:create', { sessionId: created.id, message: 'test', selections: [{ kind: 'plan', path: 'one' }, { kind: 'plan', path: 'alias' }] })).toMatchObject({ ok: false, code: ERR.VALIDATION })
+    await fs.symlink(join(root, 'Diary', '2026-10-02'), join(root, 'diary-alias'), process.platform === 'win32' ? 'junction' : 'dir')
+    expect(await bridge.invoke('agent:context:read', { kind: 'plan', path: 'diary-alias' })).toMatchObject({ ok: false, code: ERR.VALIDATION })
   })
   it('rechecks source changes between confirmation and main-process turn creation', async () => {
     const created = await session()
@@ -251,19 +322,31 @@ describe('agent conversation typed IPC', () => {
   })
   it('rejects static session file and plan file links without touching outside sentinels', async () => {
     const created = await session()
-    const outsideFile = join(directory, 'outside-sentinel.json')
-    await fs.writeFile(outsideFile, 'outside-sentinel')
     const sessionFile = join(directory, 'agent-sessions', `${created.id}.json`)
+    expect(value(await bridge.invoke('agent:session:read', { id: created.id }))).toEqual(created)
+    const sessionRecord = await fs.readFile(sessionFile, 'utf8')
+    const outsideSession = join(directory, 'outside-session.json')
+    await fs.writeFile(outsideSession, sessionRecord)
     await fs.unlink(sessionFile)
-    await fs.symlink(outsideFile, sessionFile, 'file')
-    expect((await bridge.invoke('agent:session:read', { id: created.id })).ok).toBe(false)
-    expect((await bridge.invoke('agent:session:delete', { id: created.id })).ok).toBe(false)
+    await fs.symlink(outsideSession, sessionFile, 'file')
+    for (const result of [await bridge.invoke('agent:session:list'), await bridge.invoke('agent:session:read', { id: created.id }), await bridge.invoke('agent:session:delete', { id: created.id })]) {
+      expect(result).toMatchObject({ ok: false, code: ERR.PATH_UNSAFE })
+    }
+    await plan('one', 'outside-plan-sentinel')
+    expect(value(await bridge.invoke('agent:context:read', { kind: 'plan', path: 'one' })).content).toContain('outside-plan-sentinel')
+    const planRecord = await fs.readFile(join(root, 'one', 'plan.json'), 'utf8')
+    const outsidePlan = join(directory, 'outside-plan.json')
+    await fs.writeFile(outsidePlan, planRecord)
     await fs.mkdir(join(root, 'linked-plan'))
-    await fs.symlink(outsideFile, join(root, 'linked-plan', 'plan.json'), 'file')
+    await fs.symlink(outsidePlan, join(root, 'linked-plan', 'plan.json'), 'file')
     const result = await bridge.invoke('agent:context:read', { kind: 'plan', path: 'linked-plan' })
-    expect(result.ok).toBe(false)
-    expect(JSON.stringify(result)).not.toContain('outside-sentinel')
-    expect(await fs.readFile(outsideFile, 'utf8')).toBe('outside-sentinel')
+    expect(result).toMatchObject({ ok: false, code: ERR.PATH_UNSAFE })
+    expect(JSON.stringify(result)).not.toContain('outside-plan-sentinel')
+    const children = value(await bridge.invoke('agent:context:browse', { parentPath: '' }))
+    expect(children.map((node) => node.path)).toEqual(['one'])
+    expect(JSON.stringify(children)).not.toContain('outside-plan-sentinel')
+    expect(await fs.readFile(outsideSession, 'utf8')).toBe(sessionRecord)
+    expect(await fs.readFile(outsidePlan, 'utf8')).toBe(planRecord)
   })
   it('stores abnormal interruptions and prevents mutation or deletion during generation', async () => {
     const created = await session()

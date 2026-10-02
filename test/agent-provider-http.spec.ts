@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { streamChatCompletion } from '../src/main/services/agent-provider'
+import { AGENT_REQUEST_BODY_LIMIT_BYTES, serializeAgentChatRequest, streamChatCompletion } from '../src/main/services/agent-provider'
 import { AgentSseAccumulator, AGENT_SSE_EVENT_LIMIT_BYTES } from '../src/main/services/agent-sse'
 
 const servers: Server[] = []
@@ -50,6 +50,39 @@ describe('SSE event bounds with controlled transport chunks', () => {
 })
 
 describe('OpenAI Chat Completions HTTP stream', () => {
+  it('sends the shared complete-envelope serialization at the exact request limit', async () => {
+    let received = ''
+    const endpoint = await serve((request, response) => {
+      request.on('data', (part) => { received += part })
+      request.on('end', () => {
+        response.writeHead(200, { 'content-type': 'text/event-stream' })
+        response.end(chunk({ choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] }) + 'data: [DONE]\n\n')
+      })
+    })
+    const base = input(endpoint)
+    const prefix = '中文\n"\\'
+    const size = Buffer.byteLength(JSON.stringify({ model: base.model, messages: [{ role: 'user', content: prefix }], stream: true }), 'utf8')
+    const messages = [{ role: 'user' as const, content: prefix + 'x'.repeat(AGENT_REQUEST_BODY_LIMIT_BYTES - size) }]
+    const serialized = serializeAgentChatRequest(base.model, messages)
+    expect(Buffer.byteLength(serialized, 'utf8')).toBe(AGENT_REQUEST_BODY_LIMIT_BYTES)
+    expect(await streamChatCompletion({ ...base, messages })).toEqual({ text: 'ok', toolCalls: [] })
+    expect(received).toBe(serialized)
+    expect(JSON.parse(received)).toEqual({ model: base.model, messages, stream: true })
+  })
+
+  it('rejects one byte over the complete envelope limit even when messages alone fit', async () => {
+    let requested = false
+    const endpoint = await serve((_request, response) => { requested = true; response.end('unexpected') })
+    const base = input(endpoint)
+    const size = Buffer.byteLength(JSON.stringify({ model: base.model, messages: [{ role: 'user', content: '' }], stream: true }), 'utf8')
+    const messages = [{ role: 'user' as const, content: 'x'.repeat(AGENT_REQUEST_BODY_LIMIT_BYTES - size + 1) }]
+    expect(Buffer.byteLength(JSON.stringify(messages), 'utf8')).toBeLessThan(AGENT_REQUEST_BODY_LIMIT_BYTES)
+    expect(Buffer.byteLength(JSON.stringify({ model: base.model, messages, stream: true }), 'utf8')).toBe(AGENT_REQUEST_BODY_LIMIT_BYTES + 1)
+    expect(() => serializeAgentChatRequest(base.model, messages)).toThrowError(expect.objectContaining({ category: 'limit' }))
+    await expect(streamChatCompletion({ ...base, messages })).rejects.toMatchObject({ category: 'limit' })
+    expect(requested).toBe(false)
+  })
+
   it('rejects completion text after finish_reason without emitting the late text', async () => {
     const endpoint = await serve((_request, response) => {
       response.writeHead(200, { 'content-type': 'text/event-stream' })

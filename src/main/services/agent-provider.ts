@@ -20,6 +20,17 @@ export interface AgentProviderTool {
   function: { name: string; description: string; parameters: Record<string, unknown> }
 }
 
+export function serializeAgentChatRequest(model: string, messages: readonly AgentChatMessage[], options?: { tools: readonly AgentProviderTool[]; toolChoice: string }): string {
+  const body: Record<string, unknown> = { model, messages, stream: true }
+  if (options) {
+    body.tools = options.tools
+    body.tool_choice = { type: 'function', function: { name: options.toolChoice } }
+  }
+  const serialized = JSON.stringify(body)
+  if (Buffer.byteLength(serialized, 'utf8') > AGENT_REQUEST_BODY_LIMIT_BYTES) throw new AgentStreamError('limit')
+  return serialized
+}
+
 function completionUrl(endpoint: string): URL {
   if (typeof endpoint !== 'string' || endpoint.length > 2048 || endpoint.trim() !== endpoint) throw new AgentStreamError('validation')
   let url: URL
@@ -43,13 +54,7 @@ export async function streamChatCompletion(input: AgentProviderInput, options?: 
   const url = completionUrl(input.endpoint)
   const timeoutMs = input.timeoutMs ?? AGENT_REQUEST_TIMEOUT_MS
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > AGENT_REQUEST_TIMEOUT_MAX_MS) throw new AgentStreamError('validation')
-  const body: Record<string, unknown> = { model: input.model, messages: input.messages, stream: true }
-  if (options) {
-    body.tools = options.tools
-    body.tool_choice = { type: 'function', function: { name: options.toolChoice } }
-  }
-  const serialized = JSON.stringify(body)
-  if (Buffer.byteLength(serialized, 'utf8') > AGENT_REQUEST_BODY_LIMIT_BYTES) throw new AgentStreamError('limit')
+  const serialized = serializeAgentChatRequest(input.model, input.messages, options)
   const controller = new AbortController()
   const cancel = () => controller.abort('cancelled')
   input.signal?.addEventListener('abort', cancel, { once: true })
