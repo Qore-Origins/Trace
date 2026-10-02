@@ -51,6 +51,102 @@ afterEach(async () => {
 })
 
 describe('agent profile typed IPC', () => {
+  it.each(['set', 'remove', 'delete'] as const)('preserves the existing credential when %s metadata cannot commit', async (operation) => {
+    const created = await bridge.invoke('agent:profile:create', { name: 'commit-failure', endpoint: 'https://api.example.com/v1', model: 'model' })
+    if (!created.ok) throw new Error('profile setup failed')
+    const id = created.data.id
+    expect((await bridge.invoke('agent:key:set', { id, key: 'synthetic-existing-credential' })).ok).toBe(true)
+    // Seed a previously tested on-disk profile as a restart fixture; exercise mutations only through IPC.
+    const metadataPath = join(directory, 'agent-profiles.json')
+    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'))
+    metadata.profiles[0].capability = { status: 'passed', testedAt: '2026-10-02T00:00:00.000Z', errorCategory: null }
+    await fs.writeFile(metadataPath, JSON.stringify(metadata))
+    const credentialPath = join(directory, 'agent-credentials', `${id}.bin`)
+    const before = await fs.readFile(credentialPath)
+    const blockedTarget = join(directory, 'nonempty-commit-target')
+    await fs.mkdir(blockedTarget)
+    await fs.writeFile(join(blockedTarget, 'sentinel'), 'block-profile-replacement')
+    const realRename = fs.rename.bind(fs)
+    const commitFailure = vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      // Only the filesystem commit boundary changes; this performs a real failing OS operation.
+      await realRename(source, destination === metadataPath ? blockedTarget : destination)
+    })
+    let result: unknown
+    try {
+      result = operation === 'set' ? await bridge.invoke('agent:key:set', { id, key: 'synthetic-replacement' })
+        : operation === 'remove' ? await bridge.invoke('agent:key:remove', { id })
+          : await bridge.invoke('agent:profile:delete', { id })
+    } finally { commitFailure.mockRestore() }
+    expect(result).toMatchObject({ ok: false })
+    expect(await fs.readFile(credentialPath)).toEqual(before)
+    dispose?.()
+    const [{ registerIpc }, { AgentProfileService }] = await Promise.all([import('../src/main/ipc/register'), import('../src/main/services/agent-profile-service')])
+    dispose = registerIpc({ agentProfiles: new AgentProfileService(directory), log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
+    // Passed remains valid only because the failed operation changed neither profile nor credential.
+    expect((await bridge.invoke('agent:profile:list')).data).toMatchObject({ profiles: [{ id, keyStatus: 'saved', capability: { status: 'passed' } }], defaultProfileId: id })
+    expect(JSON.stringify(result)).not.toMatch(/synthetic-existing-credential|synthetic-replacement/)
+  })
+  it.each([true, false])('keeps deletion fail-closed when credential restoration succeeds: %s', async (restoreSucceeds) => {
+    const created = await bridge.invoke('agent:profile:create', { name: 'final-delete-failure', endpoint: 'https://api.example.com/v1', model: 'model' })
+    if (!created.ok) throw new Error('profile setup failed')
+    const id = created.data.id
+    await bridge.invoke('agent:key:set', { id, key: 'synthetic-delete-credential' })
+    const metadataPath = join(directory, 'agent-profiles.json')
+    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'))
+    metadata.profiles[0].capability = { status: 'passed', testedAt: '2026-10-02T00:00:00.000Z', errorCategory: null }
+    await fs.writeFile(metadataPath, JSON.stringify(metadata))
+    const credentialPath = join(directory, 'agent-credentials', `${id}.bin`)
+    const before = await fs.readFile(credentialPath)
+    const blockedTarget = join(directory, 'nonempty-final-target')
+    await fs.mkdir(blockedTarget)
+    await fs.writeFile(join(blockedTarget, 'sentinel'), 'block-final-profile-commit')
+    const realRename = fs.rename.bind(fs)
+    let profileCommits = 0
+    const commitFailure = vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      if (destination === metadataPath) profileCommits += 1
+      const block = (destination === metadataPath && profileCommits === 2) || (destination === credentialPath && !restoreSucceeds)
+      await realRename(source, block ? blockedTarget : destination)
+    })
+    let result: unknown
+    try { result = await bridge.invoke('agent:profile:delete', { id }) } finally { commitFailure.mockRestore() }
+    expect(result).toMatchObject({ ok: false })
+    if (restoreSucceeds) expect(await fs.readFile(credentialPath)).toEqual(before)
+    else {
+      await expect(fs.access(credentialPath)).rejects.toThrow()
+      expect(result).toMatchObject({ message: '服务删除部分失败，密钥未能恢复；请重新配置密钥并重测能力' })
+    }
+    dispose?.()
+    const [{ registerIpc }, { AgentProfileService }] = await Promise.all([import('../src/main/ipc/register'), import('../src/main/services/agent-profile-service')])
+    dispose = registerIpc({ agentProfiles: new AgentProfileService(directory), log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
+    expect((await bridge.invoke('agent:profile:list')).data).toMatchObject({ defaultProfileId: id, profiles: [{ id, keyStatus: restoreSucceeds ? 'saved' : 'missing', capability: { status: 'needs-retest', testedAt: null, errorCategory: null } }] })
+    expect(JSON.stringify(result)).not.toContain('synthetic-delete-credential')
+  })
+  it('persists needs-retest before a later credential commit fails', async () => {
+    const created = await bridge.invoke('agent:profile:create', { name: 'credential-failure', endpoint: 'https://api.example.com/v1', model: 'model' })
+    if (!created.ok) throw new Error('profile setup failed')
+    const id = created.data.id
+    await bridge.invoke('agent:key:set', { id, key: 'synthetic-preserved-key' })
+    const metadataPath = join(directory, 'agent-profiles.json')
+    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'))
+    metadata.profiles[0].capability = { status: 'passed', testedAt: '2026-10-02T00:00:00.000Z', errorCategory: null }
+    await fs.writeFile(metadataPath, JSON.stringify(metadata))
+    const credentialPath = join(directory, 'agent-credentials', `${id}.bin`)
+    const before = await fs.readFile(credentialPath)
+    const blockedTarget = join(directory, 'nonempty-credential-target')
+    await fs.mkdir(blockedTarget)
+    await fs.writeFile(join(blockedTarget, 'sentinel'), 'block-credential-commit')
+    const realRename = fs.rename.bind(fs)
+    const commitFailure = vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      await realRename(source, destination === credentialPath ? blockedTarget : destination)
+    })
+    try { expect(await bridge.invoke('agent:key:set', { id, key: 'synthetic-new-key' })).toMatchObject({ ok: false }) }
+    finally { commitFailure.mockRestore() }
+    expect(await fs.readFile(credentialPath)).toEqual(before)
+    dispose?.()
+    const [{ registerIpc }, { AgentProfileService }] = await Promise.all([import('../src/main/ipc/register'), import('../src/main/services/agent-profile-service')])
+    dispose = registerIpc({ agentProfiles: new AgentProfileService(directory), log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
+    expect((await bridge.invoke('agent:profile:list')).data).toMatchObject({ profiles: [{ id, keyStatus: 'saved', capability: { status: 'needs-retest', testedAt: null, errorCategory: null } }] })
+  })
   it('creates multiple named profiles and changes the default through window.trace', async () => {
     const first = await bridge.invoke('agent:profile:create', { name: '工作', endpoint: 'https://api.deepseek.com', model: 'deepseek-flash' })
     expect(first).toMatchObject({ ok: true })

@@ -150,11 +150,27 @@ export class AgentProfileService {
       const data = await this.read()
       const index = data.profiles.findIndex((item) => item.id === id)
       if (index < 0) throw new TraceError(ERR.PATH_NOT_FOUND, '服务配置不存在')
-      const [removed] = data.profiles.splice(index, 1)
-      this.credentialRevisions.set(removed.id, (this.credentialRevisions.get(removed.id) ?? 0) + 1)
-      await this.credentials.remove(removed.id)
-      if (data.defaultProfileId === removed.id) data.defaultProfileId = data.profiles[0]?.id ?? null
+      const removed = data.profiles[index]
+      const keyStatus = await this.credentials.status(removed.id)
+      const originalKey = keyStatus === 'missing' ? null : await this.credentials.getForProvider(removed.id)
+      if (keyStatus !== 'missing' && originalKey === null) throw new TraceError(ERR.VALIDATION, '当前密钥无法读取，服务删除未完成')
+      // Keep a durable fail-closed profile before touching credentials. A failed
+      // final deletion can then restore the key without restoring a stale pass.
+      removed.capability = { status: 'needs-retest', testedAt: null, errorCategory: null }
       await this.write(data)
+      this.credentialRevisions.set(removed.id, (this.credentialRevisions.get(removed.id) ?? 0) + 1)
+      try {
+        await this.credentials.remove(removed.id)
+        data.profiles.splice(index, 1)
+        if (data.defaultProfileId === removed.id) data.defaultProfileId = data.profiles[0]?.id ?? null
+        await this.write(data)
+      } catch (error) {
+        if (originalKey !== null) {
+          try { await this.credentials.set(removed.id, originalKey) }
+          catch { throw new TraceError(ERR.VALIDATION, '服务删除部分失败，密钥未能恢复；请重新配置密钥并重测能力') }
+        }
+        throw error
+      }
       return { profiles: await Promise.all(data.profiles.map((profile) => this.dto(profile))), defaultProfileId: data.defaultProfileId }
     })
   }
@@ -165,10 +181,10 @@ export class AgentProfileService {
       const data = await this.read()
       const profile = data.profiles.find((item) => item.id === id)
       if (!profile) throw new TraceError(ERR.PATH_NOT_FOUND, '服务配置不存在')
-      this.credentialRevisions.set(profile.id, (this.credentialRevisions.get(profile.id) ?? 0) + 1)
-      await this.credentials.set(profile.id, key)
       profile.capability = { status: 'needs-retest', testedAt: null, errorCategory: null }
       await this.write(data)
+      this.credentialRevisions.set(profile.id, (this.credentialRevisions.get(profile.id) ?? 0) + 1)
+      await this.credentials.set(profile.id, key)
       return this.dto(profile)
     })
   }
@@ -178,10 +194,10 @@ export class AgentProfileService {
       const data = await this.read()
       const profile = data.profiles.find((item) => item.id === id)
       if (!profile) throw new TraceError(ERR.PATH_NOT_FOUND, '服务配置不存在')
-      this.credentialRevisions.set(profile.id, (this.credentialRevisions.get(profile.id) ?? 0) + 1)
-      await this.credentials.remove(profile.id)
       profile.capability = { status: 'needs-retest', testedAt: null, errorCategory: null }
       await this.write(data)
+      this.credentialRevisions.set(profile.id, (this.credentialRevisions.get(profile.id) ?? 0) + 1)
+      await this.credentials.remove(profile.id)
       return this.dto(profile)
     })
   }
