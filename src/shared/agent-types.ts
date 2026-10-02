@@ -113,3 +113,12 @@ export interface AgentOutboundPreview {
   contexts: AgentContextEntry[]
   messages: AgentPreviewMessage[]
 }
+
+export interface AgentRequestSendInput { token: string; sessionId: string }
+export interface AgentRequestCancelInput { sessionId: string; requestId: string }
+export interface AgentRequestIdentity extends AgentRequestCancelInput { assistantId: string }
+export type AgentRequestErrorCategory = 'validation' | 'authentication' | 'http' | 'protocol' | 'limit' | 'timeout' | 'network' | 'storage'
+export type AgentRequestEvent = AgentRequestIdentity & (
+  | { type: 'delta'; text: string }
+  | { type: 'terminal'; status: Exclude<AgentMessageStatus, 'streaming'>; marker: '【用户中断】' | '【异常中断】' | null; errorCategory: AgentRequestErrorCategory | null }
+)

@@ -21,6 +21,7 @@ import { AgentProfileService } from '../services/agent-profile-service'
 import { AgentConversationService } from '../services/agent-conversation-service'
 import { AgentSessionRepository } from '../services/agent-session-repository'
 import { AgentContextService } from '../services/agent-context-service'
+import { AgentRequestService } from '../services/agent-request-service'
 import { registerAgentConversationIpc } from './agent-conversation-ipc'
 import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlStatusDto } from '../../shared/plantuml-types'
 
@@ -151,13 +152,25 @@ export function registerIpc(deps: Deps): () => void {
   reg('agent:key:set', (payload) => agent().setKey(payload?.id, payload?.key))
   reg('agent:key:remove', (payload) => agent().removeKey(payload?.id))
   let agentConversations = deps.agentConversations
-  registerAgentConversationIpc(reg, () => {
+  const conversation = (): AgentConversationService => {
     if (!agentConversations) {
       if (!deps.agentUserDataDir) throw new TraceError(ERR.INTERNAL, '会话目录不可用')
-      agentConversations = new AgentConversationService(new AgentSessionRepository(deps.agentUserDataDir), new AgentContextService(storage), async (id) => (await agent().list()).profiles.find((profile) => profile.id === id) ?? null)
+      agentConversations = new AgentConversationService(new AgentSessionRepository(deps.agentUserDataDir), new AgentContextService(storage), async (id) => (await agent().list()).profiles.find((profile) => profile.id === id) ?? null, { credentialRevision: (id) => agent().credentialRevision(id) })
     }
     return agentConversations
-  })
+  }
+  registerAgentConversationIpc(reg, conversation)
+  let agentRequests: AgentRequestService | undefined
+  const requests = (): AgentRequestService => {
+    agentRequests ??= new AgentRequestService(conversation(), agent(), (event) => {
+      const window = getWindow()
+      if (!window || window.webContents.isDestroyed()) return
+      window.webContents.send('trace:agent-request', event)
+    })
+    return agentRequests
+  }
+  reg('agent:request:send', (payload) => requests().send(payload))
+  reg('agent:request:cancel', (payload) => requests().cancel(payload))
 
   // ---------- app ----------
   reg('app:getAppInfo', () => app.getAppInfo())
@@ -348,6 +361,7 @@ export function registerIpc(deps: Deps): () => void {
   return () => {
     if (disposed) return
     disposed = true
+    agentRequests?.dispose()
     for (const unsubscribe of unsubscribeListeners.splice(0)) unsubscribe()
     for (const channel of registeredChannels.splice(0)) ipcMain.removeHandler(channel)
   }

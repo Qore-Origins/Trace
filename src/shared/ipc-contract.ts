@@ -5,6 +5,7 @@ import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
 import type { AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
 import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
+import type { AgentRequestSendInput, AgentRequestCancelInput, AgentRequestIdentity } from './agent-types'
 
 // ---------- 统一响应信封 ----------
 
@@ -97,6 +98,8 @@ export interface Channels {
   'agent:context:read': { req: AgentContextSelection; res: AgentContextEntry }
   'agent:preview:create': { req: AgentPreviewInput; res: AgentOutboundPreview }
   'agent:preview:cancel': { req: { token: string }; res: null }
+  'agent:request:send': { req: AgentRequestSendInput; res: AgentRequestIdentity }
+  'agent:request:cancel': { req: AgentRequestCancelInput; res: null }
   // app
   'app:getAppInfo': { req: void; res: AppInfo }
   'app:bootstrap': { req: void; res: BootstrapInfo }

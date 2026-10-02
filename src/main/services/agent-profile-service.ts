@@ -41,6 +41,8 @@ function parseInput(value: unknown): AgentProfileInput {
 export class AgentProfileService {
   readonly credentials: AgentCredentialStore
   private queue = Promise.resolve()
+  // Main-only generation, unrelated to key bytes and never serialized into a DTO.
+  private readonly credentialRevisions = new Map<string, number>()
 
   constructor(private readonly userDataDir: string) {
     this.credentials = new AgentCredentialStore(userDataDir)
@@ -144,6 +146,7 @@ export class AgentProfileService {
       const index = data.profiles.findIndex((item) => item.id === id)
       if (index < 0) throw new TraceError(ERR.PATH_NOT_FOUND, '服务配置不存在')
       const [removed] = data.profiles.splice(index, 1)
+      this.credentialRevisions.set(removed.id, (this.credentialRevisions.get(removed.id) ?? 0) + 1)
       await this.credentials.remove(removed.id)
       if (data.defaultProfileId === removed.id) data.defaultProfileId = data.profiles[0]?.id ?? null
       await this.write(data)
@@ -157,6 +160,7 @@ export class AgentProfileService {
       const data = await this.read()
       const profile = data.profiles.find((item) => item.id === id)
       if (!profile) throw new TraceError(ERR.PATH_NOT_FOUND, '服务配置不存在')
+      this.credentialRevisions.set(profile.id, (this.credentialRevisions.get(profile.id) ?? 0) + 1)
       await this.credentials.set(profile.id, key)
       profile.capability = { status: 'needs-retest', testedAt: null, errorCategory: null }
       await this.write(data)
@@ -169,10 +173,32 @@ export class AgentProfileService {
       const data = await this.read()
       const profile = data.profiles.find((item) => item.id === id)
       if (!profile) throw new TraceError(ERR.PATH_NOT_FOUND, '服务配置不存在')
+      this.credentialRevisions.set(profile.id, (this.credentialRevisions.get(profile.id) ?? 0) + 1)
       await this.credentials.remove(profile.id)
       profile.capability = { status: 'needs-retest', testedAt: null, errorCategory: null }
       await this.write(data)
       return this.dto(profile)
+    })
+  }
+
+  credentialRevision(id: string): Promise<number> {
+    assertAgentProfileId(id)
+    return this.serial(async () => this.credentialRevisions.get(id) ?? 0)
+  }
+
+  // Hold profile/key mutations until the caller has revalidated context and synchronously
+  // started fetch. The caller returns request identity, never the running provider promise.
+  dispatchAuthorized<T>(id: string, revision: number, dispatch: (profile: AgentProfile, key: string) => Promise<T>): Promise<T> {
+    return this.serial(async () => {
+      assertAgentProfileId(id)
+      const profile = (await this.read()).profiles.find((item) => item.id === id)
+      if (!profile || (this.credentialRevisions.get(id) ?? 0) !== revision) throw new TraceError(ERR.CONFLICT, '模型服务配置已变化，请重新预览')
+      const key = await this.credentials.getForProvider(id)
+      if (!key) throw new TraceError(ERR.VALIDATION, '请先配置 API Key')
+      if ((this.credentialRevisions.get(id) ?? 0) !== revision) throw new TraceError(ERR.CONFLICT, '模型服务配置已变化，请重新预览')
+      const current = (await this.read()).profiles.find((item) => item.id === id)
+      if (!current) throw new TraceError(ERR.CONFLICT, '模型服务配置已变化，请重新预览')
+      return dispatch(await this.dto(current), key)
     })
   }
 

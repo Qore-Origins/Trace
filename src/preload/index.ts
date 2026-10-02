@@ -9,6 +9,7 @@ const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getSt
 const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-template:set', 'plan-template:remove'])
 const AGENT_CHANNELS = new Set<string>(['agent:provider:list', 'agent:profile:list', 'agent:profile:create', 'agent:profile:update', 'agent:profile:delete', 'agent:profile:setDefault', 'agent:key:set', 'agent:key:remove'])
 for (const channel of ['agent:session:list', 'agent:session:create', 'agent:session:read', 'agent:session:update', 'agent:session:delete', 'agent:context:browse', 'agent:context:read', 'agent:preview:create', 'agent:preview:cancel']) AGENT_CHANNELS.add(channel)
+for (const channel of ['agent:request:send', 'agent:request:cancel']) AGENT_CHANNELS.add(channel)
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',
@@ -16,7 +17,8 @@ const EVENT_CHANNELS = new Set<string>([
   'trace:index-status',
   'trace:window-state',
   'trace:plantuml-status',
-  'trace:diary-automation-status'
+  'trace:diary-automation-status',
+  'trace:agent-request'
 ])
 
 // 首屏/页面切换的订阅可能晚于后台结束；observer 属于 preload 生命周期。
