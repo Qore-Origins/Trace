@@ -24,6 +24,16 @@ afterEach(async () => { await Promise.all(servers.splice(0).map((server) => new 
 const event = (value: unknown) => JSON.stringify({ id: 'probe-response', choices: [{ delta: value }] })
 
 describe('synthetic tool-call capability test', () => {
+  it('protocol-fails when unfinished arguments are completed after finish_reason', async () => {
+    const endpoint = await serve([
+      event({ tool_calls: [{ index: 0, id: 'call', type: 'function', function: { name: 'trace_capability_probe', arguments: '{"value":' } }] }),
+      JSON.stringify({ id: 'probe-response', choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
+      event({ tool_calls: [{ index: 0, function: { arguments: '"ready"}' } }] }),
+      '[DONE]'
+    ])
+    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
+  })
+
   it('passes only after merging native tool-call deltas by index and never executes the probe', async () => {
     let request: Record<string, unknown> = {}
     const endpoint = await serve([
@@ -40,17 +50,32 @@ describe('synthetic tool-call capability test', () => {
     expect(request.messages).toEqual([{ role: 'user', content: 'Call the provided test function with value ready.' }])
   })
 
-  it('fails for a wrong name, wrong schema, malformed JSON or incomplete stream', async () => {
-    for (const calls of [
-      [{ index: 0, id: 'call', function: { name: 'wrong', arguments: '{"value":"ready"}' } }],
-      [{ index: 0, id: 'call', function: { name: 'trace_capability_probe', arguments: '{"value":"wrong"}' } }],
-      [{ index: 0, id: 'call', function: { name: 'trace_capability_probe', arguments: '{bad' } }]
-    ]) {
-      const endpoint = await serve([event({ tool_calls: calls }), JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }), '[DONE]'])
-      expect((await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).status).toBe('failed')
-    }
-    const endpoint = await serve([event({ tool_calls: [{ index: 0, function: { name: 'trace_capability_probe', arguments: '{"value":"ready"}' } }] })])
-    expect((await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).status).toBe('failed')
+  it('accepts the final argument delta in the event carrying finish_reason', async () => {
+    const endpoint = await serve([
+      event({ tool_calls: [{ index: 0, id: 'call', type: 'function', function: { name: 'trace_capability_probe', arguments: '{"value":' } }] }),
+      JSON.stringify({ id: 'probe-response', choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"ready"}' } }] }, finish_reason: 'tool_calls' }] }),
+      '', '[DONE]'
+    ])
+    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'passed', errorCategory: null })
+  })
+
+  it.each([
+    { reason: 'wrong name', name: 'wrong', arguments: '{"value":"ready"}', category: 'unsupported' },
+    { reason: 'wrong schema value', name: 'trace_capability_probe', arguments: '{"value":"wrong"}', category: 'unsupported' },
+    { reason: 'additional properties', name: 'trace_capability_probe', arguments: '{"value":"ready","extra":true}', category: 'unsupported' },
+    { reason: 'malformed JSON', name: 'trace_capability_probe', arguments: '{bad', category: 'protocol' }
+  ])('fails with the precise category for $reason', async ({ name, arguments: args, category }) => {
+    const endpoint = await serve([
+      event({ tool_calls: [{ index: 0, id: 'call', type: 'function', function: { name, arguments: args } }] }),
+      JSON.stringify({ id: 'probe-response', choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
+      '[DONE]'
+    ])
+    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: category })
+  })
+
+  it('protocol-fails for an incomplete stream with otherwise valid tool fields', async () => {
+    const endpoint = await serve([event({ tool_calls: [{ index: 0, id: 'call', type: 'function', function: { name: 'trace_capability_probe', arguments: '{"value":"ready"}' } }] })])
+    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
   })
 
   it('rejects two interleaved native calls even when the probe arguments assemble correctly', async () => {

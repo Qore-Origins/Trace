@@ -61,14 +61,15 @@ export async function streamChatCompletion(input: AgentProviderInput, options?: 
       headers: { authorization: `Bearer ${input.apiKey}`, 'content-type': 'application/json', accept: 'text/event-stream' },
       body: serialized
     })
-    if (response.status === 401 || response.status === 403) throw new AgentStreamError('authentication')
-    if (!response.ok) throw new AgentStreamError('http')
-    if (!response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) throw new AgentStreamError('protocol')
-    if (!response.body) throw new AgentStreamError('protocol')
-    const accumulator = new AgentSseAccumulator(input.onText)
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder('utf-8', { fatal: true })
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     try {
+      if (response.status === 401 || response.status === 403) throw new AgentStreamError('authentication')
+      if (!response.ok) throw new AgentStreamError('http')
+      if (!response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) throw new AgentStreamError('protocol')
+      if (!response.body) throw new AgentStreamError('protocol')
+      const accumulator = new AgentSseAccumulator(input.onText)
+      reader = response.body.getReader()
+      const decoder = new TextDecoder('utf-8', { fatal: true })
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -80,7 +81,13 @@ export async function streamChatCompletion(input: AgentProviderInput, options?: 
       try { finalFragment = decoder.decode() } catch { throw new AgentStreamError('protocol') }
       accumulator.push(finalFragment, 0)
       return accumulator.complete(Boolean(options))
-    } finally { await reader.cancel().catch(() => undefined) }
+    } finally {
+      if (reader) {
+        try { await reader.cancel().catch(() => undefined) } finally { reader.releaseLock() }
+      } else {
+        await response.body?.cancel().catch(() => undefined)
+      }
+    }
   } catch (error) {
     if (controller.signal.aborted) throw new AgentStreamError(input.signal?.aborted ? 'cancelled' : 'timeout')
     if (error instanceof AgentStreamError) throw error

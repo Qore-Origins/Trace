@@ -41,9 +41,9 @@ export class AgentSseAccumulator {
       if (Buffer.byteLength(event, 'utf8') > AGENT_SSE_EVENT_LIMIT_BYTES) throw new AgentStreamError('limit')
       this.buffer = this.buffer.slice(boundary + separator.length)
       if (event.trim()) this.process(event)
-      if (Buffer.byteLength(this.buffer, 'utf8') > AGENT_SSE_EVENT_LIMIT_BYTES) throw new AgentStreamError('limit')
       boundary = this.buffer.search(/\r?\n\r?\n/)
     }
+    if (Buffer.byteLength(this.buffer, 'utf8') > AGENT_SSE_EVENT_LIMIT_BYTES) throw new AgentStreamError('limit')
   }
 
   private process(event: string): void {
@@ -51,6 +51,7 @@ export class AgentSseAccumulator {
     const data = event.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n')
     if (!data) return
     if (data === '[DONE]') { this.done = true; return }
+    if (this.finished) throw new AgentStreamError('protocol')
     let parsed: unknown
     try { parsed = JSON.parse(data) } catch { throw new AgentStreamError('protocol') }
     if (!record(parsed) || !Array.isArray(parsed.choices) || parsed.choices.length !== 1) throw new AgentStreamError('protocol')
