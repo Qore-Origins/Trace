@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { ERR, TraceError } from '../../shared/errors'
 import { AGENT_PROVIDER_PRESETS } from '../../shared/agent-provider-catalog'
 import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from '../../shared/agent-types'
-import { AgentCredentialStore } from './agent-credential-store'
+import { AgentCredentialStore, assertAgentProfileId } from './agent-credential-store'
 
 type SavedProfile = Omit<AgentProfile, 'keyStatus'>
 interface SavedProfiles { version: 1; defaultProfileId: string | null; profiles: SavedProfile[] }
@@ -54,8 +54,10 @@ export class AgentProfileService {
     try {
       const parsed: unknown = JSON.parse(await fs.readFile(this.file(), 'utf8'))
       if (!plainRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.profiles) || (parsed.defaultProfileId !== null && typeof parsed.defaultProfileId !== 'string')) throw new Error('invalid')
+      if (parsed.defaultProfileId !== null) assertAgentProfileId(parsed.defaultProfileId)
       const profiles: SavedProfile[] = parsed.profiles.map((value: unknown) => {
         if (!plainRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.endpoint !== 'string' || typeof value.model !== 'string' || value.protocol !== 'openai-chat-completions' || !plainRecord(value.capability)) throw new Error('invalid')
+        assertAgentProfileId(value.id)
         const capability = value.capability
         if (!['untested', 'passed', 'failed', 'needs-retest'].includes(String(capability.status)) || (capability.testedAt !== null && typeof capability.testedAt !== 'string') || (capability.errorCategory !== null && typeof capability.errorCategory !== 'string')) throw new Error('invalid')
         return {

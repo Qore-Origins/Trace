@@ -1,8 +1,15 @@
 import { safeStorage } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import type { AgentKeyStatus } from '../../shared/agent-types'
+import { ERR, TraceError } from '../../shared/errors'
+
+const PROFILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+export function assertAgentProfileId(id: unknown): asserts id is string {
+  if (typeof id !== 'string' || !PROFILE_ID.test(id)) throw new TraceError(ERR.VALIDATION, '服务配置 ID 无效')
+}
 
 // The persisted representation contains only OS-encrypted bytes.
 export class AgentCredentialStore {
@@ -11,13 +18,18 @@ export class AgentCredentialStore {
   constructor(private readonly userDataDir: string) {}
 
   private file(id: string): string {
-    return join(this.userDataDir, 'agent-credentials', `${id}.bin`)
+    assertAgentProfileId(id)
+    const directory = resolve(this.userDataDir, 'agent-credentials')
+    const file = resolve(directory, `${id}.bin`)
+    if (dirname(file) !== directory) throw new TraceError(ERR.VALIDATION, '服务配置 ID 无效')
+    return file
   }
 
   async status(id: string): Promise<AgentKeyStatus> {
+    const file = this.file(id)
     if (this.sessionKeys.has(id)) return 'session-only'
     try {
-      await fs.access(this.file(id))
+      await fs.access(file)
       return 'saved'
     } catch {
       return 'missing'
@@ -25,14 +37,14 @@ export class AgentCredentialStore {
   }
 
   async set(id: string, key: string): Promise<AgentKeyStatus> {
+    const file = this.file(id)
     if (!await safeStorage.isAsyncEncryptionAvailable()) {
       this.sessionKeys.set(id, key)
-      await fs.rm(this.file(id), { force: true })
+      await fs.rm(file, { force: true })
       return 'session-only'
     }
     const encrypted = await safeStorage.encryptStringAsync(key)
-    const file = this.file(id)
-    await fs.mkdir(join(this.userDataDir, 'agent-credentials'), { recursive: true })
+    await fs.mkdir(dirname(file), { recursive: true })
     const temporary = `${file}.${randomUUID()}.tmp`
     try {
       await fs.writeFile(temporary, encrypted, { flag: 'wx', mode: 0o600 })
@@ -45,16 +57,18 @@ export class AgentCredentialStore {
   }
 
   async remove(id: string): Promise<void> {
+    const file = this.file(id)
     this.sessionKeys.delete(id)
-    await fs.rm(this.file(id), { force: true })
+    await fs.rm(file, { force: true })
   }
 
   // Main-process provider code is the only consumer; never expose through IPC.
   async getForProvider(id: string): Promise<string | null> {
+    const file = this.file(id)
     const sessionKey = this.sessionKeys.get(id)
     if (sessionKey) return sessionKey
     try {
-      const encrypted = await fs.readFile(this.file(id))
+      const encrypted = await fs.readFile(file)
       let decrypted = await safeStorage.decryptStringAsync(encrypted)
       if (decrypted.shouldReEncrypt) {
         // Electron returns the new key's plaintext on the second decrypt call.

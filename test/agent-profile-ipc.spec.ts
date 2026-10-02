@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TraceBridge } from '../src/shared/ipc-contract'
+import type { AgentProfileService } from '../src/main/services/agent-profile-service'
 
 const electron = vi.hoisted(() => {
   const handlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>()
@@ -26,6 +27,7 @@ vi.mock('electron', () => electron)
 let directory: string
 let dispose: (() => void) | undefined
 let bridge: TraceBridge
+let profileService: AgentProfileService
 
 beforeEach(async () => {
   vi.resetModules()
@@ -37,7 +39,8 @@ beforeEach(async () => {
   const [{ registerIpc }, { AgentProfileService }] = await Promise.all([
     import('../src/main/ipc/register'), import('../src/main/services/agent-profile-service')
   ])
-  dispose = registerIpc({ agentProfiles: new AgentProfileService(directory), log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
+  profileService = new AgentProfileService(directory)
+  dispose = registerIpc({ agentProfiles: profileService, log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
   await import('../src/preload/index')
   bridge = window.trace
 })
@@ -94,11 +97,37 @@ describe('agent profile typed IPC', () => {
     expect(bytes.toString()).not.toContain(key)
     const metadata = await fs.readFile(join(directory, 'agent-profiles.json'), 'utf8')
     expect(metadata).not.toContain(key)
+    await profileService.recordCapability(created.data.id, { status: 'passed', testedAt: '2026-10-02T00:00:00.000Z', errorCategory: null })
+    expect((await bridge.invoke('agent:profile:list')).data).toMatchObject({ profiles: [{ capability: { status: 'passed' } }] })
     const updated = await bridge.invoke('agent:profile:update', { id: created.data.id, name: 'renamed', endpoint: 'https://api.deepseek.com', model: 'deepseek-v4-pro' })
     expect(updated.data).toMatchObject({ model: 'deepseek-v4-pro', capability: { status: 'needs-retest' } })
+    await profileService.recordCapability(created.data.id, { status: 'failed', testedAt: '2026-10-02T00:01:00.000Z', errorCategory: 'unsupported' })
+    expect((await bridge.invoke('agent:profile:list')).data).toMatchObject({ profiles: [{ capability: { status: 'failed' } }] })
+    const endpointUpdated = await bridge.invoke('agent:profile:update', { id: created.data.id, name: 'renamed', endpoint: 'https://api.example.com/v1', model: 'deepseek-v4-pro' })
+    expect(endpointUpdated.data).toMatchObject({ endpoint: 'https://api.example.com/v1', capability: { status: 'needs-retest', testedAt: null, errorCategory: null } })
     const removed = await bridge.invoke('agent:key:remove', { id: created.data.id })
     expect(removed.data).toMatchObject({ keyStatus: 'missing', capability: { status: 'needs-retest' } })
     await expect(fs.access(join(directory, 'agent-credentials', `${created.data.id}.bin`))).rejects.toThrow()
+  })
+
+  it('rejects a tampered profile id without reading, writing or deleting outside the credential directory', async () => {
+    const created = await bridge.invoke('agent:profile:create', { name: 'one', endpoint: 'https://api.example.com/v1', model: 'model' })
+    if (!created.ok) throw new Error('profile setup failed')
+    const outside = join(directory, 'outside.bin')
+    await fs.writeFile(outside, 'sentinel')
+    const metadataFile = join(directory, 'agent-profiles.json')
+    const metadata = JSON.parse(await fs.readFile(metadataFile, 'utf8')) as { defaultProfileId: string; profiles: Array<{ id: string }> }
+    metadata.profiles[0].id = '../outside'
+    metadata.defaultProfileId = '../outside'
+    await fs.writeFile(metadataFile, JSON.stringify(metadata))
+
+    for (const result of [
+      await bridge.invoke('agent:profile:list'),
+      await bridge.invoke('agent:key:set', { id: '../outside', key: 'test-secret-key-value' }),
+      await bridge.invoke('agent:key:remove', { id: '../outside' }),
+      await bridge.invoke('agent:profile:delete', { id: '../outside' })
+    ]) expect(result.ok).toBe(false)
+    expect(await fs.readFile(outside, 'utf8')).toBe('sentinel')
   })
 
   it('keeps keys only in main memory when OS encryption is unavailable', async () => {
