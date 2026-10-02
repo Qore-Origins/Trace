@@ -130,6 +130,43 @@ describe('agent profile typed IPC', () => {
     expect(await fs.readFile(outside, 'utf8')).toBe('sentinel')
   })
 
+  it('rejects credential operations when the credential directory links to another directory', async () => {
+    const created = await bridge.invoke('agent:profile:create', { name: 'linked', endpoint: 'https://api.example.com/v1', model: 'model' })
+    if (!created.ok) throw new Error('profile setup failed')
+    const outsideDirectory = join(directory, 'outside-credentials')
+    const outsideFile = join(outsideDirectory, `${created.data.id}.bin`)
+    await fs.mkdir(outsideDirectory)
+    await fs.writeFile(outsideFile, 'outside-sentinel')
+    await fs.symlink(outsideDirectory, join(directory, 'agent-credentials'), process.platform === 'win32' ? 'junction' : 'dir')
+
+    for (const result of [
+      await bridge.invoke('agent:profile:list'),
+      await bridge.invoke('agent:key:set', { id: created.data.id, key: 'replacement-secret' }),
+      await bridge.invoke('agent:key:remove', { id: created.data.id })
+    ]) {
+      expect(result.ok).toBe(false)
+      expect(JSON.stringify(result)).not.toContain(outsideDirectory)
+    }
+    expect(await fs.readFile(outsideFile, 'utf8')).toBe('outside-sentinel')
+  })
+
+  it('rejects credential operations when a credential file is a symbolic link', async () => {
+    const created = await bridge.invoke('agent:profile:create', { name: 'linked-file', endpoint: 'https://api.example.com/v1', model: 'model' })
+    if (!created.ok) throw new Error('profile setup failed')
+    const outsideFile = join(directory, 'outside-key.bin')
+    await fs.writeFile(outsideFile, 'outside-sentinel')
+    const credentialsDirectory = join(directory, 'agent-credentials')
+    await fs.mkdir(credentialsDirectory)
+    await fs.symlink(outsideFile, join(credentialsDirectory, `${created.data.id}.bin`), 'file')
+
+    for (const result of [
+      await bridge.invoke('agent:profile:list'),
+      await bridge.invoke('agent:key:set', { id: created.data.id, key: 'replacement-secret' }),
+      await bridge.invoke('agent:key:remove', { id: created.data.id })
+    ]) expect(result.ok).toBe(false)
+    expect(await fs.readFile(outsideFile, 'utf8')).toBe('outside-sentinel')
+  })
+
   it('keeps keys only in main memory when OS encryption is unavailable', async () => {
     const created = await bridge.invoke('agent:profile:create', { name: 'local', endpoint: 'https://api.example.com/v1', model: 'model' })
     if (!created.ok) throw new Error('profile setup failed')
