@@ -64,32 +64,69 @@ function ViewNav(): React.JSX.Element {
 }
 
 // ---------- VS Code 式菜单栏（极简：无底色，悬停变色） ----------
+type MenuTranslation = ReturnType<typeof useTranslation>['t']
+type TreeMenuState = ReturnType<typeof useTreeStore.getState>
+
+interface MenuBarState {
+  t: MenuTranslation
+  tree: TreeMenuState
+  switchRootDir: ReturnType<typeof useAppStore.getState>['switchRootDir']
+  openNameDialog: ReturnType<typeof useUiStore.getState>['openNameDialog']
+  setSettingsOpen: ReturnType<typeof useUiStore.getState>['setSettingsOpen']
+}
+
+interface MenuDescriptor {
+  key: string
+  label: string
+  items: MenuProps['items']
+}
+
+type MenuItem = NonNullable<MenuProps['items']>[number]
+
 function MenuBar(): React.JSX.Element {
+  const state = useMenuBarState()
+  const menus = createMenuDescriptors(state)
+
+  return (
+    <nav className="menubar" aria-label={state.t('menu.main')}>
+      {menus.map((menu) => renderMenuItem(menu))}
+    </nav>
+  )
+}
+
+function useMenuBarState(): MenuBarState {
   const { t } = useTranslation()
-  const {
-    selectedPath,
-    selectedKind,
-    exportPlan,
-    exportPdf,
-    exportPng,
-    importPlan,
-    importMarkdown,
-    refreshAll
-  } = useTreeStore()
-  const switchRootDir = useAppStore((s) => s.switchRootDir)
-  const openNameDialog = useUiStore((s) => s.openNameDialog)
-  const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
+  const tree = useTreeStore()
+  const switchRootDir = useAppStore((state) => state.switchRootDir)
+  const openNameDialog = useUiStore((state) => state.openNameDialog)
+  const setSettingsOpen = useUiStore((state) => state.setSettingsOpen)
 
-  const run = async (action: () => Promise<string | null>): Promise<void> => {
-    try {
-      const msg = await action()
-      if (msg) getMessage().success(msg, 5)
-    } catch (e) {
-      getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.opFailed'), 5)
-    }
-  }
+  return { t, tree, switchRootDir, openNameDialog, setSettingsOpen }
+}
 
-  const fileMenu: MenuProps['items'] = [
+function createMenuDescriptors(state: MenuBarState): MenuDescriptor[] {
+  return [
+    { key: 'file', label: state.t('menu.file'), items: createFileMenu(state) },
+    { key: 'edit', label: state.t('menu.edit'), items: createEditMenu(state) },
+    { key: 'view', label: state.t('menu.view'), items: createViewMenu(state) },
+    { key: 'help', label: state.t('menu.help'), items: createHelpMenu(state.t) }
+  ]
+}
+
+function createFileMenu(state: MenuBarState): MenuProps['items'] {
+  return [
+    ...createCreationMenuItems(state),
+    { type: 'divider' },
+    ...createTransferMenuItems(state),
+    { type: 'divider' },
+    ...createLibraryMenuItems(state)
+  ]
+}
+
+function createCreationMenuItems({ t, tree, openNameDialog }: MenuBarState): MenuItem[] {
+  const selectedPath = tree.selectedPath
+
+  return [
     {
       key: 'new-plan',
       label: t('menu.newPlan'),
@@ -100,43 +137,69 @@ function MenuBar(): React.JSX.Element {
       key: 'new-child',
       label: t('menu.newChild'),
       disabled: !selectedPath,
-      onClick: () => selectedPath && openNameDialog({ mode: 'create-plan', targetPath: selectedPath, initialName: '' })
+      onClick: () => selectedPath && openNameDialog({
+        mode: 'create-plan',
+        targetPath: selectedPath,
+        initialName: ''
+      })
     },
     {
       key: 'new-folder',
       label: t('menu.newFolder'),
       onClick: () => openNameDialog({ mode: 'create-folder', targetPath: '', initialName: '' })
+    }
+  ]
+}
+
+function createTransferMenuItems({ t, tree }: MenuBarState): MenuItem[] {
+  const selectedPath = tree.selectedPath
+
+  return [
+    {
+      key: 'import-plan',
+      label: t('menu.importPlan'),
+      onClick: () => void runMenuAction(() => tree.importPlan(selectedPath ?? ''))
     },
-    { type: 'divider' },
-    { key: 'import-plan', label: t('menu.importPlan'), onClick: () => void run(() => importPlan(selectedPath ?? '')) },
-    { key: 'import-md', label: t('menu.importMd'), onClick: () => void run(() => importMarkdown(selectedPath ?? '')) },
+    {
+      key: 'import-md',
+      label: t('menu.importMd'),
+      onClick: () => void runMenuAction(() => tree.importMarkdown(selectedPath ?? ''))
+    },
     {
       key: 'export',
       label: t('menu.exportPlan'),
       disabled: !selectedPath,
-      onClick: () => selectedPath && void run(() => exportPlan(selectedPath))
+      onClick: () => selectedPath && void runMenuAction(() => tree.exportPlan(selectedPath))
     },
     {
       key: 'export-pdf',
       label: t('menu.exportPdf'),
       // 导出为仅计划可导（文件夹无内容渲染面——离屏 readPlan 会 PATH_NOT_FOUND）
-      disabled: !selectedPath || selectedKind !== 'plan',
-      onClick: () => selectedPath && void run(() => exportPdf(selectedPath))
+      disabled: !selectedPath || tree.selectedKind !== 'plan',
+      onClick: () => selectedPath && void runMenuAction(() => tree.exportPdf(selectedPath))
     },
     {
       key: 'export-png',
       label: t('menu.exportPng'),
-      disabled: !selectedPath || selectedKind !== 'plan',
-      onClick: () => selectedPath && void run(() => exportPng(selectedPath))
-    },
-    { type: 'divider' },
+      disabled: !selectedPath || tree.selectedKind !== 'plan',
+      onClick: () => selectedPath && void runMenuAction(() => tree.exportPng(selectedPath))
+    }
+  ]
+}
+
+function createLibraryMenuItems({ t, switchRootDir, setSettingsOpen }: MenuBarState): MenuItem[] {
+  return [
     { key: 'switch-root', label: t('menu.switchRoot'), onClick: () => void switchRootDir() },
     { key: 'settings', label: t('menu.settings'), extra: 'Ctrl+,', onClick: () => setSettingsOpen(true) },
     { type: 'divider' },
     { key: 'quit', label: t('menu.quit'), onClick: () => void invoke('window:close').catch(() => undefined) }
   ]
+}
 
-  const editMenu: MenuProps['items'] = [
+function createEditMenu({ t, tree, openNameDialog }: MenuBarState): MenuProps['items'] {
+  const selectedPath = tree.selectedPath
+
+  return [
     {
       key: 'rename',
       label: t('menu.renameSelected'),
@@ -155,12 +218,17 @@ function MenuBar(): React.JSX.Element {
       label: t('menu.deleteSelected'),
       extra: 'Del',
       disabled: !selectedPath,
-      onClick: () => selectedPath && confirmRemoveTree(selectedPath, useTreeStore.getState().selectedKind ?? 'plan')
+      onClick: () => selectedPath && confirmRemoveTree(
+        selectedPath,
+        useTreeStore.getState().selectedKind ?? 'plan'
+      )
     }
   ]
+}
 
-  const viewMenu: MenuProps['items'] = [
-    { key: 'refresh', label: t('menu.refreshTree'), extra: 'F5', onClick: () => void refreshAll() },
+function createViewMenu({ t, tree }: MenuBarState): MenuProps['items'] {
+  return [
+    { key: 'refresh', label: t('menu.refreshTree'), extra: 'F5', onClick: () => void tree.refreshAll() },
     {
       key: 'devtools',
       label: t('menu.devtools'),
@@ -168,8 +236,10 @@ function MenuBar(): React.JSX.Element {
       onClick: () => void invoke('window:toggleDevtools').catch(() => undefined)
     }
   ]
+}
 
-  const helpMenu: MenuProps['items'] = [
+function createHelpMenu(t: MenuTranslation): MenuProps['items'] {
+  return [
     {
       key: 'about',
       label: t('menu.about'),
@@ -191,21 +261,24 @@ function MenuBar(): React.JSX.Element {
       }
     }
   ]
+}
 
-  const item = (label: string, items: MenuProps['items']): React.JSX.Element => (
-    <Dropdown menu={{ items }} trigger={['click']}>
+async function runMenuAction(action: () => Promise<string | null>): Promise<void> {
+  try {
+    const message = await action()
+    if (message) getMessage().success(message, 5)
+  } catch (error) {
+    const message = error instanceof ClientError ? error.message : i18n.t('errors.opFailed')
+    getMessage().error(message, 5)
+  }
+}
+
+function renderMenuItem({ key, label, items }: MenuDescriptor): React.JSX.Element {
+  return (
+    <Dropdown key={key} menu={{ items }} trigger={['click']}>
       <button type="button" className="menu-title">
         {label}
       </button>
     </Dropdown>
-  )
-
-  return (
-    <nav className="menubar" aria-label={t('menu.main')}>
-      {item(t('menu.file'), fileMenu)}
-      {item(t('menu.edit'), editMenu)}
-      {item(t('menu.view'), viewMenu)}
-      {item(t('menu.help'), helpMenu)}
-    </nav>
   )
 }
