@@ -54,7 +54,8 @@ export function confirmRemoveTree(path: string, kind: 'plan' | 'folder', onConfi
     title: i18n.t(kind === 'folder' ? 'confirm.deleteFolderTitle' : 'confirm.deletePlanTitle', { name }),
     description: i18n.t(kind === 'folder' ? 'confirm.deleteFolderDesc' : 'confirm.deletePlanDesc'),
     afterCancel: () => {
-      const row = Array.from(document.querySelectorAll<HTMLElement>('.tree-row')).find(element => element.dataset.path === path)
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('.tree-row'))
+      const row = rows.find((element) => element.dataset.path === path)
       row?.focus()
     },
     onConfirm: () => {

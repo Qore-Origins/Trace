@@ -66,7 +66,16 @@ function ViewNav(): React.JSX.Element {
 // ---------- VS Code 式菜单栏（极简：无底色，悬停变色） ----------
 function MenuBar(): React.JSX.Element {
   const { t } = useTranslation()
-  const { selectedPath, selectedKind, exportPlan, exportPdf, exportPng, importPlan, importMarkdown, refreshAll } = useTreeStore()
+  const {
+    selectedPath,
+    selectedKind,
+    exportPlan,
+    exportPdf,
+    exportPng,
+    importPlan,
+    importMarkdown,
+    refreshAll
+  } = useTreeStore()
   const switchRootDir = useAppStore((s) => s.switchRootDir)
   const openNameDialog = useUiStore((s) => s.openNameDialog)
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
@@ -81,14 +90,23 @@ function MenuBar(): React.JSX.Element {
   }
 
   const fileMenu: MenuProps['items'] = [
-    { key: 'new-plan', label: t('menu.newPlan'), extra: 'Ctrl+N', onClick: () => openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' }) },
+    {
+      key: 'new-plan',
+      label: t('menu.newPlan'),
+      extra: 'Ctrl+N',
+      onClick: () => openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })
+    },
     {
       key: 'new-child',
       label: t('menu.newChild'),
       disabled: !selectedPath,
       onClick: () => selectedPath && openNameDialog({ mode: 'create-plan', targetPath: selectedPath, initialName: '' })
     },
-    { key: 'new-folder', label: t('menu.newFolder'), onClick: () => openNameDialog({ mode: 'create-folder', targetPath: '', initialName: '' }) },
+    {
+      key: 'new-folder',
+      label: t('menu.newFolder'),
+      onClick: () => openNameDialog({ mode: 'create-folder', targetPath: '', initialName: '' })
+    },
     { type: 'divider' },
     { key: 'import-plan', label: t('menu.importPlan'), onClick: () => void run(() => importPlan(selectedPath ?? '')) },
     { key: 'import-md', label: t('menu.importMd'), onClick: () => void run(() => importMarkdown(selectedPath ?? '')) },
@@ -126,7 +144,11 @@ function MenuBar(): React.JSX.Element {
       disabled: !selectedPath,
       onClick: () =>
         selectedPath &&
-        openNameDialog({ mode: 'rename', targetPath: selectedPath, initialName: selectedPath.slice(selectedPath.lastIndexOf('/') + 1) })
+        openNameDialog({
+          mode: 'rename',
+          targetPath: selectedPath,
+          initialName: selectedPath.slice(selectedPath.lastIndexOf('/') + 1)
+        })
     },
     {
       key: 'delete',
@@ -139,7 +161,12 @@ function MenuBar(): React.JSX.Element {
 
   const viewMenu: MenuProps['items'] = [
     { key: 'refresh', label: t('menu.refreshTree'), extra: 'F5', onClick: () => void refreshAll() },
-    { key: 'devtools', label: t('menu.devtools'), extra: 'Ctrl+Shift+I', onClick: () => void invoke('window:toggleDevtools').catch(() => undefined) }
+    {
+      key: 'devtools',
+      label: t('menu.devtools'),
+      extra: 'Ctrl+Shift+I',
+      onClick: () => void invoke('window:toggleDevtools').catch(() => undefined)
+    }
   ]
 
   const helpMenu: MenuProps['items'] = [

@@ -68,7 +68,9 @@ describe('TopBar page navigation', () => {
     await act(async () => { await i18n.changeLanguage('en-US'); useUiStore.getState().setView('agent') })
     const buttons = Array.from(getNavigation().querySelectorAll('button'))
     expect(buttons.map((item) => item.textContent?.trim())).toEqual(['Plans', 'Diary', 'Memories', 'Xiao Yuan'])
-    expect(buttons.filter((item) => item.getAttribute('aria-current') === 'page').map((item) => item.textContent?.trim())).toEqual(['Xiao Yuan'])
+    const currentButtons = buttons.filter((item) => item.getAttribute('aria-current') === 'page')
+    const currentLabels = currentButtons.map((item) => item.textContent?.trim())
+    expect(currentLabels).toEqual(['Xiao Yuan'])
   })
   it('has an accessible name independent from the View command menu', () => {
     expect(getNavigation().getAttribute('aria-label')).toBe('页面导航')

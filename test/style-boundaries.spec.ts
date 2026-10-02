@@ -32,7 +32,9 @@ describe('renderer style boundaries', () => {
     expect(imports).toEqual(expectedImports)
     expect(workspace.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@import[^;]+;/g, '').trim()).toBe('')
   })
+})
 
+describe('renderer selector ownership', () => {
   it('places representative selectors in their owned domains', () => {
     const selectorsByFile: Record<string, string[]> = {
       'shell.css': ['.ws-top', '.ws-main', '.ws-status', '.onboard'],
