@@ -151,6 +151,7 @@ export function registerIpc(deps: Deps): () => void {
   reg('agent:profile:setDefault', (payload) => agent().setDefault(payload?.id))
   reg('agent:key:set', (payload) => agent().setKey(payload?.id, payload?.key))
   reg('agent:key:remove', (payload) => agent().removeKey(payload?.id))
+  reg('agent:capability:test', (payload) => agent().testCapability(payload))
   let agentConversations = deps.agentConversations
   const conversation = (): AgentConversationService => {
     if (!agentConversations) {

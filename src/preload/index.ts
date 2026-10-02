@@ -10,6 +10,7 @@ const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-templ
 const AGENT_CHANNELS = new Set<string>(['agent:provider:list', 'agent:profile:list', 'agent:profile:create', 'agent:profile:update', 'agent:profile:delete', 'agent:profile:setDefault', 'agent:key:set', 'agent:key:remove'])
 for (const channel of ['agent:session:list', 'agent:session:create', 'agent:session:read', 'agent:session:update', 'agent:session:delete', 'agent:context:browse', 'agent:context:read', 'agent:preview:create', 'agent:preview:cancel']) AGENT_CHANNELS.add(channel)
 for (const channel of ['agent:request:send', 'agent:request:cancel']) AGENT_CHANNELS.add(channel)
+AGENT_CHANNELS.add('agent:capability:test')
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',

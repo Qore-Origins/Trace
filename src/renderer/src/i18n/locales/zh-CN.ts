@@ -1,5 +1,19 @@
 // zh-CN 语料（源头语言；en-US 以此为形状约束，键缺失编译期报错）
 const zhCN = {
+  agentSettings: {
+    title: '小沅模型服务', description: '预设只提供连接信息，工具能力需要单独测试。服务与密钥分别保存。',
+    profiles: '模型服务', newProfile: '新建服务', default: '默认', preset: '服务商预设', custom: '自定义 OpenAI 兼容服务',
+    direct: '直连服务商', aggregator: '聚合服务', protocol: '协议：OpenAI Chat Completions',
+    name: '服务名称', endpoint: '服务地址', model: '模型', save: '保存服务', setDefault: '设为默认', delete: '删除服务',
+    deleteTitle: '删除模型服务？', deleteWarning: '将删除此服务及其密钥。', operationFailed: '模型服务操作失败，请检查配置后重试。',
+    keyHint: '已有密钥不会返回界面。系统加密不可用时，密钥仅保留到本次应用退出。', saveKey: '保存或替换密钥', removeKey: '移除密钥',
+    test: '测试工具能力', testTitle: '测试结构化流式工具能力？', testWarning: '将向已保存的模型服务发送固定合成测试，可能产生费用。不会发送计划、日记、历史或个人偏好；测试工具不会执行。', startTest: '开始测试',
+    testedAt: '测试时间', chatHint: '能力测试失败不影响普通聊天。', saveFirst: '请先保存服务配置，再测试已保存的模型。',
+    errors: { 'missing-key': '请先配置密钥', unsupported: '未通过结构化工具能力测试', authentication: '服务认证失败', http: '服务响应失败', protocol: '服务返回格式不兼容', limit: '服务响应超过限制', timeout: '测试超时', network: '无法连接服务', validation: '服务配置无效', cancelled: '测试已取消', internal: '测试暂不可用' },
+    keyStatus: { missing: '未配置密钥', saved: '密钥已保存', 'session-only': '密钥仅当前会话可用' },
+    capability: { untested: '未测试', passed: '测试通过', failed: '测试失败', 'needs-retest': '需重测' },
+    providers: { bailian: '阿里云百炼', deepseek: 'DeepSeek', kimi: 'Kimi', volcengine: '火山引擎方舟', siliconflow: '硅基流动', qianfan: '百度智能云千帆', tokenhub: '腾讯云 TokenHub' }
+  },
   actions: {
     staleConfirmation: '计划或内容已变化，已取消旧的删除操作。',
     undo: '撤销', undoNotice: '删除撤销', deleted: '已删除：{{name}}（5 秒内可撤销）',

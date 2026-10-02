@@ -2,6 +2,20 @@
 import type zhCN from './zh-CN'
 
 const enUS: typeof zhCN = {
+  agentSettings: {
+    title: 'Xiao Yuan model services', description: 'Presets only supply connection details. Test tool support separately. Save profiles and credentials independently.',
+    profiles: 'Model services', newProfile: 'New service', default: 'Default', preset: 'Provider preset', custom: 'Custom OpenAI-compatible service',
+    direct: 'Direct providers', aggregator: 'Aggregators', protocol: 'Protocol: OpenAI Chat Completions',
+    name: 'Service name', endpoint: 'Endpoint', model: 'Model', save: 'Save service', setDefault: 'Set as default', delete: 'Delete service',
+    deleteTitle: 'Delete model service?', deleteWarning: 'This removes the service and its credential.', operationFailed: 'Model service operation failed. Check the configuration and retry.',
+    keyHint: 'Existing credentials never return to the interface. Without OS encryption, a credential lasts only until the app exits.', saveKey: 'Save or replace credential', removeKey: 'Remove credential',
+    test: 'Test tool support', testTitle: 'Test structured streaming tool support?', testWarning: 'A fixed synthetic test will be sent to the saved model service and may incur charges. No plans, diary, history, or personal preferences are sent. The test tool is never executed.', startTest: 'Start test',
+    testedAt: 'Tested at', chatHint: 'A failed capability test does not block regular chat.', saveFirst: 'Save the service configuration before testing the saved model.',
+    errors: { 'missing-key': 'Configure a credential first', unsupported: 'Structured tool support test did not pass', authentication: 'Service authentication failed', http: 'Service response failed', protocol: 'Incompatible service response format', limit: 'Service response exceeded limits', timeout: 'Test timed out', network: 'Unable to connect to the service', validation: 'Invalid service configuration', cancelled: 'Test cancelled', internal: 'Test temporarily unavailable' },
+    keyStatus: { missing: 'Credential missing', saved: 'Credential saved', 'session-only': 'Credential available for this session only' },
+    capability: { untested: 'Untested', passed: 'Test passed', failed: 'Test failed', 'needs-retest': 'Needs retest' },
+    providers: { bailian: 'Alibaba Cloud Bailian', deepseek: 'DeepSeek', kimi: 'Kimi', volcengine: 'Volcengine Ark', siliconflow: 'SiliconFlow', qianfan: 'Baidu Cloud Qianfan', tokenhub: 'Tencent Cloud TokenHub' }
+  },
   actions: {
     staleConfirmation: 'The plan or content has changed. The old deletion was cancelled.',
     undo: 'Undo', undoNotice: 'Deletion undo', deleted: 'Deleted: {{name}} (undo within 5 seconds)',

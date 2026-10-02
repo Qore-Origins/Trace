@@ -31,6 +31,7 @@ import { markTrace, startTraceMeasure } from './perf/marks'
 
 const DiaryView = lazy(() => import('./views/DiaryView'))
 const MemoriesView = lazy(() => import('./views/MemoriesView'))
+const AgentSettingsSection = lazy(() => import('./components/AgentSettingsSection'))
 const PLANTUML_BADGE_STATUS = {
   stopped: 'default',
   starting: 'processing',
@@ -624,6 +625,11 @@ function TopBarSettingsHost(): React.JSX.Element {
         </Descriptions.Item>
         <Descriptions.Item label={t('settings.templateTitle')}>
           <PlanNameTemplateSettingsPanel active={open} />
+        </Descriptions.Item>
+        <Descriptions.Item label={t('agentSettings.title')}>
+          {open && <Suspense fallback={<span role="status">{t('common.loading')}</span>}>
+            <AgentSettingsSection active={open} />
+          </Suspense>}
         </Descriptions.Item>
         <Descriptions.Item label={t('settings.version')}>{version || '…'}</Descriptions.Item>
         <Descriptions.Item label={t('settings.data')}>

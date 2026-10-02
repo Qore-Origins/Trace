@@ -3,7 +3,7 @@
 import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
-import type { AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
+import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
 import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
 import type { AgentRequestSendInput, AgentRequestCancelInput, AgentRequestIdentity } from './agent-types'
 
@@ -89,6 +89,7 @@ export interface Channels {
   'agent:profile:setDefault': { req: { id: string }; res: AgentProfile }
   'agent:key:set': { req: { id: string; key: string }; res: AgentProfile }
   'agent:key:remove': { req: { id: string }; res: AgentProfile }
+  'agent:capability:test': { req: { id: string }; res: AgentCapability }
   'agent:session:list': { req: void; res: AgentSessionSummary[] }
   'agent:session:create': { req: AgentSessionInput; res: AgentSession }
   'agent:session:read': { req: { id: string }; res: AgentSession }

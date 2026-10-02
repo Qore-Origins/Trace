@@ -5,6 +5,7 @@ import { ERR, TraceError } from '../../shared/errors'
 import { AGENT_PROVIDER_PRESETS } from '../../shared/agent-provider-catalog'
 import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from '../../shared/agent-types'
 import { AgentCredentialStore, assertAgentProfileId } from './agent-credential-store'
+import { testAgentToolCapability } from './agent-capability-test'
 
 type SavedProfile = Omit<AgentProfile, 'keyStatus'>
 interface SavedProfiles { version: 1; defaultProfileId: string | null; profiles: SavedProfile[] }
@@ -43,6 +44,7 @@ export class AgentProfileService {
   private queue = Promise.resolve()
   // Main-only generation, unrelated to key bytes and never serialized into a DTO.
   private readonly credentialRevisions = new Map<string, number>()
+  private readonly capabilityRevisions = new Map<string, number>()
 
   constructor(private readonly userDataDir: string) {
     this.credentials = new AgentCredentialStore(userDataDir)
@@ -123,7 +125,10 @@ export class AgentProfileService {
       if (!profile) throw new TraceError(ERR.PATH_NOT_FOUND, '服务配置不存在')
       const changed = profile.endpoint !== input.endpoint || profile.model !== input.model
       Object.assign(profile, { name: input.name, endpoint: input.endpoint, model: input.model, presetId: input.presetId ?? null })
-      if (changed) profile.capability = { status: 'needs-retest', testedAt: null, errorCategory: null }
+      if (changed) {
+        this.capabilityRevisions.set(profile.id, (this.capabilityRevisions.get(profile.id) ?? 0) + 1)
+        profile.capability = { status: 'needs-retest', testedAt: null, errorCategory: null }
+      }
       await this.write(data)
       return this.dto(profile)
     })
@@ -184,6 +189,32 @@ export class AgentProfileService {
   credentialRevision(id: string): Promise<number> {
     assertAgentProfileId(id)
     return this.serial(async () => this.credentialRevisions.get(id) ?? 0)
+  }
+
+  async testCapability(payload: unknown): Promise<AgentCapability> {
+    if (!plainRecord(payload) || Reflect.ownKeys(payload).length !== 1 || typeof payload.id !== 'string') throw new TraceError(ERR.VALIDATION, '能力测试仅允许服务配置 ID')
+    const id = payload.id
+    assertAgentProfileId(id)
+    const snapshot = await this.serial(async () => {
+      const profile = (await this.read()).profiles.find((item) => item.id === id)
+      if (!profile) throw new TraceError(ERR.PATH_NOT_FOUND, '服务配置不存在')
+      const revision = (this.capabilityRevisions.get(id) ?? 0) + 1
+      this.capabilityRevisions.set(id, revision)
+      return { endpoint: profile.endpoint, model: profile.model, apiKey: await this.credentials.getForProvider(id), revision, keyRevision: this.credentialRevisions.get(id) ?? 0 }
+    })
+    // The provider promise must run outside the queue so edits invalidate in-flight tests.
+    const capability: AgentCapability = snapshot.apiKey
+      ? await testAgentToolCapability({ endpoint: snapshot.endpoint, model: snapshot.model, apiKey: snapshot.apiKey })
+      : { status: 'failed', testedAt: new Date().toISOString(), errorCategory: 'missing-key' }
+    return this.serial(async () => {
+      const data = await this.read()
+      const profile = data.profiles.find((item) => item.id === id)
+      if (!profile) return { status: 'needs-retest', testedAt: null, errorCategory: null }
+      if ((this.capabilityRevisions.get(id) ?? 0) !== snapshot.revision || (this.credentialRevisions.get(id) ?? 0) !== snapshot.keyRevision) return { ...profile.capability }
+      profile.capability = capability
+      await this.write(data)
+      return { ...capability }
+    })
   }
 
   // Hold profile/key mutations until the caller has revalidated context and synchronously
