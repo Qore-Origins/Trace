@@ -41,3 +41,75 @@ export interface AgentProviderPreset {
   note: string
   documentationUrl: string
 }
+
+export type AgentMessageStatus = 'complete' | 'streaming' | 'user-interrupted' | 'error-interrupted'
+export interface AgentMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  status: AgentMessageStatus
+  createdAt: string
+  requestId: string
+}
+export interface AgentContextSelection { kind: 'plan' | 'diary'; path: string }
+export interface AgentContextSource extends AgentContextSelection {
+  libraryId: string
+  version: string
+  updatedAt: string
+}
+export interface AgentContextEntry extends AgentContextSource { content: string }
+export interface AgentTarget {
+  id: string
+  name: string
+  presetId: string | null
+  protocol: AgentProtocol
+  endpoint: string
+  model: string
+}
+export interface AgentRequestProvenance {
+  id: string
+  profileId: string
+  profileName: string
+  presetId: string | null
+  model: string
+  requestedAt: string
+  sources: AgentContextSource[]
+}
+export interface AgentSession {
+  id: string
+  title: string
+  profileId: string
+  createdAt: string
+  updatedAt: string
+  revision: number
+  messages: AgentMessage[]
+  requests: AgentRequestProvenance[]
+}
+export type AgentSessionSummary = Omit<AgentSession, 'messages' | 'requests'>
+export interface AgentSessionInput { title: string; profileId: string }
+export interface AgentPreviewInput {
+  sessionId: string
+  message: string
+  selections: AgentContextSelection[]
+  includeHistory?: boolean
+  includePartialMessageIds?: string[]
+}
+export interface AgentPreviewMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+export interface AgentHistoryItem extends AgentPreviewMessage {
+  messageId: string
+  kind: 'message' | 'interruption'
+}
+export interface AgentOutboundPreview {
+  token: string
+  sessionId: string
+  sessionRevision: number
+  expiresAt: string
+  target: AgentTarget
+  message: string
+  history: AgentHistoryItem[]
+  contexts: AgentContextEntry[]
+  messages: AgentPreviewMessage[]
+}

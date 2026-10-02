@@ -4,6 +4,7 @@ import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
 import type { AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
+import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
 
 // ---------- 统一响应信封 ----------
 
@@ -87,6 +88,15 @@ export interface Channels {
   'agent:profile:setDefault': { req: { id: string }; res: AgentProfile }
   'agent:key:set': { req: { id: string; key: string }; res: AgentProfile }
   'agent:key:remove': { req: { id: string }; res: AgentProfile }
+  'agent:session:list': { req: void; res: AgentSessionSummary[] }
+  'agent:session:create': { req: AgentSessionInput; res: AgentSession }
+  'agent:session:read': { req: { id: string }; res: AgentSession }
+  'agent:session:update': { req: AgentSessionInput & { id: string }; res: AgentSession }
+  'agent:session:delete': { req: { id: string }; res: null }
+  'agent:context:browse': { req: { parentPath: string }; res: PlanTreeNode[] }
+  'agent:context:read': { req: AgentContextSelection; res: AgentContextEntry }
+  'agent:preview:create': { req: AgentPreviewInput; res: AgentOutboundPreview }
+  'agent:preview:cancel': { req: { token: string }; res: null }
   // app
   'app:getAppInfo': { req: void; res: AppInfo }
   'app:bootstrap': { req: void; res: BootstrapInfo }

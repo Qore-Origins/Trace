@@ -18,6 +18,10 @@ import { bus } from '../services/event-bus'
 import type { PlantumlService } from '../services/plantuml-service'
 import type { StartupCoordinator } from '../services/startup-coordinator'
 import { AgentProfileService } from '../services/agent-profile-service'
+import { AgentConversationService } from '../services/agent-conversation-service'
+import { AgentSessionRepository } from '../services/agent-session-repository'
+import { AgentContextService } from '../services/agent-context-service'
+import { registerAgentConversationIpc } from './agent-conversation-ipc'
 import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlStatusDto } from '../../shared/plantuml-types'
 
 interface Deps {
@@ -35,6 +39,7 @@ interface Deps {
   log: (channel: string, code: number, detail?: string) => void
   agentProfiles?: AgentProfileService
   agentUserDataDir?: string
+  agentConversations?: AgentConversationService
 }
 
 type Handler<K extends ChannelName> = (payload: Channels[K]['req']) => Promise<Channels[K]['res']>
@@ -145,6 +150,14 @@ export function registerIpc(deps: Deps): () => void {
   reg('agent:profile:setDefault', (payload) => agent().setDefault(payload?.id))
   reg('agent:key:set', (payload) => agent().setKey(payload?.id, payload?.key))
   reg('agent:key:remove', (payload) => agent().removeKey(payload?.id))
+  let agentConversations = deps.agentConversations
+  registerAgentConversationIpc(reg, () => {
+    if (!agentConversations) {
+      if (!deps.agentUserDataDir) throw new TraceError(ERR.INTERNAL, '会话目录不可用')
+      agentConversations = new AgentConversationService(new AgentSessionRepository(deps.agentUserDataDir), new AgentContextService(storage), async (id) => (await agent().list()).profiles.find((profile) => profile.id === id) ?? null)
+    }
+    return agentConversations
+  })
 
   // ---------- app ----------
   reg('app:getAppInfo', () => app.getAppInfo())

@@ -8,6 +8,7 @@ const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:', 'transfer:', 'window:',
 const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getStatus', 'plantuml:retry'])
 const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-template:set', 'plan-template:remove'])
 const AGENT_CHANNELS = new Set<string>(['agent:provider:list', 'agent:profile:list', 'agent:profile:create', 'agent:profile:update', 'agent:profile:delete', 'agent:profile:setDefault', 'agent:key:set', 'agent:key:remove'])
+for (const channel of ['agent:session:list', 'agent:session:create', 'agent:session:read', 'agent:session:update', 'agent:session:delete', 'agent:context:browse', 'agent:context:read', 'agent:preview:create', 'agent:preview:cancel']) AGENT_CHANNELS.add(channel)
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:save-status',
