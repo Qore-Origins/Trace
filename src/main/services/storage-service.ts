@@ -11,6 +11,7 @@ import type {
   TrashEntry, TrashEntryTargetGrant, TrashOperationCommitResult, TrashOperationPreview,
   TrashReferenceImpactSummary, TrashRestoreDestination
 } from '../../shared/trash-types'
+import type { PlanMoveSnapshot } from '../../shared/plan-reference-types'
 import { PlanRepository } from './plan-repository'
 import { TreeCache } from './tree-cache'
 import { assertRealPathWithinRoot, resolveWithin, isSelfOrDescendant, parentRel } from './path-safety'
@@ -270,34 +271,70 @@ export class StorageService {
   }
 
   async commitTrashPurge(confirmationToken: string): Promise<TrashOperationCommitResult> {
-    return this.trash.commitPurge(await this.trashContext(), confirmationToken)
+    const result = await this.trash.commitPurge(await this.trashContext(), confirmationToken)
+    this.emitReferenceTargetChanges(result.changed_plan_ids)
+    return result
+  }
+
+  async captureMoveDirectorySnapshot(
+    sourcePathRel: string,
+    targetParentRel: string
+  ): Promise<{ root_generation: number; source_directory_identity: string; target_directory_identity: string }> {
+    const root = this.root()
+    const source = this.safe(sourcePathRel)
+    const targetParent = this.safe(targetParentRel)
+    if (!source || isReservedMovePath(source) || isReservedMovePath(targetParent)) {
+      throw new TraceError(ERR.PATH_UNSAFE, '该目录不可移动')
+    }
+    const sourceAbs = resolveWithin(root, source).abs
+    const targetAbs = resolveWithin(root, targetParent).abs
+    await assertRealPathWithinRoot(root, sourceAbs)
+    await assertRealPathWithinRoot(root, targetAbs)
+    const sourceIdentity = await getDirectoryIdentity(sourceAbs)
+    const targetIdentity = await getDirectoryIdentity(targetAbs)
+    if (!sourceIdentity || !targetIdentity) throw new TraceError(ERR.CONFLICT, '移动目录已变化，请重试')
+    return {
+      root_generation: this.rootGeneration,
+      source_directory_identity: directoryIdentityKey(sourceIdentity),
+      target_directory_identity: directoryIdentityKey(targetIdentity)
+    }
+  }
+
+  /** Low-level move used only by PlanReferenceService while holding its commit queue. */
+  async movePlanRaw(snapshot: PlanMoveSnapshot, storageRootGeneration: number): Promise<void> {
+    const root = this.root()
+    if (storageRootGeneration !== this.rootGeneration) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+    const source = this.safe(snapshot.source_path)
+    const targetParent = this.safe(snapshot.target_parent_path)
+    if (!source || isReservedMovePath(source) || isReservedMovePath(targetParent) ||
+      isSelfOrDescendant(source, targetParent)) {
+      throw new TraceError(ERR.PATH_UNSAFE, '移动路径无效')
+    }
+    const current = await this.captureMoveDirectorySnapshot(source, targetParent)
+    if (current.root_generation !== storageRootGeneration ||
+      current.source_directory_identity !== snapshot.source_directory_identity ||
+      current.target_directory_identity !== snapshot.target_directory_identity) {
+      throw new TraceError(ERR.CONFLICT, '移动目录身份已变化，请重新预览')
+    }
+    const name = source.slice(source.lastIndexOf('/') + 1)
+    const target = targetParent ? `${targetParent}/${name}` : name
+    const targetAbs = resolveWithin(root, target).abs
+    try {
+      await fs.lstat(targetAbs)
+      throw new TraceError(ERR.NAME_CONFLICT, '目标位置已存在同名计划或文件夹')
+    } catch (error) {
+      if (error instanceof TraceError) throw error
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    await assertRealPathWithinRoot(root, resolveWithin(root, source).abs)
+    await assertRealPathWithinRoot(root, resolveWithin(root, targetParent).abs)
+    await this.repo.moveDirAtomic(resolveWithin(root, source).abs, targetAbs)
   }
 
   async movePlan(pathRel: string, targetParentRel: string): Promise<void> {
-    const rel = this.safe(pathRel)
-    const targetParent = this.safe(targetParentRel)
-    if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录不可移动')
-    if (isSelfOrDescendant(rel, targetParent)) {
-      throw new TraceError(ERR.CIRCULAR_NESTING, '不能移动到自身或子计划中')
-    }
-    const root = this.root()
-    const name = rel.slice(rel.lastIndexOf('/') + 1)
-    const oldParent = parentRel(rel)
-
-    if (targetParent !== oldParent) {
-      const siblings = await this.repo.listPlanDirs(root, targetParent)
-      if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
-    }
-
-    const affectedPlanIds = await this.collectSubtreePlanIds(root, rel)
-    const fromAbs = targetJoin(root, rel)
-    const toAbs = targetJoin(root, targetParent === '' ? name : `${targetParent}/${name}`)
-    await this.repo.moveDir(fromAbs, toAbs)
-
-    this.treeCache.invalidatePrefix(rel)
-    this.treeCache.invalidatePrefix(targetParent)
-    bus.emit('trace:plan-changed', { path: targetParent === '' ? name : `${targetParent}/${name}` })
-    this.emitReferenceTargetChanges(affectedPlanIds)
+    void pathRel
+    void targetParentRel
+    throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过引用提交队列移动计划或文件夹')
   }
 
   // ---------- 计划读写（CAS） ----------
@@ -425,10 +462,6 @@ export class StorageService {
 
 // ---------- 模块级辅助 ----------
 
-function targetJoin(rootAbs: string, rel: string): string {
-  return rel === '' ? rootAbs : join(rootAbs, rel)
-}
-
 interface DirectoryIdentity {
   dev: bigint
   ino: bigint
@@ -447,6 +480,16 @@ async function getDirectoryIdentity(path: string): Promise<DirectoryIdentity | n
 
 function sameDirectoryIdentity(left: DirectoryIdentity, right: DirectoryIdentity | null): boolean {
   return right !== null && left.dev === right.dev && left.ino === right.ino && left.birthtimeNs === right.birthtimeNs
+}
+
+function directoryIdentityKey(identity: DirectoryIdentity): string {
+  return `${identity.dev}\0${identity.ino}\0${identity.birthtimeNs}`
+}
+
+function isReservedMovePath(path: string): boolean {
+  const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  return normalized === '.trace' || normalized.startsWith('.trace/') ||
+    normalized === 'Diary' || normalized.startsWith('Diary/')
 }
 
 // 任务定位：task_list 内按 TaskItem.id；task_detail 组件本身即单任务，taskId=组件 id

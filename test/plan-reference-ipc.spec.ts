@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { ERR } from '../src/shared/errors'
+import { ERR, TraceError } from '../src/shared/errors'
 
 const electronMocks = vi.hoisted(() => {
   const handlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>()
@@ -209,6 +209,141 @@ describe('plan reference IPC boundary', () => {
     expect(await waitingImportPromise).toMatchObject({ ok: true, data: { imported: [{ path: 'Imported' }] } })
     expect(importPlan).toHaveBeenCalledExactlyOnceWith('', 'fixture.plan')
     expect((await storage.readPlan('Late')).components).toEqual([])
+
+    const legacyDelete = electronMocks.handlers.get('storage:deletePlan')
+    const trashBeforeLegacyDelete = await storage.listTrashEntries()
+    expect(legacyDelete).toBeDefined()
+    expect(await legacyDelete?.({}, { path: 'Replacement', confirmed: true }))
+      .toMatchObject({ ok: false, code: ERR.CONFIRMATION_REQUIRED })
+    await expect(fs.access(join(root, 'Replacement', 'plan.json'))).resolves.toBeUndefined()
+    expect(await storage.listTrashEntries()).toEqual(trashBeforeLegacyDelete)
+
+    await storage.createFolder('', 'MoveSource')
+    await storage.createPlan('MoveSource', 'Inside')
+    await storage.createFolder('', 'MoveTarget')
+    const moveDocument = await storage.readPlan('MoveSource/Inside')
+    moveDocument.plan_id = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    await storage.savePlan('MoveSource/Inside', moveDocument, moveDocument.updated_at)
+    const planChanges: string[] = []
+    const targetChanges: string[][] = []
+    const offPlanChanges = bus.on('trace:plan-changed', ({ path }) => planChanges.push(path))
+    const offTargetChanges = bus.on('trace:reference-target-changed', ({ plan_ids }) => targetChanges.push(plan_ids))
+    const rawMove = storage.movePlanRaw.bind(storage)
+    let failRawMove = true
+    vi.spyOn(storage, 'movePlanRaw').mockImplementation(async (...args) => {
+      if (failRawMove) {
+        failRawMove = false
+        throw new TraceError(ERR.CONFLICT, 'injected disk move failure')
+      }
+      return rawMove(...args)
+    })
+    try {
+      expect(await bridge.invoke('storage:movePlan', { path: 'MoveSource', target_parent_path: 'MoveTarget' }))
+        .toMatchObject({ ok: false })
+      expect(planChanges).toEqual([])
+      expect(targetChanges).toEqual([])
+      await expect(fs.access(join(root, 'MoveSource', 'Inside', 'plan.json'))).resolves.toBeUndefined()
+
+      let releaseMove!: () => void
+      let signalMove!: () => void
+      const moveGate = new Promise<void>((resolve) => { releaseMove = resolve })
+      const rawStarted = new Promise<void>((resolve) => { signalMove = resolve })
+      vi.spyOn(storage, 'movePlanRaw').mockImplementationOnce(async (...args) => {
+        signalMove()
+        await moveGate
+        return rawMove(...args)
+      })
+      const pendingMove = bridge.invoke('storage:movePlan', { path: 'MoveSource', target_parent_path: 'MoveTarget' })
+      await rawStarted
+      const append = vi.spyOn(storage, 'appendComponent')
+      const waitingWrite = bridge.invoke('storage:appendComponent', {
+        path: 'MoveTarget/MoveSource/Inside',
+        component: { id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', type: 'note', payload: { content: 'after move' } }
+      })
+      await Promise.resolve()
+      expect(append).not.toHaveBeenCalled()
+      expect(planChanges).toEqual([])
+      releaseMove()
+      expect(await pendingMove).toMatchObject({ ok: true })
+      expect(await waitingWrite).toMatchObject({ ok: true })
+      expect(append).toHaveBeenCalledTimes(1)
+      expect(planChanges).toEqual(['MoveTarget/MoveSource', 'MoveTarget/MoveSource/Inside'])
+      expect(targetChanges).toEqual([
+        ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+        ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa']
+      ])
+      expect((await storage.readPlan('MoveTarget/MoveSource/Inside')).components)
+        .toContainEqual(expect.objectContaining({ id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }))
+
+      await storage.createPlan('', 'QueuedRestore')
+      const restorePlan = await storage.readPlan('QueuedRestore')
+      restorePlan.plan_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+      await storage.savePlan('QueuedRestore', restorePlan, restorePlan.updated_at)
+      await storage.trashPlan('QueuedRestore', restorePlan.updated_at)
+      const restoreEntry = (await storage.listTrashEntries()).find((entry) => entry.name === 'QueuedRestore')!
+      const restorePreview = await storage.previewTrashRestore(restoreEntry.id)
+      await storage.createFolder('', 'RestoreQueueMove')
+      await storage.createFolder('', 'RestoreQueueTarget')
+      let releaseRestoreGate!: () => void
+      let signalRestoreMove!: () => void
+      const restoreMoveGate = new Promise<void>((resolve) => { releaseRestoreGate = resolve })
+      const restoreMoveStarted = new Promise<void>((resolve) => { signalRestoreMove = resolve })
+      vi.spyOn(storage, 'movePlanRaw').mockImplementationOnce(async (...args) => {
+        signalRestoreMove()
+        await restoreMoveGate
+        return rawMove(...args)
+      })
+      const restoreBlockingMove = bridge.invoke('storage:movePlan', {
+        path: 'RestoreQueueMove', target_parent_path: 'RestoreQueueTarget'
+      })
+      await restoreMoveStarted
+      const commitRestore = vi.spyOn(storage, 'commitTrashRestore')
+      const queuedRestore = bridge.invoke('trash:restore-commit', {
+        confirmation_token: restorePreview.confirmation_token
+      })
+      await Promise.resolve()
+      expect(commitRestore).not.toHaveBeenCalled()
+      releaseRestoreGate()
+      expect(await restoreBlockingMove).toMatchObject({ ok: true })
+      expect(await queuedRestore).toMatchObject({ ok: true })
+      expect(commitRestore).toHaveBeenCalledTimes(1)
+      await expect(fs.access(join(root, 'QueuedRestore', 'plan.json'))).resolves.toBeUndefined()
+
+      await storage.createPlan('', 'QueuedPurge')
+      const purgePlan = await storage.readPlan('QueuedPurge')
+      await storage.trashPlan('QueuedPurge', purgePlan.updated_at)
+      const purgeEntry = (await storage.listTrashEntries()).find((entry) => entry.name === 'QueuedPurge')!
+      const purgePreview = await storage.previewTrashPurge(purgeEntry.id)
+      await storage.createFolder('', 'PurgeQueueMove')
+      await storage.createFolder('', 'PurgeQueueTarget')
+      let releasePurgeGate!: () => void
+      let signalPurgeMove!: () => void
+      const purgeMoveGate = new Promise<void>((resolve) => { releasePurgeGate = resolve })
+      const purgeMoveStarted = new Promise<void>((resolve) => { signalPurgeMove = resolve })
+      vi.spyOn(storage, 'movePlanRaw').mockImplementationOnce(async (...args) => {
+        signalPurgeMove()
+        await purgeMoveGate
+        return rawMove(...args)
+      })
+      const purgeBlockingMove = bridge.invoke('storage:movePlan', {
+        path: 'PurgeQueueMove', target_parent_path: 'PurgeQueueTarget'
+      })
+      await purgeMoveStarted
+      const commitPurge = vi.spyOn(storage, 'commitTrashPurge')
+      const queuedPurge = bridge.invoke('trash:purge-commit', {
+        confirmation_token: purgePreview.confirmation_token
+      })
+      await Promise.resolve()
+      expect(commitPurge).not.toHaveBeenCalled()
+      releasePurgeGate()
+      expect(await purgeBlockingMove).toMatchObject({ ok: true })
+      expect(await queuedPurge).toMatchObject({ ok: true })
+      expect(commitPurge).toHaveBeenCalledTimes(1)
+      expect((await storage.listTrashEntries()).map((entry) => entry.id)).not.toContain(purgeEntry.id)
+    } finally {
+      offPlanChanges()
+      offTargetChanges()
+    }
 
     const referenceEvent = { plan_ids: [planId] }
     const received = vi.fn()

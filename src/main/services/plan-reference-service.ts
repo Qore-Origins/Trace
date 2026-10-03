@@ -1,11 +1,14 @@
 import { ERR, TraceError } from '../../shared/errors'
+import { createHash } from 'node:crypto'
+import { promises as fs } from 'node:fs'
 import type { Component, PlanDocument } from '../../shared/plan-types'
+import type { TrashOperationCommitResult } from '../../shared/trash-types'
 import type {
   PlanReferenceCandidate, PlanReferenceInbound, PlanReferenceResolution
 } from '../../shared/ipc-contract'
 import type {
   PlanReferenceMode, PlanReferenceTarget, ReferenceImpactItem, ReferenceImpactPreview,
-  ReferenceImpactRequest, ReferenceImpactCommit
+  ReferenceImpactRequest, ReferenceImpactCommit, PlanMoveSnapshot, PlanMoveTargetSnapshot
 } from '../../shared/plan-reference-types'
 import { referenceComponentDisplayName, referenceComponentTypeFallback } from '../../shared/plan-reference-types'
 import { isPlanReferencePayload, isReferenceTargetType } from '../../shared/plan-reference-validation'
@@ -263,6 +266,128 @@ export class PlanReferenceService {
     return matches[0] ?? null
   }
 
+  private async planSubtreeSnapshot(
+    snapshot: LibrarySnapshot,
+    path: string
+  ): Promise<{ plans: ScannedPlan[]; directoryIdentity: string; digest: string }> {
+    const absolutePath = resolveWithin(snapshot.root, path).abs
+    await assertRealPathWithinRoot(snapshot.root, absolutePath)
+    this.currentRevision(snapshot)
+    const directoryIdentity = await readDirectoryIdentityKey(absolutePath)
+    const allPlans = await this.scan(snapshot)
+    this.currentRevision(snapshot)
+    const plans = allPlans.filter((plan) => isSelfOrDescendant(path, plan.path))
+      .sort((left, right) => left.path.localeCompare(right.path))
+    const snapshots = plans.map((plan) => ({
+      path: plan.path,
+      plan_id: typeof plan.document.plan_id === 'string' ? plan.document.plan_id : null,
+      updated_at: plan.document.updated_at
+    }))
+    const digest = createHash('sha256').update(JSON.stringify({ directoryIdentity, plans: snapshots })).digest('hex')
+    return { plans, directoryIdentity, digest }
+  }
+
+  private async freezeMoveSnapshot(
+    request: { path: string; target_parent_path: string },
+    storage: StorageService
+  ): Promise<PlanMoveSnapshot> {
+    if (!request || typeof request.path !== 'string' || typeof request.target_parent_path !== 'string') {
+      throw new TraceError(ERR.VALIDATION, '移动请求无效')
+    }
+    const snapshot = await this.activeSnapshot()
+    const sourcePath = resolveWithin(snapshot.root, request.path).rel
+    const targetParentPath = resolveWithin(snapshot.root, request.target_parent_path).rel
+    if (!sourcePath || isReferenceReservedPath(sourcePath) || isReferenceReservedPath(targetParentPath)) {
+      throw new TraceError(ERR.PATH_UNSAFE, '该路径不可移动')
+    }
+    if (isSelfOrDescendant(sourcePath, targetParentPath)) {
+      throw new TraceError(ERR.CIRCULAR_NESTING, '不能移动到自身或子计划中')
+    }
+    const storageSnapshot = await storage.captureMoveDirectorySnapshot(sourcePath, targetParentPath)
+    this.currentRevision(snapshot)
+    const allPlans = await this.scan(snapshot)
+    this.currentRevision(snapshot)
+    const sourcePlans = allPlans.filter((plan) => isSelfOrDescendant(sourcePath, plan.path))
+      .sort((left, right) => left.path.localeCompare(right.path))
+    const ids = new Map<string, number>()
+    for (const plan of allPlans) {
+      const id = plan.document.plan_id
+      if (typeof id === 'string') ids.set(id, (ids.get(id) ?? 0) + 1)
+    }
+    const sourceIds = sourcePlans.map((plan) => plan.document.plan_id).filter((id): id is string => typeof id === 'string')
+    if (sourceIds.some((id) => ids.get(id) !== 1)) {
+      throw new TraceError(ERR.CONFLICT, '移动子树存在重复计划标识，请先处理重复项')
+    }
+    const sourceSnapshots: PlanMoveTargetSnapshot[] = sourcePlans.map((plan) => ({
+      path: plan.path,
+      plan_id: typeof plan.document.plan_id === 'string' ? plan.document.plan_id : null,
+      updated_at: plan.document.updated_at
+    }))
+    return {
+      library_id: snapshot.libraryId,
+      root_generation: snapshot.generation,
+      change_revision: snapshot.changeRevision,
+      storage_root_generation: storageSnapshot.root_generation,
+      source_path: sourcePath,
+      target_parent_path: targetParentPath,
+      source_directory_identity: storageSnapshot.source_directory_identity,
+      target_directory_identity: storageSnapshot.target_directory_identity,
+      source_plans: sourceSnapshots
+    }
+  }
+
+  async commitMove(request: { path: string; target_parent_path: string }, storage: StorageService): Promise<{ path: string }> {
+    const frozen = await this.freezeMoveSnapshot(request, storage)
+    return this.enqueueCommit(async () => {
+      const snapshot = await this.snapshot(frozen.library_id)
+      if (snapshot.generation !== frozen.root_generation || snapshot.changeRevision !== frozen.change_revision) {
+        throw new TraceError(ERR.CONFLICT, '计划内容已变化，请重新预览确认')
+      }
+      const currentDirectories = await storage.captureMoveDirectorySnapshot(frozen.source_path, frozen.target_parent_path)
+      if (currentDirectories.root_generation !== frozen.storage_root_generation ||
+        currentDirectories.source_directory_identity !== frozen.source_directory_identity ||
+        currentDirectories.target_directory_identity !== frozen.target_directory_identity) {
+        throw new TraceError(ERR.CONFLICT, '移动目录身份已变化，请重新预览确认')
+      }
+      const allPlans = await this.scan(snapshot)
+      this.currentRevision(snapshot)
+      const currentIdCounts = new Map<string, number>()
+      for (const plan of allPlans) {
+        if (typeof plan.document.plan_id === 'string') {
+          currentIdCounts.set(plan.document.plan_id, (currentIdCounts.get(plan.document.plan_id) ?? 0) + 1)
+        }
+      }
+      if (frozen.source_plans.some((plan) => plan.plan_id !== null && currentIdCounts.get(plan.plan_id) !== 1)) {
+        throw new TraceError(ERR.CONFLICT, '移动子树存在重复计划标识，请先处理重复项')
+      }
+      const currentSourcePlans = allPlans.filter((plan) => isSelfOrDescendant(frozen.source_path, plan.path))
+        .sort((left, right) => left.path.localeCompare(right.path))
+        .map((plan) => ({
+          path: plan.path,
+          plan_id: typeof plan.document.plan_id === 'string' ? plan.document.plan_id : null,
+          updated_at: plan.document.updated_at
+        }))
+      if (JSON.stringify(currentSourcePlans) !== JSON.stringify(frozen.source_plans)) {
+        throw new TraceError(ERR.CONFLICT, '移动子树已变化，请重新预览确认')
+      }
+      const sourceIds = frozen.source_plans.map((plan) => plan.plan_id).filter((id): id is string => id !== null)
+      const targetPath = `${frozen.target_parent_path ? `${frozen.target_parent_path}/` : ''}${basenameRel(frozen.source_path)}`
+      const oldParentPath = parentRel(frozen.source_path)
+      if (frozen.target_parent_path === oldParentPath) return { path: frozen.source_path }
+      const siblings = await this.repo.listPlanDirs(snapshot.root, frozen.target_parent_path)
+      this.currentRevision(snapshot)
+      if (siblings.includes(basenameRel(frozen.source_path))) {
+        throw new TraceError(ERR.NAME_CONFLICT, '目标位置已存在同名计划或文件夹')
+      }
+      await storage.movePlanRaw(frozen, frozen.storage_root_generation)
+      storage.treeCache.invalidatePrefix(frozen.source_path)
+      storage.treeCache.invalidatePrefix(frozen.target_parent_path)
+      bus.emit('trace:plan-changed', { path: targetPath })
+      if (sourceIds.length > 0) bus.emit('trace:reference-target-changed', { plan_ids: sourceIds.sort() })
+      return { path: targetPath }
+    })
+  }
+
   async search(request: { library_id: string; query: string }): Promise<{ targets: PlanReferenceCandidate[] }> {
     const snapshot = await this.snapshot(request?.library_id)
     if (typeof request.query !== 'string' || request.query.length > MAX_QUERY_LENGTH) {
@@ -339,7 +464,7 @@ export class PlanReferenceService {
       document.components.filter((entry) => entry.id === request.component_id).length !== 1)) {
       throw new TraceError(ERR.VALIDATION, '引用组件无效')
     }
-    const plans = await this.scanForSnapshot(snapshot)
+    const plans = await this.scan(snapshot)
     this.currentRevision(snapshot)
     if (document.plan_id && this.findById(plans, document.plan_id) === 'conflict') {
       throw new TraceError(ERR.CONFLICT, '计划标识冲突，请先处理重复项')
@@ -564,7 +689,7 @@ export class PlanReferenceService {
     }
     await assertRealPathWithinRoot(snapshot.root, resolveWithin(snapshot.root, path).abs)
     this.currentRevision(snapshot)
-    const plans = await this.scanForSnapshot(snapshot)
+    const plans = await this.scan(snapshot)
     this.currentRevision(snapshot)
     const targetPlan = plans.find((plan) => plan.path === path)
     if (!isPlanOperation && !targetPlan) throw new TraceError(ERR.PATH_NOT_FOUND, '目标计划不存在')
@@ -600,6 +725,8 @@ export class PlanReferenceService {
     if (affectedIds.some((id) => planIdCounts.get(id) !== 1)) {
       throw new TraceError(ERR.CONFLICT, '受影响计划存在重复标识，请先处理重复项')
     }
+    const targetSnapshot = isPlanOperation ? await this.planSubtreeSnapshot(snapshot, path) : null
+    this.currentRevision(snapshot)
     const affectedPlans = new Set(affectedIds)
     const references: ReferenceImpactItem[] = []
     for (const source of plans) {
@@ -637,12 +764,21 @@ export class PlanReferenceService {
       ...(request.locale ? { locale: request.locale } : {}),
       ...(targetPlan ? { target_updated_at: targetPlan.document.updated_at } : {}),
       target_plan_ids: [...affectedPlans].filter((id): id is string => typeof id === 'string').sort(),
+      ...(targetSnapshot ? { target_snapshot_digest: targetSnapshot.digest } : {}),
       references
     }
   }
 
   async commitImpact(request: ReferenceImpactCommit, storage: StorageService): Promise<{ path?: string }> {
     return this.enqueueCommit(() => this.commitImpactNow(request, storage))
+  }
+
+  commitTrashRestore(storage: StorageService, confirmationToken: string): Promise<TrashOperationCommitResult> {
+    return this.enqueueCommit(() => storage.commitTrashRestore(confirmationToken))
+  }
+
+  commitTrashPurge(storage: StorageService, confirmationToken: string): Promise<TrashOperationCommitResult> {
+    return this.enqueueCommit(() => storage.commitTrashPurge(confirmationToken))
   }
 
   private async commitImpactNow(request: ReferenceImpactCommit, storage: StorageService): Promise<{ path?: string }> {
@@ -662,6 +798,7 @@ export class PlanReferenceService {
       locale: value.locale,
       target_updated_at: value.target_updated_at,
       target_plan_ids: value.target_plan_ids,
+      target_snapshot_digest: value.target_snapshot_digest,
       references: value.references.map((reference) => ({
         key: impactKey(reference), source_updated_at: reference.source_updated_at,
         target_plan_id: reference.target_plan_id,
@@ -867,6 +1004,7 @@ export class PlanReferenceService {
       if (remaining.target_updated_at !== (writtenRevisions.get(preview.path) ??
         sourceDocs.get(preview.path)?.updated_at ?? fresh.target_updated_at) ||
         JSON.stringify(remaining.target_plan_ids) !== JSON.stringify(fresh.target_plan_ids) ||
+        remaining.target_snapshot_digest !== fresh.target_snapshot_digest ||
         observedSignature !== referenceSignature(expectedReferences)) {
         throw new TraceError(ERR.CONFLICT, '关联影响已变化，请重新预览确认')
       }
@@ -887,7 +1025,8 @@ export class PlanReferenceService {
         })
         const targetUpdatedAt = writtenRevisions.get(preview.path) ?? fresh.target_updated_at
         if (remaining.target_updated_at !== targetUpdatedAt ||
-          JSON.stringify(remaining.target_plan_ids) !== JSON.stringify(fresh.target_plan_ids)) {
+          JSON.stringify(remaining.target_plan_ids) !== JSON.stringify(fresh.target_plan_ids) ||
+          remaining.target_snapshot_digest !== fresh.target_snapshot_digest) {
           throw new TraceError(ERR.CONFLICT, '待删除计划已变化，请重新预览确认')
         }
         const allowed = new Set(fresh.references.filter((reference) =>
@@ -895,7 +1034,8 @@ export class PlanReferenceService {
         if (remaining.references.some((reference) => !allowed.has(impactKey(reference)))) {
           throw new TraceError(ERR.CONFLICT, '关联影响已变化，请重新预览确认')
         }
-        await storage.deletePlan(preview.path, true, targetUpdatedAt)
+        const directory = await storage.captureMoveDirectorySnapshot(preview.path, parentRel(preview.path))
+        await storage.trashPlan(preview.path, targetUpdatedAt, directory.source_directory_identity)
       }
       return {}
     } catch (error) {
@@ -903,4 +1043,22 @@ export class PlanReferenceService {
       throw error
     }
   }
+}
+
+function basenameRel(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1)
+}
+
+function isReferenceReservedPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  return normalized === '.trace' || normalized.startsWith('.trace/') ||
+    normalized === 'Diary' || normalized.startsWith('Diary/')
+}
+
+async function readDirectoryIdentityKey(path: string): Promise<string> {
+  const stat = await fs.lstat(path, { bigint: true })
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new TraceError(ERR.PATH_UNSAFE, '计划目录身份无效')
+  }
+  return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`
 }

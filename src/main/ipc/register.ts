@@ -246,7 +246,7 @@ export function registerIpc(deps: Deps): () => void {
   ipcMain.handle('storage:deletePlan', async () =>
     fail(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除计划'))
   registeredLegacyChannels.push('storage:deletePlan')
-  regRootState('storage:movePlan', (p) => storage.movePlan(p.path, p.target_parent_path).then(() => null))
+  regRootState('storage:movePlan', (p) => referenceService().commitMove(p, storage).then(() => null))
   reg('storage:readPlan', (p) => storage.readPlan(p.path))
   // Renderer document writes share the reference mutation queue and reject bypass edits to
   // currently referenced target identities/display names before the CAS write is attempted.
@@ -269,9 +269,9 @@ export function registerIpc(deps: Deps): () => void {
   regRootState('trash:restore-preview', (p) => storage.previewTrashRestore(
     p.entry_id, p.destination, p.entry_target_token
   ))
-  regRootState('trash:restore-commit', (p) => storage.commitTrashRestore(p.confirmation_token))
+  regRootState('trash:restore-commit', (p) => referenceService().commitTrashRestore(storage, p.confirmation_token))
   regRootState('trash:purge-preview', (p) => storage.previewTrashPurge(p.entry_id, p.entry_target_token))
-  regRootState('trash:purge-commit', (p) => storage.commitTrashPurge(p.confirmation_token))
+  regRootState('trash:purge-commit', (p) => referenceService().commitTrashPurge(storage, p.confirmation_token))
 
   // ---------- plan-name templates (the active root is derived only in main) ----------
   const templateService = (): PlanNameTemplateService => {

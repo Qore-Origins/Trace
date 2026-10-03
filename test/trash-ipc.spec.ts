@@ -178,7 +178,7 @@ describe('plan trash IPC boundary', () => {
     const purgeStarted = deferred<void>()
     const releasePurge = deferred<void>()
     const order: string[] = []
-    vi.spyOn(storage, 'commitTrashPurge').mockImplementation(async () => {
+    const commitTrashPurge = vi.fn(async () => {
       order.push('purge-start')
       purgeStarted.resolve()
       await releasePurge.promise
@@ -199,7 +199,10 @@ describe('plan trash IPC boundary', () => {
       return { path: 'Target' }
     })
     const runRendererMutation = vi.fn(async (operation: () => Promise<unknown>) => operation())
-    const movePlan = vi.spyOn(storage, 'movePlan').mockImplementation(async () => { order.push('move-plan') })
+    const commitMove = vi.fn(async () => {
+      order.push('move-plan')
+      return { path: 'Moved/Source' }
+    })
     const importPlan = vi.fn(async () => {
       order.push('import-plan')
       return { imported: [], plans: 0, components: 0, tasks: 0, notes: 0, skipped: [] }
@@ -218,6 +221,8 @@ describe('plan trash IPC boundary', () => {
         appendRendererComponent,
         commitTarget,
         commitImpact,
+        commitMove,
+        commitTrashPurge,
         runRendererMutation
       },
       getWindow: () => null, log: vi.fn()
@@ -241,7 +246,7 @@ describe('plan trash IPC boundary', () => {
     ]
     await Promise.resolve()
     expect(order).toEqual(['purge-start'])
-    expect(movePlan).not.toHaveBeenCalled()
+    expect(commitMove).not.toHaveBeenCalled()
     expect(saveRendererPlan).not.toHaveBeenCalled()
     expect(appendRendererComponent).not.toHaveBeenCalled()
     expect(commitTarget).not.toHaveBeenCalled()
@@ -255,6 +260,8 @@ describe('plan trash IPC boundary', () => {
       'purge-start', 'purge-end', 'move-plan', 'save-plan', 'append-component',
       'commit-target', 'commit-impact', 'import-plan'
     ])
+    expect(commitMove).toHaveBeenCalledOnce()
+    expect(commitTrashPurge).toHaveBeenCalledOnce()
     expect(runRendererMutation).toHaveBeenCalledOnce()
     expect(saveRendererPlan).toHaveBeenCalledOnce()
     expect(appendRendererComponent).toHaveBeenCalledOnce()

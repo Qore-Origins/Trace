@@ -6,25 +6,35 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PlanRepository } from '../src/main/services/plan-repository'
 import { StorageService } from '../src/main/services/storage-service'
+import { PlanReferenceService } from '../src/main/services/plan-reference-service'
 import { bus } from '../src/main/services/event-bus'
 import { TraceError, ERR } from '../src/shared/errors'
 import type { PlanDocument, Component } from '../src/shared/plan-types'
 
 let root: string
 let service: StorageService
+let repository: PlanRepository
+let referenceService: PlanReferenceService
 
 beforeEach(async () => {
   root = join(tmpdir(), `trace-svc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
   await fs.mkdir(root, { recursive: true })
-  const repo = new PlanRepository()
-  await repo.ensureLibraryRoot(root)
-  service = new StorageService(repo)
+  repository = new PlanRepository()
+  await repository.ensureLibraryRoot(root)
+  service = new StorageService(repository)
   service.setRoot(root)
+  referenceService = new PlanReferenceService(repository, () => service.getRootAbs())
+  referenceService.activateRoot(root)
 })
 
 afterEach(async () => {
+  referenceService.dispose()
   await fs.rm(root, { recursive: true, force: true })
 })
+
+async function queuedMove(path: string, targetParentPath: string): Promise<void> {
+  await referenceService.commitMove({ path, target_parent_path: targetParentPath }, service)
+}
 
 async function docOf(path: string): Promise<PlanDocument> {
   return JSON.parse(await fs.readFile(join(root, path, 'plan.json'), 'utf8')) as PlanDocument
@@ -285,7 +295,7 @@ describe('renamePlan / deletePlan', () => {
     const off = bus.on('trace:reference-target-changed', (event) => events.push(event.plan_ids))
     try {
       await service.renamePlan('Archive/Parent', 'Renamed')
-      await service.movePlan('Archive/Renamed', 'Target')
+      await queuedMove('Archive/Renamed', 'Target')
       await service.deletePlan('Target/Renamed', true)
     } finally {
       off()
@@ -295,21 +305,21 @@ describe('renamePlan / deletePlan', () => {
   })
 })
 
-describe('movePlan', () => {
+describe('movePlan through the reference commit queue', () => {
   it('移动 + 循环拒绝', async () => {
     await service.createPlan('', 'A')
     await service.createPlan('', 'B')
-    await service.movePlan('A', 'B')
+    await queuedMove('A', 'B')
     expect(await service.treeGetChildren('B').then((ns) => ns.map((n) => n.name))).toEqual(['A'])
 
-    await expect(service.movePlan('B/A', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
-    await expect(service.movePlan('B', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
+    await expect(queuedMove('B/A', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
+    await expect(queuedMove('B', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
   })
 
   it('计划可拖入纯文件夹（容器）', async () => {
     await service.createPlan('', 'A')
     await service.createFolder('', '归档')
-    await service.movePlan('A', '归档')
+    await queuedMove('A', '归档')
     const kids = await service.treeGetChildren('归档')
     expect(kids.map((n) => n.name)).toEqual(['A'])
     expect(kids[0].kind).toBe('plan')
@@ -319,14 +329,14 @@ describe('movePlan', () => {
     await service.createPlan('', 'B')
     await service.createPlan('B', 'X')
     await service.createPlan('A', 'X')
-    await expect(service.movePlan('A/X', 'B')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
+    await expect(queuedMove('A/X', 'B')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
   })
 
   it('移动后按文件名落位（目标层重排与名序一致）', async () => {
     await service.createPlan('', 'B')
     await service.createPlan('', 'C')
     await service.createPlan('', 'A')
-    await service.movePlan('A', 'B')
+    await queuedMove('A', 'B')
     // B 的子层：A 唯一；顶层剩 B、C 按名序
     expect((await service.treeGetChildren('B')).map((n) => n.name)).toEqual(['A'])
     expect((await service.treeGetChildren('')).map((n) => n.name)).toEqual(['B', 'C'])

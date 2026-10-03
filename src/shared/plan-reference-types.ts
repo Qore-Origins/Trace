@@ -72,7 +72,28 @@ export interface ReferenceImpactPreview {
   locale?: ReferenceDisplayLocale
   target_updated_at?: string
   target_plan_ids: string[]
+  /** Opaque CAS digest for the target directory identity and every valid plan revision in its subtree. */
+  target_snapshot_digest?: string
   references: ReferenceImpactItem[]
+}
+
+export interface PlanMoveTargetSnapshot {
+  path: string
+  plan_id: string | null
+  updated_at: string
+}
+
+/** Main-issued frozen move snapshot. It contains relative paths and opaque identities only. */
+export interface PlanMoveSnapshot {
+  library_id: string
+  root_generation: number
+  change_revision: number
+  storage_root_generation: number
+  source_path: string
+  target_parent_path: string
+  source_directory_identity: string
+  target_directory_identity: string
+  source_plans: PlanMoveTargetSnapshot[]
 }
 
 export interface ReferenceImpactDecision {

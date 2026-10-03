@@ -47,6 +47,14 @@ describe('reference impact workflow', () => {
     storage.setRoot(root)
     references = new PlanReferenceService(repo, () => root)
     references.activateRoot(root)
+    storage.setTrashReferenceImpactReader(async (activeLibraryId, planIds) => {
+      const rows = (await Promise.all(planIds.map(async (planId) =>
+        (await references.inbound({ library_id: activeLibraryId, plan_id: planId })).references
+      ))).flat()
+      rows.sort((left, right) => `${left.target_plan_id}\0${left.target_component_id ?? ''}\0${left.source_path}\0${left.source_component_id}`
+        .localeCompare(`${right.target_plan_id}\0${right.target_component_id ?? ''}\0${right.source_path}\0${right.source_component_id}`))
+      return { signature: JSON.stringify(rows), reference_count: rows.length }
+    })
   })
 
   afterEach(async () => {
@@ -120,6 +128,73 @@ describe('reference impact workflow', () => {
     expect(await repo.readPlan(root, 'Target')).toEqual(targetBefore)
     expect(await repo.readPlan(root, 'Source')).toEqual(sourceBefore)
     expect(await fs.stat(join(root, 'Duplicate', 'plan.json'))).toBeDefined()
+  })
+
+  it('rejects deleting a folder when a descendant plan revision changes after impact preview', async () => {
+    await plan('Group/Parent', document(TARGET_ID))
+    await plan('Group/Parent/Child', document(SOURCE_ID))
+    const preview = await references.previewImpact({
+      library_id: libraryId, operation: 'delete-plan', path: 'Group'
+    })
+    const child = await storage.readPlan('Group/Parent/Child')
+    child.components.push({ id: EXTRA_REF_ID, type: 'note', payload: { content: 'changed after preview' } })
+    await storage.savePlan('Group/Parent/Child', child, child.updated_at)
+
+    await expect(references.commitImpact({ library_id: libraryId, preview, decisions: [] }, storage))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(fs.access(join(root, 'Group/Parent/Child/plan.json'))).resolves.toBeUndefined()
+    expect(await storage.listTrashEntries()).toEqual([])
+  })
+
+  it('soft-deletes through reference impact, re-resolves kept IDs on restore, and never flips replacements back', async () => {
+    await plan('Target', document(TARGET_ID))
+    await plan('Replacement', document(REPLACEMENT_ID))
+    await plan('KeepSource', document(SOURCE_ID, [reference(REF_ID)]))
+    await plan('ReplaceSource', document('11111111111111111111111111111111', [reference(EXTRA_REF_ID)]))
+    const preview = await references.previewImpact({
+      library_id: libraryId, operation: 'delete-plan', path: 'Target'
+    })
+    await references.commitImpact({ library_id: libraryId, preview, decisions: [
+      { source_path: 'KeepSource', source_component_id: REF_ID, action: 'keep' },
+      { source_path: 'ReplaceSource', source_component_id: EXTRA_REF_ID, action: 'replace', replacement: { path: 'Replacement' } }
+    ] }, storage)
+
+    expect(await storage.listTrashEntries()).toMatchObject([{ kind: 'plan', name: 'Target', status: 'trashed' }])
+    expect(await references.resolve({ library_id: libraryId, plan_id: TARGET_ID })).toEqual({ status: 'missing' })
+    expect((await repo.readPlan(root, 'ReplaceSource')).components[0].payload)
+      .toMatchObject({ target_plan_id: REPLACEMENT_ID })
+
+    const entry = (await storage.listTrashEntries())[0]
+    const restorePreview = await storage.previewTrashRestore(entry.id)
+    await storage.commitTrashRestore(restorePreview.confirmation_token)
+    expect(await references.resolve({ library_id: libraryId, plan_id: TARGET_ID }))
+      .toMatchObject({ status: 'found', target: { path: 'Target' } })
+    expect((await repo.readPlan(root, 'ReplaceSource')).components[0].payload)
+      .toMatchObject({ target_plan_id: REPLACEMENT_ID })
+  })
+
+  it('purge preview counts inbound references by trashed manifest IDs and rejects a changed impact signature', async () => {
+    await plan('Target', document(TARGET_ID))
+    await plan('Source', document(SOURCE_ID, [reference(REF_ID)]))
+    const deletePreview = await references.previewImpact({
+      library_id: libraryId, operation: 'delete-plan', path: 'Target'
+    })
+    await references.commitImpact({ library_id: libraryId, preview: deletePreview, decisions: [{
+      source_path: 'Source', source_component_id: REF_ID, action: 'keep'
+    }] }, storage)
+    const entry = (await storage.listTrashEntries())[0]
+    const purgePreview = await storage.previewTrashPurge(entry.id)
+    expect(purgePreview).toMatchObject({ operation: 'purge', entry_id: entry.id, reference_count: 1 })
+
+    await plan('Source', document(SOURCE_ID, [reference(REF_ID), reference(EXTRA_REF_ID)]))
+    await expect(storage.commitTrashPurge(purgePreview.confirmation_token))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(fs.access(join(root, '.trace', 'trash', entry.id, 'payload'))).resolves.toBeUndefined()
+
+    const refreshedPreview = await storage.previewTrashPurge(entry.id)
+    expect(refreshedPreview.reference_count).toBe(2)
+    await storage.commitTrashPurge(refreshedPreview.confirmation_token)
+    expect(await storage.listTrashEntries()).toEqual([])
   })
 
   it('rejects deleting a subtree when an affected plan ID is duplicated outside that subtree', async () => {

@@ -111,7 +111,7 @@ describe('PlanReferenceService', () => {
     await service.commitImpact({ library_id: libraryId, preview, rename_action: 'keep' }, storage)
     const sourceBeforeMove = await fs.readFile(join(root as string, 'Source', 'plan.json'), 'utf8')
     await storage.createFolder('', 'Group')
-    await storage.movePlan('Renamed', 'Group')
+    await service.commitMove({ path: 'Renamed', target_parent_path: 'Group' }, storage)
     await expect(service.resolve({ library_id: libraryId, plan_id: fixedPlanId, component_id: NOTE_ID }))
       .resolves.toMatchObject({ status: 'found', target: { path: 'Group/Renamed' } })
     expect(await fs.readFile(join(root as string, 'Source', 'plan.json'), 'utf8')).toBe(sourceBeforeMove)
