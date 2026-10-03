@@ -99,6 +99,32 @@ describe('PlanReferenceService', () => {
     expect(await service.resolve({ library_id: libraryId, plan_id: otherId })).toEqual({ status: 'missing' })
   })
 
+  it('keeps old display snapshots while resolving the current identity after rename, move and external deletion', async () => {
+    await plan('Target', document([note()], fixedPlanId))
+    await plan('Source', document([{ id: otherId, type: 'plan_reference', payload: {
+      mode: 'embed', target_plan_id: fixedPlanId, target_component_id: NOTE_ID,
+      target_path_snapshot: 'Target', target_name_snapshot: 'Original label'
+    } }]))
+    const storage = new StorageService(repo)
+    storage.setRoot(root as string)
+    const preview = await service.previewImpact({ library_id: libraryId, operation: 'rename-plan', path: 'Target', new_name: 'Renamed' })
+    await service.commitImpact({ library_id: libraryId, preview, rename_action: 'keep' }, storage)
+    const sourceBeforeMove = await fs.readFile(join(root as string, 'Source', 'plan.json'), 'utf8')
+    await storage.createFolder('', 'Group')
+    await storage.movePlan('Renamed', 'Group')
+    await expect(service.resolve({ library_id: libraryId, plan_id: fixedPlanId, component_id: NOTE_ID }))
+      .resolves.toMatchObject({ status: 'found', target: { path: 'Group/Renamed' } })
+    expect(await fs.readFile(join(root as string, 'Source', 'plan.json'), 'utf8')).toBe(sourceBeforeMove)
+    expect((await repo.readPlan(root as string, 'Source')).components[0].payload).toMatchObject({
+      target_path_snapshot: 'Target', target_name_snapshot: 'Original label'
+    })
+    await fs.rm(join(root as string, 'Group', 'Renamed'), { recursive: true, force: true })
+    bus.emit('trace:fs-external-change', { paths: ['Group/Renamed'], type: 'deleted' })
+    await expect(service.resolve({ library_id: libraryId, plan_id: fixedPlanId, component_id: NOTE_ID }))
+      .resolves.toEqual({ status: 'missing' })
+    expect(await fs.readFile(join(root as string, 'Source', 'plan.json'), 'utf8')).toBe(sourceBeforeMove)
+  })
+
   it('excludes reference components and duplicate component identities from eligible targets', async () => {
     const reference: Component = {
       id: otherId, type: 'plan_reference', payload: {

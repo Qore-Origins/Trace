@@ -28,6 +28,7 @@ import { getMessage } from '../../antd-host'
 import { useTranslation } from '../../i18n'
 import { ActionButton } from '../ui/ActionButton'
 import { CardShell, type CardRenderProps } from './CardShell'
+import { PlanReferencePicker } from '../PlanReferencePicker'
 
 type PayloadRecord = Record<string, unknown>
 
@@ -181,6 +182,8 @@ export function PlanReferenceCard({ comp, index, total }: CardRenderProps): Reac
   const [editingName, setEditingName] = useState(false)
   const [draftName, setDraftName] = useState(payload?.target_name_snapshot ?? '')
   const [opening, setOpening] = useState(false)
+  const [repairing, setRepairing] = useState(false)
+  const closeRepair = useCallback(() => setRepairing(false), [])
   const entryKey = useMemo(
     () => JSON.stringify([rootKey, libraryId, currentPath, sourceSessionRevision, comp.id]),
     [rootKey, libraryId, currentPath, sourceSessionRevision, comp.id]
@@ -219,33 +222,28 @@ export function PlanReferenceCard({ comp, index, total }: CardRenderProps): Reac
       return result
     }
 
-    let unsubscribe: (() => void) | undefined
-    if (payload.mode === 'embed') {
-      const unsubscribeTargetChanges = onEvent('trace:reference-target-changed', ({ plan_ids }) => {
-        if (!plan_ids.includes(payload.target_plan_id)) return
-        const current = usePlanReferenceStore.getState().resolutions[entryKey]
-        if (current?.status === 'found') {
-          // Rename/move events carry the new path, so the cached path cannot identify the target.
-          // Re-resolve by stable plan/component IDs instead of trusting either path snapshot.
-          void load(true)
-        } else if (current?.status === 'loading' || !current) {
-          changeWhileLoading = true
-        }
-      })
-      const unsubscribePlanChanges = onEvent('trace:plan-changed', () => {
-        const current = usePlanReferenceStore.getState().resolutions[entryKey]
-        if (current?.status === 'loading' || !current) changeWhileLoading = true
-      })
-      unsubscribe = () => {
-        unsubscribeTargetChanges()
-        unsubscribePlanChanges()
-      }
+    const refresh = (): void => {
+      const current = usePlanReferenceStore.getState().resolutions[entryKey]
+      if (current?.status === 'loading' || !current) changeWhileLoading = true
+      else void load(true)
     }
+    const unsubscribeTargetChanges = onEvent('trace:reference-target-changed', ({ plan_ids }) => {
+      if (!plan_ids.includes(payload.target_plan_id)) return
+      refresh()
+    })
+    const unsubscribePlanChanges = onEvent('trace:plan-changed', () => {
+      const current = usePlanReferenceStore.getState().resolutions[entryKey]
+      if (current?.status === 'loading' || !current) changeWhileLoading = true
+    })
+    // 外部移动/删除没有可靠的旧 ID 通知；以身份重新解析所有当前挂载引用。
+    const unsubscribeExternalChanges = onEvent('trace:fs-external-change', refresh)
 
     void load()
     return () => {
       mounted = false
-      unsubscribe?.()
+      unsubscribeTargetChanges()
+      unsubscribePlanChanges()
+      unsubscribeExternalChanges()
       forget(entryKey)
     }
   }, [entryKey, forget, isCurrentSource, libraryId, payload?.mode, payload?.target_component_id, payload?.target_plan_id, resolve])
@@ -349,7 +347,18 @@ export function PlanReferenceCard({ comp, index, total }: CardRenderProps): Reac
             disabled={!currentSource || entry?.status === 'loading'}
             onClick={() => { void openTarget() }}
           />
+          {currentSource && (entry?.status === 'missing' || entry?.status === 'conflict') && (
+            <ActionButton intent="secondary" label={t('references.repair')} onClick={() => setRepairing(true)} />
+          )}
         </div>
+      )}
+      {payload && currentPath && rootKey && libraryId && repairing && (
+        <PlanReferencePicker
+          open={repairing}
+          source={{ path: currentPath, rootKey, libraryId, sessionRevision: sourceSessionRevision }}
+          replacement={{ componentId: comp.id, payload }}
+          onClose={closeRepair}
+        />
       )}
     </CardShell>
   )

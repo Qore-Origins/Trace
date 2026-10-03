@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, Modal } from 'antd'
 import type { PlanReferenceCandidate, PlanReferenceTarget } from '@shared/ipc-contract'
 import type { PlanReferenceMode, PlanReferencePayload } from '@shared/plan-reference-types'
-import { isReferenceTargetType } from '@shared/plan-reference-validation'
+import { isPlanReferencePayload, isReferenceTargetType } from '@shared/plan-reference-validation'
 import type { Component } from '@shared/plan-types'
 import { uuid32 } from '@shared/validation'
 import { invoke } from '../ipc-client'
@@ -21,6 +21,7 @@ interface PlanReferencePickerProps {
   open: boolean
   source: PlanReferencePickerSource
   onClose: () => void
+  replacement?: { componentId: string; payload: PlanReferencePayload }
 }
 
 function targetName(target: PlanReferenceCandidate): string {
@@ -39,7 +40,7 @@ function isComponentTarget(target: PlanReferenceCandidate): target is PlanRefere
   )
 }
 
-export function PlanReferencePicker({ open, source, onClose }: PlanReferencePickerProps): React.JSX.Element {
+export function PlanReferencePicker({ open, source, onClose, replacement }: PlanReferencePickerProps): React.JSX.Element {
   const { t } = useTranslation()
   const { appendComponent } = usePlanMutations()
   const currentPath = usePlanStore((state) => state.currentPath)
@@ -51,7 +52,7 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
   const [query, setQuery] = useState('')
   const [targets, setTargets] = useState<PlanReferenceCandidate[]>([])
   const [selected, setSelected] = useState<PlanReferenceCandidate | null>(null)
-  const [mode, setMode] = useState<PlanReferenceMode>('link')
+  const [mode, setMode] = useState<PlanReferenceMode>(replacement?.payload.mode ?? 'link')
   const [displayName, setDisplayName] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -76,7 +77,7 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
       requestRevision.current += 1
       setTargets([])
       setSelected(null)
-      setMode('link')
+      setMode(replacement?.payload.mode ?? 'link')
       setDisplayName('')
       setQuery('')
       setError(null)
@@ -113,7 +114,7 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
     return () => {
       if (requestRevision.current === revision) requestRevision.current += 1
     }
-  }, [isCurrentSource, onClose, open, query, source.libraryId, t])
+  }, [isCurrentSource, onClose, open, query, replacement?.payload.mode, source.libraryId, t])
 
   const visibleTargets = mode === 'embed' ? targets.filter(isComponentTarget) : targets
 
@@ -125,6 +126,7 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
   }
 
   const chooseMode = (nextMode: PlanReferenceMode): void => {
+    if (replacement) return
     setMode(nextMode)
     if (nextMode === 'embed' && selected && !isComponentTarget(selected)) {
       setSelected(null)
@@ -137,6 +139,14 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
     const name = displayName.trim()
     if (!target || !name || submitting || !isCurrentSource()) return
     if (mode === 'embed' && !isComponentTarget(target)) return
+
+    const replacementStillCurrent = (): boolean => {
+      if (!replacement) return true
+      const matches = usePlanStore.getState().document?.components.filter((component) => component.id === replacement.componentId) ?? []
+      return matches.length === 1 && matches[0].type === 'plan_reference' &&
+        isPlanReferencePayload(matches[0].payload) && JSON.stringify(matches[0].payload) === JSON.stringify(replacement.payload)
+    }
+    if (!replacementStillCurrent()) { setError(t('references.replaceFailed')); return }
 
     const requestRevisionAtStart = requestRevision.current
     setSubmitting(true)
@@ -163,11 +173,20 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
         target_path_snapshot: committedTarget.path,
         target_name_snapshot: name
       }
-      const component: Component = { id: uuid32(), type: 'plan_reference', payload }
-      appendComponent(component)
+      if (replacement) {
+        if (!replacementStillCurrent()) { setError(t('references.replaceFailed')); return }
+        usePlanStore.getState().patchComponent(replacement.componentId, (component) => {
+          const updatedPayload = { ...component.payload, ...payload } as PlanReferencePayload
+          if (!payload.target_component_id) delete updatedPayload.target_component_id
+          return { ...component, payload: updatedPayload }
+        })
+      } else {
+        const component: Component = { id: uuid32(), type: 'plan_reference', payload }
+        appendComponent(component)
+      }
       onClose()
     } catch {
-      if (isCurrentSource()) setError(t('references.insertFailed'))
+      if (isCurrentSource()) setError(t(replacement ? 'references.replaceFailed' : 'references.insertFailed'))
     } finally {
       if (requestRevision.current === requestRevisionAtStart && isCurrentSource()) setSubmitting(false)
     }
@@ -177,7 +196,7 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
     <Modal
       className="plan-reference-picker"
       open={open}
-      title={t('references.pickerTitle')}
+      title={t(replacement ? 'references.replaceTitle' : 'references.pickerTitle')}
       onCancel={onClose}
       footer={null}
       destroyOnHidden
@@ -193,6 +212,7 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
         <div className="plan-reference-picker__modes" role="group" aria-label={t('references.modeLabel')}>
           <Button
             aria-pressed={mode === 'link'}
+            disabled={Boolean(replacement && mode !== 'link')}
             type={mode === 'link' ? 'primary' : 'default'}
             onClick={() => chooseMode('link')}
           >
@@ -200,6 +220,7 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
           </Button>
           <Button
             aria-pressed={mode === 'embed'}
+            disabled={Boolean(replacement && mode !== 'embed')}
             type={mode === 'embed' ? 'primary' : 'default'}
             onClick={() => chooseMode('embed')}
           >
@@ -255,7 +276,7 @@ export function PlanReferencePicker({ open, source, onClose }: PlanReferencePick
             disabled={!selected || !displayName.trim() || (mode === 'embed' && !isComponentTarget(selected))}
             onClick={() => void insertReference()}
           >
-            {t('references.insert')}
+            {t(replacement ? 'references.replace' : 'references.insert')}
           </Button>
         </div>
       </div>

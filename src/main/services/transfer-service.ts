@@ -7,6 +7,8 @@ import type { PlanDocument, Component, PlanLibraryMeta, TaskItem } from '../../s
 import { ERR, TraceError } from '../../shared/errors'
 import { isUuid32, validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
 import { normalizeRel } from '../../shared/path-utils'
+import { isPlanId, isPlanReferencePayload } from '../../shared/plan-reference-validation'
+import { assertRealPathWithinRoot, resolveWithin } from './path-safety'
 import type { PlanRepository } from './plan-repository'
 import type { TreeCache } from './tree-cache'
 import { bus } from './event-bus'
@@ -41,7 +43,7 @@ export class TransferService {
 
   async exportPlan(rel: string, saveToAbs: string): Promise<ExportReport> {
     const root = this.getRoot()
-    const safe = normalizeRel(rel)
+    const safe = resolveWithin(root, rel).rel
     if (safe === '') throw new TraceError(ERR.VALIDATION, '不能导出根目录（整库请直接拷贝文件夹）')
     const planName = safe.slice(safe.lastIndexOf('/') + 1)
 
@@ -53,8 +55,10 @@ export class TransferService {
     const enc = new TextEncoder()
 
     const walk = async (relPath: string, zipPrefix: string): Promise<void> => {
+      await assertRealPathWithinRoot(root, resolveWithin(root, relPath).abs)
       // 纯容器文件夹（无 plan.json）：仅保留目录结构，不计入计划统计
       if (await this.repo.hasPlanFile(root, relPath)) {
+        await assertRealPathWithinRoot(root, resolveWithin(root, `${relPath}/plan.json`).abs)
         const doc = await this.repo.readPlan(root, relPath)
         files[joinZip(zipPrefix, 'plan.json')] = enc.encode(JSON.stringify(doc, null, 2))
         plans++
@@ -97,7 +101,8 @@ export class TransferService {
 
   async importPlan(targetParentRel: string, planFileAbs: string): Promise<ImportReport> {
     const root = this.getRoot()
-    const targetParent = normalizeRel(targetParentRel)
+    const targetParent = resolveWithin(root, targetParentRel).rel
+    await assertRealPathWithinRoot(root, resolveWithin(root, targetParent).abs)
 
     const raw = new Uint8Array(await fs.readFile(planFileAbs))
     let entries: Record<string, Uint8Array>
@@ -116,62 +121,141 @@ export class TransferService {
     } catch {
       throw new TraceError(ERR.FORMAT_INVALID, 'manifest.json 损坏')
     }
-    if (manifest.type !== BUNDLE_TYPE || manifest.format_version !== '1') {
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) ||
+      manifest.type !== BUNDLE_TYPE || manifest.format_version !== '1' || typeof manifest.name !== 'string') {
       throw new TraceError(ERR.FORMAT_INVALID, '该包不是溯源计划包（或版本不兼容）')
     }
 
-    // 安全校验：entry 路径不得穿越（../、盘符、绝对路径）；且必须位于包内顶层计划目录下
+    // 完整预检先于任何落盘；重映射以包内身份集合为准，外部目标不会被误改。
     const bundleRootName = sanitizeSeg(manifest.name ?? '')
+    validatePlanName(bundleRootName)
     const planEntries = Object.keys(entries).filter((k) => k !== MANIFEST && !k.endsWith('/'))
+    const importedDocuments = new Map<string, PlanDocument>()
+    const bundlePlanIds = new Set<string>()
+    const occupiedPaths = new Set<string>()
     for (const key of planEntries) {
       const norm = normalizeZipPath(key)
       if (norm === null || !norm.startsWith(bundleRootName + '/')) {
         throw new TraceError(ERR.PATH_UNSAFE, `包内存在非法路径条目：${key.slice(0, 60)}`)
       }
-      if (!norm.endsWith('plan.json')) {
+      const segments = norm.split('/')
+      if (segments.at(-1) !== 'plan.json') {
         throw new TraceError(ERR.PATH_UNSAFE, `包内存在未知文件：${key.slice(0, 60)}`)
+      }
+      for (const segment of segments.slice(0, -1)) validatePlanName(segment)
+      const pathKey = process.platform === 'win32' ? norm.toLowerCase() : norm
+      if (occupiedPaths.has(pathKey)) throw new TraceError(ERR.FORMAT_INVALID, '包内存在重复计划路径')
+      occupiedPaths.add(pathKey)
+      const doc = parseImportedDocument(entries[key])
+      if (doc.plan_id) {
+        if (bundlePlanIds.has(doc.plan_id)) throw new TraceError(ERR.CONFLICT, '包内计划标识重复，无法确定引用目标')
+        bundlePlanIds.add(doc.plan_id)
+      }
+      importedDocuments.set(norm, doc)
+    }
+    if (importedDocuments.size === 0) throw new TraceError(ERR.FORMAT_INVALID, '包内没有计划文档')
+    for (const path of occupiedPaths) {
+      const segments = path.split('/')
+      for (let length = 1; length < segments.length; length += 1) {
+        if (occupiedPaths.has(segments.slice(0, length).join('/'))) {
+          throw new TraceError(ERR.FORMAT_INVALID, '包内文件与目录路径冲突')
+        }
+      }
+    }
+
+    const existingIds = await this.collectLibraryPlanIds(root)
+    const reservedIds = new Set([...existingIds, ...bundlePlanIds])
+    for (const document of importedDocuments.values()) {
+      for (const component of document.components) {
+        if (component.type === 'plan_reference' && isPlanReferencePayload(component.payload)) {
+          reservedIds.add(component.payload.target_plan_id)
+        }
+      }
+    }
+    const idMapping = new Map<string, string>()
+    for (const id of bundlePlanIds) {
+      if (!existingIds.has(id)) continue
+      let assignedId = uuid32()
+      while (reservedIds.has(assignedId)) assignedId = uuid32()
+      reservedIds.add(assignedId)
+      idMapping.set(id, assignedId)
+    }
+    for (const document of importedDocuments.values()) {
+      if (document.plan_id && idMapping.has(document.plan_id)) document.plan_id = idMapping.get(document.plan_id)
+      for (const component of document.components) {
+        if (component.type !== 'plan_reference' || !isPlanReferencePayload(component.payload)) continue
+        const mapped = idMapping.get(component.payload.target_plan_id)
+        if (mapped) component.payload.target_plan_id = mapped
       }
     }
 
     // 冲突处理：目标父级同名 → 自动改名 " (2)"
     const finalName = await this.uniqueName(targetParent, bundleRootName)
+    validatePlanName(finalName)
+    const importedPath = targetParent === '' ? finalName : `${targetParent}/${finalName}`
+    const destination = resolveWithin(root, importedPath)
+    await assertRealPathWithinRoot(root, destination.abs, { allowMissing: true })
+    if (this.getRoot() !== root) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
 
-    // 落盘：解出子树到目标父级（plan.json 内容原样；目录自建）
+    // 独占创建根目录：预检后的同名竞态也不会覆盖现有计划。
     const report: ImportReport = { imported: [], plans: 0, components: 0, tasks: 0, notes: 0, skipped: [] }
     const importedPlanIds = new Set<string>()
-    for (const key of planEntries) {
-      const relUnderBundle = normalizeZipPath(key) as string // 已校验非 null
-      // <bundleRoot>/rest → <finalName>/rest
-      const rest = relUnderBundle.slice(bundleRootName.length + 1)
-      const targetRel = targetParent === '' ? `${finalName}/${rest}` : `${targetParent}/${finalName}/${rest}`
-      const abs = join(root, targetRel)
-      await fs.mkdir(dirname(abs), { recursive: true })
-      const content = entries[key]
-      // plan.json 内容校验（契约形状），通过后原样写入
-      const doc = JSON.parse(new TextDecoder().decode(content)) as PlanDocument
-      if (doc.format_version !== '1' || !Array.isArray(doc.components)) {
-        report.skipped.push(relUnderBundle)
-        continue
+    this.repo.markInternalWrite(destination.abs)
+    try {
+      await fs.mkdir(destination.abs)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new TraceError(ERR.NAME_CONFLICT, '同名计划已出现，请重试导入')
       }
-      await fs.writeFile(abs, content)
-      if (typeof doc.plan_id === 'string' && isUuid32(doc.plan_id)) importedPlanIds.add(doc.plan_id)
-      report.plans++
-      report.components += doc.components.length
-      for (const c of doc.components) {
-        if (c.type === 'task_list') report.tasks += (c.payload as { items: unknown[] }).items.length
-        if (c.type === 'task_detail') report.tasks += 1
-        if (c.type === 'note') report.notes += 1
+      throw error
+    }
+    try {
+      for (const [relUnderBundle, doc] of importedDocuments) {
+        const rest = relUnderBundle.slice(bundleRootName.length + 1)
+        const file = resolveWithin(root, `${importedPath}/${rest}`)
+        await assertRealPathWithinRoot(root, file.abs, { allowMissing: true })
+        if (this.getRoot() !== root) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+        // 原子写保留原时间戳与所有可选字段，只更改冲突身份及对应包内引用。
+        await this.repo.writeAppJson(file.abs, doc)
+        if (doc.plan_id) importedPlanIds.add(doc.plan_id)
+        report.plans++
+        report.components += doc.components.length
+        for (const c of doc.components) {
+          if (c.type === 'task_list') report.tasks += (c.payload as { items: unknown[] }).items.length
+          if (c.type === 'task_detail') report.tasks += 1
+          if (c.type === 'note') report.notes += 1
+        }
+      }
+    } finally {
+      // 写入失败时也刷新已成功导入的部分，避免隐藏半完成状态。
+      this.treeCache.invalidatePrefix(targetParent)
+      bus.emit('trace:plan-changed', { path: importedPath })
+      if (importedPlanIds.size > 0) {
+        bus.emit('trace:reference-target-changed', { plan_ids: [...importedPlanIds].sort() })
       }
     }
-
-    const importedPath = targetParent === '' ? finalName : `${targetParent}/${finalName}`
     report.imported.push({ path: importedPath, renamedFrom: finalName !== bundleRootName ? bundleRootName : undefined })
-    this.treeCache.invalidatePrefix(targetParent)
-    bus.emit('trace:plan-changed', { path: importedPath })
-    if (importedPlanIds.size > 0) {
-      bus.emit('trace:reference-target-changed', { plan_ids: [...importedPlanIds].sort() })
-    }
     return report
+  }
+
+  private async collectLibraryPlanIds(root: string): Promise<Set<string>> {
+    const ids = new Set<string>()
+    const pending = ['']
+    while (pending.length > 0) {
+      const path = pending.pop() as string
+      await assertRealPathWithinRoot(root, resolveWithin(root, path).abs)
+      if (path && await this.repo.hasPlanFile(root, path)) {
+        const file = resolveWithin(root, `${path}/plan.json`).abs
+        await assertRealPathWithinRoot(root, file)
+        // 损坏的计划不能用于证明一个导入身份没有冲突，导入前要求修复。
+        const doc = await this.repo.readPlan(root, path)
+        if (doc.plan_id) ids.add(doc.plan_id)
+      }
+      for (const child of await this.repo.listPlanDirs(root, path)) {
+        pending.push(path ? `${path}/${child}` : child)
+      }
+    }
+    return ids
   }
 
   private async uniqueName(parentRelPath: string, name: string): Promise<string> {
@@ -254,6 +338,28 @@ export class TransferService {
 }
 
 // ---------- 模块级辅助 ----------
+
+function parseImportedDocument(bytes: Uint8Array): PlanDocument {
+  try {
+    const value: unknown = JSON.parse(new TextDecoder().decode(bytes))
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('shape')
+    const doc = value as PlanDocument
+    if (doc.format_version !== '1' || !isPlanId(doc.plan_id) || !Array.isArray(doc.components) ||
+      typeof doc.created_at !== 'string' || typeof doc.updated_at !== 'string') throw new Error('shape')
+    const componentIds = new Set<string>()
+    for (const component of doc.components) {
+      if (typeof component !== 'object' || component === null || Array.isArray(component) ||
+        typeof component.id !== 'string' || !component.id || componentIds.has(component.id) ||
+        typeof component.payload !== 'object' || component.payload === null || Array.isArray(component.payload)) throw new Error('component')
+      componentIds.add(component.id)
+      if (component.type === 'plan_reference' && !isPlanReferencePayload(component.payload)) throw new Error('reference')
+      if (component.type === 'task_list' && !Array.isArray((component.payload as { items?: unknown }).items)) throw new Error('tasks')
+    }
+    return doc
+  } catch {
+    throw new TraceError(ERR.FORMAT_INVALID, '包内计划文档或标识无效')
+  }
+}
 
 function joinZip(prefix: string, name: string): string {
   return prefix === '' ? name : `${prefix}/${name}`

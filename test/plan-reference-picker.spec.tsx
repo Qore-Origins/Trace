@@ -4,6 +4,7 @@ import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Component, PlanDocument } from '../src/shared/plan-types'
+import type { PlanReferencePayload } from '../src/shared/plan-reference-types'
 import type { TraceBridge } from '../src/shared/ipc-contract'
 import { PlanReferencePicker, type PlanReferencePickerSource } from '../src/renderer/src/components/PlanReferencePicker'
 import { i18n } from '../src/renderer/src/i18n'
@@ -82,9 +83,9 @@ let previousTabsState: ReturnType<typeof useWorkspaceTabsStore.getState>
 let invokeMock: ReturnType<typeof vi.fn>
 let onClose: ReturnType<typeof vi.fn>
 
-async function renderPicker(): Promise<void> {
+async function renderPicker(replacement?: { componentId: string; payload: PlanReferencePayload }): Promise<void> {
   await act(async () => {
-    root.render(createElement(PlanReferencePicker, { open: true, source, onClose }))
+    root.render(createElement(PlanReferencePicker, { open: true, source, onClose, replacement }))
   })
 }
 
@@ -151,6 +152,59 @@ afterEach(async () => {
 })
 
 describe('PlanReferencePicker', () => {
+  it.each(['link', 'embed'] as const)('replaces a broken %s in place, preserving its mode, component identity and remark', async (mode) => {
+    const payload: PlanReferencePayload = { mode, target_plan_id: '99999999999999999999999999999999',
+      ...(mode === 'embed' ? { target_component_id: '88888888888888888888888888888888' } : {}),
+      target_path_snapshot: 'Missing', target_name_snapshot: 'Old label' }
+    usePlanStore.setState({ document: { ...createSourceDocument(), components: [{ id: 'existing-ref', type: 'plan_reference', remark: '**Keep remark**', payload }] } })
+    await renderPicker({ componentId: 'existing-ref', payload })
+    await vi.waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull())
+    expect(findButton(mode === 'link' ? '软链接' : '普通关联').disabled).toBe(true)
+    if (mode === 'embed') expect(document.querySelector('[role="option"][data-target-kind="plan"]')).toBeNull()
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>(`[role="option"][data-target-kind="${mode === 'link' ? 'plan' : 'component'}"]`)?.click()
+    })
+    await act(async () => {
+      findButton('替换引用').click()
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    })
+    const components = usePlanStore.getState().document?.components
+    expect(components).toHaveLength(1)
+    expect(components?.[0]).toMatchObject({ id: 'existing-ref', remark: '**Keep remark**', payload: { mode, target_plan_id: TARGET_PLAN_ID } })
+    if (mode === 'embed') expect((components?.[0].payload as PlanReferencePayload).target_component_id).toBe(TARGET_COMPONENT_ID)
+    else expect((components?.[0].payload as PlanReferencePayload).target_component_id).toBeUndefined()
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('does not replace a reference that changed while target validation was pending', async () => {
+    const payload: PlanReferencePayload = { mode: 'link', target_plan_id: '99999999999999999999999999999999',
+      target_path_snapshot: 'Missing', target_name_snapshot: 'Old label' }
+    usePlanStore.setState({ document: { ...createSourceDocument(), components: [{ id: 'existing-ref', type: 'plan_reference', payload }] } })
+    const pending = deferred<{ ok: true; data: typeof planTarget }>()
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel === 'plan-reference:search') return { ok: true, data: { targets: [planTarget] } }
+      if (channel === 'plan-reference:commitTarget') return pending.promise
+      throw new Error(`Unexpected channel: ${channel}`)
+    })
+    await renderPicker({ componentId: 'existing-ref', payload })
+    await vi.waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull())
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[role="option"]')?.click()
+    })
+    await act(async () => {
+      findButton('替换引用').click()
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('plan-reference:commitTarget', expect.anything()))
+    })
+    const changed = { ...payload, target_name_snapshot: 'Concurrent edit' }
+    await act(async () => {
+      usePlanStore.setState({ document: { ...createSourceDocument(), components: [{ id: 'existing-ref', type: 'plan_reference', payload: changed }] } })
+      pending.resolve({ ok: true, data: planTarget })
+      await Promise.resolve()
+    })
+    await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain('替换'))
+    expect(usePlanStore.getState().document?.components[0].payload).toEqual(changed)
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('替换')
+  })
   it('searches only the active library and lists plan-only and component targets for links', async () => {
     await renderPicker()
     await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('plan-reference:search', {

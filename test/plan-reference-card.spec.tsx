@@ -342,6 +342,60 @@ describe('PlanReferenceCard', () => {
     })))
   })
 
+  it('marks a mounted link as missing after external deletion and resolves it again after repair', async () => {
+    let exists = true
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel !== 'plan-reference:resolve') throw new Error(`Unexpected channel: ${channel}`)
+      return { ok: true, data: exists ? found() : { status: 'missing' } }
+    })
+    await renderCard(reference('source-ref-external', 'link'))
+    await vi.waitFor(() => expect(host.querySelector('[data-reference-status="found"]')).not.toBeNull())
+    await act(async () => {
+      exists = false
+      eventCallbacks.get('trace:fs-external-change')?.({ paths: [TARGET_PATH], type: 'deleted' })
+      await vi.waitFor(() => expect(host.querySelector('[data-reference-status="missing"]')).not.toBeNull())
+    })
+    expect(host.textContent).toContain('Saved target name')
+    await act(async () => { button('打开关联').click() })
+    expect(openPlan).not.toHaveBeenCalled()
+    await act(async () => {
+      exists = true
+      eventCallbacks.get('trace:reference-target-changed')?.({ plan_ids: [TARGET_PLAN_ID] })
+      await vi.waitFor(() => expect(host.querySelector('[data-reference-status="found"]')).not.toBeNull())
+    })
+    expect(host.textContent).toContain('Saved target name')
+  })
+
+  it('recovers a missing live embed when its target ID is imported or restored', async () => {
+    let exists = false
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel !== 'plan-reference:resolve') throw new Error(`Unexpected channel: ${channel}`)
+      return { ok: true, data: exists ? found(targetComponent('Restored content')) : { status: 'missing' } }
+    })
+    await renderCard(reference('source-ref-restored', 'embed', TARGET_COMPONENT_ID))
+    await vi.waitFor(() => expect(host.querySelector('[data-reference-status="missing"]')).not.toBeNull())
+    await act(async () => {
+      exists = true
+      eventCallbacks.get('trace:reference-target-changed')?.({ plan_ids: [TARGET_PLAN_ID] })
+      await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('Restored content'))
+    })
+  })
+
+  it.each(['missing', 'conflict'] as const)('offers an in-place replacement picker for a %s reference', async (status) => {
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel === 'plan-reference:resolve') return { ok: true, data: { status } }
+      if (channel === 'plan-reference:search') return { ok: true, data: { targets: [] } }
+      throw new Error(`Unexpected channel: ${channel}`)
+    })
+    await renderCard(reference(`source-ref-repair-${status}`, 'embed', TARGET_COMPONENT_ID))
+    await vi.waitFor(() => expect(host.querySelector(`[data-reference-status="${status}"]`)).not.toBeNull())
+    await act(async () => { button('选择替代目标').click() })
+    expect(document.querySelector('.plan-reference-picker')?.textContent).toContain('修复计划引用')
+    const linkMode = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find((candidate) => candidate.textContent?.trim() === '普通关联')
+    expect(linkMode?.disabled).toBe(true)
+    expect(usePlanStore.getState().document?.components).toHaveLength(1)
+  })
+
   it('renders embedded native components without interactive source controls', async () => {
     await renderCard(reference('source-ref-readonly', 'embed', TARGET_COMPONENT_ID))
     await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('Initial title'))
