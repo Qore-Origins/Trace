@@ -180,11 +180,70 @@ describe('renamePlan / deletePlan', () => {
     await service.createPlan('', 'A')
     await expect(service.deletePlan('A', false)).rejects.toMatchObject({ code: ERR.CONFIRMATION_REQUIRED })
   })
-  it('确认后递归删除', async () => {
+  it('confirmed deletion moves the complete plan subtree to trash and restores its IDs and contents', async () => {
     await service.createPlan('', 'A')
     await service.createPlan('A', '子')
-    await service.deletePlan('A', true)
-    await expect(fs.access(join(root, 'A'))).rejects.toThrow()
+    const parent = await service.readPlan('A')
+    parent.plan_id = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    parent.components.push({ id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', type: 'note', payload: { content: 'preserved parent' } })
+    await service.savePlan('A', parent, parent.updated_at)
+    const child = await service.readPlan('A/子')
+    child.plan_id = 'cccccccccccccccccccccccccccccccc'
+    child.components.push({ id: 'dddddddddddddddddddddddddddddddd', type: 'note', payload: { content: 'preserved child' } })
+    await service.savePlan('A/子', child, child.updated_at)
+
+    const latestParent = await service.readPlan('A')
+    await service.deletePlan('A', true, latestParent.updated_at)
+
+    await expect(fs.access(join(root, 'A'))).rejects.toMatchObject({ code: 'ENOENT' })
+    const entries = await service.listTrashEntries()
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ kind: 'plan', name: 'A', status: 'trashed' })
+
+    const preview = await service.previewTrashRestore(entries[0].id)
+    await service.commitTrashRestore(preview.confirmation_token)
+
+    await expect(service.readPlan('A')).resolves.toMatchObject({
+      plan_id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      components: [expect.objectContaining({ payload: { content: 'preserved parent' } })]
+    })
+    await expect(service.readPlan('A/子')).resolves.toMatchObject({
+      plan_id: 'cccccccccccccccccccccccccccccccc',
+      components: [expect.objectContaining({ payload: { content: 'preserved child' } })]
+    })
+  })
+  it('invalidates tree cache and notifies search/reference consumers only after trash and restore commit', async () => {
+    await service.createPlan('', 'CacheTarget')
+    const before = await service.readPlan('CacheTarget')
+    before.plan_id = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+    await service.savePlan('CacheTarget', before, before.updated_at)
+    await service.treeGetChildren('')
+    expect(service.treeCache.get('')).toContain('CacheTarget')
+
+    const changedPaths: string[] = []
+    const changedTargets: string[][] = []
+    const offPlan = bus.on('trace:plan-changed', ({ path }) => changedPaths.push(path))
+    const offReference = bus.on('trace:reference-target-changed', ({ plan_ids }) => changedTargets.push(plan_ids))
+    try {
+      const latest = await service.readPlan('CacheTarget')
+      await service.deletePlan('CacheTarget', true, latest.updated_at)
+      expect(service.treeCache.get('')).toBeUndefined()
+      expect((await service.treeGetChildren('')).map((node) => node.name)).not.toContain('CacheTarget')
+
+      const entry = (await service.listTrashEntries())[0]
+      const preview = await service.previewTrashRestore(entry.id)
+      await service.commitTrashRestore(preview.confirmation_token)
+      expect((await service.treeGetChildren('')).map((node) => node.name)).toContain('CacheTarget')
+    } finally {
+      offPlan()
+      offReference()
+    }
+
+    expect(changedPaths).toEqual(['CacheTarget', 'CacheTarget'])
+    expect(changedTargets).toEqual([
+      ['eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'],
+      ['eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee']
+    ])
   })
   it('删除成功发 plan-changed 事件（树刷新/索引重建依赖；2026-09-08 补）', async () => {
     await service.createPlan('', 'A')

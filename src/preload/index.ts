@@ -16,6 +16,10 @@ const PLAN_REFERENCE_CHANNELS = new Set<string>([
   'plan-reference:search', 'plan-reference:resolve', 'plan-reference:commitTarget', 'plan-reference:inbound',
   'plan-reference:previewImpact', 'plan-reference:commitImpact'
 ])
+const TRASH_CHANNELS = new Set<string>([
+  'trash:list', 'trash:entryTarget', 'trash:restore-preview', 'trash:restore-commit',
+  'trash:purge-preview', 'trash:purge-commit'
+])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
   'trace:reference-target-changed',
@@ -48,6 +52,7 @@ const bridge = {
     const isAgentChannel = typeof channel === 'string' && channel.startsWith('agent:')
     const isWorkspaceTabsChannel = typeof channel === 'string' && channel.startsWith('workspace-tabs:')
     const isPlanReferenceChannel = typeof channel === 'string' && channel.startsWith('plan-reference:')
+    const isTrashChannel = typeof channel === 'string' && channel.startsWith('trash:')
     if (
       typeof channel !== 'string' ||
       (isAgentChannel
@@ -60,6 +65,8 @@ const bridge = {
             ? !WORKSPACE_TABS_CHANNELS.has(channel)
             : isPlanReferenceChannel
               ? !PLAN_REFERENCE_CHANNELS.has(channel)
+              : isTrashChannel
+                ? !TRASH_CHANNELS.has(channel)
               : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
     ) {
       return { ok: false, code: 50, message: '通道未开放', data: null }

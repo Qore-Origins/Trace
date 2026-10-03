@@ -117,6 +117,11 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
         log(name, code, safeMessage)
         return fail(code, safeMessage)
       }
+      if (name.startsWith('trash:')) {
+        const safeMessage = e instanceof TraceError ? message : '回收站操作失败，请重试'
+        log(name, code, safeMessage)
+        return fail(code, safeMessage)
+      }
       log(name, code, message)
       if (code === ERR.INTERNAL) console.error(`[ipc] ${name} internal:`, e)
       return fail(code, message)
@@ -127,6 +132,7 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
 export function registerIpc(deps: Deps): () => void {
   const { app, storage, config, transfer, search, getWindow, log, plantuml, startup } = deps
   const registeredChannels: ChannelName[] = []
+  const registeredLegacyChannels: string[] = []
   const unsubscribeListeners: Array<() => void> = []
   let disposed = false
   let rootStateQueue = Promise.resolve()
@@ -236,25 +242,36 @@ export function registerIpc(deps: Deps): () => void {
   reg('storage:renamePlan', async () => {
     throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程重命名计划')
   })
-  reg('storage:deletePlan', async () => {
-    throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除计划')
-  })
-  reg('storage:movePlan', (p) => storage.movePlan(p.path, p.target_parent_path).then(() => null))
+  // Reject stale renderer/preload callers without touching StorageService or the filesystem.
+  ipcMain.handle('storage:deletePlan', async () =>
+    fail(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除计划'))
+  registeredLegacyChannels.push('storage:deletePlan')
+  regRootState('storage:movePlan', (p) => storage.movePlan(p.path, p.target_parent_path).then(() => null))
   reg('storage:readPlan', (p) => storage.readPlan(p.path))
   // Renderer document writes share the reference mutation queue and reject bypass edits to
   // currently referenced target identities/display names before the CAS write is attempted.
-  reg('storage:savePlan', (p) => referenceService().saveRendererPlan(
+  regRootState('storage:savePlan', (p) => referenceService().saveRendererPlan(
     storage, p.path, p.document, p.expected_updated_at
   ))
   // Serialize the legacy single-component route with reference confirmation and verify reference
   // targets at write time, so an append waiting behind deletion cannot create a dangling link.
-  reg('storage:appendComponent', (p) => referenceService()
+  regRootState('storage:appendComponent', (p) => referenceService()
     .appendRendererComponent(storage, p.path, p.component).then(() => null))
   reg('storage:removeComponent', async () => {
     throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除组件')
   })
   reg('storage:moveComponent', (p) => storage.moveComponent(p.path, p.component_id, p.target_index).then(() => null))
   reg('storage:updateTask', (p) => storage.updateTask(p.path, p.component_id, p.task_id, p.patch).then(() => null))
+
+  // ---------- plan-library trash ----------
+  regRootState('trash:list', () => storage.listTrashEntries())
+  regRootState('trash:entryTarget', (p) => storage.issueTrashEntryTarget(p.entry_id))
+  regRootState('trash:restore-preview', (p) => storage.previewTrashRestore(
+    p.entry_id, p.destination, p.entry_target_token
+  ))
+  regRootState('trash:restore-commit', (p) => storage.commitTrashRestore(p.confirmation_token))
+  regRootState('trash:purge-preview', (p) => storage.previewTrashPurge(p.entry_id, p.entry_target_token))
+  regRootState('trash:purge-commit', (p) => storage.commitTrashPurge(p.confirmation_token))
 
   // ---------- plan-name templates (the active root is derived only in main) ----------
   const templateService = (): PlanNameTemplateService => {
@@ -301,12 +318,12 @@ export function registerIpc(deps: Deps): () => void {
     referenceService().search(referenceRequest(payload, ['library_id', 'query'])))
   reg('plan-reference:resolve', (payload) =>
     referenceService().resolve(referenceRequest(payload, ['library_id', 'plan_id', 'component_id'])))
-  reg('plan-reference:commitTarget', (payload) =>
+  regRootState('plan-reference:commitTarget', (payload) =>
     referenceService().commitTarget(referenceRequest(payload, ['library_id', 'path', 'component_id', 'mode'])))
   reg('plan-reference:inbound', (payload) =>
     referenceService().inbound(referenceRequest(payload, ['library_id', 'plan_id', 'component_id'])))
   reg('plan-reference:previewImpact', (payload) => referenceService().previewImpact(payload))
-  reg('plan-reference:commitImpact', (payload) => referenceService().commitImpact(payload, storage))
+  regRootState('plan-reference:commitImpact', (payload) => referenceService().commitImpact(payload, storage))
 
   // ---------- window（无边框自绘控制） ----------
   reg('window:minimize', () => {
@@ -364,7 +381,7 @@ export function registerIpc(deps: Deps): () => void {
   reg('transfer:exportPng', (p) => deps.export.exportPng(p.path, p.saveTo))
   // Bundle imports write plan documents; serialize them with reference commits so an in-flight
   // import cannot change the inbound set between final impact validation and target mutation.
-  reg('transfer:importPlan', (p) => referenceService().runRendererMutation(
+  regRootState('transfer:importPlan', (p) => referenceService().runRendererMutation(
     () => transfer.importPlan(p.target_parent_path, p.filePath)
   ))
   reg('transfer:importMarkdown', async (p) => {
@@ -431,5 +448,6 @@ export function registerIpc(deps: Deps): () => void {
     agentRequests?.dispose()
     for (const unsubscribe of unsubscribeListeners.splice(0)) unsubscribe()
     for (const channel of registeredChannels.splice(0)) ipcMain.removeHandler(channel)
+    for (const channel of registeredLegacyChannels.splice(0)) ipcMain.removeHandler(channel)
   }
 }

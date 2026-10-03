@@ -7,21 +7,36 @@ import { ERR, TraceError } from '../../shared/errors'
 import { isUuid32, validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
 import { applyStatusChange } from '../../shared/task-state'
 import type { PlanTreeNode } from '../../shared/ipc-contract'
+import type {
+  TrashEntry, TrashEntryTargetGrant, TrashOperationCommitResult, TrashOperationPreview,
+  TrashReferenceImpactSummary, TrashRestoreDestination
+} from '../../shared/trash-types'
 import { PlanRepository } from './plan-repository'
 import { TreeCache } from './tree-cache'
 import { assertRealPathWithinRoot, resolveWithin, isSelfOrDescendant, parentRel } from './path-safety'
 import { bus } from './event-bus'
+import { TrashService, type TrashChange, type TrashLibraryContext } from './trash-service'
 
 export class StorageService {
   private rootAbs: string | null = null
+  private rootGeneration = 0
   readonly treeCache = new TreeCache()
+  private readonly trash: TrashService
 
-  constructor(private repo: PlanRepository) {}
+  constructor(private repo: PlanRepository) {
+    this.trash = new TrashService(repo)
+  }
 
   // 根目录生效后由 AppService 调用
   setRoot(rootAbs: string): void {
     this.rootAbs = rootAbs
+    this.rootGeneration += 1
+    this.trash.invalidateGrants()
     this.treeCache.clear()
+  }
+
+  setTrashReferenceImpactReader(reader: (libraryId: string, planIds: string[]) => Promise<TrashReferenceImpactSummary>): void {
+    this.trash.setReferenceImpactReader(reader)
   }
 
   private root(): string {
@@ -212,19 +227,50 @@ export class StorageService {
 
   async deletePlan(pathRel: string, confirmed: boolean, expectedUpdatedAt?: string): Promise<void> {
     if (confirmed !== true) throw new TraceError(ERR.CONFIRMATION_REQUIRED, '危险操作需确认后执行')
-    const rel = this.safe(pathRel)
-    if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录不可删除')
-    const root = this.root()
-    if (!(await this.repo.existsDir(root, rel))) {
-      throw new TraceError(ERR.PATH_NOT_FOUND, '目标位置不存在（可能已被移动或删除）')
-    }
-    if (expectedUpdatedAt !== undefined) await this.assertPlanRevision(root, rel, expectedUpdatedAt)
-    const affectedPlanIds = await this.collectSubtreePlanIds(root, rel)
-    await this.repo.rmRecursive(root, rel)
-    this.treeCache.invalidatePrefix(rel)
-    // 与其余结构变更一致：通知树刷新与搜索索引重建（否则索引残留已删计划的幽灵条目）
-    bus.emit('trace:plan-changed', { path: rel })
-    this.emitReferenceTargetChanges(affectedPlanIds)
+    await this.trashPlan(pathRel, expectedUpdatedAt)
+  }
+
+  async listTrashEntries(): Promise<TrashEntry[]> {
+    const context = await this.trashContext()
+    const result = await this.trash.list(context)
+    this.applyTrashChanges(result.changes)
+    return result.entries
+  }
+
+  async trashPlan(pathRel: string, expectedUpdatedAt?: string, expectedDirectoryIdentity?: string): Promise<TrashEntry> {
+    const context = await this.trashContext()
+    const result = await this.trash.trashPlan(context, pathRel, expectedUpdatedAt, expectedDirectoryIdentity)
+    if (result.changed) this.applyTrashChanges([{
+      path: result.entry.original_relative_path,
+      plan_ids: result.changed_plan_ids
+    }])
+    return result.entry
+  }
+
+  async issueTrashEntryTarget(entryId: string): Promise<TrashEntryTargetGrant> {
+    return this.trash.issueEntryTarget(await this.trashContext(), entryId)
+  }
+
+  async previewTrashRestore(
+    entryId: string,
+    destination?: TrashRestoreDestination,
+    entryTargetToken?: string
+  ): Promise<TrashOperationPreview> {
+    return this.trash.previewRestore(await this.trashContext(), entryId, destination, entryTargetToken)
+  }
+
+  async commitTrashRestore(confirmationToken: string): Promise<TrashOperationCommitResult> {
+    const result = await this.trash.commitRestore(await this.trashContext(), confirmationToken)
+    if (result.path) this.applyTrashChanges([{ path: result.path, plan_ids: result.changed_plan_ids }])
+    return result
+  }
+
+  async previewTrashPurge(entryId: string, entryTargetToken?: string): Promise<TrashOperationPreview> {
+    return this.trash.previewPurge(await this.trashContext(), entryId, entryTargetToken)
+  }
+
+  async commitTrashPurge(confirmationToken: string): Promise<TrashOperationCommitResult> {
+    return this.trash.commitPurge(await this.trashContext(), confirmationToken)
   }
 
   async movePlan(pathRel: string, targetParentRel: string): Promise<void> {
@@ -266,6 +312,30 @@ export class StorageService {
     const current = await this.repo.readPlan(root, rel)
     if (current.updated_at !== expectedUpdatedAt) {
       throw new TraceError(ERR.CONFLICT, '目标计划已变化，请重新预览确认')
+    }
+  }
+
+  private async trashContext(): Promise<TrashLibraryContext> {
+    const root = this.root()
+    const rootGeneration = this.rootGeneration
+    for (const relativePath of ['.trace', '.trace/plan-library.json']) {
+      const absolutePath = resolveWithin(root, relativePath).abs
+      const stat = await fs.lstat(absolutePath)
+      if (stat.isSymbolicLink()) throw new TraceError(ERR.PATH_UNSAFE, '计划库元数据路径不安全')
+      await assertRealPathWithinRoot(root, absolutePath)
+    }
+    const library = await this.repo.readLibraryMeta(root)
+    if (this.rootAbs !== root || this.rootGeneration !== rootGeneration) {
+      throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+    }
+    return { root, library_id: library.library_id, root_generation: rootGeneration }
+  }
+
+  private applyTrashChanges(changes: TrashChange[]): void {
+    for (const change of changes) {
+      this.treeCache.invalidatePrefix(change.path)
+      bus.emit('trace:plan-changed', { path: change.path })
+      this.emitReferenceTargetChanges(change.plan_ids)
     }
   }
 

@@ -291,7 +291,10 @@ describe('PlantUML IPC boundary', () => {
     expect(electronMocks.ipcRenderer.on).toHaveBeenCalledWith('trace:plantuml-status', expect.any(Function))
     expect(electronMocks.ipcRenderer.removeListener).toHaveBeenCalledWith('trace:plantuml-status', expect.any(Function))
     expect(plantuml.unsubscribe).toHaveBeenCalledTimes(1)
-    expect(electronMocks.ipcMain.removeHandler.mock.calls.map(([channel]) => channel)).toEqual(registeredChannels)
+    expect(electronMocks.ipcMain.removeHandler.mock.calls.map(([channel]) => channel)).toEqual([
+      ...registeredChannels.filter((channel) => channel !== 'storage:deletePlan'),
+      'storage:deletePlan'
+    ])
   })
 
   it('provides a safe status without an initialized service and rejects configuration until injected', async () => {

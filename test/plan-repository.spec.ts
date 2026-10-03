@@ -202,6 +202,35 @@ describe('moveDir EXDEV fallback（SPIKE-3 定案）', () => {
   })
 })
 
+describe('moveDirAtomic same-volume transaction boundary', () => {
+  it('refuses EXDEV instead of falling back to copy-and-delete', async () => {
+    await fs.mkdir(join(root, 'source'))
+    await fs.writeFile(join(root, 'source', 'payload.txt'), 'preserve')
+    const exdev = async (): Promise<void> => {
+      const error = new Error('cross-device') as NodeJS.ErrnoException
+      error.code = 'EXDEV'
+      throw error
+    }
+    const atomicRepo = new PlanRepository({ renameFn: exdev })
+
+    await expect(atomicRepo.moveDirAtomic(join(root, 'source'), join(root, 'destination')))
+      .rejects.toMatchObject({ code: 'EXDEV' })
+    await expect(fs.readFile(join(root, 'source', 'payload.txt'), 'utf8')).resolves.toBe('preserve')
+    await expect(fs.access(join(root, 'destination'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('registers both paths with the watcher before attempting rename', async () => {
+    const writes: string[] = []
+    const atomicRepo = new PlanRepository({ onInternalWrite: (path) => writes.push(path) })
+    await fs.mkdir(join(root, 'source'))
+    writes.length = 0
+
+    await atomicRepo.moveDirAtomic(join(root, 'source'), join(root, 'destination'))
+
+    expect(writes).toEqual([join(root, 'source'), join(root, 'destination')])
+  })
+})
+
 // 2026-09-10 用户反馈修复：目录级增删改移此前不登记内部写 → chokidar 回声触发
 // fs-external-change → 渲染层 refreshAll（整树重载）。VS Code 借鉴：操作应局部生效、不重载树
 describe('目录操作内部写登记（防 watch 回声整树重载）', () => {

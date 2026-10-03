@@ -11,6 +11,10 @@ import type {
   PlanReferenceMode, PlanReferenceTarget, ReferenceImpactCommit, ReferenceImpactPreview,
   ReferenceImpactRequest
 } from './plan-reference-types'
+import type {
+  TrashEntry, TrashEntryTargetGrant, TrashOperationCommitResult, TrashOperationPreview,
+  TrashRestoreDestination
+} from './trash-types'
 export type {
   PlanReferenceMode, PlanReferencePayload, PlanReferenceTarget, ReferenceImpactCommit,
   ReferenceImpactPreview, ReferenceImpactRequest, ReferenceImpactDecision, ReferenceImpactItem
@@ -137,9 +141,8 @@ export interface Channels {
   'storage:treeGetChildren': { req: { parent_path: string }; res: PlanTreeNode[] }
   'storage:createPlan': { req: { parent_path: string; name: string }; res: PlanTreeNode }
   'storage:createFolder': { req: { parent_path: string; name: string }; res: PlanTreeNode }
-  // Legacy destructive channels remain typed for old callers, but main rejects them; use plan-reference impact channels.
+  // Destructive structural changes go through the explicit reference-impact confirmation flow.
   'storage:renamePlan': { req: { path: string; new_name: string }; res: { path: string } }
-  'storage:deletePlan': { req: { path: string; confirmed: boolean }; res: null }
   'storage:movePlan': { req: { path: string; target_parent_path: string }; res: null }
   'storage:readPlan': { req: { path: string }; res: PlanDocument }
   'storage:savePlan': {
@@ -176,6 +179,16 @@ export interface Channels {
   }
   'plan-reference:previewImpact': { req: ReferenceImpactRequest; res: ReferenceImpactPreview }
   'plan-reference:commitImpact': { req: ReferenceImpactCommit; res: { path?: string } }
+  // trash: operation targets are opaque entry IDs; renderer never supplies a library root/absolute path.
+  'trash:list': { req: void; res: TrashEntry[] }
+  'trash:entryTarget': { req: { entry_id: string }; res: TrashEntryTargetGrant }
+  'trash:restore-preview': {
+    req: { entry_id: string; destination?: TrashRestoreDestination; entry_target_token?: string }
+    res: TrashOperationPreview
+  }
+  'trash:restore-commit': { req: { confirmation_token: string }; res: TrashOperationCommitResult }
+  'trash:purge-preview': { req: { entry_id: string; entry_target_token?: string }; res: TrashOperationPreview }
+  'trash:purge-commit': { req: { confirmation_token: string }; res: TrashOperationCommitResult }
   // search（溯源检索）
   'search:query': { req: { keywords: string[] }; res: SearchHit[] }
   'search:getStatus': { req: void; res: { state: 'building' | 'ready' | 'error'; indexed: number } }

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, shell } from 'electron'
+import { createHash } from 'node:crypto'
 import { spawn as spawnChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { PlanRepository } from './services/plan-repository'
@@ -44,6 +45,19 @@ watchRef = watch
 const planNameTemplates = new PlanNameTemplateService(repo)
 const workspaceTabs = new WorkspaceTabsService(repo, () => storage.getRootAbs())
 const planReferences = new PlanReferenceService(repo, () => storage.getRootAbs())
+storage.setTrashReferenceImpactReader(async (libraryId, planIds) => {
+  const references = (await Promise.all(planIds.map(async (planId) =>
+    (await planReferences.inbound({ library_id: libraryId, plan_id: planId })).references
+  ))).flat()
+  references.sort((left, right) =>
+    `${left.target_plan_id}\0${left.target_component_id ?? ''}\0${left.source_path}\0${left.source_component_id}`
+      .localeCompare(`${right.target_plan_id}\0${right.target_component_id ?? ''}\0${right.source_path}\0${right.source_component_id}`)
+  )
+  return {
+    signature: createHash('sha256').update(JSON.stringify(references)).digest('hex'),
+    reference_count: references.length
+  }
+})
 const search = new SearchService(repo)
 const diaryAutomation = createDiaryAutomationCoordinator({
   reconcile: reconcileDiaryPages,

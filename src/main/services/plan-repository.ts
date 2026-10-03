@@ -187,7 +187,7 @@ export class PlanRepository {
     return new Date(ms).toISOString()
   }
 
-  private async writeJsonAtomic(target: string, data: unknown): Promise<void> {
+  async writeJsonAtomic(target: string, data: unknown): Promise<void> {
     const dir = dirname(target)
     // mkdir 前登记目录：新建目录（如日记日页首次写入）的 addDir 事件同样被 watch 抑制（评审 Important-3）
     this.notifyWrite(dir)
@@ -290,6 +290,18 @@ export class PlanRepository {
       await fs.rm(abs, { recursive: true, force: false })
     } catch (e) {
       throw fsErrorToTrace(e)
+    }
+  }
+
+  // Same-volume transactional moves must never fall back to copy+recursive-delete. The trash
+  // service relies on rename atomicity so its manifest can distinguish each crash boundary.
+  async moveDirAtomic(fromAbs: string, toAbs: string): Promise<void> {
+    this.notifyWrite(fromAbs)
+    this.notifyWrite(toAbs)
+    try {
+      await this.rename(fromAbs, toAbs)
+    } catch (error) {
+      throw fsErrorToTrace(error)
     }
   }
 
