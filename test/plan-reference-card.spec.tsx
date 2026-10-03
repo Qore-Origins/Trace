@@ -164,6 +164,47 @@ afterEach(async () => {
 })
 
 describe('PlanReferenceCard', () => {
+  it.each(['link', 'embed'] as const)('resolves a %s when the active tab settles after the source document', async (mode) => {
+    useWorkspaceTabsStore.setState({ active_path: TARGET_PATH })
+    await renderCard(reference(`source-ref-late-activation-${mode}`, mode, mode === 'embed' ? TARGET_COMPONENT_ID : undefined))
+    expect(invokeMock).not.toHaveBeenCalled()
+    expect(host.querySelector('[data-reference-status="stale"]')).not.toBeNull()
+
+    await act(async () => { useWorkspaceTabsStore.setState({ active_path: SOURCE_PATH }) })
+    await vi.waitFor(() => {
+      if (mode === 'link') expect(host.querySelector('[data-reference-status="found"]')).not.toBeNull()
+      else expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('Initial title')
+    })
+    expect(invokeMock).toHaveBeenCalledExactlyOnceWith('plan-reference:resolve', {
+      library_id: LIBRARY_ID, plan_id: TARGET_PLAN_ID,
+      ...(mode === 'embed' ? { component_id: TARGET_COMPONENT_ID } : {})
+    })
+  })
+
+  it('discards a pending resolution when only the active tab changes and resolves fresh on return', async () => {
+    const pending = deferred<{ ok: true; data: PlanReferenceResolution }>()
+    let resolveCalls = 0
+    invokeMock.mockImplementation(async (channel: string) => {
+      if (channel !== 'plan-reference:resolve') throw new Error(`Unexpected channel: ${channel}`)
+      resolveCalls += 1
+      return resolveCalls === 1 ? pending.promise : { ok: true, data: found(targetComponent('Fresh after return')) }
+    })
+    await renderCard(reference('source-ref-active-path-cancellation', 'embed', TARGET_COMPONENT_ID))
+    await vi.waitFor(() => expect(resolveCalls).toBe(1))
+    await act(async () => {
+      useWorkspaceTabsStore.setState({ active_path: TARGET_PATH })
+      pending.resolve({ ok: true, data: found(targetComponent('Stale response')) })
+      await Promise.resolve()
+    })
+    expect(host.querySelector('[data-reference-status="stale"]')).not.toBeNull()
+    expect(host.querySelector('.plan-reference__preview')).toBeNull()
+
+    await act(async () => { useWorkspaceTabsStore.setState({ active_path: SOURCE_PATH }) })
+    await vi.waitFor(() => expect(host.querySelector('.plan-reference__preview')?.textContent).toContain('Fresh after return'))
+    expect(host.querySelector('.plan-reference__preview')?.textContent).not.toContain('Stale response')
+    expect(resolveCalls).toBe(2)
+  })
+
   it('resolves a plan link by stable identity and opens its current path', async () => {
     invokeMock.mockImplementation(async (channel: string) => {
       if (channel === 'plan-reference:resolve') return { ok: true, data: found() }

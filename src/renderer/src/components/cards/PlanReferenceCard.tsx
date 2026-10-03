@@ -246,7 +246,7 @@ export function PlanReferenceCard({ comp, index, total }: CardRenderProps): Reac
       unsubscribeExternalChanges()
       forget(entryKey)
     }
-  }, [entryKey, forget, isCurrentSource, libraryId, payload?.mode, payload?.target_component_id, payload?.target_plan_id, resolve])
+  }, [activePath, entryKey, forget, isCurrentSource, libraryId, payload?.mode, payload?.target_component_id, payload?.target_plan_id, resolve])
 
   useEffect(() => {
     if (!editingName && payload) setDraftName(payload.target_name_snapshot)
