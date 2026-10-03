@@ -1,5 +1,6 @@
 // planStore：当前计划文档 + 渲染即编辑（防抖保存 + CAS 冲突处理）
 import { getMessage, getModal } from '../antd-host'
+import { useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { invoke, onEvent, ClientError } from '../ipc-client'
 
@@ -8,6 +9,8 @@ import { validateDueDate } from '@shared/validation'
 import { ERR } from '@shared/errors'
 import { i18n } from '../i18n'
 import { markTrace, startTraceMeasure } from '../perf/marks'
+import { requestReferenceImpactDecision } from '../components/ReferenceImpactDialog'
+import { useWorkspaceTabsStore } from './workspace-tabs-store'
 
 export type SaveState = 'idle' | 'editing' | 'saved' | 'error'
 
@@ -16,12 +19,14 @@ const DEBOUNCE_MS = 500
 interface PlanState {
   currentPath: string | null
   document: PlanDocument | null
+  // 仅在打开/关闭计划会话时变化，供异步界面丢弃跨计划迟到结果。
+  sessionRevision: number
   // 服务器端最新 updated_at（CAS 锚点）
   serverUpdatedAt: string
   saveState: SaveState
   lastError: string | null
   externalAlert: boolean // 计划库在应用外被修改（涉及当前计划时提示）
-  open: (path: string, forceReload?: boolean) => Promise<void>
+  open: (path: string, forceReload?: boolean) => Promise<boolean>
   close: () => void
   // 渲染即编辑入口：mutator 在文档副本上执行，自动调度防抖保存
   mutate: (mutator: (doc: PlanDocument) => void) => void
@@ -29,15 +34,21 @@ interface PlanState {
   patchComponent: (componentId: string, patch: (component: Component) => Component) => void
   // 计划截止日期：赋值 ''/undefined 时删键（同 mutate 防抖保存路径）
   setDueDate: (due?: string) => void
-  flush: () => Promise<void>
+  flush: () => Promise<boolean>
+  renameComponent: (componentId: string, title: string) => Promise<'committed' | 'cancelled' | 'failed'>
+  removeComponentWithImpact: (componentId: string) => Promise<boolean>
+  beginPathMove: (oldPrefix: string) => boolean
+  finishPathMove: (oldPrefix: string, newPrefix: string | null) => void
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
-let saving = false
+let activeSave: { session: number; promise: Promise<boolean> } | null = null
 let sessionRevision = 0
 let editRevision = 0
 let persistedRevision = 0
-let activeOpenRequest: { path: string; session: number; promise: Promise<void> } | null = null
+let activeOpenRequest: { path: string; promise: Promise<boolean> } | null = null
+let openRequestRevision = 0
+let pathMove: { oldPrefix: string; session: number; promise: Promise<void>; resolve: () => void } | null = null
 
 interface PendingOperation {
   revision: number
@@ -71,6 +82,7 @@ function patchDocumentComponent(
 export const usePlanStore = create<PlanState>()((set, get) => ({
   currentPath: null,
   document: null,
+  sessionRevision: 0,
   serverUpdatedAt: '',
   saveState: 'idle',
   lastError: null,
@@ -79,40 +91,46 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   open: (path, forceReload = false) => {
     const current = get()
     if (activeOpenRequest?.path === path) return activeOpenRequest.promise
-    if (!forceReload && current.currentPath === path && current.document) return Promise.resolve()
-
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = null
-    const openingSession = resetEditingSession()
-    set({ currentPath: path, document: null, saveState: 'idle', lastError: null, externalAlert: false })
+    if (!forceReload && current.currentPath === path && current.document) return Promise.resolve(true)
+    const requestRevision = ++openRequestRevision
     const finishOpenMeasure = startTraceMeasure('trace:plan-open')
-    const promise = (async (): Promise<void> => {
+    const promise = (async (): Promise<boolean> => {
       try {
+        if (!(await get().flush())) return false
+        if (requestRevision !== openRequestRevision) return false
         const doc = await invoke('storage:readPlan', { path })
-        if (sessionRevision !== openingSession) return
-        set({ currentPath: path, document: doc, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
+        if (requestRevision !== openRequestRevision) return false
+        if (!(await get().flush())) return false
+        if (requestRevision !== openRequestRevision) return false
+        if (saveTimer) clearTimeout(saveTimer)
+        saveTimer = null
+        const nextSessionRevision = resetEditingSession()
+        set({ currentPath: path, document: doc, sessionRevision: nextSessionRevision, serverUpdatedAt: doc.updated_at, saveState: 'idle', lastError: null, externalAlert: false })
         markTrace('trace:plan-open')
+        return true
       } catch (e) {
-        if (sessionRevision !== openingSession) return
-        getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
-        set({ currentPath: path, document: null })
+        if (requestRevision === openRequestRevision) getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.openPlanFailed'))
+        return false
       } finally {
         finishOpenMeasure()
       }
     })()
-    activeOpenRequest = { path, session: openingSession, promise }
+    activeOpenRequest = { path, promise }
     void promise.finally(() => {
-      if (activeOpenRequest?.session === openingSession) activeOpenRequest = null
+      if (activeOpenRequest?.promise === promise) activeOpenRequest = null
     })
     return promise
   },
 
   close: () => {
+    openRequestRevision += 1
+    pathMove?.resolve()
+    pathMove = null
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
-    resetEditingSession()
+    const nextSessionRevision = resetEditingSession()
     activeOpenRequest = null
-    set({ currentPath: null, document: null, saveState: 'idle', externalAlert: false })
+    set({ currentPath: null, document: null, sessionRevision: nextSessionRevision, saveState: 'idle', externalAlert: false })
   },
 
   mutate: (mutator) => {
@@ -172,13 +190,122 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   },
 
   flush: async () => {
-    const { document, currentPath, serverUpdatedAt } = get()
-    if (!document || !currentPath || editRevision <= persistedRevision || saving) return
-    const flushingSession = sessionRevision
-    const flushingRevision = editRevision
-    let scheduleNext = false
-    const finishCommitMeasure = startTraceMeasure('trace:edit-commit')
-    saving = true
+    const targetSession = sessionRevision
+    while (true) {
+      if (targetSession !== sessionRevision) return false
+      if (pathMove?.session === targetSession) {
+        await pathMove.promise
+        continue
+      }
+      if (activeSave?.session === targetSession) {
+        if (!(await activeSave.promise)) return false
+        continue
+      }
+      if (editRevision <= persistedRevision) return true
+      const save = saveOnce()
+      activeSave = { session: targetSession, promise: save }
+      let success: boolean
+      try {
+        success = await save
+      } finally {
+        if (activeSave?.promise === save) activeSave = null
+      }
+      if (!success) return false
+    }
+  },
+
+  renameComponent: async (componentId, title) => {
+    const source = get()
+    if (!source.currentPath || !source.document) return 'failed'
+    const original = source.document.components.find((entry) => entry.id === componentId)
+    if (!original || !['single_plan', 'multi_plan', 'task_list', 'task_detail', 'heading'].includes(original.type)) return 'failed'
+    const oldTitle = (original.payload as { title: string }).title
+    if (oldTitle === title) return 'committed'
+    if (!(await get().flush())) return 'failed'
+    const current = get()
+    if (current.currentPath !== source.currentPath) return 'failed'
+    const libraryId = useWorkspaceTabsStore.getState().library_id
+    if (!libraryId) return 'failed'
+    try {
+      const preview = await invoke('plan-reference:previewImpact', {
+        library_id: libraryId, operation: 'rename-component', path: source.currentPath,
+        component_id: componentId, new_title: title, expected_updated_at: current.serverUpdatedAt,
+        locale: i18n.language === 'en-US' ? 'en-US' : 'zh-CN'
+      })
+      const choice = await requestReferenceImpactDecision(preview, libraryId)
+      if (!choice || !('rename_action' in choice)) return 'cancelled'
+      if (!(await get().flush())) return 'failed'
+      await invoke('plan-reference:commitImpact', {
+        library_id: libraryId, preview, rename_action: choice.rename_action
+      })
+      if (get().currentPath === source.currentPath) await get().open(source.currentPath, true)
+      return 'committed'
+    } catch (error) {
+      getMessage().warning(error instanceof ClientError ? error.message : i18n.t('references.impactStale'))
+      return 'failed'
+    }
+  },
+
+  removeComponentWithImpact: async (componentId) => {
+    const source = get()
+    if (!source.currentPath || !source.document) return false
+    if (!(await get().flush())) return false
+    const current = get()
+    if (current.currentPath !== source.currentPath) return false
+    const libraryId = useWorkspaceTabsStore.getState().library_id
+    if (!libraryId) return false
+    try {
+      const preview = await invoke('plan-reference:previewImpact', {
+        library_id: libraryId, operation: 'delete-component', path: source.currentPath,
+        component_id: componentId, expected_updated_at: current.serverUpdatedAt,
+        locale: i18n.language === 'en-US' ? 'en-US' : 'zh-CN'
+      })
+      const choice = await requestReferenceImpactDecision(preview, libraryId)
+      if (!choice || !('decisions' in choice)) return false
+      if (!(await get().flush())) return false
+      await invoke('plan-reference:commitImpact', {
+        library_id: libraryId, preview, decisions: choice.decisions
+      })
+      if (get().currentPath === source.currentPath) await get().open(source.currentPath, true)
+      return true
+    } catch (error) {
+      getMessage().warning(error instanceof ClientError ? error.message : i18n.t('references.impactStale'))
+      return false
+    }
+  },
+
+  beginPathMove: (oldPrefix) => {
+    const currentPath = get().currentPath
+    if (!currentPath || (currentPath !== oldPrefix && !currentPath.startsWith(`${oldPrefix}/`)) || pathMove) return false
+    let resolve!: () => void
+    const promise = new Promise<void>((complete) => { resolve = complete })
+    pathMove = { oldPrefix, session: sessionRevision, promise, resolve }
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = null
+    return true
+  },
+
+  finishPathMove: (oldPrefix, newPrefix) => {
+    const move = pathMove
+    if (!move || move.oldPrefix !== oldPrefix) return
+    const currentPath = get().currentPath
+    if (move.session === sessionRevision && newPrefix && currentPath) {
+      set({ currentPath: newPrefix + currentPath.slice(oldPrefix.length) })
+    }
+    pathMove = null
+    move.resolve()
+  }
+}))
+
+async function saveOnce(): Promise<boolean> {
+  const get = usePlanStore.getState
+  const set = usePlanStore.setState
+  const { document, currentPath, serverUpdatedAt } = get()
+  if (!document || !currentPath) return true
+  const flushingSession = sessionRevision
+  const flushingRevision = editRevision
+  let scheduleNext = false
+  const finishCommitMeasure = startTraceMeasure('trace:edit-commit')
     try {
       const r = await invoke('storage:savePlan', {
         path: currentPath,
@@ -186,33 +313,43 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         expected_updated_at: serverUpdatedAt
       })
       // IPC 往返期间计划被删除/关闭/切换：丢弃结果（防污染新状态）
-      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
+      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return false
       persistedRevision = flushingRevision
       pendingOperations = pendingOperations.filter((operation) => operation.revision > flushingRevision)
       scheduleNext = editRevision > flushingRevision
       set({ serverUpdatedAt: r.updated_at, saveState: scheduleNext ? 'editing' : 'saved', lastError: null })
       markTrace('trace:edit-commit')
+      return true
     } catch (e) {
       // 同上：目标已不在（如被删除）属正常竞态，静默丢弃，不误报
-      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
+      if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return false
       if (e instanceof ClientError && e.code === ERR.CONFLICT) {
         // CAS 冲突：以服务端新版本为基底重放尚未落盘的操作，避免覆盖外部改动或丢失本地输入。
-        const fresh = await invoke('storage:readPlan', { path: currentPath })
-        if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return
+        let fresh: PlanDocument
+        try {
+          fresh = await invoke('storage:readPlan', { path: currentPath })
+        } catch (readError) {
+          const msg = readError instanceof ClientError ? readError.message : i18n.t('errors.saveFailed')
+          set({ saveState: 'error', lastError: msg })
+          getMessage().error(msg)
+          return false
+        }
+        if (sessionRevision !== flushingSession || get().currentPath !== currentPath) return false
         const rebased = pendingOperations.reduce((next, operation) => operation.apply(next), fresh)
         persistedRevision = 0
         scheduleNext = pendingOperations.length > 0
         set({ document: rebased, serverUpdatedAt: fresh.updated_at, saveState: scheduleNext ? 'editing' : 'idle' })
         getMessage().warning(i18n.t('errors.contentRefreshed'))
+        return true
       } else {
         const msg = e instanceof ClientError ? e.message : i18n.t('errors.saveFailed')
         set({ saveState: 'error', lastError: msg })
         getMessage().error(msg)
         scheduleNext = editRevision > flushingRevision
+        return false
       }
     } finally {
       finishCommitMeasure()
-      saving = false
       const activeSessionChanged = sessionRevision !== flushingSession
       const activeSessionHasPendingEdits = editRevision > persistedRevision
       if ((scheduleNext || activeSessionChanged) && activeSessionHasPendingEdits) {
@@ -220,8 +357,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
         saveTimer = setTimeout(() => void get().flush(), DEBOUNCE_MS)
       }
     }
-  }
-}))
+}
 
 // 常用变更便捷方法（组件层调用）
 export function usePlanMutations() {
@@ -256,6 +392,33 @@ export function usePlanMutations() {
   }
 }
 
+export function useReferenceAwareTitle(component: Component): {
+  value: string
+  setValue: (value: string) => void
+  commit: () => Promise<void>
+} {
+  const sourceTitle = (component.payload as { title: string }).title
+  const [value, setValue] = useState(sourceTitle)
+  const [dirty, setDirty] = useState(false)
+  const committing = useRef(false)
+  const rename = usePlanStore((state) => state.renameComponent)
+  useEffect(() => {
+    if (!dirty) setValue(sourceTitle)
+  }, [dirty, sourceTitle])
+  const commit = async (): Promise<void> => {
+    if (committing.current || !dirty) return
+    committing.current = true
+    try {
+      const result = await rename(component.id, value)
+      if (result === 'cancelled') setValue(sourceTitle)
+      if (result !== 'failed') setDirty(false)
+    } finally {
+      committing.current = false
+    }
+  }
+  return { value, setValue: (next) => { setValue(next); setDirty(true) }, commit }
+}
+
 // 事件订阅：保存状态回执 / 计划被外部或他处修改
 export function subscribePlanEvents(): () => void {
   const off1 = onEvent('trace:save-status', (p) => {
@@ -266,6 +429,8 @@ export function subscribePlanEvents(): () => void {
   })
   const off2 = onEvent('trace:plan-changed', (p) => {
     const s = usePlanStore.getState()
+    if (pathMove?.session === sessionRevision &&
+      (p.path === pathMove.oldPrefix || p.path.startsWith(`${pathMove.oldPrefix}/`))) return
     if (s.currentPath === p.path && s.saveState === 'idle') {
       // 非本端编辑引起的变更（如 IPC 直改）：静默重拉
       void s.open(p.path, true)

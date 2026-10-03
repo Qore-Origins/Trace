@@ -1,0 +1,119 @@
+.plan-tabs {
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  margin: 0 0 12px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+}
+
+.plan-tabs__item {
+  align-items: stretch;
+  background: var(--paper-dim);
+  border: 1px solid transparent;
+  border-bottom-width: 2px;
+  border-radius: var(--r-card) var(--r-card) 0 0;
+  display: flex;
+  flex: 0 1 220px;
+  max-width: 260px;
+  min-width: 132px;
+}
+
+.plan-tabs__item--active {
+  background: var(--paper);
+  border-color: var(--border);
+  border-bottom-color: var(--trace-500);
+}
+
+.plan-tabs__select,
+.plan-tabs__close {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  justify-content: center;
+  transition: background-color var(--t-ui) var(--ease-out), color var(--t-ui) var(--ease-out);
+}
+
+.plan-tabs__select {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  min-width: 0;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.plan-tabs__item--active .plan-tabs__select {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.plan-tabs__name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-tabs__close {
+  border-radius: 0 var(--r-card) 0 0;
+  color: var(--text-3);
+  flex: 0 0 32px;
+  width: 32px;
+}
+
+.plan-tabs__select:hover,
+.plan-tabs__close:hover {
+  background: var(--hover-active);
+  color: var(--text-1);
+}
+
+.plan-tabs__close:hover {
+  background: var(--danger-hover-bg);
+  color: var(--danger-text);
+}
+
+.plan-tabs__select:focus-visible,
+.plan-tabs__close:focus-visible {
+  outline: 2px solid var(--trace-500);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 720px) {
+  .plan-tabs {
+    gap: 2px;
+    margin-bottom: 10px;
+  }
+
+  .plan-tabs__item {
+    flex: 0 0 min(70%, 220px);
+    min-width: 128px;
+  }
+
+  .plan-tabs__select {
+    padding-inline: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-tabs,
+  .plan-tabs__item,
+  .plan-tabs__select,
+  .plan-tabs__close {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

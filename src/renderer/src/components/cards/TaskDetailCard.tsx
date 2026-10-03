@@ -3,13 +3,14 @@ import type { TaskDetailPayload } from '@shared/plan-types'
 import { isPastPlannedDate } from '@shared/task-state'
 import { validateNoteText } from '@shared/validation'
 import { useTranslation } from '../../i18n'
-import { usePlanMutations } from '../../stores/plan-store'
+import { usePlanMutations, useReferenceAwareTitle } from '../../stores/plan-store'
 import { CardShell, type CardRenderProps } from './CardShell'
 
 export function TaskDetailCard({ comp, index, total, today }: CardRenderProps): React.JSX.Element {
   const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as TaskDetailPayload
+  const title = useReferenceAwareTitle(comp)
   const patch = (fn: (payload: TaskDetailPayload) => void): void => patchComponent(comp.id, (payload) => fn(payload as TaskDetailPayload))
   const statusText = p.status === 'done' ? t('cards.statusDone') : p.status === 'in_progress' ? t('cards.statusInProgress') : t('cards.statusNotStarted')
   const hasPastPlannedDate = isPastPlannedDate(p.planned_at, today)
@@ -25,9 +26,11 @@ export function TaskDetailCard({ comp, index, total, today }: CardRenderProps): 
           <input
             className="single-title"
             style={{ fontSize: 14 }}
-            value={p.title}
+            value={title.value}
             placeholder={t('cards.taskPlaceholder')}
-            onChange={(e) => patch((pl) => (pl.title = e.target.value))}
+            onChange={(e) => title.setValue(e.target.value)}
+            onBlur={() => { void title.commit() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
           />
           {hasPastPlannedDate && <span className="tag-overdue" aria-hidden={p.status === 'done'}>{t('cards.overdue')}</span>}
         </div>

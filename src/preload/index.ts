@@ -11,8 +11,14 @@ const AGENT_CHANNELS = new Set<string>(['agent:provider:list', 'agent:profile:li
 for (const channel of ['agent:session:list', 'agent:session:create', 'agent:session:read', 'agent:session:update', 'agent:session:delete', 'agent:context:browse', 'agent:context:read', 'agent:preview:create', 'agent:preview:cancel']) AGENT_CHANNELS.add(channel)
 for (const channel of ['agent:request:send', 'agent:request:cancel']) AGENT_CHANNELS.add(channel)
 AGENT_CHANNELS.add('agent:capability:test')
+const WORKSPACE_TABS_CHANNELS = new Set<string>(['workspace-tabs:get', 'workspace-tabs:set'])
+const PLAN_REFERENCE_CHANNELS = new Set<string>([
+  'plan-reference:search', 'plan-reference:resolve', 'plan-reference:commitTarget', 'plan-reference:inbound',
+  'plan-reference:previewImpact', 'plan-reference:commitImpact'
+])
 const EVENT_CHANNELS = new Set<string>([
   'trace:plan-changed',
+  'trace:reference-target-changed',
   'trace:save-status',
   'trace:fs-external-change',
   'trace:index-status',
@@ -40,6 +46,8 @@ const bridge = {
     const isPlantumlChannel = typeof channel === 'string' && channel.startsWith('plantuml:')
     const isPlanTemplateChannel = typeof channel === 'string' && channel.startsWith('plan-template:')
     const isAgentChannel = typeof channel === 'string' && channel.startsWith('agent:')
+    const isWorkspaceTabsChannel = typeof channel === 'string' && channel.startsWith('workspace-tabs:')
+    const isPlanReferenceChannel = typeof channel === 'string' && channel.startsWith('plan-reference:')
     if (
       typeof channel !== 'string' ||
       (isAgentChannel
@@ -48,7 +56,11 @@ const bridge = {
         ? !PLANTUML_CHANNELS.has(channel)
         : isPlanTemplateChannel
           ? !PLAN_TEMPLATE_CHANNELS.has(channel)
-          : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
+          : isWorkspaceTabsChannel
+            ? !WORKSPACE_TABS_CHANNELS.has(channel)
+            : isPlanReferenceChannel
+              ? !PLAN_REFERENCE_CHANNELS.has(channel)
+              : !ALLOWED_PREFIXES.some((p) => channel.startsWith(p)))
     ) {
       return { ok: false, code: 50, message: '通道未开放', data: null }
     }

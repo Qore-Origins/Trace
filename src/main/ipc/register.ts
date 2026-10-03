@@ -12,6 +12,8 @@ import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
 import type { PlanNameTemplateService } from '../services/plan-name-template-service'
+import type { WorkspaceTabsService } from '../services/workspace-tabs-service'
+import type { PlanReferenceService } from '../services/plan-reference-service'
 import { DIARY_DIR, ensureDiaryRoot, ensureTodayPageWithResult, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
 import { todayDateStr } from '../../shared/validation'
 import { bus } from '../services/event-bus'
@@ -33,6 +35,8 @@ interface Deps {
   export: ExportService
   search: SearchService
   planNameTemplates?: PlanNameTemplateService
+  workspaceTabs?: WorkspaceTabsService
+  planReferences?: PlanReferenceService
   plantuml?: PlantumlService
   startup: StartupCoordinator
   captureDiaryRootGuard?: (root: string) => () => boolean
@@ -104,6 +108,12 @@ function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['lo
       if (name.startsWith('diary:')) {
         // 文件系统异常可能携带绝对路径/正文；日记边界只返回固定的可重试提示。
         const safeMessage = name === 'diary:ensure' ? '日记初始化失败，请稍后重试' : '日记读取失败，请稍后重试'
+        log(name, code, safeMessage)
+        return fail(code, safeMessage)
+      }
+      if (name.startsWith('plan-reference:')) {
+        // Filesystem failures may contain absolute paths; reference responses and logs never echo them.
+        const safeMessage = e instanceof TraceError ? message : '引用操作失败，请重试'
         log(name, code, safeMessage)
         return fail(code, safeMessage)
       }
@@ -223,13 +233,26 @@ export function registerIpc(deps: Deps): () => void {
   reg('storage:treeGetChildren', (p) => storage.treeGetChildren(p.parent_path))
   reg('storage:createPlan', (p) => storage.createPlan(p.parent_path, p.name))
   reg('storage:createFolder', (p) => storage.createFolder(p.parent_path, p.name))
-  reg('storage:renamePlan', (p) => storage.renamePlan(p.path, p.new_name))
-  reg('storage:deletePlan', (p) => storage.deletePlan(p.path, p.confirmed).then(() => null))
+  reg('storage:renamePlan', async () => {
+    throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程重命名计划')
+  })
+  reg('storage:deletePlan', async () => {
+    throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除计划')
+  })
   reg('storage:movePlan', (p) => storage.movePlan(p.path, p.target_parent_path).then(() => null))
   reg('storage:readPlan', (p) => storage.readPlan(p.path))
-  reg('storage:savePlan', (p) => storage.savePlan(p.path, p.document, p.expected_updated_at))
-  reg('storage:appendComponent', (p) => storage.appendComponent(p.path, p.component).then(() => null))
-  reg('storage:removeComponent', (p) => storage.removeComponent(p.path, p.component_id).then(() => null))
+  // Renderer document writes share the reference mutation queue and reject bypass edits to
+  // currently referenced target identities/display names before the CAS write is attempted.
+  reg('storage:savePlan', (p) => referenceService().saveRendererPlan(
+    storage, p.path, p.document, p.expected_updated_at
+  ))
+  // Serialize the legacy single-component route with reference confirmation and verify reference
+  // targets at write time, so an append waiting behind deletion cannot create a dangling link.
+  reg('storage:appendComponent', (p) => referenceService()
+    .appendRendererComponent(storage, p.path, p.component).then(() => null))
+  reg('storage:removeComponent', async () => {
+    throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请通过关联影响确认流程删除组件')
+  })
   reg('storage:moveComponent', (p) => storage.moveComponent(p.path, p.component_id, p.target_index).then(() => null))
   reg('storage:updateTask', (p) => storage.updateTask(p.path, p.component_id, p.task_id, p.patch).then(() => null))
 
@@ -246,6 +269,44 @@ export function registerIpc(deps: Deps): () => void {
   regRootState('plan-template:get', () => templateService().get(activePlanRoot()))
   regRootState('plan-template:set', (p) => templateService().set(activePlanRoot(), p.parent_path, p.template))
   regRootState('plan-template:remove', (p) => templateService().remove(activePlanRoot(), p.parent_path))
+
+  const workspaceTabsService = (): WorkspaceTabsService => {
+    if (!deps.workspaceTabs) throw new TraceError(ERR.INTERNAL, '计划标签服务未初始化')
+    return deps.workspaceTabs
+  }
+  regRootState('workspace-tabs:get', () => workspaceTabsService().load())
+  regRootState('workspace-tabs:set', async (payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+      Object.keys(payload).length !== 1 || !Object.hasOwn(payload, 'state')) {
+      throw new TraceError(ERR.VALIDATION, '计划标签请求无效')
+    }
+    await workspaceTabsService().save(payload.state)
+    return null
+  })
+
+  const referenceService = (): PlanReferenceService => {
+    if (!deps.planReferences) throw new TraceError(ERR.INTERNAL, '引用服务未初始化')
+    return deps.planReferences
+  }
+  const referenceRequest = <T extends Record<string, unknown>>(payload: unknown, keys: readonly string[]): T => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+      Object.getPrototypeOf(payload) !== Object.prototype ||
+      Object.keys(payload).some((key) => !keys.includes(key)) ||
+      !keys.filter((key) => key !== 'component_id').every((key) => Object.hasOwn(payload, key))) {
+      throw new TraceError(ERR.VALIDATION, '引用请求无效')
+    }
+    return payload as T
+  }
+  reg('plan-reference:search', (payload) =>
+    referenceService().search(referenceRequest(payload, ['library_id', 'query'])))
+  reg('plan-reference:resolve', (payload) =>
+    referenceService().resolve(referenceRequest(payload, ['library_id', 'plan_id', 'component_id'])))
+  reg('plan-reference:commitTarget', (payload) =>
+    referenceService().commitTarget(referenceRequest(payload, ['library_id', 'path', 'component_id', 'mode'])))
+  reg('plan-reference:inbound', (payload) =>
+    referenceService().inbound(referenceRequest(payload, ['library_id', 'plan_id', 'component_id'])))
+  reg('plan-reference:previewImpact', (payload) => referenceService().previewImpact(payload))
+  reg('plan-reference:commitImpact', (payload) => referenceService().commitImpact(payload, storage))
 
   // ---------- window（无边框自绘控制） ----------
   reg('window:minimize', () => {
@@ -301,7 +362,11 @@ export function registerIpc(deps: Deps): () => void {
   reg('transfer:exportPlan', (p) => transfer.exportPlan(p.path, p.saveTo))
   reg('transfer:exportPdf', (p) => deps.export.exportPdf(p.path, p.saveTo))
   reg('transfer:exportPng', (p) => deps.export.exportPng(p.path, p.saveTo))
-  reg('transfer:importPlan', (p) => transfer.importPlan(p.target_parent_path, p.filePath))
+  // Bundle imports write plan documents; serialize them with reference commits so an in-flight
+  // import cannot change the inbound set between final impact validation and target mutation.
+  reg('transfer:importPlan', (p) => referenceService().runRendererMutation(
+    () => transfer.importPlan(p.target_parent_path, p.filePath)
+  ))
   reg('transfer:importMarkdown', async (p) => {
     // 文件读取在主进程（渲染器无 fs 权限）
     const files = await Promise.all(
@@ -345,6 +410,7 @@ export function registerIpc(deps: Deps): () => void {
     unsubscribeListeners.push(unsubscribe)
   }
   forward('trace:plan-changed')
+  forward('trace:reference-target-changed')
   forward('trace:save-status')
   forward('trace:fs-external-change')
   forward('trace:index-status')

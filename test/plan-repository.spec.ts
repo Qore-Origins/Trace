@@ -40,6 +40,121 @@ describe('ensureLibraryRoot', () => {
 })
 
 describe('writePlanAtomic + readPlan', () => {
+  it('serializes same-plan mutations and preserves both changes after a deferred write', async () => {
+    const firstComponent = { id: 'a', type: 'note' as const, payload: { content: 'first', created_at: '2026-09-30T00:00:00.000Z' } }
+    const secondComponent = { id: 'b', type: 'note' as const, payload: { content: 'second', created_at: '2026-09-30T00:00:00.000Z' } }
+    let releaseWrite: () => void = () => {}
+    let signalWrite: () => void = () => {}
+    const held = new Promise<void>((resolve) => { releaseWrite = resolve })
+    const started = new Promise<void>((resolve) => { signalWrite = resolve })
+    let holdFirst = false
+    const lockedRepo = new PlanRepository({
+      renameFn: async (from, to) => {
+        if (holdFirst && to === join(root, 'A', 'plan.json')) {
+          holdFirst = false
+          signalWrite()
+          await held
+        }
+        await fs.rename(from, to)
+      }
+    })
+    await fs.mkdir(join(root, 'A'))
+    await lockedRepo.writePlanAtomic(root, 'A', sampleDoc())
+    holdFirst = true
+    const first = lockedRepo.mutatePlanAtomic(root, 'A', (current) => {
+      current.components.push(firstComponent)
+      return current
+    })
+    await started
+    const second = lockedRepo.mutatePlanAtomic(root, 'A', (current) => {
+      current.components.push(secondComponent)
+      return current
+    })
+    releaseWrite()
+    await Promise.all([first, second])
+
+    expect((await lockedRepo.readPlan(root, 'A')).components.map((component) => component.id)).toEqual(['a', 'b'])
+  })
+
+  it('releases a plan lock after a failed mutation so a retry can write', async () => {
+    await fs.mkdir(join(root, 'A'))
+    await repo.writePlanAtomic(root, 'A', sampleDoc())
+    await expect(repo.mutatePlanAtomic(root, 'A', () => { throw new Error('rejected update') }))
+      .rejects.toThrow('rejected update')
+
+    const saved = await repo.mutatePlanAtomic(root, 'A', (current) => {
+      current.plan_id = '0123456789abcdef0123456789abcdef'
+      return current
+    })
+    expect(saved.plan_id).toBe('0123456789abcdef0123456789abcdef')
+    expect((await repo.readPlan(root, 'A')).plan_id).toBe(saved.plan_id)
+  })
+
+  it('round-trips legacy plans and new optional reference fields without dropping them', async () => {
+    const legacy = sampleDoc()
+    await repo.writePlanAtomic(root, '旧计划', legacy)
+    expect(await repo.readPlan(root, '旧计划')).not.toHaveProperty('plan_id')
+
+    const doc: PlanDocument = {
+      ...sampleDoc(),
+      plan_id: '0123456789abcdef0123456789abcdef',
+      components: [{
+        id: 'abcdef0123456789abcdef0123456789',
+        type: 'plan_reference',
+        remark: 'local remark',
+        payload: {
+          mode: 'link', target_plan_id: 'fedcba9876543210fedcba9876543210',
+          target_path_snapshot: 'Old/Path', target_name_snapshot: 'Custom label'
+        }
+      }]
+    }
+    await repo.writePlanAtomic(root, '新计划', doc)
+    const read = await repo.readPlan(root, '新计划')
+    expect(read.plan_id).toBe(doc.plan_id)
+    expect(read.components[0]).toEqual(doc.components[0])
+    expect(structuredClone(JSON.parse(JSON.stringify(read))).components[0]).toEqual(doc.components[0])
+  })
+
+  it('keeps malformed references local and preserves their raw payload on save', async () => {
+    const doc = sampleDoc()
+    doc.components = [
+      { id: '1', type: 'note', payload: { content: 'sibling', created_at: doc.created_at } },
+      { id: '2', type: 'plan_reference', payload: { mode: 'unknown', target_plan_id: 'bad', target_path_snapshot: '', target_name_snapshot: '' } }
+    ] as unknown as PlanDocument['components']
+    await repo.writePlanAtomic(root, '坏引用', doc)
+    const read = await repo.readPlan(root, '坏引用')
+    expect(read.components).toEqual(doc.components)
+    await repo.writePlanAtomic(root, '坏引用', read)
+    expect((await repo.readPlan(root, '坏引用')).components).toEqual(doc.components)
+  })
+
+  it('rejects an invalid plan identity', async () => {
+    const doc = sampleDoc()
+    await fs.mkdir(join(root, '坏扩展'))
+    await fs.writeFile(join(root, '坏扩展', 'plan.json'), JSON.stringify({ ...doc, plan_id: 17 }))
+    await expect(repo.readPlan(root, '坏扩展')).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })
+  })
+
+  it('rejects a null component in the document array', async () => {
+    const doc = sampleDoc()
+    await fs.mkdir(join(root, '空组件'))
+    await fs.writeFile(join(root, '空组件', 'plan.json'), JSON.stringify({ ...doc, components: [null] }))
+    await expect(repo.readPlan(root, '空组件')).rejects.toMatchObject({ code: ERR.FORMAT_INVALID })
+  })
+
+  it('keeps siblings readable and malformed remark data intact through read and save', async () => {
+    const doc = sampleDoc()
+    const components = [
+      { id: '1', type: 'note', payload: { content: 'sibling', created_at: doc.created_at } },
+      { id: '2', type: 'plan_reference', remark: 17, payload: { mode: 'unknown', target_plan_id: 'bad' } }
+    ]
+    await fs.mkdir(join(root, '坏备注'))
+    await fs.writeFile(join(root, '坏备注', 'plan.json'), JSON.stringify({ ...doc, components }))
+    const read = await repo.readPlan(root, '坏备注')
+    expect(read.components).toEqual(components)
+    await repo.writePlanAtomic(root, '坏备注', read)
+    expect((await repo.readPlan(root, '坏备注')).components).toEqual(components)
+  })
   it('写入后可读回且无临时文件残留', async () => {
     await repo.ensureLibraryRoot(root)
     await repo.writePlanAtomic(root, '计划A', sampleDoc())

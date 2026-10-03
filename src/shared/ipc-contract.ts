@@ -6,6 +6,15 @@ import type { PlanNameTemplateSettings } from './plan-name-templates'
 import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
 import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
 import type { AgentRequestSendInput, AgentRequestCancelInput, AgentRequestIdentity } from './agent-types'
+import type { WorkspaceTabsState } from './workspace-tabs-types'
+import type {
+  PlanReferenceMode, PlanReferenceTarget, ReferenceImpactCommit, ReferenceImpactPreview,
+  ReferenceImpactRequest
+} from './plan-reference-types'
+export type {
+  PlanReferenceMode, PlanReferencePayload, PlanReferenceTarget, ReferenceImpactCommit,
+  ReferenceImpactPreview, ReferenceImpactRequest, ReferenceImpactDecision, ReferenceImpactItem
+} from './plan-reference-types'
 
 // ---------- 统一响应信封 ----------
 
@@ -29,6 +38,21 @@ export interface SearchHit {
   component_id?: string
   snippet: string
   matched_field: string
+}
+
+export interface PlanReferenceCandidate extends Omit<PlanReferenceTarget, 'plan_id'> {
+  plan_id?: string
+}
+
+export type PlanReferenceResolution =
+  | { status: 'found'; target: PlanReferenceTarget; component?: Component }
+  | { status: 'missing' | 'conflict' }
+
+export interface PlanReferenceInbound {
+  source_path: string
+  source_component_id: string
+  target_plan_id: string
+  target_component_id?: string
 }
 
 export interface PlanTreeNode {
@@ -113,6 +137,7 @@ export interface Channels {
   'storage:treeGetChildren': { req: { parent_path: string }; res: PlanTreeNode[] }
   'storage:createPlan': { req: { parent_path: string; name: string }; res: PlanTreeNode }
   'storage:createFolder': { req: { parent_path: string; name: string }; res: PlanTreeNode }
+  // Legacy destructive channels remain typed for old callers, but main rejects them; use plan-reference impact channels.
   'storage:renamePlan': { req: { path: string; new_name: string }; res: { path: string } }
   'storage:deletePlan': { req: { path: string; confirmed: boolean }; res: null }
   'storage:movePlan': { req: { path: string; target_parent_path: string }; res: null }
@@ -132,6 +157,25 @@ export interface Channels {
   'plan-template:get': { req: void; res: PlanNameTemplateSettings }
   'plan-template:set': { req: { parent_path: string; template: string }; res: PlanNameTemplateSettings }
   'plan-template:remove': { req: { parent_path: string }; res: PlanNameTemplateSettings }
+  // workspace tabs (the active library is selected in main)
+  'workspace-tabs:get': { req: void; res: WorkspaceTabsState }
+  'workspace-tabs:set': { req: { state: WorkspaceTabsState }; res: null }
+  // references: paths are relative to the library selected by main
+  'plan-reference:search': { req: { library_id: string; query: string }; res: { targets: PlanReferenceCandidate[] } }
+  'plan-reference:resolve': {
+    req: { library_id: string; plan_id: string; component_id?: string }
+    res: PlanReferenceResolution
+  }
+  'plan-reference:commitTarget': {
+    req: { library_id: string; path: string; component_id?: string; mode: PlanReferenceMode }
+    res: PlanReferenceTarget
+  }
+  'plan-reference:inbound': {
+    req: { library_id: string; plan_id: string; component_id?: string }
+    res: { references: PlanReferenceInbound[] }
+  }
+  'plan-reference:previewImpact': { req: ReferenceImpactRequest; res: ReferenceImpactPreview }
+  'plan-reference:commitImpact': { req: ReferenceImpactCommit; res: { path?: string } }
   // search（溯源检索）
   'search:query': { req: { keywords: string[] }; res: SearchHit[] }
   'search:getStatus': { req: void; res: { state: 'building' | 'ready' | 'error'; indexed: number } }

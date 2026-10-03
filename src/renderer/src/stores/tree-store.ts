@@ -7,7 +7,9 @@ import { isSelfOrDescendant, parentRel } from '@shared/path-utils'
 import type { PlanTreeNode } from '@shared/ipc-contract'
 import { i18n } from '../i18n'
 import { optimisticMove } from '../components/tree-utils'
+import { requestReferenceImpactDecision } from '../components/ReferenceImpactDialog'
 import { usePlanStore } from './plan-store'
+import { registerWorkspaceTabSelection, useWorkspaceTabsStore } from './workspace-tabs-store'
 
 interface TreeState {
   childrenMap: Record<string, PlanTreeNode[]> // key=父路径（''=顶层）
@@ -23,7 +25,7 @@ interface TreeState {
   createPlan: (parentPath: string, name: string) => Promise<void>
   createFolder: (parentPath: string, name: string) => Promise<void>
   renamePlan: (path: string, newName: string) => Promise<void>
-  removePlan: (path: string) => Promise<void>
+  removePlan: (path: string, beforeCommit?: () => Promise<void>) => Promise<void>
   movePlan: (dragPath: string, targetParent: string) => Promise<boolean>
   expandTo: (path: string) => Promise<void>
   refreshAll: () => Promise<void>
@@ -120,33 +122,94 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
   },
 
   renamePlan: async (path, newName) => {
-    const r = await invoke('storage:renamePlan', { path, new_name: newName })
-    await refreshAround(set, get, r.path)
+    if (!(await usePlanStore.getState().flush())) throw new Error(i18n.t('errors.saveFailed'))
+    const libraryId = useWorkspaceTabsStore.getState().library_id
+    if (!libraryId) throw new Error(i18n.t('errors.opFailed'))
+    const preview = await invoke('plan-reference:previewImpact', {
+      library_id: libraryId, operation: 'rename-plan', path, new_name: newName,
+      locale: i18n.language === 'en-US' ? 'en-US' : 'zh-CN'
+    })
+    const choice = await requestReferenceImpactDecision(preview, libraryId)
+    if (!choice || !('rename_action' in choice)) return
+    if (!(await usePlanStore.getState().flush())) throw new Error(i18n.t('errors.saveFailed'))
+    const activePath = usePlanStore.getState().currentPath
+    if (activePath && isSelfOrDescendant(path, activePath) && !usePlanStore.getState().beginPathMove(path)) {
+      throw new Error(i18n.t('errors.saveFailed'))
+    }
+    let r: { path: string }
+    try {
+      r = await invoke('plan-reference:commitImpact', {
+        library_id: libraryId, preview, rename_action: choice.rename_action
+      }) as { path: string }
+    } catch (error) {
+      usePlanStore.getState().finishPathMove(path, null)
+      await usePlanStore.getState().flush()
+      const currentPath = usePlanStore.getState().currentPath
+      if (currentPath && (isSelfOrDescendant(path, currentPath) ||
+        preview.references.some((reference) => reference.source_path === currentPath))) {
+        await usePlanStore.getState().open(currentPath, true)
+      }
+      throw error
+    }
+    usePlanStore.getState().finishPathMove(path, r.path)
     // 选中/展开键迁移到新路径
     const renameKey = (keys: string[]) => keys.map((k) => (k === path || k.startsWith(path + '/') ? r.path + k.slice(path.length) : k))
     set({
       expandedKeys: renameKey(get().expandedKeys),
-      selectedPath: get().selectedPath === path ? r.path : get().selectedPath
+      selectedPath: renameKey([get().selectedPath ?? ''])[0] || null
     })
     // 当前打开的计划路径同步迁移并重开（否则后续保存指向旧路径 404）
-    if (usePlanStore.getState().currentPath === path) {
-      await usePlanStore.getState().open(r.path)
+    const remapped = await useWorkspaceTabsStore.getState().remapPrefix(path, r.path)
+    const saved = await usePlanStore.getState().flush()
+    const currentPath = usePlanStore.getState().currentPath
+    if (currentPath && (isSelfOrDescendant(r.path, currentPath) ||
+      preview.references.some((reference) => reference.source_path === currentPath))) {
+      await usePlanStore.getState().open(currentPath, true)
     }
+    await refreshAround(set, get, r.path)
+    if (!remapped || !saved) throw new Error(i18n.t('errors.saveFailed'))
   },
 
-  removePlan: async (path) => {
+  removePlan: async (path, beforeCommit) => {
+    if (!(await usePlanStore.getState().flush())) return
+    const libraryId = useWorkspaceTabsStore.getState().library_id
+    if (!libraryId) return
+    let preview
+    try {
+      preview = await invoke('plan-reference:previewImpact', {
+        library_id: libraryId, operation: 'delete-plan', path,
+        locale: i18n.language === 'en-US' ? 'en-US' : 'zh-CN'
+      })
+    } catch (error) {
+      getMessage().error(error instanceof ClientError ? error.message : i18n.t('errors.deleteFailed'))
+      return
+    }
+    const choice = await requestReferenceImpactDecision(preview, libraryId)
+    if (!choice || !('decisions' in choice)) return
+    if (!(await usePlanStore.getState().flush())) return
+    if (beforeCommit) await beforeCommit()
+    if (!(await usePlanStore.getState().flush())) return
     // 先关闭被删子树内打开的计划：删除成功会 emit plan-changed(被删路径)，
     // 若 currentPath 仍指向它，订阅会静默重拉 open() → 读已删文件 → 误报「目标位置不存在」
     const plan = usePlanStore.getState()
+    const previousPath = plan.currentPath
     if (plan.currentPath && (plan.currentPath === path || plan.currentPath.startsWith(path + '/'))) {
       plan.close()
     }
     try {
-      await invoke('storage:deletePlan', { path, confirmed: true })
+      await invoke('plan-reference:commitImpact', {
+        library_id: libraryId, preview, decisions: choice.decisions
+      })
     } catch (e) {
+      if (previousPath && !usePlanStore.getState().currentPath) await usePlanStore.getState().open(previousPath)
       // 删除失败必须提示（此前 onOk 静默吞错，文件被占用/已被外部删除时用户毫无反馈）
       getMessage().error(e instanceof ClientError ? e.message : i18n.t('errors.deleteFailed'))
       return
+    }
+    await useWorkspaceTabsStore.getState().closeUnder(path)
+    const survivingPath = usePlanStore.getState().currentPath
+    if (survivingPath && preview.references.some((reference) => reference.source_path === survivingPath)) {
+      await usePlanStore.getState().open(survivingPath, true)
     }
     // 清理被删子树残留状态：expandedKeys/childrenMap/loaded 中的旧键
     // （否则同名重建文件夹后，expandedKeys 残留导致其意外自动展开、childrenMap 残留脏数据）
@@ -169,6 +232,7 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     }
     const name = dragPath.slice(dragPath.lastIndexOf('/') + 1)
     const newPath = targetParent === '' ? name : `${targetParent}/${name}`
+    if (!(await usePlanStore.getState().flush())) return false
 
     // 乐观更新（2026-09-07：松手弹回原位修复）：IPC 往返期间 dnd-kit 已复位 transform，
     // 本地先行换位（含子树键/选中/展开迁移）保证松手即落定；失败整体回滚
@@ -189,22 +253,33 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
         selectedPath: snap.selectedPath ? migrateKey(snap.selectedPath) : null
       })
     }
+    const activePath = usePlanStore.getState().currentPath
+    if (activePath && isSelfOrDescendant(dragPath, activePath) && !usePlanStore.getState().beginPathMove(dragPath)) {
+      if (opt) set(snap)
+      return false
+    }
     try {
       await invoke('storage:movePlan', { path: dragPath, target_parent_path: targetParent })
     } catch (e) {
+      usePlanStore.getState().finishPathMove(dragPath, null)
+      await usePlanStore.getState().flush()
       if (opt) {
         set({ childrenMap: snap.childrenMap, loaded: snap.loaded, expandedKeys: snap.expandedKeys, selectedPath: snap.selectedPath })
       }
       getMessage().error(e instanceof ClientError ? e.message : i18n.t('tree.moveFailed'))
       return false
     }
+    usePlanStore.getState().finishPathMove(dragPath, newPath)
+    const remapped = await useWorkspaceTabsStore.getState().remapPrefix(dragPath, newPath)
+    const saved = await usePlanStore.getState().flush()
     await refreshAround(set, get, newPath)
     await refreshAround(set, get, dragPath)
     // 选中/展开键迁移（乐观已迁移时为幂等空转；覆盖不可乐观的分支）
     const migrate = (keys: string[]) => keys.map((k) => (k === dragPath || k.startsWith(dragPath + '/') ? newPath + k.slice(dragPath.length) : k))
     set({ expandedKeys: migrate(get().expandedKeys), selectedPath: migrate([get().selectedPath ?? ''])[0] || null })
-    if (usePlanStore.getState().currentPath === dragPath) {
-      await usePlanStore.getState().open(newPath)
+    if (!remapped || !saved) {
+      getMessage().error(i18n.t('errors.saveFailed'))
+      return false
     }
     return true
   },
@@ -283,6 +358,8 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     return reportText('migrate', r)
   }
 }))
+
+registerWorkspaceTabSelection((path) => useTreeStore.getState().select(path, 'plan'))
 
 // 事件订阅：结构变化与外部变更 → 刷新相关层（含祖父层，更新节点自身 has_children/kind 条目）
 export function subscribeTreeEvents(): () => void {

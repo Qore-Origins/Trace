@@ -9,6 +9,8 @@ import { WatchService } from './services/watch-service'
 import { TransferService } from './services/transfer-service'
 import { SearchService } from './services/search-service'
 import { PlanNameTemplateService } from './services/plan-name-template-service'
+import { WorkspaceTabsService } from './services/workspace-tabs-service'
+import { PlanReferenceService } from './services/plan-reference-service'
 import { DIARY_DIR, reconcileDiaryPages, setDiaryRepo } from './services/diary-service'
 import { createDiaryAutomationCoordinator } from './services/diary-automation-coordinator'
 import { ExportService, resolveRendererSource } from './services/export-service'
@@ -40,6 +42,8 @@ const storage = new StorageService(repo)
 const watch = new WatchService(storage.treeCache)
 watchRef = watch
 const planNameTemplates = new PlanNameTemplateService(repo)
+const workspaceTabs = new WorkspaceTabsService(repo, () => storage.getRootAbs())
+const planReferences = new PlanReferenceService(repo, () => storage.getRootAbs())
 const search = new SearchService(repo)
 const diaryAutomation = createDiaryAutomationCoordinator({
   reconcile: reconcileDiaryPages,
@@ -57,11 +61,12 @@ const transfer = new TransferService(repo, storage.treeCache, () => {
   return r
 })
 const appService = new AppService(config, repo, storage, (rootAbs) => {
+  planReferences.activateRoot(rootAbs)
   watch.start(rootAbs)
   search.stop()
   search.start(rootAbs) // 根目录变化 → 索引重建（含首启全量）
   diaryAutomation.activateRoot(rootAbs)
-}, () => search.getState())
+}, () => search.getState(), planReferences)
 // 导出为（BR-008）：离屏窗口渲染，PDF/PNG 双路；渲染层源与主窗口同源加载
 const exportService = new ExportService(repo, () => storage.getRootAbs() ?? '', resolveRendererSource(__dirname), join(__dirname, '../preload/index.js'))
 const plantumlService = createPlantumlService({
@@ -195,6 +200,8 @@ if (!app.requestSingleInstanceLock()) {
       search,
       planNameTemplates,
       agentUserDataDir: app.getPath('userData'),
+      workspaceTabs,
+      planReferences,
       plantuml: plantumlService,
       startup,
       captureDiaryRootGuard: (root) => diaryAutomation.captureRootGuard(root),
@@ -208,6 +215,7 @@ if (!app.requestSingleInstanceLock()) {
       shutdown: () => plantumlService.shutdown(),
       disposeIpc: () => {
         diaryAutomation.dispose()
+        planReferences.dispose()
         mainWindow?.removeListener('focus', onWindowFocus)
         disposeIpc()
       },

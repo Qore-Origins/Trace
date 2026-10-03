@@ -23,6 +23,7 @@ const DEFAULT_CONFIG: AppConfig = {
 
 export class ConfigService {
   private cache: AppConfig | null = null
+  private mutationQueue: Promise<void> = Promise.resolve()
 
   constructor(
     private userDataDir: string,
@@ -35,12 +36,15 @@ export class ConfigService {
 
   async load(): Promise<AppConfig> {
     if (this.cache) return this.cache
+    let loaded: AppConfig
     try {
       const raw = await fs.readFile(this.configFile(), 'utf8')
-      this.cache = { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as AppConfig) }
+      loaded = { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as AppConfig) }
     } catch {
-      this.cache = { ...DEFAULT_CONFIG }
+      loaded = { ...DEFAULT_CONFIG }
     }
+    // A concurrent load or mutation may have committed a newer config while this read was pending.
+    this.cache ??= loaded
     return this.cache
   }
 
@@ -49,9 +53,7 @@ export class ConfigService {
   }
 
   async setRootDir(dirAbs: string): Promise<void> {
-    const config = await this.load()
-    config.root_dir = dirAbs
-    await this.repo.writeAppJson(this.configFile(), config)
+    return this.mutateConfig((previous) => ({ ...previous, root_dir: dirAbs }))
   }
 
   async getWindowState(): Promise<WindowState> {
@@ -60,8 +62,23 @@ export class ConfigService {
   }
 
   async saveWindowState(state: WindowState): Promise<void> {
-    const config = await this.load()
-    config.window = state
-    await this.repo.writeAppJson(this.configFile(), config)
+    return this.mutateConfig((previous) => ({ ...previous, window: state }))
+  }
+
+  private mutateConfig(change: (previous: AppConfig) => AppConfig): Promise<void> {
+    const operation = this.mutationQueue.then(async () => {
+      const previous = await this.load()
+      const next = change(previous)
+      try {
+        await this.repo.writeAppJson(this.configFile(), next)
+      } catch (error) {
+        // A failed writer may have already replaced the file; keep recovery before the next mutation.
+        await this.repo.writeAppJson(this.configFile(), previous).catch(() => {})
+        throw error
+      }
+      this.cache = next
+    })
+    this.mutationQueue = operation.then(() => undefined, () => undefined)
+    return operation
   }
 }

@@ -40,8 +40,10 @@ export function CardShell(props: {
               ? t('cards.moodLabel')
               : props.kind === 'heading'
                 ? t('content.insertHeading')
+                : props.kind === 'plan_reference'
+                  ? t('cards.kindPlanReference')
                 : t('cards.kindNote')
-  const { moveComponent, removeComponent } = usePlanMutations()
+  const { moveComponent } = usePlanMutations()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.componentId })
   // 剥掉 scale 分量（仅保留位移补偿）：dnd-kit useDerivedTransform 在 index 切换时会给出
   // 初始/当前矩形的比例（scaleX/scaleY），卡片高度不一时被拖卡被拉伸成目标卡形状
@@ -76,14 +78,14 @@ export function CardShell(props: {
           const opened = usePlanStore.getState()
           confirmAction({
             title: t('actions.deleteComponentTitle', { name: kindLabel }), description: t('actions.deleteComponentDesc'),
-            onConfirm: () => {
+            onConfirm: async () => {
               const current = usePlanStore.getState()
               if (current.currentPath !== opened.currentPath || current.document !== opened.document) {
                 getMessage().warning(t('actions.staleConfirmation'))
                 return
               }
-              removeComponent(props.componentId)
-            }, afterConfirm: () => focusNearestCard(props.index)
+              if (await current.removeComponentWithImpact(props.componentId)) focusNearestCard(props.index)
+            }
           })
         }} />
       </div>

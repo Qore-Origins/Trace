@@ -17,6 +17,7 @@ import { useAppStore, subscribeAppEvents } from './stores/app-store'
 import { subscribeTreeEvents, useTreeStore } from './stores/tree-store'
 import { subscribePlanEvents } from './stores/plan-store'
 import { subscribeSearchEvents, useSearchStore } from './stores/search-store'
+import { useWorkspaceTabsStore } from './stores/workspace-tabs-store'
 import { useUiStore } from './stores/ui-store'
 import { usePrefStore, type DealDirection, type Language, type ScoreAnim, type ThemeMode } from './stores/pref-store'
 import { usePlantumlStatusStore } from './stores/plantuml-status-store'
@@ -191,6 +192,10 @@ export default function App(): React.JSX.Element {
       offSearch()
     }
   }, [bootstrap])
+
+  useEffect(() => {
+    void useWorkspaceTabsStore.getState().hydrate(phase === 'ready' ? rootDir : null)
+  }, [phase, rootDir])
 
   // 全局快捷键（ready 阶段生效，两视图共用）：Ctrl+, 设置 / Ctrl+F 搜索 / Ctrl+N 新建计划 / F5 刷新 / Ctrl+Shift+I 开发者工具
   // 树选中相关（F2 重命名 / Delete 删除）留在 WorkspaceView——日记视图下选中不可见，全局触发会误删隐藏选中

@@ -3,7 +3,7 @@ import type { TaskItem, TaskListPayload } from '@shared/plan-types'
 import { isPastPlannedDate } from '@shared/task-state'
 import { uuid32 } from '@shared/validation'
 import { useTranslation } from '../../i18n'
-import { usePlanMutations } from '../../stores/plan-store'
+import { usePlanMutations, useReferenceAwareTitle } from '../../stores/plan-store'
 import { ActionButton } from '../ui/ActionButton'
 import { removePlanRow } from '../ui/plan-row-actions'
 import { startTraceMeasure, traceNow } from '../../perf/marks'
@@ -20,6 +20,7 @@ export function TaskListCard({ comp, index, total, today }: CardRenderProps): Re
   const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as TaskListPayload
+  const title = useReferenceAwareTitle(comp)
   const doneCount = p.items.filter((t) => t.status === 'done').length
   const taskRenderStartedAt = traceNow()
   const finishTaskRender = startTraceMeasure('trace:task-render', taskRenderStartedAt, { taskCount: p.items.length })
@@ -45,13 +46,11 @@ export function TaskListCard({ comp, index, total, today }: CardRenderProps): Re
           <input
             className="single-title"
             style={{ fontSize: 14 }}
-            value={p.title}
+            value={title.value}
             placeholder={t('cards.taskListPlaceholder')}
-            onChange={(e) =>
-              patchComponent(comp.id, (payload) => {
-                ;(payload as TaskListPayload).title = e.target.value
-              })
-            }
+            onChange={(e) => title.setValue(e.target.value)}
+            onBlur={() => { void title.commit() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
           />
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
             {t('cards.arrived', { done: doneCount, total: p.items.length })}

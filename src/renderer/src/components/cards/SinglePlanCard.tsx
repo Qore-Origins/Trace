@@ -2,13 +2,14 @@ import { Checkbox, Input } from 'antd'
 import type { SinglePlanPayload } from '@shared/plan-types'
 import { todayDateStr, validateDueDate } from '@shared/validation'
 import { useTranslation } from '../../i18n'
-import { usePlanMutations } from '../../stores/plan-store'
+import { usePlanMutations, useReferenceAwareTitle } from '../../stores/plan-store'
 import { CardShell, type CardRenderProps } from './CardShell'
 
 export function SinglePlanCard({ comp, index, total }: CardRenderProps): React.JSX.Element {
   const { t } = useTranslation()
   const { patchComponent } = usePlanMutations()
   const p = comp.payload as SinglePlanPayload
+  const title = useReferenceAwareTitle(comp)
   return (
     <CardShell
       kind="single_plan"
@@ -26,13 +27,11 @@ export function SinglePlanCard({ comp, index, total }: CardRenderProps): React.J
           />
           <input
             className="single-title"
-            value={p.title}
+            value={title.value}
             placeholder={t('cards.singlePlaceholder')}
-            onChange={(e) =>
-              patchComponent(comp.id, (payload) => {
-                ;(payload as SinglePlanPayload).title = e.target.value
-              })
-            }
+            onChange={(e) => title.setValue(e.target.value)}
+            onBlur={() => { void title.commit() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
           />
         </div>
       }
