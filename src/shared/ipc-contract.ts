@@ -6,6 +6,8 @@ import type { PlanNameTemplateSettings } from './plan-name-templates'
 import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
 import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
 import type { AgentRequestSendInput, AgentRequestCancelInput, AgentRequestIdentity } from './agent-types'
+import type { AgentTargetGrantInput, AgentTargetGrantSet, AgentTargetValidationInput, AgentTargetGrantReleaseInput, AgentTargetGrant, AgentTargetChildrenInput, AgentTargetChild } from './agent-types'
+import type { AgentPermissionPolicy } from './agent-types'
 import type { WorkspaceTabsState } from './workspace-tabs-types'
 import type {
   PlanReferenceMode, PlanReferenceTarget, ReferenceImpactCommit, ReferenceImpactPreview,
@@ -125,6 +127,12 @@ export interface Channels {
   'agent:session:delete': { req: { id: string }; res: null }
   'agent:context:browse': { req: { parentPath: string }; res: PlanTreeNode[] }
   'agent:context:read': { req: AgentContextSelection; res: AgentContextEntry }
+  'agent:target:grant': { req: AgentTargetGrantInput; res: AgentTargetGrantSet }
+  'agent:target:validate': { req: AgentTargetValidationInput; res: AgentTargetGrant }
+  'agent:target:release': { req: AgentTargetGrantReleaseInput; res: null }
+  'agent:target:children': { req: AgentTargetChildrenInput; res: AgentTargetChild[] }
+  'agent:policy:get': { req: void; res: AgentPermissionPolicy }
+  'agent:policy:set': { req: AgentPermissionPolicy; res: AgentPermissionPolicy }
   'agent:preview:create': { req: AgentPreviewInput; res: AgentOutboundPreview }
   'agent:preview:cancel': { req: { token: string }; res: null }
   'agent:request:send': { req: AgentRequestSendInput; res: AgentRequestIdentity }

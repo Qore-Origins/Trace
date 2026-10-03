@@ -11,6 +11,7 @@ const AGENT_CHANNELS = new Set<string>(['agent:provider:list', 'agent:profile:li
 for (const channel of ['agent:session:list', 'agent:session:create', 'agent:session:read', 'agent:session:update', 'agent:session:delete', 'agent:context:browse', 'agent:context:read', 'agent:preview:create', 'agent:preview:cancel']) AGENT_CHANNELS.add(channel)
 for (const channel of ['agent:request:send', 'agent:request:cancel']) AGENT_CHANNELS.add(channel)
 AGENT_CHANNELS.add('agent:capability:test')
+for (const channel of ['agent:target:grant', 'agent:target:validate', 'agent:target:children', 'agent:target:release', 'agent:policy:get', 'agent:policy:set']) AGENT_CHANNELS.add(channel)
 const WORKSPACE_TABS_CHANNELS = new Set<string>(['workspace-tabs:get', 'workspace-tabs:set'])
 const PLAN_REFERENCE_CHANNELS = new Set<string>([
   'plan-reference:search', 'plan-reference:resolve', 'plan-reference:commitTarget', 'plan-reference:inbound',

@@ -24,7 +24,9 @@ import { AgentConversationService } from '../services/agent-conversation-service
 import { AgentSessionRepository } from '../services/agent-session-repository'
 import { AgentContextService } from '../services/agent-context-service'
 import { AgentRequestService } from '../services/agent-request-service'
-import { registerAgentConversationIpc } from './agent-conversation-ipc'
+import { AgentTargetService } from '../services/agent-target-service'
+import { AgentPolicyService } from '../services/agent-policy-service'
+import { registerAgentConversationIpc, registerAgentPolicyIpc, registerAgentTargetIpc } from './agent-conversation-ipc'
 import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlStatusDto } from '../../shared/plantuml-types'
 
 interface Deps {
@@ -45,6 +47,7 @@ interface Deps {
   agentProfiles?: AgentProfileService
   agentUserDataDir?: string
   agentConversations?: AgentConversationService
+  agentPolicyService?: AgentPolicyService
 }
 
 type Handler<K extends ChannelName> = (payload: Channels[K]['req']) => Promise<Channels[K]['res']>
@@ -177,6 +180,17 @@ export function registerIpc(deps: Deps): () => void {
     return agentConversations
   }
   registerAgentConversationIpc(reg, conversation)
+  const agentTargets = new AgentTargetService(storage)
+  registerAgentTargetIpc(reg, () => agentTargets)
+  let agentPolicies = deps.agentPolicyService
+  const policy = (): AgentPolicyService => {
+    if (!agentPolicies) {
+      if (!deps.agentUserDataDir) throw new TraceError(ERR.INTERNAL, '权限策略目录不可用')
+      agentPolicies = new AgentPolicyService(deps.agentUserDataDir)
+    }
+    return agentPolicies
+  }
+  registerAgentPolicyIpc(reg, policy)
   let agentRequests: AgentRequestService | undefined
   const requests = (): AgentRequestService => {
     agentRequests ??= new AgentRequestService(conversation(), agent(), (event) => {
@@ -205,6 +219,7 @@ export function registerIpc(deps: Deps): () => void {
     // configured path and does not delete or migrate data from the inactive library.
     const recoverySelection = rootActivationStatus !== 'active' && p.confirmed === false
     const result = await app.setRootDir(p.dirPath, p.confirmed || recoverySelection)
+    agentTargets.invalidateRoot()
     startup.markRootActivated()
     return result
   })

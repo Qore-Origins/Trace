@@ -1,0 +1,304 @@
+// @vitest-environment happy-dom
+import { promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TraceBridge, TraceResult } from '../src/shared/ipc-contract'
+import { ERR } from '../src/shared/errors'
+
+const electron = vi.hoisted(() => {
+  const handlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>()
+  return {
+    handlers,
+    ipcMain: { handle: (name: string, handler: (event: unknown, payload: unknown) => Promise<unknown>) => handlers.set(name, handler), removeHandler: (name: string) => handlers.delete(name) },
+    ipcRenderer: { invoke: vi.fn((name: string, payload: unknown) => handlers.get(name)?.({}, payload)), on: vi.fn(), removeListener: vi.fn() },
+    contextBridge: { exposeInMainWorld: (_key: string, value: unknown) => Reflect.set(window, 'trace', value) },
+    dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() },
+    safeStorage: { isAsyncEncryptionAvailable: vi.fn(async () => false) }
+  }
+})
+vi.mock('electron', () => electron)
+
+let directory: string
+let root: string
+let bridge: TraceBridge
+let dispose: (() => void) | undefined
+let repo: InstanceType<typeof import('../src/main/services/plan-repository').PlanRepository>
+let storage: InstanceType<typeof import('../src/main/services/storage-service').StorageService>
+
+type DynamicInvoke = (channel: string, payload?: unknown) => Promise<TraceResult<unknown>>
+function invoke(channel: string, payload?: unknown): Promise<TraceResult<unknown>> {
+  return (bridge as unknown as { invoke: DynamicInvoke }).invoke(channel, payload)
+}
+
+beforeEach(async () => {
+  vi.resetModules()
+  vi.clearAllMocks()
+  electron.handlers.clear()
+  Reflect.deleteProperty(window, 'trace')
+  directory = await fs.mkdtemp(join(tmpdir(), 'trace-agent-target-'))
+  root = join(directory, 'library')
+  await fs.mkdir(root)
+
+  const [{ PlanRepository }, { StorageService }, { registerIpc }] = await Promise.all([
+    import('../src/main/services/plan-repository'),
+    import('../src/main/services/storage-service'),
+    import('../src/main/ipc/register')
+  ])
+  repo = new PlanRepository()
+  await repo.ensureLibraryRoot(root)
+  await fs.mkdir(join(root, 'Legacy'))
+  await repo.writePlanAtomic(root, 'Legacy', {
+    format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+    updated_at: '2026-10-04T00:00:00.000Z', components: []
+  })
+  storage = new StorageService(repo)
+  storage.setRoot(root)
+  const startup = {
+    waitForRootActivation: async () => undefined,
+    waitForBootstrap: async () => undefined,
+    getRootActivationStatus: () => 'active',
+    runAfterRootActivation: (operation: () => unknown) => Promise.resolve().then(operation),
+    markRootActivated: vi.fn(), onWindowShown: vi.fn()
+  }
+  dispose = registerIpc({
+    app: {
+      getAppInfo: vi.fn(), bootstrap: vi.fn(),
+      setRootDir: vi.fn(async (nextRoot: string) => { storage.setRoot(nextRoot); return {} })
+    },
+    storage, config: {}, transfer: {}, export: {}, search: {}, startup,
+    agentUserDataDir: directory, getWindow: () => null, log: vi.fn()
+  } as unknown as Parameters<typeof registerIpc>[0])
+  await import('../src/preload/index')
+  bridge = window.trace
+})
+
+afterEach(async () => {
+  dispose?.()
+  dispose = undefined
+  await fs.rm(directory, { recursive: true, force: true })
+})
+
+describe('agent target typed IPC', () => {
+  it('issues a read-only grant for a legacy plan and invalidates it when its snapshot changes', async () => {
+    const planFile = join(root, 'Legacy', 'plan.json')
+    const originalBytes = await fs.readFile(planFile)
+
+    const issued = await invoke('agent:target:grant', {
+      targets: [{ kind: 'plan', path: 'Legacy' }]
+    })
+    expect(issued).toMatchObject({ ok: true, data: { targets: [{ kind: 'plan', path: 'Legacy' }] } })
+    if (!issued.ok) return
+
+    const data = issued.data as { id: string; targets: Array<{ ref: string }> }
+    expect(data.id).toEqual(expect.any(String))
+    expect(data.targets[0].ref).toEqual(expect.any(String))
+    expect(JSON.stringify(issued)).not.toContain(root)
+    expect(await fs.readFile(planFile)).toEqual(originalBytes)
+
+    const resolved = await invoke('agent:target:validate', { setId: data.id, ref: data.targets[0].ref })
+    expect(resolved).toMatchObject({ ok: true, data: { kind: 'plan', path: 'Legacy' } })
+
+    const changed = JSON.parse(originalBytes.toString('utf8')) as Record<string, unknown>
+    changed.updated_at = '2026-10-04T00:00:01.000Z'
+    await fs.writeFile(planFile, JSON.stringify(changed))
+    expect(await invoke('agent:target:validate', { setId: data.id, ref: data.targets[0].ref }))
+      .toMatchObject({ ok: false })
+  })
+
+  it('keeps multiple same-name @ targets distinct by exact relative path', async () => {
+    for (const path of ['AreaOne/Shared', 'AreaTwo/Shared']) {
+      await fs.mkdir(join(root, path), { recursive: true })
+      await repo.writePlanAtomic(root, path, {
+        format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+        updated_at: '2026-10-04T00:00:00.000Z', components: []
+      })
+    }
+
+    const issued = await invoke('agent:target:grant', {
+      targets: [
+        { kind: 'plan', path: 'AreaOne/Shared' },
+        { kind: 'plan', path: 'AreaTwo/Shared' }
+      ]
+    })
+    expect(issued).toMatchObject({ ok: true, data: { targets: [
+      { kind: 'plan', path: 'AreaOne/Shared', name: 'Shared' },
+      { kind: 'plan', path: 'AreaTwo/Shared', name: 'Shared' }
+    ] } })
+    if (!issued.ok) return
+    const targets = (issued.data as { targets: Array<{ ref: string }> }).targets
+    expect(targets[0].ref).not.toBe(targets[1].ref)
+  })
+
+  it('revokes an existing target set when the active library changes', async () => {
+    const issued = await invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'Legacy' }] })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    const set = issued.data as { id: string; targets: Array<{ ref: string }> }
+    const nextRoot = join(directory, 'second-library')
+    await fs.mkdir(nextRoot)
+    await repo.ensureLibraryRoot(nextRoot)
+
+    expect(await invoke('app:setRootDir', { dirPath: nextRoot, confirmed: true })).toMatchObject({ ok: true })
+    expect(await invoke('agent:target:validate', { setId: set.id, ref: set.targets[0].ref }))
+      .toMatchObject({ ok: false })
+  })
+
+  it('rejects a plan reached through a symbolic-link directory', async () => {
+    const outside = join(directory, 'outside')
+    await fs.mkdir(outside)
+    await repo.writePlanAtomic(directory, 'outside', {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    await fs.symlink(outside, join(root, 'Linked'), 'junction')
+
+    expect(await invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'Linked' }] }))
+      .toMatchObject({ ok: false })
+  })
+
+  it('keeps the canonical root hash separate from each library UUID', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    const targets = new AgentTargetService(storage)
+    const firstGrant = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
+    const first = await targets.resolveGrant({ setId: firstGrant.id, ref: firstGrant.targets[0].ref })
+    const firstLibraryId = first.libraryId
+    expect(first.rootHash).not.toBe(firstLibraryId)
+
+    const secondRoot = join(directory, 'third-library')
+    await fs.mkdir(secondRoot)
+    await repo.ensureLibraryRoot(secondRoot)
+    await fs.mkdir(join(secondRoot, 'Legacy'))
+    await repo.writePlanAtomic(secondRoot, 'Legacy', {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    storage.setRoot(secondRoot)
+    targets.invalidateRoot()
+    const secondGrant = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
+    const second = await targets.resolveGrant({ setId: secondGrant.id, ref: secondGrant.targets[0].ref })
+    expect(second.libraryId).not.toBe(firstLibraryId)
+    expect(second.rootHash).not.toBe(second.libraryId)
+  })
+
+  it('invalidates a stable plan grant if its plan ID changes without a timestamp change', async () => {
+    const stablePath = 'StablePlan'
+    const oldPlanId = '11111111111111111111111111111111'
+    const newPlanId = '22222222222222222222222222222222'
+    await fs.mkdir(join(root, stablePath))
+    await repo.writePlanAtomic(root, stablePath, {
+      format_version: '1', plan_id: oldPlanId,
+      created_at: '2026-10-04T00:00:00.000Z', updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    const issued = await invoke('agent:target:grant', { targets: [{ kind: 'plan', path: stablePath }] })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    const grantSet = issued.data as { id: string; targets: Array<{ ref: string }> }
+
+    await repo.writePlanAtomic(root, stablePath, {
+      format_version: '1', plan_id: newPlanId,
+      created_at: '2026-10-04T00:00:00.000Z', updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    expect(await invoke('agent:target:validate', { setId: grantSet.id, ref: grantSet.targets[0].ref }))
+      .toMatchObject({ ok: false })
+  })
+
+  it('lists only direct children for an explicitly granted folder', async () => {
+    await fs.mkdir(join(root, 'Container', 'Nested', 'DeepPlan'), { recursive: true })
+    await repo.writePlanAtomic(root, 'Container/Nested/DeepPlan', {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    await fs.mkdir(join(root, 'Container', 'DirectPlan'))
+    await repo.writePlanAtomic(root, 'Container/DirectPlan', {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+
+    const issued = await invoke('agent:target:grant', { targets: [{ kind: 'folder', path: 'Container' }] })
+    expect(issued).toMatchObject({ ok: true })
+    if (!issued.ok) return
+    const set = issued.data as { id: string; targets: Array<{ ref: string }> }
+    const children = await invoke('agent:target:children', { setId: set.id, ref: set.targets[0].ref })
+    expect(children).toMatchObject({ ok: true, data: [
+      { path: 'Container/DirectPlan', kind: 'plan' },
+      { path: 'Container/Nested', kind: 'folder' }
+    ] })
+    expect(JSON.stringify(children)).not.toContain('DeepPlan')
+  })
+
+  it('does not let a plan grant enumerate children', async () => {
+    const issued = await invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'Legacy' }] })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    const grantSet = issued.data as { id: string; targets: Array<{ ref: string }> }
+    expect(await invoke('agent:target:children', { setId: grantSet.id, ref: grantSet.targets[0].ref }))
+      .toMatchObject({ ok: false })
+  })
+
+  it('grants only an explicitly selected trash entry and binds its current manifest revision', async () => {
+    await storage.trashPlan('Legacy')
+    const listed = await invoke('trash:list')
+    expect(listed).toMatchObject({ ok: true, data: [{ kind: 'plan', status: 'trashed' }] })
+    if (!listed.ok) return
+    const entry = (listed.data as Array<{ id: string; manifest_revision: number }>)[0]
+
+    const issued = await invoke('agent:target:grant', { targets: [{ kind: 'trash', entryId: entry.id }] })
+    expect(issued).toMatchObject({ ok: true, data: { targets: [{ kind: 'trash', path: null, name: 'Legacy' }] } })
+    expect(JSON.stringify(issued)).not.toContain('trashEntryToken')
+    if (!issued.ok) return
+    const grantSet = issued.data as { id: string; targets: Array<{ ref: string }> }
+    expect(await invoke('agent:target:validate', { setId: grantSet.id, ref: grantSet.targets[0].ref }))
+      .toMatchObject({ ok: true, data: { kind: 'trash', path: null } })
+
+    const manifestPath = join(root, '.trace', 'trash', entry.id, 'manifest.json')
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Record<string, unknown>
+    manifest.revision = entry.manifest_revision + 1
+    await fs.writeFile(manifestPath, JSON.stringify(manifest))
+    expect(await invoke('agent:target:validate', { setId: grantSet.id, ref: grantSet.targets[0].ref }))
+      .toMatchObject({ ok: false })
+  })
+
+  it('rejects an expired opaque grant', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    let now = Date.now()
+    const targets = new AgentTargetService(storage, () => now)
+    const grantSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
+    now += 5 * 60 * 1000
+    await expect(targets.validate({ setId: grantSet.id, ref: grantSet.targets[0].ref })).rejects.toMatchObject({ code: expect.any(Number) })
+  })
+
+  it('allows an explicit trash target to create one exact preview, never a commit', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    await storage.trashPlan('Legacy')
+    const entry = (await storage.listTrashEntries())[0]
+    const targets = new AgentTargetService(storage)
+    const grantSet = await targets.grant({ targets: [{ kind: 'trash', entryId: entry.id }] })
+    const resolved = await targets.resolveGrant({ setId: grantSet.id, ref: grantSet.targets[0].ref })
+    expect(resolved.kind).toBe('trash')
+    if (resolved.kind !== 'trash') return
+    expect(resolved.trashEntryToken).toEqual(expect.any(String))
+
+    const preview = await targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'purge')
+    expect(preview).toMatchObject({ operation: 'purge', entry_id: entry.id })
+    expect((await storage.listTrashEntries()).some((candidate) => candidate.id === entry.id)).toBe(true)
+    await expect(targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'purge'))
+      .rejects.toMatchObject({ code: expect.any(Number) })
+  })
+
+  it('rejects a trash preview if the manifest digest changes without a revision bump', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    await storage.trashPlan('Legacy')
+    const entry = (await storage.listTrashEntries())[0]
+    const targets = new AgentTargetService(storage)
+    const grantSet = await targets.grant({ targets: [{ kind: 'trash', entryId: entry.id }] })
+    const manifestPath = join(root, '.trace', 'trash', entry.id, 'manifest.json')
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Record<string, unknown>
+    manifest.deleted_at = '2026-10-04T00:00:01.000Z'
+    await fs.writeFile(manifestPath, JSON.stringify(manifest))
+
+    await expect(targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'restore'))
+      .rejects.toMatchObject({ code: ERR.CONFIRMATION_REQUIRED })
+    expect((await storage.listTrashEntries()).some((candidate) => candidate.id === entry.id)).toBe(true)
+  })
+})

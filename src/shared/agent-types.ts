@@ -66,6 +66,32 @@ export interface AgentTarget {
   endpoint: string
   model: string
 }
+export type AgentTargetKind = 'plan' | 'folder' | 'trash'
+export type AgentTargetSelection =
+  | { kind: 'plan'; path: string }
+  | { kind: 'folder'; path: string }
+  | { kind: 'trash'; entryId: string }
+export interface AgentTargetGrantInput { targets: AgentTargetSelection[] }
+export interface AgentTargetGrant {
+  ref: string
+  kind: AgentTargetKind
+  path: string | null
+  name: string
+  revision: string
+  expiresAt: string
+}
+export interface AgentTargetGrantSet {
+  id: string
+  expiresAt: string
+  targets: AgentTargetGrant[]
+}
+export interface AgentTargetValidationInput { setId: string; ref: string }
+export interface AgentTargetGrantReleaseInput { setId: string }
+export interface AgentTargetChildrenInput extends AgentTargetValidationInput {}
+export interface AgentTargetChild { path: string; name: string; kind: 'plan' | 'folder' }
+
+export type AgentPermissionMode = 'confirm' | 'restricted' | 'unrestricted'
+export interface AgentPermissionPolicy { mode: AgentPermissionMode }
 export interface AgentRequestProvenance {
   id: string
   profileId: string
