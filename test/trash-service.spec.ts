@@ -102,6 +102,17 @@ describe('trashPlan and restore/purge confirmations', () => {
     })
   })
 
+  it('rejects a plan revision when plan.json disappeared before trashing', async () => {
+    const plan = await createPlan('Plan')
+    await fs.writeFile(join(root, 'Plan', 'attachment.bin'), 'keep')
+    await fs.unlink(join(root, 'Plan', 'plan.json'))
+
+    await expect(trash.trashPlan(context, 'Plan', plan.updated_at)).rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(fs.readFile(join(root, 'Plan', 'attachment.bin'), 'utf8')).resolves.toBe('keep')
+    await expect(fs.access(join(root, 'Plan', 'plan.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect((await trash.list(context)).entries).toEqual([])
+  })
+
   it('purges only after a fresh one-shot preview and a matching confirmation token', async () => {
     await createPlan('Permanent')
     const id = await moveIntoTrash('Permanent')
@@ -263,6 +274,34 @@ describe('manifest recovery matrix', () => {
     expect((await trash.list(context)).entries).toEqual([])
   })
 
+  it('rejects an interrupted purge token when the residual payload is replaced after preview', async () => {
+    await createPlan('Source')
+    const id = await moveIntoTrash('Source')
+    const payload = join(root, '.trace', 'trash', id, 'payload')
+    await patchManifest(id, { phase: 'purging' })
+    const preview = await trash.previewPurge(context, id)
+    const displacedPayload = join(outside, 'displaced-payload')
+    await fs.rename(payload, displacedPayload)
+    await fs.mkdir(payload)
+    await fs.writeFile(join(payload, 'replacement.txt'), 'not reviewed')
+
+    await expect(trash.commitPurge(context, preview.confirmation_token)).rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(fs.readFile(join(payload, 'replacement.txt'), 'utf8')).resolves.toBe('not reviewed')
+    await expect(fs.readFile(join(displacedPayload, 'plan.json'), 'utf8')).resolves.toContain('content:Source')
+  })
+
+  it('allows a fresh interrupted-purge preview to clear a partially removed payload', async () => {
+    await createPlan('Source')
+    const id = await moveIntoTrash('Source')
+    const payload = join(root, '.trace', 'trash', id, 'payload')
+    await patchManifest(id, { phase: 'purging' })
+    await fs.unlink(join(payload, 'plan.json'))
+
+    const preview = await trash.previewPurge(context, id)
+    await expect(trash.commitPurge(context, preview.confirmation_token)).resolves.toHaveProperty('changed_plan_ids')
+    expect((await trash.list(context)).entries).toEqual([])
+  })
+
   it('cleans a completed purge only when the payload is already absent', async () => {
     await createPlan('Source')
     const id = await moveIntoTrash('Source')
@@ -309,6 +348,37 @@ describe('manifest recovery matrix', () => {
 })
 
 describe('confirmation binding and library/path safety', () => {
+  it.each([
+    ['unknown file', 'unexpected.bin'],
+    ['stale manifest temp file', '.manifest.json.123.deadbeef.tmp']
+  ])('blocks entry actions when an entry contains a %s before preview', async (_label, filename) => {
+    await createPlan('Source')
+    const id = await moveIntoTrash('Source')
+    await fs.writeFile(join(root, '.trace', 'trash', id, filename), 'unexpected')
+
+    expect((await trash.list(context)).entries).toMatchObject([
+      { id, status: 'needs_attention', can_purge: false }
+    ])
+    await expect(trash.issueEntryTarget(context, id)).rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(trash.previewRestore(context, id)).rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(trash.previewPurge(context, id)).rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(fs.access(join(root, '.trace', 'trash', id, 'payload', 'plan.json'))).resolves.toBeUndefined()
+  })
+
+  it.each([
+    ['unknown file', 'unexpected.bin'],
+    ['stale manifest temp file', '.manifest.json.123.deadbeef.tmp']
+  ])('rechecks a %s added after purge preview and preserves payload', async (_label, filename) => {
+    await createPlan('Source')
+    const id = await moveIntoTrash('Source')
+    const preview = await trash.previewPurge(context, id)
+    await fs.writeFile(join(root, '.trace', 'trash', id, filename), 'unexpected')
+
+    await expect(trash.commitPurge(context, preview.confirmation_token)).rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(fs.access(join(root, '.trace', 'trash', id, 'payload', 'plan.json'))).resolves.toBeUndefined()
+    await expect(fs.readFile(join(root, '.trace', 'trash', id, filename), 'utf8')).resolves.toBe('unexpected')
+  })
+
   it('binds confirmations to manifest revision and digest, library, and root generation', async () => {
     await createPlan('Source')
     const id = await moveIntoTrash('Source')

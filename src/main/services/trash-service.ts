@@ -17,7 +17,6 @@ const MANIFEST_NAME = 'manifest.json'
 const PAYLOAD_NAME = 'payload'
 const CONFIRMATION_TTL_MS = 120_000
 const ENTRY_ID_PATTERN = /^[a-f0-9]{32}$/
-const MANIFEST_TEMP_PATTERN = /^\.manifest\.json\.\d+\.[a-f0-9]+\.tmp$/
 
 export interface TrashLibraryContext {
   root: string
@@ -58,6 +57,7 @@ interface ConfirmationRecord {
   manifest_revision: number
   manifest_digest: string
   preview_digest: string
+  payload_state_digest?: string
   reference_impact_signature: string
   issued_at_ms: number
   restore_relative_path?: string
@@ -86,6 +86,24 @@ interface DirectorySnapshot {
   directory_identity: TrashDirectoryIdentity
   plans: TrashPlanSnapshot[]
 }
+
+interface PayloadFileSnapshot {
+  relative_path: string
+  kind: 'file'
+  device: string
+  inode: string
+  birthtime_ns: string
+  size: string
+  content_digest: string
+}
+
+interface PayloadDirectorySnapshot {
+  relative_path: string
+  kind: 'directory'
+  identity: TrashDirectoryIdentity
+}
+
+type PayloadSnapshot = PayloadFileSnapshot | PayloadDirectorySnapshot
 
 /** Per-library, manifest-backed trash. Only explicit confirmation tokens can restore or purge. */
 export class TrashService {
@@ -124,14 +142,15 @@ export class TrashService {
         continue
       }
 
-      const entryDirectory = join(trashRoot, directory.name)
-      const contents = await fs.readdir(entryDirectory, { withFileTypes: true }).catch(() => [])
-      if (contents.some((item) => item.name !== MANIFEST_NAME && item.name !== PAYLOAD_NAME && !MANIFEST_TEMP_PATTERN.test(item.name))) {
-        rows.push(attentionEntry(id, 'entry_incomplete'))
-        continue
-      }
-      if (contents.some((item) => MANIFEST_TEMP_PATTERN.test(item.name))) {
-        rows.push(attentionEntry(id, 'entry_incomplete'))
+      try {
+        await this.assertEntryContents(context, directory.name)
+      } catch (error) {
+        const issue = error instanceof TraceError && error.code === ERR.FORMAT_INVALID
+          ? 'manifest_invalid'
+          : error instanceof TraceError && error.code === ERR.PATH_UNSAFE
+            ? 'identity_mismatch'
+            : 'entry_incomplete'
+        rows.push(attentionEntry(id, issue))
         continue
       }
 
@@ -166,9 +185,9 @@ export class TrashService {
     await this.assertNoSymlinkPath(context.root, relative)
     const sourceAbs = resolveWithin(context.root, relative).abs
     const snapshot = await this.captureDirectorySnapshot(context.root, relative)
-    if (snapshot.kind === 'plan' && expectedUpdatedAt !== undefined) {
+    if (expectedUpdatedAt !== undefined) {
       const rootPlan = snapshot.plans.find((plan) => plan.relative_path === '')
-      if (!rootPlan || rootPlan.updated_at !== expectedUpdatedAt) {
+      if (snapshot.kind !== 'plan' || !rootPlan || rootPlan.updated_at !== expectedUpdatedAt) {
         throw new TraceError(ERR.CONFLICT, '目标计划已变化，请重新预览确认')
       }
     }
@@ -372,14 +391,16 @@ export class TrashService {
     if (entryStatus !== 'trashed' && entryStatus !== 'purge_interrupted') {
       throw new TraceError(ERR.CONFLICT, '此回收站条目不可清除')
     }
+    const payloadStateDigest = await this.payloadStateDigest(context.root, manifest)
     const referenceImpact = await this.referenceImpactReader(context.library_id, collectPlanIds(manifest))
     const previewDigest = digestJson({
       operation: 'purge', entry_id: entryId, manifest_revision: manifest.revision,
       manifest_digest: digestJson(manifest), library_id: context.library_id,
       root_generation: context.root_generation, reference_impact_signature: referenceImpact.signature,
-      reference_count: referenceImpact.reference_count, status: entryStatus
+      reference_count: referenceImpact.reference_count, status: entryStatus,
+      payload_state_digest: payloadStateDigest
     })
-    return this.issueConfirmation(context, manifest, 'purge', previewDigest, referenceImpact)
+    return this.issueConfirmation(context, manifest, 'purge', previewDigest, referenceImpact, undefined, payloadStateDigest)
   }
 
   async commitPurge(
@@ -396,6 +417,10 @@ export class TrashService {
     if (status !== 'trashed' && status !== 'purge_interrupted') {
       throw new TraceError(ERR.CONFLICT, '此回收站条目不可清除')
     }
+    const payloadStateDigest = await this.payloadStateDigest(context.root, manifest)
+    if (!confirmation.payload_state_digest || payloadStateDigest !== confirmation.payload_state_digest) {
+      throw new TraceError(ERR.CONFLICT, '待清除内容已变化，请重新预览确认')
+    }
     const referenceImpact = await this.referenceImpactReader(context.library_id, collectPlanIds(manifest))
     if (referenceImpact.signature !== confirmation.reference_impact_signature) {
       throw new TraceError(ERR.CONFLICT, '计划关联影响已变化，请重新预览确认')
@@ -405,7 +430,8 @@ export class TrashService {
       manifest_revision: manifest.revision, manifest_digest: digestJson(manifest),
       library_id: context.library_id, root_generation: context.root_generation,
       reference_impact_signature: referenceImpact.signature,
-      reference_count: referenceImpact.reference_count, status
+      reference_count: referenceImpact.reference_count, status,
+      payload_state_digest: payloadStateDigest
     })
     if (expectedPreviewDigest !== confirmation.preview_digest) {
       throw new TraceError(ERR.CONFLICT, '清除预览已变化，请重新预览确认')
@@ -432,7 +458,8 @@ export class TrashService {
     operation: TrashOperation,
     previewDigest: string,
     referenceImpact: TrashReferenceImpactSummary,
-    restoreTarget?: { relative_path: string; parent_identity: TrashDirectoryIdentity }
+    restoreTarget?: { relative_path: string; parent_identity: TrashDirectoryIdentity },
+    payloadStateDigest?: string
   ): Promise<TrashOperationPreview> {
     const token = uuid32()
     const issuedAtMs = this.now()
@@ -447,6 +474,7 @@ export class TrashService {
       manifest_revision: manifest.revision,
       manifest_digest: manifestDigest,
       preview_digest: previewDigest,
+      ...(payloadStateDigest ? { payload_state_digest: payloadStateDigest } : {}),
       reference_impact_signature: referenceImpact.signature,
       issued_at_ms: issuedAtMs,
       ...(restoreTarget ? {
@@ -583,12 +611,39 @@ export class TrashService {
     entryId: string,
     phases: TrashManifestPhase[]
   ): Promise<TrashManifest> {
+    await this.assertEntryContents(context, entryId)
     const manifest = await this.readManifest(context, entryId)
     if (!phases.includes(manifest.phase)) throw new TraceError(ERR.CONFLICT, '回收站条目当前不可操作')
     if (manifest.phase === 'trashed' && !(await this.payloadMatches(context.root, manifest))) {
       throw new TraceError(ERR.CONFLICT, '回收站内容状态异常，已保留数据')
     }
     return manifest
+  }
+
+  private async assertEntryContents(context: TrashLibraryContext, entryId: string): Promise<void> {
+    const relative = `${TRASH_RELATIVE_ROOT}/${entryId}`
+    await this.assertNoSymlinkPath(context.root, relative)
+    const entryDirectory = this.entryDirectory(context.root, entryId)
+    const directoryStat = await fs.lstat(entryDirectory)
+    if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
+      throw new TraceError(ERR.PATH_UNSAFE, '回收站条目目录不安全')
+    }
+    const entries = await fs.readdir(entryDirectory, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name === MANIFEST_NAME) {
+        if (!entry.isFile() || entry.isSymbolicLink()) {
+          throw new TraceError(ERR.FORMAT_INVALID, '回收站条目记录状态异常，已保留数据')
+        }
+        continue
+      }
+      if (entry.name === PAYLOAD_NAME) {
+        if (!entry.isDirectory() || entry.isSymbolicLink()) {
+          throw new TraceError(ERR.PATH_UNSAFE, '回收站内容状态异常，已保留数据')
+        }
+        continue
+      }
+      throw new TraceError(ERR.CONFLICT, '回收站条目包含未识别文件，已保留数据')
+    }
   }
 
   private async recoverEntry(context: TrashLibraryContext, manifest: TrashManifest): Promise<RecoveryResult> {
@@ -761,6 +816,78 @@ export class TrashService {
   private async payloadMatches(root: string, manifest: TrashManifest): Promise<boolean> {
     const payloadRelative = `${TRASH_RELATIVE_ROOT}/${manifest.entry_id}/${PAYLOAD_NAME}`
     return this.snapshotMatches(root, payloadRelative, manifest)
+  }
+
+  private async payloadStateDigest(root: string, manifest: TrashManifest): Promise<string> {
+    const payloadRelative = `${TRASH_RELATIVE_ROOT}/${manifest.entry_id}/${PAYLOAD_NAME}`
+    await this.assertNoSymlinkPath(root, payloadRelative)
+    const payloadAbs = resolveWithin(root, payloadRelative).abs
+    const snapshots: PayloadSnapshot[] = []
+    const pending: Array<{ relative_path: string; absolute_path: string }> = [
+      { relative_path: '', absolute_path: payloadAbs }
+    ]
+
+    while (pending.length > 0) {
+      const current = pending.pop() as { relative_path: string; absolute_path: string }
+      const directoryIdentity = await this.readDirectoryIdentity(current.absolute_path)
+      snapshots.push({ relative_path: current.relative_path, kind: 'directory', identity: directoryIdentity })
+      const entries = await fs.readdir(current.absolute_path, { withFileTypes: true })
+      entries.sort((left, right) => left.name.localeCompare(right.name))
+      for (const entry of entries) {
+        const relativePath = current.relative_path
+          ? `${current.relative_path}/${entry.name}`
+          : entry.name
+        const fullRelativePath = `${payloadRelative}/${relativePath}`
+        const absolutePath = join(current.absolute_path, entry.name)
+        if (entry.isSymbolicLink()) throw new TraceError(ERR.PATH_UNSAFE, '回收站内容包含链接路径，已保留数据')
+        if (entry.isDirectory()) {
+          await this.assertNoSymlinkPath(root, fullRelativePath)
+          pending.push({ relative_path: relativePath, absolute_path: absolutePath })
+          continue
+        }
+        if (!entry.isFile()) throw new TraceError(ERR.PATH_UNSAFE, '回收站内容包含不支持的文件类型，已保留数据')
+        await this.assertNoSymlinkPath(root, fullRelativePath)
+        snapshots.push(await this.snapshotPayloadFile(absolutePath, relativePath))
+      }
+    }
+
+    snapshots.sort((left, right) => left.relative_path.localeCompare(right.relative_path) || left.kind.localeCompare(right.kind))
+    return digestJson(snapshots)
+  }
+
+  private async snapshotPayloadFile(absolutePath: string, relativePath: string): Promise<PayloadFileSnapshot> {
+    const pathStat = await fs.lstat(absolutePath, { bigint: true })
+    if (!pathStat.isFile() || pathStat.isSymbolicLink()) {
+      throw new TraceError(ERR.PATH_UNSAFE, '回收站文件路径不安全，已保留数据')
+    }
+    const handle = await fs.open(absolutePath, 'r')
+    try {
+      const before = await handle.stat({ bigint: true })
+      if (!before.isFile() || pathStat.dev !== before.dev || pathStat.ino !== before.ino ||
+        pathStat.birthtimeNs !== before.birthtimeNs || pathStat.size !== before.size ||
+        pathStat.mtimeNs !== before.mtimeNs || pathStat.ctimeNs !== before.ctimeNs) {
+        throw new TraceError(ERR.CONFLICT, '回收站内容在读取时发生变化，请重新预览')
+      }
+      const hash = createHash('sha256')
+      const stream = handle.createReadStream({ autoClose: false })
+      for await (const chunk of stream) hash.update(chunk)
+      const after = await handle.stat({ bigint: true })
+      if (before.dev !== after.dev || before.ino !== after.ino || before.birthtimeNs !== after.birthtimeNs ||
+        before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) {
+        throw new TraceError(ERR.CONFLICT, '回收站内容在读取时发生变化，请重新预览')
+      }
+      return {
+        relative_path: relativePath,
+        kind: 'file',
+        device: String(before.dev),
+        inode: String(before.ino),
+        birthtime_ns: String(before.birthtimeNs),
+        size: String(before.size),
+        content_digest: hash.digest('hex')
+      }
+    } finally {
+      await handle.close().catch(() => undefined)
+    }
   }
 
   private async readDirectoryIdentity(path: string): Promise<TrashDirectoryIdentity> {
