@@ -95,4 +95,37 @@ describe('agent permission policy typed IPC', () => {
       .toMatchObject({ ok: false, code: ERR.PATH_UNSAFE })
     expect((await fs.lstat(file)).isDirectory()).toBe(true)
   })
+
+  it('rejects a symlink at the policy destination without reading or overwriting its target', async () => {
+    const file = join(directory, 'agent-permission-policy.json')
+    const outside = join(directory, 'outside-existing-policy.json')
+    const original = '{"version":1,"mode":"confirm"}'
+    await fs.writeFile(outside, original)
+    await fs.symlink(outside, file, 'file')
+
+    expect(await invoke('agent:policy:get')).toMatchObject({ ok: false, code: ERR.PATH_UNSAFE })
+    expect(await invoke('agent:policy:set', { mode: 'restricted' }))
+      .toMatchObject({ ok: false, code: ERR.PATH_UNSAFE })
+    expect(await fs.readFile(outside, 'utf8')).toBe(original)
+  })
+
+  it('rejects a symlink at the randomized temporary path without touching its target', async () => {
+    const outside = join(directory, 'outside-policy-target.json')
+    const original = 'do not overwrite'
+    await fs.writeFile(outside, original)
+
+    const originalWriteFile = fs.writeFile.bind(fs)
+    const writeFile = vi.spyOn(fs, 'writeFile').mockImplementation(async (...args) => {
+      const [path] = args
+      if (String(path).endsWith('.tmp')) await fs.symlink(outside, path, 'file')
+      return Reflect.apply(originalWriteFile, fs, args) as ReturnType<typeof fs.writeFile>
+    })
+    try {
+      expect(await invoke('agent:policy:set', { mode: 'restricted' }))
+        .toMatchObject({ ok: false, code: ERR.PATH_UNSAFE })
+      expect(await fs.readFile(outside, 'utf8')).toBe(original)
+    } finally {
+      writeFile.mockRestore()
+    }
+  })
 })

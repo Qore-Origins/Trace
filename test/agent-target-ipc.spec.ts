@@ -31,6 +31,13 @@ function invoke(channel: string, payload?: unknown): Promise<TraceResult<unknown
   return (bridge as unknown as { invoke: DynamicInvoke }).invoke(channel, payload)
 }
 
+function committedUserMessage(id: string) {
+  return {
+    id, role: 'user' as const, content: 'committed message', status: 'complete' as const,
+    createdAt: '2026-10-04T00:00:00.000Z', requestId: 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+  }
+}
+
 beforeEach(async () => {
   vi.resetModules()
   vi.clearAllMocks()
@@ -106,6 +113,66 @@ describe('agent target typed IPC', () => {
       .toMatchObject({ ok: false })
   })
 
+  it('rejects a plan file swapped to an outside symlink while its snapshot is being read', async () => {
+    const planPath = 'ReadRace'
+    const planFile = join(root, planPath, 'plan.json')
+    const detachedPlanFile = join(directory, 'detached-plan.json')
+    const outsidePlanFile = join(directory, 'outside-plan.json')
+    await fs.mkdir(join(root, planPath))
+    await repo.writePlanAtomic(root, planPath, {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    await fs.writeFile(outsidePlanFile, await fs.readFile(planFile))
+
+    const originalReadPlan = storage.readPlan.bind(storage)
+    const readSpy = vi.spyOn(storage, 'readPlan').mockImplementation(async (relativePath) => {
+      if (relativePath === planPath) {
+        await fs.rename(planFile, detachedPlanFile)
+        await fs.symlink(outsidePlanFile, planFile, 'file')
+      }
+      return originalReadPlan(relativePath)
+    })
+    try {
+      expect(await invoke('agent:target:grant', { targets: [{ kind: 'plan', path: planPath }] }))
+        .toMatchObject({ ok: false })
+    } finally {
+      readSpy.mockRestore()
+      await fs.rm(planFile, { force: true })
+      await fs.rename(detachedPlanFile, planFile)
+    }
+  })
+
+  it('rejects a plan file replaced by a same-content file while its snapshot is being read', async () => {
+    const planPath = 'ReadReplacementRace'
+    const planFile = join(root, planPath, 'plan.json')
+    const replacementFile = join(root, planPath, 'replacement.json')
+    const detachedPlanFile = join(directory, 'detached-replaced-plan.json')
+    await fs.mkdir(join(root, planPath))
+    await repo.writePlanAtomic(root, planPath, {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    await fs.copyFile(planFile, replacementFile)
+
+    const originalReadPlan = storage.readPlan.bind(storage)
+    const readSpy = vi.spyOn(storage, 'readPlan').mockImplementation(async (relativePath) => {
+      if (relativePath === planPath) {
+        await fs.rename(planFile, detachedPlanFile)
+        await fs.rename(replacementFile, planFile)
+      }
+      return originalReadPlan(relativePath)
+    })
+    try {
+      expect(await invoke('agent:target:grant', { targets: [{ kind: 'plan', path: planPath }] }))
+        .toMatchObject({ ok: false })
+    } finally {
+      readSpy.mockRestore()
+      await fs.rm(planFile, { force: true })
+      await fs.rename(detachedPlanFile, planFile)
+    }
+  })
+
   it('keeps multiple same-name @ targets distinct by exact relative path', async () => {
     for (const path of ['AreaOne/Shared', 'AreaTwo/Shared']) {
       await fs.mkdir(join(root, path), { recursive: true })
@@ -128,6 +195,24 @@ describe('agent target typed IPC', () => {
     if (!issued.ok) return
     const targets = (issued.data as { targets: Array<{ ref: string }> }).targets
     expect(targets[0].ref).not.toBe(targets[1].ref)
+  })
+
+  it('issues a typed grant for more than twenty distinct @ targets', async () => {
+    const paths = Array.from({ length: 21 }, (_, index) => `Many/Plan${String(index + 1).padStart(2, '0')}`)
+    for (const path of paths) {
+      await fs.mkdir(join(root, path), { recursive: true })
+      await repo.writePlanAtomic(root, path, {
+        format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+        updated_at: '2026-10-04T00:00:00.000Z', components: []
+      })
+    }
+
+    const issued = await invoke('agent:target:grant', {
+      targets: paths.map((path) => ({ kind: 'plan', path }))
+    })
+    expect(issued).toMatchObject({ ok: true })
+    if (!issued.ok) return
+    expect((issued.data as { targets: Array<{ ref: string }> }).targets).toHaveLength(21)
   })
 
   it('revokes an existing target set when the active library changes', async () => {
@@ -161,7 +246,9 @@ describe('agent target typed IPC', () => {
     const { AgentTargetService } = await import('../src/main/services/agent-target-service')
     const targets = new AgentTargetService(storage)
     const firstGrant = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
-    const first = await targets.resolveGrant({ setId: firstGrant.id, ref: firstGrant.targets[0].ref })
+    const firstMessage = committedUserMessage('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    await targets.bindGrantSetToUserMessage(firstGrant.id, firstMessage)
+    const first = await targets.resolveGrantForMessage({ setId: firstGrant.id, ref: firstGrant.targets[0].ref }, firstMessage.id)
     const firstLibraryId = first.libraryId
     expect(first.rootHash).not.toBe(firstLibraryId)
 
@@ -176,7 +263,9 @@ describe('agent target typed IPC', () => {
     storage.setRoot(secondRoot)
     targets.invalidateRoot()
     const secondGrant = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
-    const second = await targets.resolveGrant({ setId: secondGrant.id, ref: secondGrant.targets[0].ref })
+    const secondMessage = committedUserMessage('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+    await targets.bindGrantSetToUserMessage(secondGrant.id, secondMessage)
+    const second = await targets.resolveGrantForMessage({ setId: secondGrant.id, ref: secondGrant.targets[0].ref }, secondMessage.id)
     expect(second.libraryId).not.toBe(firstLibraryId)
     expect(second.rootHash).not.toBe(second.libraryId)
   })
@@ -268,21 +357,50 @@ describe('agent target typed IPC', () => {
     await expect(targets.validate({ setId: grantSet.id, ref: grantSet.targets[0].ref })).rejects.toMatchObject({ code: expect.any(Number) })
   })
 
+  it('binds a grant set to one committed user message and rejects error-message or cross-message use', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    const targets = new AgentTargetService(storage)
+    const grantSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
+    const grant = { setId: grantSet.id, ref: grantSet.targets[0].ref }
+    const userMessage = committedUserMessage('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    const nextUserMessage = committedUserMessage('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+    const errorMessage = {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', role: 'assistant', content: '', status: 'error-interrupted',
+      createdAt: '2026-10-04T00:00:00.000Z', requestId: 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+    } as const
+
+    await expect(targets.resolveGrantForMessage(grant, userMessage.id))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    await targets.bindGrantSetToUserMessage(grantSet.id, userMessage)
+    await targets.bindGrantSetToUserMessage(grantSet.id, userMessage)
+    await expect(targets.resolveGrantForMessage(grant, userMessage.id)).resolves.toMatchObject({ kind: 'plan' })
+    await expect(targets.bindGrantSetToUserMessage(grantSet.id, nextUserMessage))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(targets.resolveGrantForMessage(grant, nextUserMessage.id))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+
+    const unboundSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
+    await expect(targets.bindGrantSetToUserMessage(unboundSet.id, errorMessage))
+      .rejects.toMatchObject({ code: ERR.VALIDATION })
+  })
+
   it('allows an explicit trash target to create one exact preview, never a commit', async () => {
     const { AgentTargetService } = await import('../src/main/services/agent-target-service')
     await storage.trashPlan('Legacy')
     const entry = (await storage.listTrashEntries())[0]
     const targets = new AgentTargetService(storage)
     const grantSet = await targets.grant({ targets: [{ kind: 'trash', entryId: entry.id }] })
-    const resolved = await targets.resolveGrant({ setId: grantSet.id, ref: grantSet.targets[0].ref })
+    const message = committedUserMessage('dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+    await targets.bindGrantSetToUserMessage(grantSet.id, message)
+    const resolved = await targets.resolveGrantForMessage({ setId: grantSet.id, ref: grantSet.targets[0].ref }, message.id)
     expect(resolved.kind).toBe('trash')
     if (resolved.kind !== 'trash') return
     expect(resolved.trashEntryToken).toEqual(expect.any(String))
 
-    const preview = await targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'purge')
+    const preview = await targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'purge', message.id)
     expect(preview).toMatchObject({ operation: 'purge', entry_id: entry.id })
     expect((await storage.listTrashEntries()).some((candidate) => candidate.id === entry.id)).toBe(true)
-    await expect(targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'purge'))
+    await expect(targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'purge', message.id))
       .rejects.toMatchObject({ code: expect.any(Number) })
   })
 
@@ -292,12 +410,14 @@ describe('agent target typed IPC', () => {
     const entry = (await storage.listTrashEntries())[0]
     const targets = new AgentTargetService(storage)
     const grantSet = await targets.grant({ targets: [{ kind: 'trash', entryId: entry.id }] })
+    const message = committedUserMessage('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee')
+    await targets.bindGrantSetToUserMessage(grantSet.id, message)
     const manifestPath = join(root, '.trace', 'trash', entry.id, 'manifest.json')
     const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Record<string, unknown>
     manifest.deleted_at = '2026-10-04T00:00:01.000Z'
     await fs.writeFile(manifestPath, JSON.stringify(manifest))
 
-    await expect(targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'restore'))
+    await expect(targets.previewTrashOperation({ setId: grantSet.id, ref: grantSet.targets[0].ref }, 'restore', message.id))
       .rejects.toMatchObject({ code: ERR.CONFIRMATION_REQUIRED })
     expect((await storage.listTrashEntries()).some((candidate) => candidate.id === entry.id)).toBe(true)
   })

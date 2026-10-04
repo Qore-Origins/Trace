@@ -5,16 +5,16 @@ import type {
   AgentTargetChild, AgentTargetGrant, AgentTargetGrantInput, AgentTargetGrantSet,
   AgentTargetSelection, AgentTargetValidationInput
 } from '../../shared/agent-types'
+import type { AgentMessage } from '../../shared/agent-types'
 import type { PlanLibraryMeta } from '../../shared/plan-types'
 import type { TrashEntry, TrashOperation, TrashOperationPreview } from '../../shared/trash-types'
 import { isUuid32 } from '../../shared/validation'
 import { ERR, TraceError } from '../../shared/errors'
-import { agentRecord } from './agent-session-repository'
+import { agentRecord, assertAgentSessionId } from './agent-session-repository'
 import { assertRealPathWithinRoot, normalizeRelSafe, resolveWithin } from './path-safety'
 import type { StorageService } from './storage-service'
 
 const GRANT_TTL_MS = 5 * 60 * 1000
-const MAX_TARGETS_PER_SET = 20
 const LIBRARY_META_REL_PATH = '.trace/plan-library.json'
 
 interface LibraryState {
@@ -61,6 +61,7 @@ type TargetGrantRecord = CapturedTarget & {
   ref: string
   revision: string
   expiresAtMs: number
+  boundMessageId?: string
 }
 
 interface AgentTargetResolutionBase extends AgentTargetGrant {
@@ -131,6 +132,10 @@ function directoryIdentity(stat: BigIntStats): string {
   return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`
 }
 
+function fileSnapshot(stat: BigIntStats): string {
+  return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`
+}
+
 function parseSelection(value: unknown): AgentTargetSelection {
   if (!agentRecord(value) || typeof value.kind !== 'string') {
     throw new TraceError(ERR.VALIDATION, '计划、文件夹或回收站目标无效')
@@ -153,7 +158,7 @@ function parseSelection(value: unknown): AgentTargetSelection {
 }
 
 function parseGrantInput(value: unknown): AgentTargetSelection[] {
-  if (!exactRecord(value, ['targets']) || !Array.isArray(value.targets) || value.targets.length < 1 || value.targets.length > MAX_TARGETS_PER_SET) {
+  if (!exactRecord(value, ['targets']) || !Array.isArray(value.targets) || value.targets.length < 1) {
     throw new TraceError(ERR.VALIDATION, '目标授权请求无效')
   }
   const targets = value.targets.map(parseSelection)
@@ -221,6 +226,34 @@ export class AgentTargetService {
     return { id: setId, expiresAt: new Date(expiresAtMs).toISOString(), targets }
   }
 
+  /**
+   * Main-process seam. Call only after the session service has persisted this
+   * complete user message; never pass renderer/provider-supplied identifiers.
+   */
+  async bindGrantSetToUserMessage(setId: string, message: AgentMessage): Promise<void> {
+    if (typeof setId !== 'string' || !exactRecord(message, ['id', 'role', 'content', 'status', 'createdAt', 'requestId'])) {
+      throw new TraceError(ERR.VALIDATION, '目标授权绑定无效')
+    }
+    if (message.role !== 'user' || message.status !== 'complete' || typeof message.content !== 'string' ||
+      typeof message.createdAt !== 'string' || !Number.isFinite(Date.parse(message.createdAt))) {
+      throw new TraceError(ERR.VALIDATION, '目标授权只能绑定到已提交的用户消息')
+    }
+    assertAgentSessionId(message.id)
+    assertAgentSessionId(message.requestId)
+    const messageId = message.id
+
+    const records = [...this.grants.values()].filter((record) => record.setId === setId)
+    if (records.length === 0) throw new TraceError(ERR.PATH_NOT_FOUND, '目标授权不存在或已失效')
+    if (records.some((record) => this.now() >= record.expiresAtMs)) {
+      this.deleteSet(setId)
+      throw new TraceError(ERR.CONFLICT, '目标授权已过期，请重新选择')
+    }
+    if (records.some((record) => record.boundMessageId !== undefined && record.boundMessageId !== messageId)) {
+      throw new TraceError(ERR.CONFLICT, '目标授权已绑定到另一条用户消息')
+    }
+    for (const record of records) record.boundMessageId = messageId
+  }
+
   async validate(input: unknown): Promise<AgentTargetGrant> {
     const { setId, ref } = parseValidationInput(input)
     const record = this.grants.get(ref)
@@ -246,30 +279,37 @@ export class AgentTargetService {
     return this.toDto(record)
   }
 
-  async resolveGrant(input: unknown): Promise<AgentTargetResolution> {
+  async resolveGrantForMessage(input: unknown, messageId: string): Promise<AgentTargetResolution> {
+    assertAgentSessionId(messageId)
     const { setId, ref } = parseValidationInput(input)
-    await this.validate({ setId, ref })
     const record = this.grants.get(ref)
-    if (!record) throw new TraceError(ERR.PATH_NOT_FOUND, '目标授权不存在或已失效')
-    const resolution = {
-      ...this.toDto(record), setId: record.setId, root: record.configuredRoot,
-      rootHash: record.rootHash, libraryId: record.libraryId,
-      rootGeneration: record.rootGeneration
+    if (!record || record.setId !== setId) throw new TraceError(ERR.PATH_NOT_FOUND, '目标授权不存在或已失效')
+    if (record.boundMessageId !== messageId) throw new TraceError(ERR.CONFLICT, '目标授权未绑定到当前用户消息')
+    await this.validate({ setId, ref })
+    const currentRecord = this.grants.get(ref)
+    if (!currentRecord || currentRecord.boundMessageId !== messageId) {
+      throw new TraceError(ERR.CONFLICT, '目标授权未绑定到当前用户消息')
     }
-    return record.kind === 'plan'
-      ? { ...resolution, kind: 'plan', path: record.relativePath, directoryIdentity: record.directoryIdentity, planId: record.planId, updatedAt: record.updatedAt }
-      : record.kind === 'folder'
-        ? { ...resolution, kind: 'folder', path: record.relativePath, directoryIdentity: record.directoryIdentity }
+    const resolvedRecord = currentRecord
+    const resolution = {
+      ...this.toDto(resolvedRecord), setId: resolvedRecord.setId, root: resolvedRecord.configuredRoot,
+      rootHash: resolvedRecord.rootHash, libraryId: resolvedRecord.libraryId,
+      rootGeneration: resolvedRecord.rootGeneration
+    }
+    return resolvedRecord.kind === 'plan'
+      ? { ...resolution, kind: 'plan', path: resolvedRecord.relativePath, directoryIdentity: resolvedRecord.directoryIdentity, planId: resolvedRecord.planId, updatedAt: resolvedRecord.updatedAt }
+      : resolvedRecord.kind === 'folder'
+        ? { ...resolution, kind: 'folder', path: resolvedRecord.relativePath, directoryIdentity: resolvedRecord.directoryIdentity }
         : {
-          ...resolution, kind: 'trash', path: null, entryId: record.entryId,
-          manifestRevision: record.manifestRevision, status: record.status,
-          trashEntryToken: record.trashEntryToken
+          ...resolution, kind: 'trash', path: null, entryId: resolvedRecord.entryId,
+          manifestRevision: resolvedRecord.manifestRevision, status: resolvedRecord.status,
+          trashEntryToken: resolvedRecord.trashEntryToken
         }
   }
 
-  async previewTrashOperation(input: unknown, operation: TrashOperation): Promise<TrashOperationPreview> {
+  async previewTrashOperation(input: unknown, operation: TrashOperation, messageId: string): Promise<TrashOperationPreview> {
     if (operation !== 'restore' && operation !== 'purge') throw new TraceError(ERR.VALIDATION, '回收站操作无效')
-    const resolution = await this.resolveGrant(input)
+    const resolution = await this.resolveGrantForMessage(input, messageId)
     if (resolution.kind !== 'trash') throw new TraceError(ERR.VALIDATION, '该授权不是回收站条目')
     const record = this.grants.get(resolution.ref)
     if (!record || record.kind !== 'trash') throw new TraceError(ERR.PATH_NOT_FOUND, '回收站授权不存在或已失效')
@@ -344,6 +384,12 @@ export class AgentTargetService {
     return null
   }
 
+  private deleteSet(setId: string): void {
+    for (const [ref, record] of this.grants) {
+      if (record.setId === setId) this.grants.delete(ref)
+    }
+  }
+
   private async readLibraryState(): Promise<LibraryState> {
     const configuredRoot = this.storage.getRootAbs()
     if (!configuredRoot) throw new TraceError(ERR.STATE_MACHINE, '请先打开计划库')
@@ -394,10 +440,25 @@ export class AgentTargetService {
     const directory = await this.captureDirectory(library, relativePath)
 
     const planFile = resolveWithin(library.configuredRoot, `${directory.relativePath}/plan.json`).abs
-    const fileStat = await fs.lstat(planFile)
+    const fileStat = await fs.lstat(planFile, { bigint: true })
     if (fileStat.isSymbolicLink() || !fileStat.isFile()) throw new TraceError(ERR.PATH_UNSAFE, '计划文件身份不安全')
     await assertRealPathWithinRoot(library.canonicalRoot, planFile)
+    const realPlanFile = await fs.realpath(planFile)
+    const verifiedFileStat = await fs.lstat(planFile, { bigint: true })
+    if (verifiedFileStat.isSymbolicLink() || !verifiedFileStat.isFile() ||
+      fileSnapshot(fileStat) !== fileSnapshot(verifiedFileStat)) {
+      throw new TraceError(ERR.CONFLICT, '计划文件在读取前发生变化，请重新选择')
+    }
+
     const document = await this.storage.readPlan(directory.relativePath)
+    await assertRealPathWithinRoot(library.canonicalRoot, planFile)
+    const afterStat = await fs.lstat(planFile, { bigint: true })
+    if (afterStat.isSymbolicLink() || !afterStat.isFile()) throw new TraceError(ERR.PATH_UNSAFE, '计划文件身份不安全')
+    const afterRealPlanFile = await fs.realpath(planFile)
+    await assertRealPathWithinRoot(library.canonicalRoot, afterRealPlanFile)
+    if (fileSnapshot(verifiedFileStat) !== fileSnapshot(afterStat) || pathKey(realPlanFile) !== pathKey(afterRealPlanFile)) {
+      throw new TraceError(ERR.CONFLICT, '计划文件在读取期间发生变化，请重新选择')
+    }
     if (typeof document.updated_at !== 'string' || !Number.isFinite(Date.parse(document.updated_at))) {
       throw new TraceError(ERR.FORMAT_INVALID, '计划版本无效')
     }

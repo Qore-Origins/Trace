@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto'
-import { promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { promises as fs, type BigIntStats } from 'node:fs'
 import type { AgentPermissionMode, AgentPermissionPolicy } from '../../shared/agent-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { agentRecord } from './agent-session-repository'
+import { assertRealPathWithinRoot, resolveWithin } from './path-safety'
 
 const POLICY_FILE = 'agent-permission-policy.json'
 const POLICY_VERSION = 1
+const POLICY_MAX_BYTES = 4096
 const ALLOWED_MODES = new Set<AgentPermissionMode>(['confirm', 'restricted', 'unrestricted'])
 
 interface PersistedPolicy {
@@ -35,6 +36,11 @@ function isMissing(error: unknown): boolean {
   return error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT'
 }
 
+function sameFileSnapshot(left: BigIntStats, right: BigIntStats): boolean {
+  return left.dev === right.dev && left.ino === right.ino && left.birthtimeNs === right.birthtimeNs &&
+    left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs
+}
+
 export class AgentPolicyService {
   private queue: Promise<void> = Promise.resolve()
 
@@ -56,17 +62,45 @@ export class AgentPolicyService {
   }
 
   private file(): string {
-    return join(this.userDataDir, POLICY_FILE)
+    return resolveWithin(this.userDataDir, POLICY_FILE).abs
+  }
+
+  private async assertFilePath(path: string, allowMissing: boolean): Promise<BigIntStats | undefined> {
+    await assertRealPathWithinRoot(this.userDataDir, path, { allowMissing })
+    try {
+      const stat = await fs.lstat(path, { bigint: true })
+      if (stat.isSymbolicLink() || !stat.isFile()) throw new TraceError(ERR.PATH_UNSAFE, '本地权限策略路径不安全')
+      await assertRealPathWithinRoot(this.userDataDir, path)
+      return stat
+    } catch (error) {
+      if (allowMissing && isMissing(error)) return undefined
+      throw error
+    }
   }
 
   private async read(): Promise<PersistedPolicy> {
+    try {
+      const directoryStat = await fs.stat(this.userDataDir)
+      if (!directoryStat.isDirectory()) throw new TraceError(ERR.PATH_UNSAFE, '本地权限策略目录不安全')
+    } catch (error) {
+      if (isMissing(error)) return { version: POLICY_VERSION, mode: 'confirm' }
+      throw error
+    }
+
     const path = this.file()
     try {
-      const stat = await fs.lstat(path)
-      if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 4096) {
+      const before = await this.assertFilePath(path, true)
+      if (!before) return { version: POLICY_VERSION, mode: 'confirm' }
+      if (before.size > BigInt(POLICY_MAX_BYTES)) {
         throw new TraceError(ERR.FORMAT_INVALID, '本地权限策略文件无效，原文件已保留')
       }
-      const parsed: unknown = JSON.parse(await fs.readFile(path, 'utf8'))
+      const contents = await fs.readFile(path)
+      if (contents.byteLength > POLICY_MAX_BYTES) throw new TraceError(ERR.FORMAT_INVALID, '本地权限策略文件无效，原文件已保留')
+      const after = await this.assertFilePath(path, false)
+      if (!after || !sameFileSnapshot(before, after)) {
+        throw new TraceError(ERR.CONFLICT, '本地权限策略在读取期间发生变化')
+      }
+      const parsed: unknown = JSON.parse(contents.toString('utf8'))
       if (!exactRecord(parsed, ['version', 'mode']) || parsed.version !== POLICY_VERSION ||
         typeof parsed.mode !== 'string' || !ALLOWED_MODES.has(parsed.mode as AgentPermissionMode)) {
         throw new TraceError(ERR.FORMAT_INVALID, '本地权限策略格式无效，原文件已保留')
@@ -82,19 +116,23 @@ export class AgentPolicyService {
   private async write(policy: PersistedPolicy): Promise<void> {
     await fs.mkdir(this.userDataDir, { recursive: true })
     const path = this.file()
-    try {
-      const stat = await fs.lstat(path)
-      if (stat.isSymbolicLink() || !stat.isFile()) throw new TraceError(ERR.PATH_UNSAFE, '本地权限策略路径不安全')
-    } catch (error) {
-      if (!isMissing(error)) throw error
-    }
+    await this.assertFilePath(path, true)
 
-    const temporary = `${path}.${randomBytes(12).toString('hex')}.tmp`
+    const temporary = resolveWithin(this.userDataDir, `${POLICY_FILE}.${randomBytes(12).toString('hex')}.tmp`).abs
+    await this.assertFilePath(temporary, true)
     try {
       await fs.writeFile(temporary, JSON.stringify(policy), { flag: 'wx', mode: 0o600 })
+      await this.assertFilePath(temporary, false)
+      await this.assertFilePath(path, true)
       await fs.rename(temporary, path)
+      await this.assertFilePath(path, false)
     } catch (error) {
       if (error instanceof TraceError) throw error
+      try {
+        await this.assertFilePath(temporary, true)
+      } catch (pathError) {
+        if (pathError instanceof TraceError) throw pathError
+      }
       throw new TraceError(ERR.INTERNAL, '本地权限策略无法保存')
     } finally {
       await fs.rm(temporary, { force: true }).catch(() => undefined)
