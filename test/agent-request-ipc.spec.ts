@@ -8,6 +8,9 @@ import type { TraceBridge, TraceResult } from '../src/shared/ipc-contract'
 import type { AgentMessageStatus, AgentOutboundPreview, AgentRequestEvent, AgentRequestIdentity } from '../src/shared/agent-types'
 import type { AgentConversationService } from '../src/main/services/agent-conversation-service'
 import type { StorageService } from '../src/main/services/storage-service'
+import type { AgentTargetService } from '../src/main/services/agent-target-service'
+import type { AgentProfileService } from '../src/main/services/agent-profile-service'
+import type { AgentProviderTool } from '../src/main/services/agent-provider'
 import { AGENT_MAX_MESSAGE_LENGTH } from '../src/main/services/agent-session-repository'
 
 const electron = vi.hoisted(() => {
@@ -29,11 +32,12 @@ const electron = vi.hoisted(() => {
 vi.mock('electron', () => electron)
 
 let directory: string, root: string, profileId: string
-let bridge: TraceBridge, server: Server, storage: StorageService
+let bridge: TraceBridge, server: Server, storage: StorageService, agentTargets: AgentTargetService, profiles: AgentProfileService
 let dispose: () => void
 let events: AgentRequestEvent[], bodies: string[], responses: ServerResponse[]
 let respond: (response: ServerResponse) => void
 let logs: ReturnType<typeof vi.fn>
+const planReadTool: AgentProviderTool = { type: 'function', function: { name: 'plan.read', description: 'Read an explicitly granted plan.', parameters: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'], additionalProperties: false } } }
 const chunk = (text: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] })}\n\n`
 const end = 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
 function data<T>(result: TraceResult<T>): T { if (!result.ok) throw new Error(result.message); return result.data }
@@ -70,9 +74,13 @@ beforeEach(async () => {
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('loopback port missing')
   directory = await fs.mkdtemp(join(tmpdir(), 'trace-agent-request-')); root = join(directory, 'library'); await fs.mkdir(root)
-  const [{ registerIpc }, { StorageService }, { PlanRepository }] = await Promise.all([import('../src/main/ipc/register'), import('../src/main/services/storage-service'), import('../src/main/services/plan-repository')])
-  storage = new StorageService(new PlanRepository()); storage.setRoot(root)
-  dispose = registerIpc({ storage, agentUserDataDir: directory, getWindow: () => ({ webContents: { isDestroyed: () => false, send: (name: string, payload: unknown) => electron.listeners.get(name)?.forEach((listener) => listener({}, payload)) } }), log: logs } as unknown as Parameters<typeof registerIpc>[0])
+  const [{ registerIpc }, { StorageService }, { PlanRepository }, { AgentTargetService }, { AgentProfileService }] = await Promise.all([import('../src/main/ipc/register'), import('../src/main/services/storage-service'), import('../src/main/services/plan-repository'), import('../src/main/services/agent-target-service'), import('../src/main/services/agent-profile-service')])
+  const repository = new PlanRepository()
+  await repository.ensureLibraryRoot(root)
+  storage = new StorageService(repository); storage.setRoot(root)
+  agentTargets = new AgentTargetService(storage)
+  profiles = new AgentProfileService(directory)
+  dispose = registerIpc({ storage, agentUserDataDir: directory, agentProfiles: profiles, agentTargetService: agentTargets, agentToolDefinitions: () => [planReadTool], getWindow: () => ({ webContents: { isDestroyed: () => false, send: (name: string, payload: unknown) => electron.listeners.get(name)?.forEach((listener) => listener({}, payload)) } }), log: logs } as unknown as Parameters<typeof registerIpc>[0])
   await import('../src/preload/index'); bridge = window.trace
   bridge.on('trace:agent-request', (event) => events.push(event))
   profileId = data(await bridge.invoke('agent:profile:create', { name: '本机服务', endpoint: `http://127.0.0.1:${address.port}/v1`, model: 'test-model' })).id
@@ -109,6 +117,24 @@ describe('agent request public IPC and loopback SSE', () => {
     expect(persistenceMatches).toEqual([true, true])
     expect(JSON.stringify(events) + JSON.stringify(session) + JSON.stringify(logs.mock.calls)).not.toContain('loopback-test-key')
   })
+  it('sends native tools only after a passed capability and persists the complete call batch', async () => {
+    await profiles.recordCapability(profileId, { status: 'passed', testedAt: new Date().toISOString(), errorCategory: null })
+    respond = (response) => response.end('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"plan.read","arguments":"{\\"ref\\":\\"r1\\"}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n')
+    const preview = await createPreview()
+    expect(preview.tools).toEqual([planReadTool])
+    expect(preview.toolChoice).toBe('auto')
+    const expected = JSON.stringify({ model: preview.target.model, messages: preview.messages, stream: true, tools: preview.tools, tool_choice: 'auto' })
+    const finalPreviewMessage = preview.messages.at(-1)
+    if (finalPreviewMessage) finalPreviewMessage.content = 'renderer-tampering'
+    if (preview.tools?.[0]) preview.tools[0].function.description = 'renderer-tampering'
+    const identity = await send(preview)
+    expect(await terminal(identity)).toMatchObject({ status: 'complete', errorCategory: null })
+    expect(bodies).toEqual([expected])
+    expect(bodies[0]).not.toContain('userMessageId')
+    const saved = data(await bridge.invoke('agent:session:read', { id: identity.sessionId }))
+    expect(saved.messages[1]).toMatchObject({ status: 'complete', toolCalls: [{ id: 'call_1', type: 'function', function: { name: 'plan.read', arguments: '{"ref":"r1"}' } }] })
+    expect(saved.requests[0]).toMatchObject({ toolRounds: 1, toolCallCount: 1 })
+  })
   it('rejects cancelled, malformed, missing and reused tokens with no additional HTTP dispatch', async () => {
     const cancelled = await createPreview(); data(await bridge.invoke('agent:preview:cancel', { token: cancelled.token }))
     const raw = bridge as unknown as { invoke(name: string, payload: unknown): Promise<TraceResult<unknown>> }
@@ -118,13 +144,43 @@ describe('agent request public IPC and loopback SSE', () => {
     expect((await bridge.invoke('agent:request:send', { token: preview.token, sessionId: preview.sessionId })).ok).toBe(false)
     expect(bodies).toHaveLength(1)
   })
-  it.each(['session', 'profile', 'source', 'key-set', 'key-remove', 'key-add', 'missing-key'] as const)('rejects stale %s authorization before dispatch', async (change) => {
+  it('does not bind a canceled preview and binds the confirmed grant only to its persisted user message', async () => {
+    await plan('grant-bound-plan')
+    const session = data(await bridge.invoke('agent:session:create', { title: '授权绑定', profileId }))
+    const issued = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
+    const target = issued.targets[0]
+    const canceled = data(await bridge.invoke('agent:preview:create', { sessionId: session.id, message: '读取指定计划', selections: [], targetGrantSetId: issued.id, targetRefs: [target.ref] }))
+    expect(canceled.targets).toEqual([target])
+    expect(canceled.messages.at(-2)?.content).toContain(target.ref)
+    expect(canceled).not.toHaveProperty('userMessageId')
+    expect(canceled).not.toHaveProperty('targetGrantSetId')
+    data(await bridge.invoke('agent:preview:cancel', { token: canceled.token }))
+    await expect(agentTargets.resolveGrantForMessage({ setId: issued.id, ref: target.ref }, randomUUID()))
+      .rejects.toMatchObject({ code: 22 })
+    expect(bodies).toEqual([])
+
+    const approved = data(await bridge.invoke('agent:preview:create', { sessionId: session.id, message: '读取指定计划', selections: [], targetGrantSetId: issued.id, targetRefs: [target.ref] }))
+    const identity = await send(approved)
+    await terminal(identity)
+    const saved = data(await bridge.invoke('agent:session:read', { id: session.id }))
+    const user = saved.messages.find((message) => message.role === 'user')!
+    expect(user).toMatchObject({ status: 'complete', content: '读取指定计划' })
+    await expect(agentTargets.resolveGrantForMessage({ setId: issued.id, ref: target.ref }, user.id))
+      .resolves.toMatchObject({ kind: 'plan', path: 'one' })
+    expect(JSON.parse(bodies[0]).messages).toContainEqual(expect.objectContaining({ role: 'system', content: expect.stringContaining(target.ref) }))
+
+    const reuse = data(await bridge.invoke('agent:preview:create', { sessionId: session.id, message: '尝试复用授权', selections: [], targetGrantSetId: issued.id, targetRefs: [target.ref] }))
+    expect((await bridge.invoke('agent:request:send', { token: reuse.token, sessionId: session.id })).ok).toBe(false)
+    expect(bodies).toHaveLength(1)
+  })
+  it.each(['session', 'profile', 'source', 'capability', 'key-set', 'key-remove', 'key-add', 'missing-key'] as const)('rejects stale %s authorization before dispatch', async (change) => {
     await plan('before')
     if (change === 'missing-key' || change === 'key-add') data(await bridge.invoke('agent:key:remove', { id: profileId }))
     const preview = await createPreview([{ kind: 'plan', path: 'one' }])
     if (change === 'session') data(await bridge.invoke('agent:session:update', { id: preview.sessionId, title: 'changed', profileId }))
     if (change === 'profile') data(await bridge.invoke('agent:profile:update', { ...preview.target, model: 'changed' }))
     if (change === 'source') await plan('after')
+    if (change === 'capability') await profiles.recordCapability(profileId, { status: 'passed', testedAt: new Date().toISOString(), errorCategory: null })
     if (change === 'key-set' || change === 'key-add') data(await bridge.invoke('agent:key:set', { id: profileId, key: 'replacement-key' }))
     if (change === 'key-remove') data(await bridge.invoke('agent:key:remove', { id: profileId }))
     expect((await bridge.invoke('agent:request:send', { token: preview.token, sessionId: preview.sessionId })).ok).toBe(false)

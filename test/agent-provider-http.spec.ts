@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AGENT_REQUEST_BODY_LIMIT_BYTES, serializeAgentChatRequest, streamChatCompletion } from '../src/main/services/agent-provider'
+import { AGENT_REQUEST_BODY_LIMIT_BYTES, serializeAgentChatRequest, streamChatCompletion, type AgentChatMessage } from '../src/main/services/agent-provider'
 import { AgentSseAccumulator, AGENT_SSE_EVENT_LIMIT_BYTES } from '../src/main/services/agent-sse'
 
 const servers: Server[] = []
@@ -50,6 +50,119 @@ describe('SSE event bounds with controlled transport chunks', () => {
 })
 
 describe('OpenAI Chat Completions HTTP stream', () => {
+  it('serializes multiple native function tools with automatic selection', () => {
+    const tools = [
+      { type: 'function' as const, function: { name: 'plan.read', description: 'Read one plan.', parameters: { type: 'object', properties: {}, additionalProperties: false } } },
+      { type: 'function' as const, function: { name: 'plan.list_children', description: 'List direct children.', parameters: { type: 'object', properties: {}, additionalProperties: false } } }
+    ]
+    const messages = [{ role: 'user' as const, content: 'Inspect this plan.' }]
+    const body = JSON.parse(serializeAgentChatRequest('synthetic-model', messages, { tools, toolChoice: 'auto' })) as Record<string, unknown>
+
+    expect(body).toEqual({ model: 'synthetic-model', messages, stream: true, tools, tool_choice: 'auto' })
+  })
+
+  it('preserves assistant tool-call and matching tool-result message semantics', () => {
+    const messages = [
+      { role: 'assistant' as const, content: null, tool_calls: [{ id: 'call_1', type: 'function' as const, function: { name: 'plan.read', arguments: '{"ref":"abc"}' } }] },
+      { role: 'tool' as const, content: '{"title":"Plan"}', tool_call_id: 'call_1' },
+      { role: 'user' as const, content: 'Continue.' }
+    ]
+    expect(JSON.parse(serializeAgentChatRequest('synthetic-model', messages))).toMatchObject({ messages })
+  })
+
+  it.each([
+    [{ role: 'tool', content: 'result', tool_call_id: 'orphan' }],
+    [{ role: 'assistant', content: null }],
+    [
+      { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'plan.read', arguments: '{}' } }] },
+      { role: 'tool', content: 'wrong result', tool_call_id: 'call_2' }
+    ],
+    [
+      { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'plan.read', arguments: '{}' } }] },
+      { role: 'user', content: 'skipped result' }
+    ]
+  ])('rejects a malformed tool transcript before serialization', (messages) => {
+    expect(() => serializeAgentChatRequest('synthetic-model', messages as unknown as AgentChatMessage[])).toThrowError(expect.objectContaining({ category: 'validation' }))
+  })
+
+  it('merges interleaved tool-call fragments by index and preserves response order', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end([
+        chunk({ choices: [{ delta: { tool_calls: [{ index: 1, id: 'call-', type: 'function', function: { name: 'plan.', arguments: '{"folder_ref":' } }] } }] }),
+        chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-first', type: 'function', function: { name: 'plan.read', arguments: '{"plan_ref":"first"}' } }] } }] }),
+        chunk({ choices: [{ delta: { tool_calls: [{ index: 1, id: 'second', function: { name: 'list_children', arguments: '"second"}' } }] }, finish_reason: 'tool_calls' }] }),
+        'data: [DONE]\n\n'
+      ].join(''))
+    })
+    const tools = [
+      { type: 'function' as const, function: { name: 'plan.read', description: 'Read one plan.', parameters: { type: 'object', properties: { plan_ref: { type: 'string' } }, required: ['plan_ref'], additionalProperties: false } } },
+      { type: 'function' as const, function: { name: 'plan.list_children', description: 'List direct children.', parameters: { type: 'object', properties: { folder_ref: { type: 'string' } }, required: ['folder_ref'], additionalProperties: false } } }
+    ]
+
+    await expect(streamChatCompletion(input(endpoint), { tools, toolChoice: 'auto' })).resolves.toEqual({
+      text: '',
+      toolCalls: [
+        { id: 'call-first', name: 'plan.read', arguments: { plan_ref: 'first' } },
+        { id: 'call-second', name: 'plan.list_children', arguments: { folder_ref: 'second' } }
+      ]
+    })
+  })
+
+  it.each([
+    { name: 'duplicate call IDs', calls: [
+      { index: 0, id: 'same', type: 'function', function: { name: 'plan.read', arguments: '{}' } },
+      { index: 1, id: 'same', type: 'function', function: { name: 'plan.read', arguments: '{}' } }
+    ] },
+    { name: 'missing call IDs', calls: [
+      { index: 0, type: 'function', function: { name: 'plan.read', arguments: '{}' } }
+    ] },
+    { name: 'non-contiguous call order', calls: [
+      { index: 1, id: 'call', type: 'function', function: { name: 'plan.read', arguments: '{}' } }
+    ] },
+    { name: 'invalid JSON arguments', calls: [
+      { index: 0, id: 'call', type: 'function', function: { name: 'plan.read', arguments: '{bad}' } }
+    ] },
+    { name: 'more than twenty calls', calls: Array.from({ length: 21 }, (_, index) => ({
+      index, id: `call-${index}`, type: 'function', function: { name: 'plan.read', arguments: '{}' }
+    })) }
+  ])('rejects $name without returning executable tool calls', async ({ calls }) => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { tool_calls: calls } }] }) + chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + 'data: [DONE]\n\n')
+    })
+    const tool = { type: 'function' as const, function: { name: 'plan.read', description: 'Read one plan.', parameters: { type: 'object', properties: {}, additionalProperties: false } } }
+
+    await expect(streamChatCompletion(input(endpoint), { tools: [tool], toolChoice: 'auto' })).rejects.toMatchObject({ category: expect.stringMatching(/protocol|limit/) })
+  })
+
+  it.each([
+    { name: 'missing required arguments', arguments: '{}' },
+    { name: 'unknown arguments', arguments: '{"plan_ref":"ok","extra":true}' },
+    { name: 'arguments with wrong types', arguments: '{"plan_ref":3}' }
+  ])('rejects schema-invalid $name', async ({ arguments: args }) => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call', type: 'function', function: { name: 'plan.read', arguments: args } }] } }] }) + chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + 'data: [DONE]\n\n')
+    })
+    const tool = { type: 'function' as const, function: { name: 'plan.read', description: 'Read one plan.', parameters: { type: 'object', properties: { plan_ref: { type: 'string' } }, required: ['plan_ref'], additionalProperties: false } } }
+    await expect(streamChatCompletion(input(endpoint), { tools: [tool], toolChoice: 'auto' })).rejects.toMatchObject({ category: 'protocol' })
+  })
+
+  it.each([
+    { name: 'wrong function name', callName: 'plan.delete', arguments: '{"plan_ref":"p1"}', category: 'unsupported' },
+    { name: 'wrong schema value', callName: 'plan.read', arguments: '{"plan_ref":3}', category: 'unsupported' },
+    { name: 'wrong schema value in automatic mode', callName: 'plan.delete', arguments: '{"plan_ref":"p1"}', category: 'protocol', toolChoice: 'auto' as const }
+  ])('classifies $name according to capability-probe mode', async ({ callName, arguments: args, category, toolChoice }) => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call', type: 'function', function: { name: callName, arguments: args } }] } }] }) + chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + 'data: [DONE]\n\n')
+    })
+    const tool = { type: 'function' as const, function: { name: 'plan.read', description: 'Read one plan.', parameters: { type: 'object', properties: { plan_ref: { type: 'string' } }, required: ['plan_ref'], additionalProperties: false } } }
+    const options = { tools: [tool], toolChoice: toolChoice ?? 'plan.read' }
+    await expect(streamChatCompletion(input(endpoint), options)).rejects.toMatchObject({ category })
+  })
+
   it('sends the shared complete-envelope serialization at the exact request limit', async () => {
     let received = ''
     const endpoint = await serve((request, response) => {

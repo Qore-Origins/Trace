@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TraceBridge, TraceResult } from '../src/shared/ipc-contract'
 import type { AgentConversationService } from '../src/main/services/agent-conversation-service'
 import type { StorageService } from '../src/main/services/storage-service'
-import type { AgentOutboundPreview, AgentSession, AgentPreviewInput } from '../src/shared/agent-types'
+import type { AgentTargetService } from '../src/main/services/agent-target-service'
+import type { AgentProfileService } from '../src/main/services/agent-profile-service'
+import type { AgentCompletedToolCall, AgentOutboundPreview, AgentSession, AgentPreviewInput } from '../src/shared/agent-types'
 import { ERR } from '../src/shared/errors'
 import { AGENT_REQUEST_BODY_LIMIT_BYTES } from '../src/main/services/agent-provider'
 
@@ -28,6 +30,8 @@ let root: string
 let bridge: TraceBridge
 let service: AgentConversationService
 let storage: StorageService
+let targets: AgentTargetService
+let profiles: AgentProfileService
 let dispose: (() => void) | undefined
 let profileId: string
 let clock: number
@@ -56,18 +60,22 @@ beforeEach(async () => {
   root = join(directory, 'library')
   await fs.mkdir(root)
   clock = Date.parse('2026-10-02T01:00:00.000Z')
-  const [{ registerIpc }, { StorageService }, { PlanRepository }, { AgentProfileService }, { AgentSessionRepository }, { AgentContextService }, { AgentConversationService }] = await Promise.all([
+  const [{ registerIpc }, { StorageService }, { PlanRepository }, { AgentProfileService }, { AgentTargetService }, { AgentSessionRepository }, { AgentContextService }, { AgentConversationService }] = await Promise.all([
     import('../src/main/ipc/register'), import('../src/main/services/storage-service'), import('../src/main/services/plan-repository'), import('../src/main/services/agent-profile-service'),
+    import('../src/main/services/agent-target-service'),
     import('../src/main/services/agent-session-repository'), import('../src/main/services/agent-context-service'), import('../src/main/services/agent-conversation-service')
   ])
-  storage = new StorageService(new PlanRepository())
+  const repository = new PlanRepository()
+  await repository.ensureLibraryRoot(root)
+  storage = new StorageService(repository)
   storage.setRoot(root)
-  const profiles = new AgentProfileService(directory)
+  profiles = new AgentProfileService(directory)
   const created = await profiles.create({ name: '本机测试', endpoint: 'http://127.0.0.1:11434/v1', model: 'local' })
   profileId = created.id
+  targets = new AgentTargetService(storage)
   mount = async () => {
-    service = new AgentConversationService(new AgentSessionRepository(directory), new AgentContextService(storage), async (id) => (await profiles.list()).profiles.find((item) => item.id === id) ?? null, { now: () => clock })
-    dispose = registerIpc({ storage, agentProfiles: profiles, agentConversations: service, getWindow: () => null, log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
+    service = new AgentConversationService(new AgentSessionRepository(directory), new AgentContextService(storage), async (id) => (await profiles.list()).profiles.find((item) => item.id === id) ?? null, { now: () => clock, targets })
+    dispose = registerIpc({ storage, agentProfiles: profiles, agentConversations: service, agentTargetService: targets, getWindow: () => null, log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
   }
   await mount()
   await import('../src/preload/index')
@@ -119,6 +127,28 @@ describe('agent conversation typed IPC', () => {
     await expect(service.consumePreview(outbound.token)).rejects.toThrow()
     const persisted = await fs.readFile(join(directory, 'agent-sessions', `${created.id}.json`), 'utf8')
     expect(persisted).not.toContain('selected-context-body')
+  })
+  it('binds a target only after its confirmed user message is persisted and reuses that ID for continuation', async () => {
+    await plan('one', 'grant target content')
+    const created = await session()
+    const grantSet = value(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
+    const ref = grantSet.targets[0].ref
+    const outbound = await preview(created.id, { targetGrantSetId: grantSet.id, targetRefs: [ref] })
+    expect(outbound).not.toHaveProperty('userMessageId')
+    expect(outbound).not.toHaveProperty('targetGrantSetId')
+    const confirmed = await service.consumePreview(outbound.token)
+    let started = false
+    const profile = (await profiles.list()).profiles.find((item) => item.id === profileId)!
+    const identity = await service.dispatchPreview(confirmed, (_revision, dispatch) => dispatch(profile, 'synthetic-test-key'), () => { started = true })
+    expect(started).toBe(true)
+    const persisted = value(await bridge.invoke('agent:session:read', { id: created.id }))
+    const userMessage = persisted.messages.find((message) => message.role === 'user')!
+    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref }, userMessage.id)).resolves.toMatchObject({ kind: 'plan', path: 'one' })
+
+    await service.settleAssistant(created.id, identity.assistantId, 'Read complete.', 'complete')
+    const continuation = await service.beginAssistantContinuation(created.id, identity.requestId)
+    expect(continuation.userMessageId).toBe(userMessage.id)
+    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref }, continuation.userMessageId)).resolves.toMatchObject({ kind: 'plan', path: 'one' })
   })
   it('isolates concurrent previews and refuses renderer supplied confirmed content', async () => {
     const created = await session()
@@ -202,6 +232,34 @@ describe('agent conversation typed IPC', () => {
     expect((await preview((await session()).id)).history).toEqual([])
     dispose?.(); await mount()
     expect(value(await bridge.invoke('agent:session:read', { id: created.id })).messages[1]).toMatchObject({ content: 'half answer', status: 'user-interrupted' })
+  })
+  it('replays only complete assistant tool-call/result pairs in the approved history snapshot', async () => {
+    const created = await session()
+    const firstPreview = await preview(created.id)
+    const turn = await service.appendTurn(await service.consumePreview(firstPreview.token))
+    const calls: AgentCompletedToolCall[] = [{ id: 'call_1', name: 'plan.read', arguments: { ref: 'r1' } }]
+    await service.settleAssistant(created.id, turn.assistantId, '', 'complete', calls)
+
+    const incomplete = await preview(created.id)
+    expect(incomplete.messages).toEqual([{ role: 'user', content: '今天怎么安排？' }, { role: 'user', content: '今天怎么安排？' }])
+    value(await bridge.invoke('agent:preview:cancel', { token: incomplete.token }))
+
+    await expect(service.appendToolResults(created.id, turn.assistantId, [{ toolCallId: 'unknown', content: 'must not attach' }])).rejects.toThrow('不匹配')
+    await service.appendToolResults(created.id, turn.assistantId, [{ toolCallId: 'call_1', content: '{"title":"Read-only result"}' }])
+    const complete = await preview(created.id)
+    expect(complete.messages).toEqual([
+      { role: 'user', content: '今天怎么安排？' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'plan.read', arguments: '{"ref":"r1"}' } }] },
+      { role: 'tool', content: '{"title":"Read-only result"}', tool_call_id: 'call_1' },
+      { role: 'user', content: '今天怎么安排？' }
+    ])
+    const originalUserId = value(await bridge.invoke('agent:session:read', { id: created.id })).messages.find((message) => message.role === 'user')!.id
+    const continuation = await service.beginAssistantContinuation(created.id, turn.requestId)
+    expect(continuation).toMatchObject({ userMessageId: originalUserId, toolRounds: 1, toolCallCount: 1, toolsAllowed: true })
+    await service.settleAssistant(created.id, continuation.assistantId, 'Read-only summary.', 'complete')
+    const continued = value(await bridge.invoke('agent:session:read', { id: created.id }))
+    expect(continued.messages.filter((message) => message.role === 'user')).toHaveLength(1)
+    expect(continued.messages.at(-1)).toMatchObject({ id: continuation.assistantId, requestId: turn.requestId, status: 'complete', content: 'Read-only summary.' })
   })
   it('records source identifiers and versions only with a turn and recovers interrupted streaming on reopen', async () => {
     await plan('one', 'source-body-not-persisted')

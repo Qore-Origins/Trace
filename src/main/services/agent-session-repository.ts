@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import type { AgentContextSource, AgentMessage, AgentRequestProvenance, AgentSession, AgentSessionInput, AgentSessionSummary } from '../../shared/agent-types'
+import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentContextSource, type AgentMessage, type AgentRequestProvenance, type AgentSession, type AgentSessionInput, type AgentSessionSummary } from '../../shared/agent-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { assertRealPathWithinRoot } from './path-safety'
 
@@ -33,21 +33,71 @@ function source(value: unknown): AgentContextSource {
   if (!agentRecord(value) || (value.kind !== 'plan' && value.kind !== 'diary') || typeof value.path !== 'string' || typeof value.libraryId !== 'string' || typeof value.version !== 'string') throw new Error('invalid source')
   return { kind: value.kind, path: value.path, libraryId: value.libraryId, version: value.version, updatedAt: timestamp(value.updatedAt) }
 }
+function toolCalls(value: unknown): AgentChatToolCall[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > AGENT_MAX_TOOL_CALLS_PER_REQUEST) throw new Error('invalid tool calls')
+  const calls = value.map((item: unknown): AgentChatToolCall => {
+    if (!agentRecord(item) || typeof item.id !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(item.id) || item.type !== 'function' || !agentRecord(item.function) || typeof item.function.name !== 'string' || !/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/.test(item.function.name) || typeof item.function.arguments !== 'string' || Buffer.byteLength(item.function.arguments) > AGENT_MAX_MESSAGE_LENGTH) throw new Error('invalid tool call')
+    const args: unknown = JSON.parse(item.function.arguments)
+    if (!agentRecord(args)) throw new Error('invalid tool arguments')
+    return { id: item.id, type: 'function', function: { name: item.function.name, arguments: item.function.arguments } }
+  })
+  if (new Set(calls.map((item) => item.id)).size !== calls.length) throw new Error('duplicate tool call identifiers')
+  return calls
+}
 function parseSession(value: unknown, id: string): AgentSession {
   if (!agentRecord(value) || value.id !== id || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || !Array.isArray(value.messages) || !Array.isArray(value.requests)) throw new Error('invalid session')
   const input = parseSessionInput(value)
   const requests: AgentRequestProvenance[] = value.requests.map((item: unknown) => {
     if (!agentRecord(item) || typeof item.profileName !== 'string' || typeof item.model !== 'string' || (item.presetId !== null && typeof item.presetId !== 'string') || !Array.isArray(item.sources)) throw new Error('invalid request')
+    const toolRounds = item.toolRounds ?? 0, toolCallCount = item.toolCallCount ?? 0
+    if (!Number.isSafeInteger(toolRounds) || Number(toolRounds) < 0 || Number(toolRounds) > AGENT_MAX_TOOL_ROUNDS_PER_REQUEST || !Number.isSafeInteger(toolCallCount) || Number(toolCallCount) < 0 || Number(toolCallCount) > AGENT_MAX_TOOL_CALLS_PER_REQUEST) throw new Error('invalid tool request counts')
     assertAgentSessionId(item.id); assertAgentSessionId(item.profileId)
-    return { id: item.id, profileId: item.profileId, profileName: item.profileName, presetId: item.presetId, model: item.model, requestedAt: timestamp(item.requestedAt), sources: item.sources.map(source) }
+    return { id: item.id, profileId: item.profileId, profileName: item.profileName, presetId: item.presetId, model: item.model, requestedAt: timestamp(item.requestedAt), sources: item.sources.map(source), toolRounds: Number(toolRounds), toolCallCount: Number(toolCallCount) }
   })
   const messages: AgentMessage[] = value.messages.map((item: unknown) => {
-    if (!agentRecord(item) || (item.role !== 'user' && item.role !== 'assistant') || !['complete', 'streaming', 'user-interrupted', 'error-interrupted'].includes(String(item.status))) throw new Error('invalid message')
+    if (!agentRecord(item) || !['user', 'assistant', 'tool'].includes(String(item.role)) || !['complete', 'streaming', 'user-interrupted', 'error-interrupted'].includes(String(item.status))) throw new Error('invalid message')
     assertAgentSessionId(item.id); assertAgentSessionId(item.requestId); assertAgentMessageText(item.content)
-    if (!requests.some((request) => request.id === item.requestId) || (item.role === 'user' && item.status !== 'complete')) throw new Error('invalid message request')
-    return { id: item.id, requestId: item.requestId, role: item.role, content: item.content, status: item.status as AgentMessage['status'], createdAt: timestamp(item.createdAt) }
+    if (!requests.some((request) => request.id === item.requestId) || (item.role !== 'assistant' && item.status !== 'complete')) throw new Error('invalid message request')
+    const message: AgentMessage = { id: item.id, requestId: item.requestId, role: item.role as AgentMessage['role'], content: item.content, status: item.status as AgentMessage['status'], createdAt: timestamp(item.createdAt) }
+    if (item.toolCalls !== undefined) {
+      if (item.role !== 'assistant' || item.status !== 'complete') throw new Error('invalid executable tool call state')
+      message.toolCalls = toolCalls(item.toolCalls)
+    }
+    if (item.toolCallId !== undefined) {
+      if (item.role !== 'tool' || typeof item.toolCallId !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(item.toolCallId)) throw new Error('invalid tool result reference')
+      message.toolCallId = item.toolCallId
+    }
+    if ((item.role === 'tool') !== (typeof message.toolCallId === 'string')) throw new Error('tool result reference required')
+    return message
   })
   if (new Set(messages.map((item) => item.id)).size !== messages.length || new Set(requests.map((item) => item.id)).size !== requests.length) throw new Error('duplicate identifiers')
+  const callsByRequest = new Map<string, Set<string>>()
+  const resultsByRequest = new Map<string, Set<string>>()
+  const roundsByRequest = new Map<string, number>()
+  for (const message of messages) {
+    if (message.role === 'assistant' && message.toolCalls?.length) {
+      const calls = callsByRequest.get(message.requestId) ?? new Set<string>()
+      for (const call of message.toolCalls) {
+        if (calls.has(call.id)) throw new Error('duplicate request tool call')
+        calls.add(call.id)
+      }
+      callsByRequest.set(message.requestId, calls)
+      roundsByRequest.set(message.requestId, (roundsByRequest.get(message.requestId) ?? 0) + 1)
+    }
+    if (message.role === 'tool' && message.toolCallId) {
+      const results = resultsByRequest.get(message.requestId) ?? new Set<string>()
+      if (results.has(message.toolCallId)) throw new Error('duplicate tool result')
+      results.add(message.toolCallId)
+      resultsByRequest.set(message.requestId, results)
+    }
+  }
+  for (const request of requests) {
+    const callCount = callsByRequest.get(request.id)?.size ?? 0
+    const rounds = roundsByRequest.get(request.id) ?? 0
+    if (callCount !== request.toolCallCount || rounds !== request.toolRounds || callCount > AGENT_MAX_TOOL_CALLS_PER_REQUEST || rounds > AGENT_MAX_TOOL_ROUNDS_PER_REQUEST) throw new Error('tool request counts mismatch')
+    const calls = callsByRequest.get(request.id) ?? new Set<string>()
+    if ([...(resultsByRequest.get(request.id) ?? [])].some((callId) => !calls.has(callId))) throw new Error('orphaned tool result')
+  }
   return { id, ...input, createdAt: timestamp(value.createdAt), updatedAt: timestamp(value.updatedAt), revision: Number(value.revision), messages, requests }
 }
 

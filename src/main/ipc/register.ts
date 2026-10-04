@@ -26,6 +26,7 @@ import { AgentContextService } from '../services/agent-context-service'
 import { AgentRequestService } from '../services/agent-request-service'
 import { AgentTargetService } from '../services/agent-target-service'
 import { AgentPolicyService } from '../services/agent-policy-service'
+import type { AgentProviderTool } from '../services/agent-provider'
 import { registerAgentConversationIpc, registerAgentPolicyIpc, registerAgentTargetIpc } from './agent-conversation-ipc'
 import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlStatusDto } from '../../shared/plantuml-types'
 
@@ -48,6 +49,8 @@ interface Deps {
   agentUserDataDir?: string
   agentConversations?: AgentConversationService
   agentPolicyService?: AgentPolicyService
+  agentTargetService?: AgentTargetService
+  agentToolDefinitions?: () => readonly AgentProviderTool[]
 }
 
 type Handler<K extends ChannelName> = (payload: Channels[K]['req']) => Promise<Channels[K]['res']>
@@ -171,17 +174,17 @@ export function registerIpc(deps: Deps): () => void {
   reg('agent:key:set', (payload) => agent().setKey(payload?.id, payload?.key))
   reg('agent:key:remove', (payload) => agent().removeKey(payload?.id))
   reg('agent:capability:test', (payload) => agent().testCapability(payload))
+  const agentTargets = deps.agentTargetService ?? new AgentTargetService(storage)
+  registerAgentTargetIpc(reg, () => agentTargets)
   let agentConversations = deps.agentConversations
   const conversation = (): AgentConversationService => {
     if (!agentConversations) {
       if (!deps.agentUserDataDir) throw new TraceError(ERR.INTERNAL, '会话目录不可用')
-      agentConversations = new AgentConversationService(new AgentSessionRepository(deps.agentUserDataDir), new AgentContextService(storage), async (id) => (await agent().list()).profiles.find((profile) => profile.id === id) ?? null, { credentialRevision: (id) => agent().credentialRevision(id) })
+      agentConversations = new AgentConversationService(new AgentSessionRepository(deps.agentUserDataDir), new AgentContextService(storage), async (id) => (await agent().list()).profiles.find((profile) => profile.id === id) ?? null, { credentialRevision: (id) => agent().credentialRevision(id), targets: agentTargets, tools: deps.agentToolDefinitions })
     }
     return agentConversations
   }
   registerAgentConversationIpc(reg, conversation)
-  const agentTargets = new AgentTargetService(storage)
-  registerAgentTargetIpc(reg, () => agentTargets)
   let agentPolicies = deps.agentPolicyService
   const policy = (): AgentPolicyService => {
     if (!agentPolicies) {

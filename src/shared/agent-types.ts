@@ -43,10 +43,18 @@ export interface AgentProviderPreset {
 }
 
 export type AgentMessageStatus = 'complete' | 'streaming' | 'user-interrupted' | 'error-interrupted'
+export interface AgentChatToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+export interface AgentCompletedToolCall { id: string; name: string; arguments: Record<string, unknown> }
 export interface AgentMessage {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'tool'
   content: string
+  toolCalls?: AgentChatToolCall[]
+  toolCallId?: string
   status: AgentMessageStatus
   createdAt: string
   requestId: string
@@ -100,6 +108,8 @@ export interface AgentRequestProvenance {
   model: string
   requestedAt: string
   sources: AgentContextSource[]
+  toolRounds?: number
+  toolCallCount?: number
 }
 export interface AgentSession {
   id: string
@@ -119,15 +129,14 @@ export interface AgentPreviewInput {
   selections: AgentContextSelection[]
   includeHistory?: boolean
   includePartialMessageIds?: string[]
+  targetGrantSetId?: string
+  targetRefs?: string[]
 }
-export interface AgentPreviewMessage {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-}
-export interface AgentHistoryItem extends AgentPreviewMessage {
-  messageId: string
-  kind: 'message' | 'interruption'
-}
+export type AgentPreviewMessage =
+  | { role: 'user' | 'system'; content: string }
+  | { role: 'assistant'; content: string | null; tool_calls?: AgentChatToolCall[] }
+  | { role: 'tool'; content: string; tool_call_id: string }
+export type AgentHistoryItem = AgentPreviewMessage & { messageId: string; kind: 'message' | 'interruption' }
 export interface AgentOutboundPreview {
   token: string
   sessionId: string
@@ -138,7 +147,13 @@ export interface AgentOutboundPreview {
   history: AgentHistoryItem[]
   contexts: AgentContextEntry[]
   messages: AgentPreviewMessage[]
+  tools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } }>
+  toolChoice?: 'auto'
+  targets?: AgentTargetGrant[]
 }
+
+export const AGENT_MAX_TOOL_ROUNDS_PER_REQUEST = 8
+export const AGENT_MAX_TOOL_CALLS_PER_REQUEST = 20
 
 export interface AgentRequestSendInput { token: string; sessionId: string }
 export interface AgentRequestCancelInput { sessionId: string; requestId: string }

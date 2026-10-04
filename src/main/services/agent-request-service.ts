@@ -17,6 +17,15 @@ interface ActiveRequest {
   errorCategory: AgentRequestErrorCategory | null
 }
 
+function requestErrorCategory(error: unknown): AgentRequestErrorCategory | null {
+  if (!(error instanceof AgentStreamError)) return null
+  if (error.category === 'cancelled') return 'network'
+  if (error.category === 'unsupported') return 'protocol'
+  return error.category
+}
+
+
+
 function metadata(payload: unknown, keys: string[]): Record<string, unknown> {
   if (!agentRecord(payload) || Reflect.ownKeys(payload).length !== keys.length || keys.some((key) => !Object.hasOwn(payload, key))) throw new TraceError(ERR.VALIDATION, '请求载荷无效')
   for (const key of keys) {
@@ -42,7 +51,10 @@ export class AgentRequestService {
       const active: ActiveRequest = { identity, controller: new AbortController(), userStopped: false, acceptingText: true, accepted: '', persisted: '', persistence: Promise.resolve(), errorCategory: null }
       this.active.set(identity.requestId, active)
       // Calling the adapter starts fetch synchronously before the authorization locks release.
-      const provider = streamChatCompletion({ endpoint: preview.target.endpoint, model: preview.target.model, apiKey: key, messages: preview.messages, signal: active.controller.signal, onText: (text) => this.acceptText(active, text) })
+      const provider = streamChatCompletion(
+        { endpoint: preview.target.endpoint, model: preview.target.model, apiKey: key, messages: preview.messages, signal: active.controller.signal, onText: (text) => this.acceptText(active, text) },
+        preview.tools?.length ? { tools: preview.tools, toolChoice: preview.toolChoice ?? 'auto' } : undefined
+      )
       void this.finish(active, provider)
     })
   }
@@ -78,8 +90,9 @@ export class AgentRequestService {
   }
 
   private async finish(active: ActiveRequest, provider: ReturnType<typeof streamChatCompletion>): Promise<void> {
-    try { await provider } catch (error) {
-      if (!active.errorCategory && !active.userStopped) active.errorCategory = error instanceof AgentStreamError && error.category !== 'cancelled' ? error.category : 'network'
+    let toolCalls: Awaited<ReturnType<typeof streamChatCompletion>>['toolCalls'] = []
+    try { toolCalls = (await provider).toolCalls } catch (error) {
+      if (!active.errorCategory && !active.userStopped) active.errorCategory = requestErrorCategory(error) ?? 'network'
     }
     // Claim finalization synchronously: cancellation cannot be accepted while the
     // already settled provider's incremental or terminal persistence is pending.
@@ -88,10 +101,10 @@ export class AgentRequestService {
     await active.persistence
     let status: 'complete' | 'user-interrupted' | 'error-interrupted' = active.errorCategory ? 'error-interrupted' : active.userStopped ? 'user-interrupted' : 'complete'
     try {
-      await this.conversations.settleAssistant(active.identity.sessionId, active.identity.assistantId, active.persisted, status)
-    } catch {
+      await this.conversations.settleAssistant(active.identity.sessionId, active.identity.assistantId, active.persisted, status, status === 'complete' ? toolCalls : [])
+    } catch (error) {
       status = 'error-interrupted'
-      active.errorCategory = 'storage'
+      active.errorCategory = requestErrorCategory(error) ?? 'storage'
     }
     this.publish({ ...active.identity, type: 'terminal', status, marker: status === 'complete' ? null : status === 'user-interrupted' ? '【用户中断】' : '【异常中断】', errorCategory: active.errorCategory })
   }
