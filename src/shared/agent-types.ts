@@ -49,19 +49,6 @@ export interface AgentApprovalRequestSnapshot {
   serializedBody: string
 }
 
-/** Private bridge for the isolated approval window; never added to window.trace. */
-export interface AgentApprovalBridge {
-  getSnapshot(): Promise<AgentApprovalRequestSnapshot | null>
-  confirm(): Promise<boolean>
-  cancel(): Promise<boolean>
-}
-
-export const AGENT_APPROVAL_IPC = {
-  getSnapshot: 'trace:agent-approval:get-snapshot',
-  confirm: 'trace:agent-approval:confirm',
-  cancel: 'trace:agent-approval:cancel'
-} as const
-
 export type AgentMessageStatus = 'complete' | 'streaming' | 'user-interrupted' | 'error-interrupted'
 export interface AgentChatToolCall {
   id: string
@@ -179,6 +166,8 @@ export interface AgentRequestSendInput { token: string; sessionId: string }
 export interface AgentRequestCancelInput { sessionId: string; requestId: string }
 export interface AgentRequestIdentity extends AgentRequestCancelInput { assistantId: string }
 export type AgentRequestErrorCategory = 'validation' | 'authentication' | 'http' | 'protocol' | 'limit' | 'timeout' | 'network' | 'storage'
+// Compatibility re-export: the private IPC bridge contract itself lives in ipc-contract.ts.
+export type { AgentApprovalBridge } from './ipc-contract'
 export type AgentRequestEvent = AgentRequestIdentity & (
   | { type: 'delta'; text: string }
   | { type: 'terminal'; status: Exclude<AgentMessageStatus, 'streaming'>; marker: '【用户中断】' | '【异常中断】' | null; errorCategory: AgentRequestErrorCategory | null }

@@ -3,8 +3,9 @@ import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMain } from 'electron'
-import { AGENT_APPROVAL_IPC, type AgentApprovalBridge, type AgentApprovalRequestSnapshot } from '../src/shared/agent-types'
+import type { BrowserWindow, BrowserWindowConstructorOptions } from 'electron'
+import { AGENT_APPROVAL_IPC, type AgentApprovalBridge, type AgentApprovalChannelName, type AgentApprovalChannels, type ChannelName, type TraceResult } from '../src/shared/ipc-contract'
+import type { AgentApprovalRequestSnapshot } from '../src/shared/agent-types'
 
 const electron = vi.hoisted(() => {
   const handlers = new Map<string, (event: unknown, payload?: unknown) => Promise<unknown>>()
@@ -17,7 +18,11 @@ const electron = vi.hoisted(() => {
       removeHandler: (name: string) => handlers.delete(name)
     },
     contextBridge: { exposeInMainWorld: (name: string, value: unknown) => { exposed.set(name, value); Reflect.set(window, name, value) } },
-    ipcRenderer: { invoke: vi.fn((channel: string, ...payload: unknown[]) => { calls.push({ channel, payload }); return Promise.resolve(null) }) }
+    ipcRenderer: {
+      invoke: vi.fn((channel: string, ...payload: unknown[]) => { calls.push({ channel, payload }); return Promise.resolve(null) }),
+      on: vi.fn(),
+      removeListener: vi.fn()
+    }
   }
 })
 vi.mock('electron', () => electron)
@@ -95,9 +100,9 @@ describe('isolated agent outbound approval window', () => {
     owner = parentWindow()
     windows = []
     roots = []
-    const [{ AgentApprovalWindowService }, { registerAgentApprovalIpc }] = await Promise.all([
+    const [{ AgentApprovalWindowService }, { registerIpc }] = await Promise.all([
       import('../src/main/services/agent-approval-window-service'),
-      import('../src/main/ipc/agent-approval-ipc')
+      import('../src/main/ipc/register')
     ])
     service = new AgentApprovalWindowService({
       getOwnerWindow: () => owner as unknown as BrowserWindow,
@@ -111,7 +116,11 @@ describe('isolated agent outbound approval window', () => {
         return window as unknown as BrowserWindow
       }
     })
-    disposeIpc = registerAgentApprovalIpc(service, electron.ipcMain as unknown as IpcMain)
+    disposeIpc = registerIpc({
+      agentApprovalWindowService: service,
+      getWindow: () => null,
+      log: vi.fn()
+    } as unknown as Parameters<typeof registerIpc>[0])
   }
 
   async function waitForWindow(): Promise<WindowFake> {
@@ -128,6 +137,12 @@ describe('isolated agent outbound approval window', () => {
 
   function event(window: WindowFake, sender = window.webContents, senderFrame = sender.mainFrame): { sender: unknown; senderFrame: unknown } {
     return { sender, senderFrame }
+  }
+
+  async function approvalData<T>(result: Promise<unknown>): Promise<T> {
+    const envelope = await result as TraceResult<T>
+    expect(envelope).toMatchObject({ ok: true, code: 0, message: 'ok' })
+    return envelope.data
   }
 
   beforeEach(() => { vi.clearAllMocks(); Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true) })
@@ -148,14 +163,19 @@ describe('isolated agent outbound approval window', () => {
     })
     const second = windows[1]
 
-    const getSnapshot = ipc('trace:agent-approval:get-snapshot')
-    const confirm = ipc('trace:agent-approval:confirm')
-    expect(await getSnapshot(event(first))).toEqual(snapshot)
-    expect(await getSnapshot(event(first, first.webContents, { url: first.loadedUrl }))).toBeNull()
-    expect(await getSnapshot(event(second))).toEqual({ ...snapshot, model: 'other-model' })
-    expect(await confirm(event(second))).toBe(true)
-    expect(await confirm(event(second))).toBe(false)
-    expect(await confirm(event(first))).toBe(true)
+    const getSnapshot = ipc(AGENT_APPROVAL_IPC.getSnapshot)
+    const confirm = ipc(AGENT_APPROVAL_IPC.confirm)
+    const privateChannel: AgentApprovalChannelName = AGENT_APPROVAL_IPC.getSnapshot
+    const typedResult = await getSnapshot(event(first)) as TraceResult<AgentApprovalChannels[typeof privateChannel]['res']>
+    expect(typedResult).toEqual({ ok: true, code: 0, message: 'ok', data: snapshot })
+    expect(await approvalData(Promise.resolve(typedResult))).toEqual(snapshot)
+    const privateChannelIsNotOrdinaryTraceChannel: typeof AGENT_APPROVAL_IPC[keyof typeof AGENT_APPROVAL_IPC] extends ChannelName ? true : false = false
+    expect(privateChannelIsNotOrdinaryTraceChannel).toBe(false)
+    expect(await approvalData(getSnapshot(event(first, first.webContents, { url: first.loadedUrl })))).toBeNull()
+    expect(await approvalData(getSnapshot(event(second)))).toEqual({ ...snapshot, model: 'other-model' })
+    expect(await approvalData<boolean>(confirm(event(second)))).toBe(true)
+    expect(await approvalData<boolean>(confirm(event(second)))).toBe(false)
+    expect(await approvalData<boolean>(confirm(event(first)))).toBe(true)
     await expect(decision).resolves.toBe(true)
     await expect(secondDecision).resolves.toBe(true)
   })
@@ -165,8 +185,8 @@ describe('isolated agent outbound approval window', () => {
     const decision = service.requestApproval(snapshot)
     const window = await waitForWindow()
     const foreign = new WebContentsFake()
-    expect(await ipc('trace:agent-approval:get-snapshot')(event(window, foreign))).toBeNull()
-    expect(await ipc('trace:agent-approval:confirm')(event(window, foreign))).toBe(false)
+    expect(await approvalData(ipc(AGENT_APPROVAL_IPC.getSnapshot)(event(window, foreign)))).toBeNull()
+    expect(await approvalData(ipc(AGENT_APPROVAL_IPC.confirm)(event(window, foreign)))).toBe(false)
     expect(window.shown).toBe(true)
     window.close()
     await expect(decision).resolves.toBe(false)
@@ -176,11 +196,11 @@ describe('isolated agent outbound approval window', () => {
     await setup()
     const decision = service.requestApproval(snapshot)
     const window = await waitForWindow()
-    const cancel = ipc('trace:agent-approval:cancel')
+    const cancel = ipc(AGENT_APPROVAL_IPC.cancel)
 
-    expect(await cancel(event(window))).toBe(true)
-    expect(await cancel(event(window))).toBe(false)
-    expect(await ipc('trace:agent-approval:confirm')(event(window))).toBe(false)
+    expect(await approvalData<boolean>(cancel(event(window)))).toBe(true)
+    expect(await approvalData<boolean>(cancel(event(window)))).toBe(false)
+    expect(await approvalData<boolean>(ipc(AGENT_APPROVAL_IPC.confirm)(event(window)))).toBe(false)
     await expect(decision).resolves.toBe(false)
   })
 
@@ -199,7 +219,22 @@ describe('isolated agent outbound approval window', () => {
     if (failure === 'unexpected-main-navigation') window.webContents.emit('did-navigate', {}, 'https://attacker.example')
     if (failure === 'owner-close') owner.emit('closed')
     await expect(decision).resolves.toBe(false)
-    expect(await ipc('trace:agent-approval:confirm')(event(window))).toBe(false)
+    expect(await approvalData<boolean>(ipc(AGENT_APPROVAL_IPC.confirm)(event(window)))).toBe(false)
+  })
+
+  it('wraps private handler failures without exposing the underlying error', async () => {
+    await setup()
+    const decision = service.requestApproval(snapshot)
+    const window = await waitForWindow()
+    vi.spyOn(service, 'getSnapshot').mockImplementation(() => {
+      throw new Error('private snapshot detail')
+    })
+
+    const result = await ipc(AGENT_APPROVAL_IPC.getSnapshot)(event(window))
+    expect(result).toMatchObject({ ok: false, message: '外发确认窗口操作失败', data: null })
+    expect(JSON.stringify(result)).not.toContain('private snapshot detail')
+    window.close()
+    await expect(decision).resolves.toBe(false)
   })
 
   it('fails closed when initial navigation rejects without showing the window', async () => {
@@ -221,25 +256,40 @@ describe('isolated agent outbound approval window', () => {
     })
     expect(window.loadedUrl).toBe('http://localhost:5173/agent-approval.html')
     expect(window.loadedUrl).not.toMatch(/private-body|api.?key|C%3A|D%3A/i)
-    expect(await ipc('trace:agent-approval:get-snapshot')(event(window))).toEqual(snapshot)
+    expect(await approvalData(ipc(AGENT_APPROVAL_IPC.getSnapshot)(event(window)))).toEqual(snapshot)
     window.close()
     await expect(decision).resolves.toBe(false)
   })
 
   it('exposes only the dedicated approval preload bridge, with no general Trace API', async () => {
     await setup()
+    electron.ipcRenderer.invoke.mockImplementation((channel: string, ...payload: unknown[]) => {
+      electron.calls.push({ channel, payload })
+      return Promise.resolve(channel === AGENT_APPROVAL_IPC.getSnapshot
+        ? { ok: true, code: 0, message: 'ok', data: snapshot }
+        : { ok: true, code: 0, message: 'ok', data: true })
+    })
     await import('../src/preload/agent-approval')
     expect([...electron.exposed.keys()]).toEqual(['traceAgentApproval'])
     const bridge = electron.exposed.get('traceAgentApproval') as AgentApprovalBridge
-    await bridge.getSnapshot()
-    await bridge.confirm()
-    await bridge.cancel()
+    await expect(bridge.getSnapshot()).resolves.toEqual(snapshot)
+    await expect(bridge.confirm()).resolves.toBe(true)
+    await expect(bridge.cancel()).resolves.toBe(true)
     expect(electron.calls).toEqual([
       { channel: AGENT_APPROVAL_IPC.getSnapshot, payload: [] },
       { channel: AGENT_APPROVAL_IPC.confirm, payload: [] },
       { channel: AGENT_APPROVAL_IPC.cancel, payload: [] }
     ])
     expect((window as Window & { trace?: unknown }).trace).toBeUndefined()
+
+    await import('../src/preload/index')
+    const ordinaryBridge = electron.exposed.get('trace') as { invoke(channel: string): Promise<unknown> }
+    const callsBeforePrivateAttempt = electron.calls.length
+    await expect(ordinaryBridge.invoke(AGENT_APPROVAL_IPC.getSnapshot)).resolves.toEqual({
+      ok: false, code: 50, message: '通道未开放', data: null
+    })
+    expect(electron.calls).toHaveLength(callsBeforePrivateAttempt)
+    Reflect.deleteProperty(window, 'trace')
   })
 
   it('renders serialized user HTML as escaped plain text, not markup', async () => {

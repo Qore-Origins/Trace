@@ -1,10 +1,10 @@
 // IPC 注册层：白名单通道 → 主进程 handler；统一校验包装（异常 → TraceResult + 脱敏日志）
-import { ipcMain, dialog, type BrowserWindow } from 'electron'
+import { ipcMain, dialog, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { promises as fs } from 'node:fs'
 import { basename } from 'node:path'
 import { toTraceResultError, ERR, TraceError } from '../../shared/errors'
 import type { TraceEvents } from '../services/event-bus'
-import { fail, ok, type ChannelName, type Channels, type TraceResult } from '../../shared/ipc-contract'
+import { fail, ok, type AgentApprovalChannelName, type AgentApprovalChannels, type ChannelName, type Channels, type TraceResult } from '../../shared/ipc-contract'
 import { AppService } from '../services/app-service'
 import { StorageService } from '../services/storage-service'
 import { ConfigService } from '../services/config-service'
@@ -59,7 +59,11 @@ interface Deps {
   requestAgentApproval?: AgentOutboundApproval
 }
 
-type Handler<K extends ChannelName> = (payload: Channels[K]['req']) => Promise<Channels[K]['res']>
+type IpcChannels = Channels & AgentApprovalChannels
+type IpcChannelName = keyof IpcChannels
+type RequestFor<K extends IpcChannelName> = IpcChannels[K]['req']
+type ResponseFor<K extends IpcChannelName> = IpcChannels[K]['res']
+type Handler<K extends IpcChannelName> = (payload: RequestFor<K>, event: IpcMainInvokeEvent) => Promise<ResponseFor<K>>
 
 interface PlantumlConfiguration {
   enabled: boolean
@@ -103,40 +107,44 @@ function parsePlantumlConfiguration(payload: unknown): PlantumlConfiguration {
 
 // wrapHandler：TraceError/未知异常 → { ok:false, code, message }；日志只含通道+错误码+消息（不含计划正文）
 // 未知异常（INTERNAL）额外打完整栈到主进程控制台——否则真实原因被笼统消息吞掉无法定位
-function wrap<K extends ChannelName>(name: K, handler: Handler<K>, log: Deps['log']) {
-  return async (event: unknown, payload: Channels[K]['req']): Promise<TraceResult<Channels[K]['res']>> => {
+function wrap<K extends IpcChannelName>(name: K, handler: Handler<K>, log: Deps['log']) {
+  return async (event: IpcMainInvokeEvent, payload: RequestFor<K>): Promise<TraceResult<ResponseFor<K>>> => {
     try {
-      void event
-      const data = await handler(payload)
+      const data = await handler(payload, event)
       log(name, ERR.OK)
       return ok(data)
     } catch (e) {
       const { code, message } = toTraceResultError(e)
+      if (name.startsWith('trace:agent-approval:')) {
+        const safeMessage = '外发确认窗口操作失败'
+        log(name, code, safeMessage)
+        return fail(code, safeMessage) as TraceResult<ResponseFor<K>>
+      }
       if (name.startsWith('agent:')) {
         const safeMessage = code === ERR.VALIDATION || code === ERR.PATH_NOT_FOUND ? message : '服务配置操作失败'
         log(name, code, safeMessage)
-        return fail(code, safeMessage)
+        return fail(code, safeMessage) as TraceResult<ResponseFor<K>>
       }
       if (name.startsWith('diary:')) {
         // 文件系统异常可能携带绝对路径/正文；日记边界只返回固定的可重试提示。
         const safeMessage = name === 'diary:ensure' ? '日记初始化失败，请稍后重试' : '日记读取失败，请稍后重试'
         log(name, code, safeMessage)
-        return fail(code, safeMessage)
+        return fail(code, safeMessage) as TraceResult<ResponseFor<K>>
       }
       if (name.startsWith('plan-reference:')) {
         // Filesystem failures may contain absolute paths; reference responses and logs never echo them.
         const safeMessage = e instanceof TraceError ? message : '引用操作失败，请重试'
         log(name, code, safeMessage)
-        return fail(code, safeMessage)
+        return fail(code, safeMessage) as TraceResult<ResponseFor<K>>
       }
       if (name.startsWith('trash:')) {
         const safeMessage = e instanceof TraceError ? message : '回收站操作失败，请重试'
         log(name, code, safeMessage)
-        return fail(code, safeMessage)
+        return fail(code, safeMessage) as TraceResult<ResponseFor<K>>
       }
       log(name, code, message)
       if (code === ERR.INTERNAL) console.error(`[ipc] ${name} internal:`, e)
-      return fail(code, message)
+      return fail(code, message) as TraceResult<ResponseFor<K>>
     }
   }
 }
@@ -148,9 +156,7 @@ export function registerIpc(deps: Deps): () => void {
   const unsubscribeListeners: Array<() => void> = []
   let disposed = false
   let rootStateQueue = Promise.resolve()
-  const disposeAgentApprovalIpc = deps.agentApprovalWindowService
-    ? registerAgentApprovalIpc(deps.agentApprovalWindowService)
-    : undefined
+  let disposeAgentApprovalIpc: (() => void) | undefined
   const approveAgentOutbound: AgentOutboundApproval = deps.requestAgentApproval ??
     (deps.agentApprovalWindowService
       ? (snapshot: AgentApprovalRequestSnapshot) => deps.agentApprovalWindowService!.requestApproval(snapshot)
@@ -167,6 +173,17 @@ export function registerIpc(deps: Deps): () => void {
       return operation
     })
     registeredChannels.push(name)
+  }
+
+  if (deps.agentApprovalWindowService) {
+    const registerApproval = <K extends AgentApprovalChannelName>(name: K, handler: Handler<K>) => {
+      ipcMain.handle(name, wrap(name, handler, log))
+    }
+    disposeAgentApprovalIpc = registerAgentApprovalIpc(
+      deps.agentApprovalWindowService,
+      registerApproval,
+      (name) => ipcMain.removeHandler(name)
+    )
   }
 
   // Constructor performs no disk or OS encryption work; first request creates the service.

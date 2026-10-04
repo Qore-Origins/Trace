@@ -7,7 +7,7 @@ import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList
 import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
 import type { AgentRequestSendInput, AgentRequestCancelInput, AgentRequestIdentity } from './agent-types'
 import type { AgentTargetGrantInput, AgentTargetGrantSet, AgentTargetValidationInput, AgentTargetGrantReleaseInput, AgentTargetGrant, AgentTargetChildrenInput, AgentTargetChild } from './agent-types'
-import type { AgentPermissionPolicy } from './agent-types'
+import type { AgentPermissionPolicy, AgentApprovalRequestSnapshot } from './agent-types'
 import type { WorkspaceTabsState } from './workspace-tabs-types'
 import type {
   PlanReferenceMode, PlanReferenceTarget, ReferenceImpactCommit, ReferenceImpactPreview,
@@ -35,6 +35,13 @@ export function ok<T>(data: T): TraceResult<T> {
 export function fail(code: number, message: string): TraceResult<null> {
   return { ok: false, code, message, data: null }
 }
+
+/** Private channels for the isolated outbound-approval window; never part of `Channels`. */
+export const AGENT_APPROVAL_IPC = {
+  getSnapshot: 'trace:agent-approval:get-snapshot',
+  confirm: 'trace:agent-approval:confirm',
+  cancel: 'trace:agent-approval:cancel'
+} as const
 
 // ---------- DTO ----------
 
@@ -240,6 +247,22 @@ export interface Channels {
       random: DiaryMemoryEntry | null
     }
   }
+}
+
+/** Typed contract for the isolated approval preload, deliberately excluded from TraceBridge. */
+export interface AgentApprovalChannels {
+  [AGENT_APPROVAL_IPC.getSnapshot]: { req: void; res: AgentApprovalRequestSnapshot | null }
+  [AGENT_APPROVAL_IPC.confirm]: { req: void; res: boolean }
+  [AGENT_APPROVAL_IPC.cancel]: { req: void; res: boolean }
+}
+
+export type AgentApprovalChannelName = keyof AgentApprovalChannels
+
+/** Private bridge for the isolated approval window; never added to window.trace. */
+export interface AgentApprovalBridge {
+  getSnapshot(): Promise<AgentApprovalChannels[typeof AGENT_APPROVAL_IPC.getSnapshot]['res']>
+  confirm(): Promise<AgentApprovalChannels[typeof AGENT_APPROVAL_IPC.confirm]['res']>
+  cancel(): Promise<AgentApprovalChannels[typeof AGENT_APPROVAL_IPC.cancel]['res']>
 }
 
 export type ChannelName = keyof Channels

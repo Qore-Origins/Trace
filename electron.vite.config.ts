@@ -3,13 +3,15 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'node:path'
 
 // electron-vite's isolated-entry reporter does not guard its TTY cursor calls
-// with isTTY, so piped build logs need no-op fallbacks for missing methods.
-const terminalOutput = process.stdout
-if (typeof terminalOutput.clearLine !== 'function') terminalOutput.clearLine = () => true
-if (typeof terminalOutput.cursorTo !== 'function') terminalOutput.cursorTo = () => true
-if (typeof terminalOutput.moveCursor !== 'function') terminalOutput.moveCursor = () => true
+// with isTTY. Only piped builds need missing methods supplied; preserve real TTY behavior.
+export function configureReporterStdout(command: string, output: NodeJS.WriteStream = process.stdout): void {
+  if (command !== 'build' || output.isTTY) return
+  if (typeof output.clearLine !== 'function') output.clearLine = () => true
+  if (typeof output.cursorTo !== 'function') output.cursorTo = () => true
+  if (typeof output.moveCursor !== 'function') output.moveCursor = () => true
+}
 
-export default defineConfig({
+const electronViteConfig = {
   main: {
     resolve: {
       alias: { '@shared': resolve(__dirname, 'src/shared') }
@@ -57,7 +59,7 @@ export default defineConfig({
         },
         output: {
           onlyExplicitManualChunks: true,
-          manualChunks(id): string | undefined {
+          manualChunks(id: string): string | undefined {
             const moduleId = id.replaceAll('\\', '/')
             if (moduleId.endsWith('/src/renderer/src/stores/workspace-tabs-store.ts')) return 'workspace-tabs'
             if (!moduleId.includes('/node_modules/')) return undefined
@@ -70,4 +72,9 @@ export default defineConfig({
       }
     }
   }
+}
+
+export default defineConfig(({ command }) => {
+  configureReporterStdout(command)
+  return electronViteConfig
 })

@@ -20,6 +20,44 @@ beforeAll(
 )
 
 describe('renderer bundle budget', () => {
+  it('does not patch stdout at config import or for dev/TTY, and only fills missing build cursor methods', async () => {
+    const stdoutBeforeImport = {
+      clearLine: process.stdout.clearLine,
+      cursorTo: process.stdout.cursorTo,
+      moveCursor: process.stdout.moveCursor
+    }
+    const configModule = await import('../electron.vite.config')
+    const configFactory = configModule.default as (environment: { command: string; mode: string }) => unknown
+    configFactory({ command: 'serve', mode: 'development' })
+    expect({
+      clearLine: process.stdout.clearLine,
+      cursorTo: process.stdout.cursorTo,
+      moveCursor: process.stdout.moveCursor
+    }).toEqual(stdoutBeforeImport)
+
+    const configure = configModule.configureReporterStdout
+    const pipe = { isTTY: false } as NodeJS.WriteStream
+    configure('serve', pipe)
+    expect(pipe.clearLine).toBeUndefined()
+    expect(pipe.cursorTo).toBeUndefined()
+    expect(pipe.moveCursor).toBeUndefined()
+    configure('build', pipe)
+    expect(typeof pipe.clearLine).toBe('function')
+    expect(typeof pipe.cursorTo).toBe('function')
+    expect(typeof pipe.moveCursor).toBe('function')
+
+    const ttyMethods = {
+      clearLine: () => true,
+      cursorTo: () => true,
+      moveCursor: () => true
+    }
+    const tty = { isTTY: true, ...ttyMethods } as NodeJS.WriteStream
+    configure('build', tty)
+    expect(tty.clearLine).toBe(ttyMethods.clearLine)
+    expect(tty.cursorTo).toBe(ttyMethods.cursorTo)
+    expect(tty.moveCursor).toBe(ttyMethods.moveCursor)
+  })
+
   it('keeps the initial entry below 700 KiB and emits page/vendor chunks', () => {
     const html = readFileSync(resolve(rendererOutput, 'index.html'), 'utf8')
     const entryMatch = html.match(/<script[^>]+src="\.\/assets\/(index-[^"]+\.js)"/)
