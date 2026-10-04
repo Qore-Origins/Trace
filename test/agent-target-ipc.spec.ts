@@ -383,12 +383,19 @@ describe('agent target typed IPC', () => {
     await expect(targets.resolveGrantForMessage(grantB, userMessage.id))
       .rejects.toMatchObject({ code: ERR.CONFLICT })
 
-    await targets.bindGrantSetToUserMessage(grantSet.id, userMessage, [grantB.ref])
-    await expect(targets.resolveGrantForMessage(grantB, userMessage.id)).resolves.toMatchObject({ kind: 'plan', path: 'SecondPlan' })
+    await expect(targets.bindGrantSetToUserMessage(grantSet.id, userMessage, [grantB.ref]))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(targets.resolveGrantForMessage(grantB, userMessage.id))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
     await expect(targets.bindGrantSetToUserMessage(grantSet.id, nextUserMessage, [grantA.ref]))
       .rejects.toMatchObject({ code: ERR.CONFLICT })
     await expect(targets.resolveGrantForMessage(grantA, nextUserMessage.id))
       .rejects.toMatchObject({ code: ERR.CONFLICT })
+
+    const newGrantSet = await targets.grant({ targets: [{ kind: 'plan', path: 'SecondPlan' }] })
+    await targets.bindGrantSetToUserMessage(newGrantSet.id, nextUserMessage, [newGrantSet.targets[0].ref])
+    await expect(targets.resolveGrantForMessage({ setId: newGrantSet.id, ref: newGrantSet.targets[0].ref }, nextUserMessage.id))
+      .resolves.toMatchObject({ kind: 'plan', path: 'SecondPlan' })
 
     const unboundSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
     await expect(targets.bindGrantSetToUserMessage(unboundSet.id, errorMessage, [unboundSet.targets[0].ref]))

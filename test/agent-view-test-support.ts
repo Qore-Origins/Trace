@@ -236,6 +236,7 @@ async function setupRenderer(): Promise<void> {
   dispose = ipcModule.registerIpc({
     storage,
     agentUserDataDir: directory,
+    requestAgentApproval: async () => true,
     getWindow: () => ({
       webContents: {
         isDestroyed: () => false,

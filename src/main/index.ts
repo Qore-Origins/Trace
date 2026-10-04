@@ -16,6 +16,7 @@ import { DIARY_DIR, reconcileDiaryPages, setDiaryRepo } from './services/diary-s
 import { createDiaryAutomationCoordinator } from './services/diary-automation-coordinator'
 import { ExportService, resolveRendererSource } from './services/export-service'
 import { registerIpc } from './ipc/register'
+import { AgentApprovalWindowService } from './services/agent-approval-window-service'
 import { bus } from './services/event-bus'
 import { createExternalLinkWindowHandler } from './services/external-link-service'
 import { checkPlantumlEndpoint, createPlantumlService, type PlantumlChildProcess } from './services/plantuml-service'
@@ -203,6 +204,12 @@ if (!app.requestSingleInstanceLock()) {
       activateConfiguredRoot: () => appService.activateConfiguredRoot(),
       onRootActivationError: () => console.error('[trace] Configured plan library activation failed')
     })
+    const agentApprovalWindowService = new AgentApprovalWindowService({
+      getOwnerWindow: () => mainWindow,
+      preloadPath: join(__dirname, '../preload/agent-approval.js'),
+      approvalHtmlPath: join(__dirname, '../renderer/agent-approval.html'),
+      rendererUrl: process.env['ELECTRON_RENDERER_URL']
+    })
 
     // IPC 先注册，renderer bootstrap 可在 ready-to-show 前安全排队等待根目录激活。
     const disposeIpc = registerIpc({
@@ -214,6 +221,7 @@ if (!app.requestSingleInstanceLock()) {
       search,
       planNameTemplates,
       agentUserDataDir: app.getPath('userData'),
+      agentApprovalWindowService,
       workspaceTabs,
       planReferences,
       plantuml: plantumlService,

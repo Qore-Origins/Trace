@@ -42,6 +42,26 @@ export interface AgentProviderPreset {
   documentationUrl: string
 }
 
+/** The only request material shown by the isolated outbound-approval window. */
+export interface AgentApprovalRequestSnapshot {
+  endpoint: string
+  model: string
+  serializedBody: string
+}
+
+/** Private bridge for the isolated approval window; never added to window.trace. */
+export interface AgentApprovalBridge {
+  getSnapshot(): Promise<AgentApprovalRequestSnapshot | null>
+  confirm(): Promise<boolean>
+  cancel(): Promise<boolean>
+}
+
+export const AGENT_APPROVAL_IPC = {
+  getSnapshot: 'trace:agent-approval:get-snapshot',
+  confirm: 'trace:agent-approval:confirm',
+  cancel: 'trace:agent-approval:cancel'
+} as const
+
 export type AgentMessageStatus = 'complete' | 'streaming' | 'user-interrupted' | 'error-interrupted'
 export interface AgentChatToolCall {
   id: string

@@ -26,6 +26,9 @@ import { AgentContextService } from '../services/agent-context-service'
 import { AgentRequestService } from '../services/agent-request-service'
 import { AgentTargetService } from '../services/agent-target-service'
 import { AgentPolicyService } from '../services/agent-policy-service'
+import { registerAgentApprovalIpc } from './agent-approval-ipc'
+import type { AgentOutboundApproval, AgentApprovalWindowService } from '../services/agent-approval-window-service'
+import type { AgentApprovalRequestSnapshot } from '../../shared/agent-types'
 import type { AgentProviderTool } from '../services/agent-provider'
 import { registerAgentConversationIpc, registerAgentPolicyIpc, registerAgentTargetIpc } from './agent-conversation-ipc'
 import { DEFAULT_PLANTUML_PORT, validatePlantumlPort, type PlantUmlStatusDto } from '../../shared/plantuml-types'
@@ -51,6 +54,9 @@ interface Deps {
   agentPolicyService?: AgentPolicyService
   agentTargetService?: AgentTargetService
   agentToolDefinitions?: () => readonly AgentProviderTool[]
+  agentApprovalWindowService?: AgentApprovalWindowService
+  /** Main-process test seam. Production must provide the isolated window service. */
+  requestAgentApproval?: AgentOutboundApproval
 }
 
 type Handler<K extends ChannelName> = (payload: Channels[K]['req']) => Promise<Channels[K]['res']>
@@ -142,6 +148,13 @@ export function registerIpc(deps: Deps): () => void {
   const unsubscribeListeners: Array<() => void> = []
   let disposed = false
   let rootStateQueue = Promise.resolve()
+  const disposeAgentApprovalIpc = deps.agentApprovalWindowService
+    ? registerAgentApprovalIpc(deps.agentApprovalWindowService)
+    : undefined
+  const approveAgentOutbound: AgentOutboundApproval = deps.requestAgentApproval ??
+    (deps.agentApprovalWindowService
+      ? (snapshot: AgentApprovalRequestSnapshot) => deps.agentApprovalWindowService!.requestApproval(snapshot)
+      : async () => false)
   const reg = <K extends ChannelName>(name: K, handler: Handler<K>) => {
     ipcMain.handle(name, wrap(name, handler, log))
     registeredChannels.push(name)
@@ -161,7 +174,7 @@ export function registerIpc(deps: Deps): () => void {
   const agent = (): AgentProfileService => {
     if (!agentProfiles) {
       if (!deps.agentUserDataDir) throw new TraceError(ERR.INTERNAL, '服务配置目录不可用')
-      agentProfiles = new AgentProfileService(deps.agentUserDataDir)
+      agentProfiles = new AgentProfileService(deps.agentUserDataDir, approveAgentOutbound)
     }
     return agentProfiles
   }
@@ -200,7 +213,7 @@ export function registerIpc(deps: Deps): () => void {
       const window = getWindow()
       if (!window || window.webContents.isDestroyed()) return
       window.webContents.send('trace:agent-request', event)
-    })
+    }, approveAgentOutbound)
     return agentRequests
   }
   reg('agent:request:send', (payload) => requests().send(payload))
@@ -464,6 +477,8 @@ export function registerIpc(deps: Deps): () => void {
     if (disposed) return
     disposed = true
     agentRequests?.dispose()
+    disposeAgentApprovalIpc?.()
+    deps.agentApprovalWindowService?.dispose()
     for (const unsubscribe of unsubscribeListeners.splice(0)) unsubscribe()
     for (const channel of registeredChannels.splice(0)) ipcMain.removeHandler(channel)
     for (const channel of registeredLegacyChannels.splice(0)) ipcMain.removeHandler(channel)

@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import { promises as fs } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TraceBridge } from '../src/shared/ipc-contract'
+import { ERR } from '../src/shared/errors'
 import type { AgentProfileService } from '../src/main/services/agent-profile-service'
 
 const electron = vi.hoisted(() => {
@@ -51,6 +53,51 @@ afterEach(async () => {
 })
 
 describe('agent profile typed IPC', () => {
+  it('does not issue a capability probe or mutate capability state when outbound approval is canceled', async () => {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('loopback server did not bind')
+    const endpoint = `http://127.0.0.1:${address.port}/v1`
+    let requests = 0
+    server.on('request', () => { requests += 1 })
+    const approvalSnapshots: Array<{ endpoint: string; model: string; serializedBody: string }> = []
+    dispose?.()
+    const [{ registerIpc }, { AgentProfileService }] = await Promise.all([
+      import('../src/main/ipc/register'), import('../src/main/services/agent-profile-service')
+    ])
+    profileService = new AgentProfileService(directory, async (snapshot) => {
+      approvalSnapshots.push(snapshot)
+      return false
+    })
+    dispose = registerIpc({ agentProfiles: profileService, log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
+
+    try {
+      const created = await bridge.invoke('agent:profile:create', { name: 'cancel-probe', endpoint, model: 'synthetic-model' })
+      if (!created.ok) throw new Error('profile setup failed')
+      const id = created.data.id
+      await bridge.invoke('agent:key:set', { id, key: 'synthetic-cancel-probe-key' })
+      await profileService.recordCapability(id, { status: 'passed', testedAt: '2026-10-03T00:00:00.000Z', errorCategory: null })
+
+      const result = await bridge.invoke('agent:capability:test', { id })
+
+      expect(result).toMatchObject({ ok: false, code: ERR.CONFIRMATION_REQUIRED, message: '服务配置操作失败' })
+      expect(approvalSnapshots).toHaveLength(1)
+      expect(approvalSnapshots[0].endpoint).toBe(`${endpoint}/chat/completions`)
+      expect(approvalSnapshots[0].serializedBody).toContain('trace_capability_probe')
+      expect(approvalSnapshots[0].serializedBody).not.toContain('synthetic-cancel-probe-key')
+      expect(requests).toBe(0)
+      expect((await bridge.invoke('agent:profile:list')).data).toMatchObject({
+        profiles: [{ id, capability: { status: 'passed', testedAt: '2026-10-03T00:00:00.000Z', errorCategory: null } }]
+      })
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+
   it.each(['set', 'remove', 'delete'] as const)('preserves the existing credential when %s metadata cannot commit', async (operation) => {
     const created = await bridge.invoke('agent:profile:create', { name: 'commit-failure', endpoint: 'https://api.example.com/v1', model: 'model' })
     if (!created.ok) throw new Error('profile setup failed')

@@ -1,6 +1,8 @@
 import { createServer, type Server } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
 import { testAgentToolCapability } from '../src/main/services/agent-capability-test'
+import type { AgentApprovalRequestSnapshot } from '../src/shared/agent-types'
+import { ERR } from '../src/shared/errors'
 
 const servers: Server[] = []
 async function serve(events: string[], inspect?: (body: Record<string, unknown>) => void): Promise<string> {
@@ -22,6 +24,7 @@ async function serve(events: string[], inspect?: (body: Record<string, unknown>)
 }
 afterEach(async () => { await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
 const event = (value: unknown) => JSON.stringify({ id: 'probe-response', choices: [{ delta: value }] })
+const runApproved = (input: Parameters<typeof testAgentToolCapability>[0]) => testAgentToolCapability(input, async () => true)
 
 describe('synthetic tool-call capability test', () => {
   it('protocol-fails when unfinished arguments are completed after finish_reason', async () => {
@@ -31,7 +34,7 @@ describe('synthetic tool-call capability test', () => {
       event({ tool_calls: [{ index: 0, function: { arguments: '"ready"}' } }] }),
       '[DONE]'
     ])
-    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
+    expect(await runApproved({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
   })
 
   it('passes only after merging native tool-call deltas by index and never executes the probe', async () => {
@@ -42,7 +45,7 @@ describe('synthetic tool-call capability test', () => {
       JSON.stringify({ id: 'probe-response', choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
       '[DONE]'
     ], (body) => { request = body })
-    const capability = await testAgentToolCapability({ endpoint, model: 'synthetic-model', apiKey: 'test-only-key' })
+    const capability = await runApproved({ endpoint, model: 'synthetic-model', apiKey: 'test-only-key' })
     expect(capability).toMatchObject({ status: 'passed', errorCategory: null })
     expect(capability.testedAt).toEqual(expect.any(String))
     expect(request).toMatchObject({ stream: true, tool_choice: { type: 'function', function: { name: 'trace_capability_probe' } } })
@@ -56,7 +59,7 @@ describe('synthetic tool-call capability test', () => {
       JSON.stringify({ id: 'probe-response', choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"ready"}' } }] }, finish_reason: 'tool_calls' }] }),
       '', '[DONE]'
     ])
-    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'passed', errorCategory: null })
+    expect(await runApproved({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'passed', errorCategory: null })
   })
 
   it.each([
@@ -70,12 +73,12 @@ describe('synthetic tool-call capability test', () => {
       JSON.stringify({ id: 'probe-response', choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
       '[DONE]'
     ])
-    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: category })
+    expect(await runApproved({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: category })
   })
 
   it('protocol-fails for an incomplete stream with otherwise valid tool fields', async () => {
     const endpoint = await serve([event({ tool_calls: [{ index: 0, id: 'call', type: 'function', function: { name: 'trace_capability_probe', arguments: '{"value":"ready"}' } }] })])
-    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
+    expect(await runApproved({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
   })
 
   it('rejects two interleaved native calls even when the probe arguments assemble correctly', async () => {
@@ -87,6 +90,26 @@ describe('synthetic tool-call capability test', () => {
       event({ tool_calls: [{ index: 0, function: { name: 'probe', arguments: ':"ready"}' } }] }),
       JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }), '[DONE]'
     ])
-    expect(await testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: 'unsupported' })
+    expect(await runApproved({ endpoint, model: 'model', apiKey: 'test-only-key' })).toMatchObject({ status: 'failed', errorCategory: 'unsupported' })
+  })
+
+  it('does not issue the synthetic probe when the isolated preview is canceled', async () => {
+    let requestCount = 0
+    let approvedSnapshot: AgentApprovalRequestSnapshot | undefined
+    const endpoint = await serve(['[DONE]'], () => { requestCount += 1 })
+    await expect(testAgentToolCapability({ endpoint, model: 'model', apiKey: 'test-only-key' }, async (snapshot) => {
+      approvedSnapshot = snapshot
+      return false
+    })).rejects.toMatchObject({ code: ERR.CONFIRMATION_REQUIRED })
+    expect(requestCount).toBe(0)
+    expect(approvedSnapshot).toMatchObject({ endpoint: `${endpoint}/chat/completions`, model: 'model' })
+    expect(JSON.parse(approvedSnapshot!.serializedBody)).toMatchObject({
+      model: 'model',
+      messages: [{ role: 'user', content: 'Call the provided test function with value ready.' }],
+      stream: true,
+      tools: [{ type: 'function', function: { name: 'trace_capability_probe' } }],
+      tool_choice: { type: 'function', function: { name: 'trace_capability_probe' } }
+    })
+    expect(JSON.stringify(approvedSnapshot)).not.toContain('test-only-key')
   })
 })

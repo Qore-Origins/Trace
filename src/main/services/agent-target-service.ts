@@ -230,8 +230,9 @@ export class AgentTargetService {
   /**
    * Main-process seam. Call only after the session service has persisted this
    * complete user message; never pass renderer/provider-supplied identifiers.
-   * The whole grant set stays bound to this message, while only confirmed refs
-   * become resolvable; later previews may add refs for the same message.
+   * The whole grant set stays bound to this message, while only refs in its first
+   * confirmed preview become resolvable. A retry may repeat that exact ref set,
+   * but a later preview cannot expand authorization for an existing message.
    */
   async bindGrantSetToUserMessage(setId: string, message: AgentMessage, confirmedRefs: readonly string[]): Promise<void> {
     if (typeof setId !== 'string' || !Array.isArray(confirmedRefs) || confirmedRefs.length < 1 ||
@@ -252,13 +253,21 @@ export class AgentTargetService {
     if (records.length === 0) throw new TraceError(ERR.PATH_NOT_FOUND, '目标授权不存在或已失效')
     const recordsByRef = new Map(records.map((record) => [record.ref, record]))
     if (confirmedRefs.some((ref) => !recordsByRef.has(ref))) throw new TraceError(ERR.VALIDATION, '确认目标不属于当前授权集')
-    if (records.some((record) => this.now() >= record.expiresAtMs)) {
-      this.deleteSet(setId)
-      throw new TraceError(ERR.CONFLICT, '目标授权已过期，请重新选择')
-    }
+    if (records.some((record) => this.now() >= record.expiresAtMs)) throw new TraceError(ERR.CONFLICT, '目标授权已过期，请重新选择')
     if (records.some((record) => record.boundMessageId !== undefined && record.boundMessageId !== messageId)) {
       throw new TraceError(ERR.CONFLICT, '目标授权已绑定到另一条用户消息')
     }
+
+    const alreadyConfirmedForMessage = records
+      .filter((record) => record.confirmedMessageId === messageId)
+      .map((record) => record.ref)
+    if (alreadyConfirmedForMessage.length > 0) {
+      const previouslyConfirmed = new Set(alreadyConfirmedForMessage)
+      if (confirmedRefs.length !== previouslyConfirmed.size || confirmedRefs.some((ref) => !previouslyConfirmed.has(ref))) {
+        throw new TraceError(ERR.CONFLICT, '该用户消息的目标确认范围不可扩展')
+      }
+    }
+
     for (const record of records) record.boundMessageId = messageId
     for (const ref of confirmedRefs) recordsByRef.get(ref)!.confirmedMessageId = messageId
   }

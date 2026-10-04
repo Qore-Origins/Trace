@@ -12,6 +12,7 @@ import { bindAntdHost } from '../src/renderer/src/antd-host'
 import { i18n } from '../src/renderer/src/i18n'
 import { ERR } from '../src/shared/errors'
 import type { TraceBridge } from '../src/shared/ipc-contract'
+import type { AgentApprovalRequestSnapshot } from '../src/shared/agent-types'
 
 const electron = vi.hoisted(() => {
   const handlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>()
@@ -35,6 +36,7 @@ vi.mock('electron', () => electron)
 function Binder(): null { const { modal, message } = AntdApp.useApp(); bindAntdHost(modal, message); return null }
 let host: HTMLDivElement, root: ReturnType<typeof createRoot>, directory: string, dispose: () => void
 let bridge: TraceBridge
+let approvalSnapshots: AgentApprovalRequestSnapshot[]
 async function render(active = true): Promise<void> {
   await act(async () => { root.render(createElement(AntdApp, {}, createElement(Binder), createElement(AgentSettingsSection, { active }))) })
   if (active && !electron.ipcGate.list) await ready()
@@ -69,10 +71,11 @@ beforeEach(async () => {
   electron.encryption.available = true
   electron.encryption.gate = null
   electron.ipcGate.list = null
+  approvalSnapshots = []
   await i18n.changeLanguage('zh-CN')
   directory = await fs.mkdtemp(join(tmpdir(), 'trace-agent-settings-'))
   const { registerIpc } = await import('../src/main/ipc/register')
-  dispose = registerIpc({ agentUserDataDir: directory, log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
+  dispose = registerIpc({ agentUserDataDir: directory, requestAgentApproval: async (snapshot: AgentApprovalRequestSnapshot) => { approvalSnapshots.push(snapshot); return true }, log: vi.fn() } as unknown as Parameters<typeof registerIpc>[0])
   await import('../src/preload/index')
   bridge = window.trace
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
@@ -311,6 +314,10 @@ describe('model service settings interactions', () => {
       await click('测试工具能力'); await click('开始测试', document.body)
       expect(host.textContent).toContain('测试通过')
       expect(host.querySelector('time')?.dateTime).toEqual(expect.any(String))
+      expect(approvalSnapshots).toHaveLength(1)
+      expect(approvalSnapshots[0].endpoint).toBe(`http://127.0.0.1:${(server.address() as { port: number }).port}/v1/chat/completions`)
+      expect(approvalSnapshots[0].serializedBody).toBe(JSON.stringify(requests[0]))
+      expect(JSON.stringify(approvalSnapshots)).not.toContain('test-only-ui-credential')
       await input('API Key', 'test-only-replaced-credential'); await click('保存或替换密钥')
       expect(host.textContent).toContain('需重测')
       expect(field('API Key').value).toBe('')
@@ -321,6 +328,8 @@ describe('model service settings interactions', () => {
       expect(host.textContent).toContain('Service authentication failed')
       expect(host.textContent).not.toMatch(/private-provider-body|test-only-ui-credential/)
       expect(requests).toHaveLength(2)
+      expect(approvalSnapshots).toHaveLength(2)
+      expect(approvalSnapshots[1].serializedBody).toBe(JSON.stringify(requests[1]))
       expect(JSON.stringify(requests)).not.toMatch(/test-only-ui-credential|test-only-replaced-credential/)
     } finally {
       server.closeAllConnections()

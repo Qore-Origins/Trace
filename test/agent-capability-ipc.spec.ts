@@ -50,7 +50,7 @@ beforeEach(async () => {
   if (!address || typeof address === 'string') throw new Error('Missing address')
   endpoint = `http://127.0.0.1:${address.port}/v1`
   const { registerIpc } = await import('../src/main/ipc/register')
-  dispose = registerIpc({ agentUserDataDir: directory, log } as unknown as Parameters<typeof registerIpc>[0])
+  dispose = registerIpc({ agentUserDataDir: directory, requestAgentApproval: async () => true, log } as unknown as Parameters<typeof registerIpc>[0])
   await import('../src/preload/index')
   bridge = window.trace
 })
@@ -94,7 +94,7 @@ describe('capability testing through window.trace', () => {
     expect(result).toMatchObject({ ok: true, data: { status: 'failed', errorCategory: 'authentication' } })
     dispose()
     const { registerIpc } = await import('../src/main/ipc/register')
-    dispose = registerIpc({ agentUserDataDir: directory, log } as unknown as Parameters<typeof registerIpc>[0])
+    dispose = registerIpc({ agentUserDataDir: directory, requestAgentApproval: async () => true, log } as unknown as Parameters<typeof registerIpc>[0])
     const listed = await bridge.invoke('agent:profile:list')
     expect(listed.data).toMatchObject({ profiles: [{ capability: result.data }] })
     expect(JSON.stringify([result, listed, log.mock.calls])).not.toMatch(/private-provider-body|test-only-credential/)

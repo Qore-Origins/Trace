@@ -5,6 +5,7 @@ import { AgentProfileService } from './agent-profile-service'
 import { streamChatCompletion } from './agent-provider'
 import { agentRecord, AGENT_MAX_MESSAGE_LENGTH, assertAgentSessionId } from './agent-session-repository'
 import { AgentStreamError } from './agent-sse'
+import { createAgentApprovalRequestSnapshot, type AgentOutboundApproval } from './agent-approval-window-service'
 
 interface ActiveRequest {
   identity: AgentRequestIdentity
@@ -39,14 +40,24 @@ function metadata(payload: unknown, keys: string[]): Record<string, unknown> {
 export class AgentRequestService {
   private readonly active = new Map<string, ActiveRequest>()
   private disposed = false
-  constructor(private readonly conversations: AgentConversationService, private readonly profiles: AgentProfileService, private readonly emit: (event: AgentRequestEvent) => void) {}
+  constructor(
+    private readonly conversations: AgentConversationService,
+    private readonly profiles: AgentProfileService,
+    private readonly emit: (event: AgentRequestEvent) => void,
+    private readonly approveOutbound: AgentOutboundApproval = async () => false
+  ) {}
 
   async send(payload: unknown): Promise<AgentRequestIdentity> {
     const input = metadata(payload, ['token', 'sessionId']) as unknown as AgentRequestSendInput
     if (this.disposed) throw new TraceError(ERR.STATE_MACHINE, '请求服务已关闭')
     const preview = await this.conversations.consumePreview(input.token)
     if (preview.sessionId !== input.sessionId) throw new TraceError(ERR.CONFLICT, '预览与会话不匹配')
-    return this.conversations.dispatchPreview(preview, (revision, dispatch) => this.profiles.dispatchAuthorized(preview.target.id, revision, dispatch), (identity, key) => {
+    return this.conversations.dispatchPreview(preview, async (revision, dispatch) => {
+      const tools = preview.tools?.length ? { tools: preview.tools, toolChoice: preview.toolChoice ?? 'auto' as const } : undefined
+      const snapshot = createAgentApprovalRequestSnapshot(preview.target.endpoint, preview.target.model, preview.messages, tools)
+      if (!await this.approveOutbound(snapshot)) throw new TraceError(ERR.CONFIRMATION_REQUIRED, '外发请求未获批准')
+      return this.profiles.dispatchAuthorized(preview.target.id, revision, dispatch)
+    }, (identity, key) => {
       if (this.disposed) throw new TraceError(ERR.STATE_MACHINE, '请求服务已关闭')
       const active: ActiveRequest = { identity, controller: new AbortController(), userStopped: false, acceptingText: true, accepted: '', persisted: '', persistence: Promise.resolve(), errorCategory: null }
       this.active.set(identity.requestId, active)

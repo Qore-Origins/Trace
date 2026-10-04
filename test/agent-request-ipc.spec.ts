@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TraceBridge, TraceResult } from '../src/shared/ipc-contract'
-import type { AgentMessageStatus, AgentOutboundPreview, AgentRequestEvent, AgentRequestIdentity } from '../src/shared/agent-types'
+import type { AgentApprovalRequestSnapshot, AgentMessageStatus, AgentOutboundPreview, AgentRequestEvent, AgentRequestIdentity } from '../src/shared/agent-types'
 import type { AgentConversationService } from '../src/main/services/agent-conversation-service'
 import type { StorageService } from '../src/main/services/storage-service'
 import type { AgentTargetService } from '../src/main/services/agent-target-service'
@@ -37,6 +37,8 @@ let dispose: () => void
 let events: AgentRequestEvent[], bodies: string[], responses: ServerResponse[]
 let respond: (response: ServerResponse) => void
 let logs: ReturnType<typeof vi.fn>
+let approvalSnapshots: AgentApprovalRequestSnapshot[]
+let approveOutbound: (snapshot: AgentApprovalRequestSnapshot) => Promise<boolean>
 const planReadTool: AgentProviderTool = { type: 'function', function: { name: 'plan.read', description: 'Read an explicitly granted plan.', parameters: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'], additionalProperties: false } } }
 const chunk = (text: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] })}\n\n`
 const end = 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
@@ -62,7 +64,8 @@ beforeEach(async () => {
   // Only the Electron exposeInMainWorld boundary needs a window; keep Node's real fetch.
   vi.stubGlobal('window', {})
   electron.safeStorage.isAsyncEncryptionAvailable.mockResolvedValue(false)
-  events = []; bodies = []; responses = []; logs = vi.fn()
+  events = []; bodies = []; responses = []; logs = vi.fn(); approvalSnapshots = []
+  approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); return true }
   respond = (response) => response.end(chunk('第一段') + chunk('第二段') + end)
   server = createServer(async (request, response) => {
     const fragments: Buffer[] = []
@@ -80,7 +83,7 @@ beforeEach(async () => {
   storage = new StorageService(repository); storage.setRoot(root)
   agentTargets = new AgentTargetService(storage)
   profiles = new AgentProfileService(directory)
-  dispose = registerIpc({ storage, agentUserDataDir: directory, agentProfiles: profiles, agentTargetService: agentTargets, agentToolDefinitions: () => [planReadTool], getWindow: () => ({ webContents: { isDestroyed: () => false, send: (name: string, payload: unknown) => electron.listeners.get(name)?.forEach((listener) => listener({}, payload)) } }), log: logs } as unknown as Parameters<typeof registerIpc>[0])
+  dispose = registerIpc({ storage, agentUserDataDir: directory, agentProfiles: profiles, agentTargetService: agentTargets, agentToolDefinitions: () => [planReadTool], requestAgentApproval: (snapshot: AgentApprovalRequestSnapshot) => approveOutbound(snapshot), getWindow: () => ({ webContents: { isDestroyed: () => false, send: (name: string, payload: unknown) => electron.listeners.get(name)?.forEach((listener) => listener({}, payload)) } }), log: logs } as unknown as Parameters<typeof registerIpc>[0])
   await import('../src/preload/index'); bridge = window.trace
   bridge.on('trace:agent-request', (event) => events.push(event))
   profileId = data(await bridge.invoke('agent:profile:create', { name: '本机服务', endpoint: `http://127.0.0.1:${address.port}/v1`, model: 'test-model' })).id
@@ -93,6 +96,49 @@ afterEach(async () => {
 })
 
 describe('agent request public IPC and loopback SSE', () => {
+  it('requires a separately confirmed outbound snapshot before direct send IPC can fetch', async () => {
+    approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); return false }
+    const preview = await createPreview()
+    const result = await bridge.invoke('agent:request:send', { token: preview.token, sessionId: preview.sessionId })
+    expect(approvalSnapshots).toHaveLength(1)
+    expect(approvalSnapshots[0]).toMatchObject({
+      endpoint: preview.target.endpoint.replace(/\/$/, '') + '/chat/completions',
+      model: preview.target.model,
+      serializedBody: JSON.stringify({ model: preview.target.model, messages: preview.messages, stream: true })
+    })
+    expect(approvalSnapshots[0]).toBeInstanceOf(Object)
+    expect(result.ok).toBe(false)
+    expect(bodies).toEqual([])
+    expect(data(await bridge.invoke('agent:session:read', { id: preview.sessionId })).messages).toEqual([])
+    expect(JSON.stringify(approvalSnapshots) + JSON.stringify(logs.mock.calls)).not.toContain('loopback-test-key')
+  })
+
+  it('waits for trusted confirmation and sends the identical frozen request body', async () => {
+    let confirm!: (approved: boolean) => void
+    let entered!: () => void
+    const enteredApproval = new Promise<void>((resolve) => { entered = resolve })
+    const decision = new Promise<boolean>((resolve) => { confirm = resolve })
+    approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); entered(); return decision }
+    const preview = await createPreview()
+    const sending = bridge.invoke('agent:request:send', { token: preview.token, sessionId: preview.sessionId })
+    await enteredApproval
+
+    expect(bodies).toEqual([])
+    expect(data(await bridge.invoke('agent:session:read', { id: preview.sessionId })).messages).toEqual([])
+    expect(approvalSnapshots[0]).toEqual({
+      endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1/chat/completions`,
+      model: preview.target.model,
+      serializedBody: JSON.stringify({ model: preview.target.model, messages: preview.messages, stream: true })
+    })
+    expect(Object.isFrozen(approvalSnapshots[0])).toBe(true)
+    confirm(true)
+    const result = await sending
+    const identity = data(result)
+    await terminal(identity)
+    expect(bodies).toEqual([approvalSnapshots[0].serializedBody])
+    expect(JSON.stringify(approvalSnapshots)).not.toContain('loopback-test-key')
+  })
+
   it('sends exactly the approved preview without tools and persists every displayed fragment', async () => {
     await plan('批准的上下文')
     const preview = await createPreview([{ kind: 'plan', path: 'one' }])
@@ -109,6 +155,9 @@ describe('agent request public IPC and loopback SSE', () => {
     const identity = await send(preview)
     expect(await terminal(identity)).toEqual({ ...identity, type: 'terminal', status: 'complete', marker: null, errorCategory: null })
     expect(bodies).toEqual([expected])
+    expect(approvalSnapshots).toHaveLength(1)
+    expect(approvalSnapshots[0].serializedBody).toBe(bodies[0])
+    expect(approvalSnapshots[0].endpoint).toBe(`http://127.0.0.1:${(server.address() as { port: number }).port}/v1/chat/completions`)
     for (const event of events) expect(event).toMatchObject(identity)
     const shown = events.filter((event) => event.type === 'delta').map((event) => event.type === 'delta' ? event.text : '').join('')
     const session = data(await bridge.invoke('agent:session:read', { id: identity.sessionId }))
@@ -130,6 +179,10 @@ describe('agent request public IPC and loopback SSE', () => {
     const identity = await send(preview)
     expect(await terminal(identity)).toMatchObject({ status: 'complete', errorCategory: null })
     expect(bodies).toEqual([expected])
+    expect(approvalSnapshots).toHaveLength(1)
+    expect(approvalSnapshots[0].serializedBody).toBe(bodies[0])
+    expect(approvalSnapshots[0].serializedBody).toBe(expected)
+    expect(approvalSnapshots[0].serializedBody).not.toContain('loopback-test-key')
     expect(bodies[0]).not.toContain('userMessageId')
     const saved = data(await bridge.invoke('agent:session:read', { id: identity.sessionId }))
     expect(saved.messages[1]).toMatchObject({ status: 'complete', toolCalls: [{ id: 'call_1', type: 'function', function: { name: 'plan.read', arguments: '{"ref":"r1"}' } }] })

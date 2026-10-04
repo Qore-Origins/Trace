@@ -5,7 +5,8 @@ import { ERR, TraceError } from '../../shared/errors'
 import { AGENT_PROVIDER_PRESETS } from '../../shared/agent-provider-catalog'
 import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from '../../shared/agent-types'
 import { AgentCredentialStore, assertAgentProfileId } from './agent-credential-store'
-import { testAgentToolCapability } from './agent-capability-test'
+import { createAgentCapabilityRequest, runAgentToolCapabilityTest } from './agent-capability-test'
+import type { AgentOutboundApproval } from './agent-approval-window-service'
 
 type SavedProfile = Omit<AgentProfile, 'keyStatus'>
 interface SavedProfiles { version: 1; defaultProfileId: string | null; profiles: SavedProfile[] }
@@ -46,7 +47,7 @@ export class AgentProfileService {
   private readonly credentialRevisions = new Map<string, number>()
   private readonly capabilityRevisions = new Map<string, number>()
 
-  constructor(private readonly userDataDir: string) {
+  constructor(private readonly userDataDir: string, private readonly approveOutbound: AgentOutboundApproval = async () => false) {
     this.credentials = new AgentCredentialStore(userDataDir)
   }
 
@@ -219,9 +220,22 @@ export class AgentProfileService {
       return { endpoint: profile.endpoint, model: profile.model, apiKey: await this.credentials.getForProvider(id), revision, keyRevision: this.credentialRevisions.get(id) ?? 0 }
     })
     // The provider promise must run outside the queue so edits invalidate in-flight tests.
-    const capability: AgentCapability = snapshot.apiKey
-      ? await testAgentToolCapability({ endpoint: snapshot.endpoint, model: snapshot.model, apiKey: snapshot.apiKey })
-      : { status: 'failed', testedAt: new Date().toISOString(), errorCategory: 'missing-key' }
+    let capability: AgentCapability
+    if (!snapshot.apiKey) {
+      capability = { status: 'failed', testedAt: new Date().toISOString(), errorCategory: 'missing-key' }
+    } else {
+      const request = createAgentCapabilityRequest(snapshot.endpoint, snapshot.model)
+      if (!await this.approveOutbound(request.snapshot)) throw new TraceError(ERR.CONFIRMATION_REQUIRED, '能力测试外发未获批准')
+      const started = await this.dispatchAuthorized(id, snapshot.keyRevision, (profile, key) => {
+        if (profile.endpoint !== snapshot.endpoint || profile.model !== snapshot.model ||
+          (this.capabilityRevisions.get(id) ?? 0) !== snapshot.revision) {
+          throw new TraceError(ERR.CONFLICT, '服务配置已变化，请重新测试')
+        }
+        const result = runAgentToolCapabilityTest({ endpoint: profile.endpoint, model: profile.model, apiKey: key }, request)
+        return Promise.resolve({ result })
+      })
+      capability = await started.result
+    }
     return this.serial(async () => {
       const data = await this.read()
       const profile = data.profiles.find((item) => item.id === id)
