@@ -244,7 +244,7 @@ export class AgentConversationService {
         const results = new Set(session.messages.filter((message) => message.requestId === requestId && message.role === 'tool').map((message) => message.toolCallId))
         if (requestCalls.some((message) => message.toolCalls?.some((call) => !results.has(call.id)))) throw new TraceError(ERR.STATE_MACHINE, '工具结果尚未全部持久化')
         const toolRounds = request.toolRounds ?? 0, toolCallCount = request.toolCallCount ?? 0
-        if (toolRounds > AGENT_MAX_TOOL_ROUNDS_PER_REQUEST || toolCallCount > AGENT_MAX_TOOL_CALLS_PER_REQUEST) throw new AgentStreamError('limit')
+        if (toolRounds >= AGENT_MAX_TOOL_ROUNDS_PER_REQUEST || toolCallCount >= AGENT_MAX_TOOL_CALLS_PER_REQUEST) throw new AgentStreamError('limit')
         const assistantId = randomUUID()
         session.messages.push({ id: assistantId, requestId, role: 'assistant', content: '', status: 'streaming', createdAt: new Date(this.now()).toISOString() })
         continuation = { assistantId, userMessageId: userMessages[0].id, toolRounds, toolCallCount, toolsAllowed: toolRounds < AGENT_MAX_TOOL_ROUNDS_PER_REQUEST && toolCallCount < AGENT_MAX_TOOL_CALLS_PER_REQUEST }
@@ -269,7 +269,8 @@ export class AgentConversationService {
           const grantSetId = this.grantSetIds.get(preview)
           if (grantSetId) {
             if (!this.targets) throw new TraceError(ERR.CONFLICT, '计划操作授权已失效，请重新选择')
-            await this.targets.bindGrantSetToUserMessage(grantSetId, userMessage)
+            const confirmedRefs = preview.targets?.map((item) => item.ref) ?? []
+            await this.targets.bindGrantSetToUserMessage(grantSetId, userMessage, confirmedRefs)
           }
           await this.verifySnapshot(preview, profile, preview.sessionRevision + 1)
           start(identity, key)
@@ -315,6 +316,7 @@ export class AgentConversationService {
       const callIds = new Set(assistant.toolCalls.map((call) => call.id))
       const savedResultIds = new Set(session.messages.filter((message) => message.role === 'tool' && message.requestId === assistant.requestId).map((message) => message.toolCallId))
       if (results.some((result) => !callIds.has(result.toolCallId) || savedResultIds.has(result.toolCallId))) throw new TraceError(ERR.VALIDATION, '工具结果与调用不匹配')
+      if (results.length !== assistant.toolCalls.length || results.some((result, index) => result.toolCallId !== assistant.toolCalls?.[index]?.id)) throw new TraceError(ERR.VALIDATION, '工具结果必须完整并按调用顺序提供')
       const createdAt = new Date(this.now()).toISOString()
       for (const result of results) session.messages.push({ id: randomUUID(), role: 'tool', toolCallId: result.toolCallId, content: result.content, status: 'complete', createdAt, requestId: assistant.requestId })
     }))

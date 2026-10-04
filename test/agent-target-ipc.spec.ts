@@ -247,7 +247,7 @@ describe('agent target typed IPC', () => {
     const targets = new AgentTargetService(storage)
     const firstGrant = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
     const firstMessage = committedUserMessage('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
-    await targets.bindGrantSetToUserMessage(firstGrant.id, firstMessage)
+    await targets.bindGrantSetToUserMessage(firstGrant.id, firstMessage, [firstGrant.targets[0].ref])
     const first = await targets.resolveGrantForMessage({ setId: firstGrant.id, ref: firstGrant.targets[0].ref }, firstMessage.id)
     const firstLibraryId = first.libraryId
     expect(first.rootHash).not.toBe(firstLibraryId)
@@ -264,7 +264,7 @@ describe('agent target typed IPC', () => {
     targets.invalidateRoot()
     const secondGrant = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
     const secondMessage = committedUserMessage('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
-    await targets.bindGrantSetToUserMessage(secondGrant.id, secondMessage)
+    await targets.bindGrantSetToUserMessage(secondGrant.id, secondMessage, [secondGrant.targets[0].ref])
     const second = await targets.resolveGrantForMessage({ setId: secondGrant.id, ref: secondGrant.targets[0].ref }, secondMessage.id)
     expect(second.libraryId).not.toBe(firstLibraryId)
     expect(second.rootHash).not.toBe(second.libraryId)
@@ -357,11 +357,17 @@ describe('agent target typed IPC', () => {
     await expect(targets.validate({ setId: grantSet.id, ref: grantSet.targets[0].ref })).rejects.toMatchObject({ code: expect.any(Number) })
   })
 
-  it('binds a grant set to one committed user message and rejects error-message or cross-message use', async () => {
+  it('binds a grant set to one user message and resolves only the refs confirmed by each preview', async () => {
     const { AgentTargetService } = await import('../src/main/services/agent-target-service')
     const targets = new AgentTargetService(storage)
-    const grantSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
-    const grant = { setId: grantSet.id, ref: grantSet.targets[0].ref }
+    await fs.mkdir(join(root, 'SecondPlan'))
+    await repo.writePlanAtomic(root, 'SecondPlan', {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    const grantSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }, { kind: 'plan', path: 'SecondPlan' }] })
+    const grantA = { setId: grantSet.id, ref: grantSet.targets[0].ref }
+    const grantB = { setId: grantSet.id, ref: grantSet.targets[1].ref }
     const userMessage = committedUserMessage('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
     const nextUserMessage = committedUserMessage('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
     const errorMessage = {
@@ -369,19 +375,52 @@ describe('agent target typed IPC', () => {
       createdAt: '2026-10-04T00:00:00.000Z', requestId: 'ffffffff-ffff-4fff-8fff-ffffffffffff'
     } as const
 
-    await expect(targets.resolveGrantForMessage(grant, userMessage.id))
+    await expect(targets.resolveGrantForMessage(grantA, userMessage.id))
       .rejects.toMatchObject({ code: ERR.CONFLICT })
-    await targets.bindGrantSetToUserMessage(grantSet.id, userMessage)
-    await targets.bindGrantSetToUserMessage(grantSet.id, userMessage)
-    await expect(targets.resolveGrantForMessage(grant, userMessage.id)).resolves.toMatchObject({ kind: 'plan' })
-    await expect(targets.bindGrantSetToUserMessage(grantSet.id, nextUserMessage))
+    await targets.bindGrantSetToUserMessage(grantSet.id, userMessage, [grantA.ref])
+    await targets.bindGrantSetToUserMessage(grantSet.id, userMessage, [grantA.ref])
+    await expect(targets.resolveGrantForMessage(grantA, userMessage.id)).resolves.toMatchObject({ kind: 'plan', path: 'Legacy' })
+    await expect(targets.resolveGrantForMessage(grantB, userMessage.id))
       .rejects.toMatchObject({ code: ERR.CONFLICT })
-    await expect(targets.resolveGrantForMessage(grant, nextUserMessage.id))
+
+    await targets.bindGrantSetToUserMessage(grantSet.id, userMessage, [grantB.ref])
+    await expect(targets.resolveGrantForMessage(grantB, userMessage.id)).resolves.toMatchObject({ kind: 'plan', path: 'SecondPlan' })
+    await expect(targets.bindGrantSetToUserMessage(grantSet.id, nextUserMessage, [grantA.ref]))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(targets.resolveGrantForMessage(grantA, nextUserMessage.id))
       .rejects.toMatchObject({ code: ERR.CONFLICT })
 
     const unboundSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
-    await expect(targets.bindGrantSetToUserMessage(unboundSet.id, errorMessage))
+    await expect(targets.bindGrantSetToUserMessage(unboundSet.id, errorMessage, [unboundSet.targets[0].ref]))
       .rejects.toMatchObject({ code: ERR.VALIDATION })
+  })
+
+  it('rejects empty, duplicate, and cross-set preview refs without partially binding a grant set', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    const targets = new AgentTargetService(storage)
+    await fs.mkdir(join(root, 'SecondPlan'))
+    await repo.writePlanAtomic(root, 'SecondPlan', {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    const grantSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }, { kind: 'plan', path: 'SecondPlan' }] })
+    const otherSet = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
+    const [refA, refB] = grantSet.targets.map((grant) => grant.ref)
+    const firstMessage = committedUserMessage('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    const secondMessage = committedUserMessage('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+
+    await expect(targets.bindGrantSetToUserMessage(grantSet.id, firstMessage, []))
+      .rejects.toMatchObject({ code: ERR.VALIDATION })
+    await expect(targets.bindGrantSetToUserMessage(grantSet.id, firstMessage, [refA, refA]))
+      .rejects.toMatchObject({ code: ERR.VALIDATION })
+    await expect(targets.bindGrantSetToUserMessage(grantSet.id, firstMessage, [refA, otherSet.targets[0].ref]))
+      .rejects.toMatchObject({ code: ERR.VALIDATION })
+
+    await targets.bindGrantSetToUserMessage(grantSet.id, secondMessage, [refA])
+    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref: refA }, secondMessage.id))
+      .resolves.toMatchObject({ kind: 'plan', path: 'Legacy' })
+    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref: refB }, secondMessage.id))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
   })
 
   it('allows an explicit trash target to create one exact preview, never a commit', async () => {
@@ -391,7 +430,7 @@ describe('agent target typed IPC', () => {
     const targets = new AgentTargetService(storage)
     const grantSet = await targets.grant({ targets: [{ kind: 'trash', entryId: entry.id }] })
     const message = committedUserMessage('dddddddd-dddd-4ddd-8ddd-dddddddddddd')
-    await targets.bindGrantSetToUserMessage(grantSet.id, message)
+    await targets.bindGrantSetToUserMessage(grantSet.id, message, [grantSet.targets[0].ref])
     const resolved = await targets.resolveGrantForMessage({ setId: grantSet.id, ref: grantSet.targets[0].ref }, message.id)
     expect(resolved.kind).toBe('trash')
     if (resolved.kind !== 'trash') return
@@ -411,7 +450,7 @@ describe('agent target typed IPC', () => {
     const targets = new AgentTargetService(storage)
     const grantSet = await targets.grant({ targets: [{ kind: 'trash', entryId: entry.id }] })
     const message = committedUserMessage('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee')
-    await targets.bindGrantSetToUserMessage(grantSet.id, message)
+    await targets.bindGrantSetToUserMessage(grantSet.id, message, [grantSet.targets[0].ref])
     const manifestPath = join(root, '.trace', 'trash', entry.id, 'manifest.json')
     const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Record<string, unknown>
     manifest.deleted_at = '2026-10-04T00:00:01.000Z'

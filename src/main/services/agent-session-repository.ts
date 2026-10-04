@@ -71,6 +71,23 @@ function parseSession(value: unknown, id: string): AgentSession {
     return message
   })
   if (new Set(messages.map((item) => item.id)).size !== messages.length || new Set(requests.map((item) => item.id)).size !== requests.length) throw new Error('duplicate identifiers')
+  const matchedToolResultIndexes = new Set<number>()
+  for (let index = 0; index < messages.length; index += 1) {
+    const assistant = messages[index]
+    if (assistant.role !== 'assistant' || !assistant.toolCalls?.length) continue
+    const firstResult = messages[index + 1]
+    if (firstResult?.role !== 'tool' || firstResult.requestId !== assistant.requestId) continue
+    let resultIndex = index + 1
+    for (const call of assistant.toolCalls) {
+      const result = messages[resultIndex]
+      if (result?.role !== 'tool' || result.requestId !== assistant.requestId || result.toolCallId !== call.id) throw new Error('incomplete or out-of-order tool result group')
+      matchedToolResultIndexes.add(resultIndex)
+      resultIndex += 1
+    }
+    const extraResult = messages[resultIndex]
+    if (extraResult?.role === 'tool' && extraResult.requestId === assistant.requestId) throw new Error('extra tool result in group')
+  }
+  if (messages.some((message, index) => message.role === 'tool' && !matchedToolResultIndexes.has(index))) throw new Error('orphaned or displaced tool result')
   const callsByRequest = new Map<string, Set<string>>()
   const resultsByRequest = new Map<string, Set<string>>()
   const roundsByRequest = new Map<string, number>()

@@ -56,6 +56,36 @@ describe('agent session tool transcript persistence', () => {
     expect(reopened.requests[0]).toMatchObject({ toolRounds: 0, toolCallCount: 0 })
   })
 
+  it('rejects incomplete or out-of-order tool results but accepts a pending result group', async () => {
+    const session = await repository.create({ title: 'Ordered tool transcript', profileId })
+    const requestId = randomUUID()
+    const file = join(directory, 'agent-sessions', `${session.id}.json`)
+    const writeTranscript = (resultIds: readonly string[]) => fs.writeFile(file, JSON.stringify({
+      schemaVersion: 1, id: session.id, title: session.title, profileId, createdAt: timestamp, updatedAt: timestamp, revision: 1,
+      requests: [{ id: requestId, profileId, profileName: 'Local', presetId: null, model: 'synthetic', requestedAt: timestamp, sources: [], toolRounds: 1, toolCallCount: 2 }],
+      messages: [
+        { id: randomUUID(), requestId, role: 'user', content: 'Read both plans.', status: 'complete', createdAt: timestamp },
+        { id: randomUUID(), requestId, role: 'assistant', content: '', status: 'complete', createdAt: timestamp, toolCalls: [
+          { id: 'call_first', type: 'function', function: { name: 'plan.read', arguments: '{"ref":"first"}' } },
+          { id: 'call_second', type: 'function', function: { name: 'plan.read', arguments: '{"ref":"second"}' } }
+        ] },
+        ...resultIds.map((toolCallId) => ({ id: randomUUID(), requestId, role: 'tool', toolCallId, content: toolCallId, status: 'complete', createdAt: timestamp }))
+      ]
+    }))
+
+    await writeTranscript([])
+    await expect(new AgentSessionRepository(directory).read(session.id)).resolves.toMatchObject({ messages: [{ role: 'user' }, { role: 'assistant', toolCalls: [{ id: 'call_first' }, { id: 'call_second' }] }] })
+
+    await writeTranscript(['call_first', 'call_second'])
+    await expect(new AgentSessionRepository(directory).read(session.id)).resolves.toMatchObject({ messages: [{ role: 'user' }, { role: 'assistant' }, { role: 'tool', toolCallId: 'call_first' }, { role: 'tool', toolCallId: 'call_second' }] })
+
+    await writeTranscript(['call_second', 'call_first'])
+    await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+
+    await writeTranscript(['call_first'])
+    await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+  })
+
   it('rejects malformed tool arguments, duplicate call IDs, orphan results, and mismatched request counters', async () => {
     const session = await repository.create({ title: 'Invalid tool history', profileId })
     const requestId = randomUUID()

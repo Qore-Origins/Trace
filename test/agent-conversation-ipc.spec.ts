@@ -130,25 +130,33 @@ describe('agent conversation typed IPC', () => {
   })
   it('binds a target only after its confirmed user message is persisted and reuses that ID for continuation', async () => {
     await plan('one', 'grant target content')
+    await plan('two', 'second grant target content')
     const created = await session()
-    const grantSet = value(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
-    const ref = grantSet.targets[0].ref
-    const outbound = await preview(created.id, { targetGrantSetId: grantSet.id, targetRefs: [ref] })
+    const grantSet = value(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }, { kind: 'plan', path: 'two' }] }))
+    const refA = grantSet.targets[0].ref
+    const refB = grantSet.targets[1].ref
+    const outbound = await preview(created.id, { targetGrantSetId: grantSet.id, targetRefs: [refA] })
     expect(outbound).not.toHaveProperty('userMessageId')
     expect(outbound).not.toHaveProperty('targetGrantSetId')
+    expect(outbound.targets?.map((item) => item.ref)).toEqual([refA])
+    // The object returned to the renderer is a clone; authorization must be derived from main's frozen snapshot.
+    outbound.targets?.push(grantSet.targets[1])
     const confirmed = await service.consumePreview(outbound.token)
+    expect(confirmed.targets?.map((item) => item.ref)).toEqual([refA])
     let started = false
     const profile = (await profiles.list()).profiles.find((item) => item.id === profileId)!
     const identity = await service.dispatchPreview(confirmed, (_revision, dispatch) => dispatch(profile, 'synthetic-test-key'), () => { started = true })
     expect(started).toBe(true)
     const persisted = value(await bridge.invoke('agent:session:read', { id: created.id }))
     const userMessage = persisted.messages.find((message) => message.role === 'user')!
-    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref }, userMessage.id)).resolves.toMatchObject({ kind: 'plan', path: 'one' })
+    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref: refA }, userMessage.id)).resolves.toMatchObject({ kind: 'plan', path: 'one' })
+    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref: refB }, userMessage.id)).rejects.toMatchObject({ code: ERR.CONFLICT })
 
     await service.settleAssistant(created.id, identity.assistantId, 'Read complete.', 'complete')
     const continuation = await service.beginAssistantContinuation(created.id, identity.requestId)
     expect(continuation.userMessageId).toBe(userMessage.id)
-    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref }, continuation.userMessageId)).resolves.toMatchObject({ kind: 'plan', path: 'one' })
+    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref: refA }, continuation.userMessageId)).resolves.toMatchObject({ kind: 'plan', path: 'one' })
+    await expect(targets.resolveGrantForMessage({ setId: grantSet.id, ref: refB }, continuation.userMessageId)).rejects.toMatchObject({ code: ERR.CONFLICT })
   })
   it('isolates concurrent previews and refuses renderer supplied confirmed content', async () => {
     const created = await session()
@@ -260,6 +268,57 @@ describe('agent conversation typed IPC', () => {
     const continued = value(await bridge.invoke('agent:session:read', { id: created.id }))
     expect(continued.messages.filter((message) => message.role === 'user')).toHaveLength(1)
     expect(continued.messages.at(-1)).toMatchObject({ id: continuation.assistantId, requestId: turn.requestId, status: 'complete', content: 'Read-only summary.' })
+  })
+  it('requires complete tool results in the original assistant call order', async () => {
+    const created = await session()
+    const turn = await service.appendTurn(await service.consumePreview((await preview(created.id)).token))
+    const calls: AgentCompletedToolCall[] = [
+      { id: 'call_first', name: 'plan.read', arguments: { ref: 'first' } },
+      { id: 'call_second', name: 'plan.read', arguments: { ref: 'second' } }
+    ]
+    await service.settleAssistant(created.id, turn.assistantId, '', 'complete', calls)
+    const before = value(await bridge.invoke('agent:session:read', { id: created.id }))
+
+    await expect(service.appendToolResults(created.id, turn.assistantId, [
+      { toolCallId: 'call_second', content: 'second' },
+      { toolCallId: 'call_first', content: 'first' }
+    ])).rejects.toThrow()
+    await expect(service.appendToolResults(created.id, turn.assistantId, [
+      { toolCallId: 'call_first', content: 'first' }
+    ])).rejects.toThrow()
+    const afterRejectedResults = value(await bridge.invoke('agent:session:read', { id: created.id }))
+    expect(afterRejectedResults.revision).toBe(before.revision)
+    expect(afterRejectedResults.messages).toHaveLength(before.messages.length)
+
+    const completed = await service.appendToolResults(created.id, turn.assistantId, [
+      { toolCallId: 'call_first', content: 'first' },
+      { toolCallId: 'call_second', content: 'second' }
+    ])
+    expect(completed.messages.filter((message) => message.role === 'tool').map((message) => message.toolCallId)).toEqual(['call_first', 'call_second'])
+  })
+  it.each([
+    { label: 'tool-round', rounds: 8, callsPerRound: 1 },
+    { label: 'tool-call', rounds: 1, callsPerRound: 20 }
+  ])('does not create a continuation at the exact $label limit', async ({ rounds, callsPerRound }) => {
+    const created = await session()
+    const turn = await service.appendTurn(await service.consumePreview((await preview(created.id)).token))
+    let assistantId = turn.assistantId
+    for (let round = 0; round < rounds; round += 1) {
+      const calls: AgentCompletedToolCall[] = Array.from({ length: callsPerRound }, (_, index) => {
+        const callNumber = round * callsPerRound + index
+        return { id: `call_${callNumber}`, name: 'plan.read', arguments: { ref: `r${callNumber}` } }
+      })
+      await service.settleAssistant(created.id, assistantId, '', 'complete', calls)
+      await service.appendToolResults(created.id, assistantId, calls.map((call) => ({ toolCallId: call.id, content: '{}' })))
+      if (round < rounds - 1) assistantId = (await service.beginAssistantContinuation(created.id, turn.requestId)).assistantId
+    }
+
+    const before = value(await bridge.invoke('agent:session:read', { id: created.id }))
+    await expect(service.beginAssistantContinuation(created.id, turn.requestId)).rejects.toMatchObject({ category: 'limit' })
+    const after = value(await bridge.invoke('agent:session:read', { id: created.id }))
+    expect(after.revision).toBe(before.revision)
+    expect(after.messages).toHaveLength(before.messages.length)
+    expect(after.messages.some((message) => message.status === 'streaming')).toBe(false)
   })
   it('records source identifiers and versions only with a turn and recovers interrupted streaming on reopen', async () => {
     await plan('one', 'source-body-not-persisted')

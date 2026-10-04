@@ -62,6 +62,7 @@ type TargetGrantRecord = CapturedTarget & {
   revision: string
   expiresAtMs: number
   boundMessageId?: string
+  confirmedMessageId?: string
 }
 
 interface AgentTargetResolutionBase extends AgentTargetGrant {
@@ -229,9 +230,14 @@ export class AgentTargetService {
   /**
    * Main-process seam. Call only after the session service has persisted this
    * complete user message; never pass renderer/provider-supplied identifiers.
+   * The whole grant set stays bound to this message, while only confirmed refs
+   * become resolvable; later previews may add refs for the same message.
    */
-  async bindGrantSetToUserMessage(setId: string, message: AgentMessage): Promise<void> {
-    if (typeof setId !== 'string' || !exactRecord(message, ['id', 'role', 'content', 'status', 'createdAt', 'requestId'])) {
+  async bindGrantSetToUserMessage(setId: string, message: AgentMessage, confirmedRefs: readonly string[]): Promise<void> {
+    if (typeof setId !== 'string' || !Array.isArray(confirmedRefs) || confirmedRefs.length < 1 ||
+      confirmedRefs.some((ref) => typeof ref !== 'string' || !ref || ref.length > 128) ||
+      new Set(confirmedRefs).size !== confirmedRefs.length ||
+      !exactRecord(message, ['id', 'role', 'content', 'status', 'createdAt', 'requestId'])) {
       throw new TraceError(ERR.VALIDATION, '目标授权绑定无效')
     }
     if (message.role !== 'user' || message.status !== 'complete' || typeof message.content !== 'string' ||
@@ -244,6 +250,8 @@ export class AgentTargetService {
 
     const records = [...this.grants.values()].filter((record) => record.setId === setId)
     if (records.length === 0) throw new TraceError(ERR.PATH_NOT_FOUND, '目标授权不存在或已失效')
+    const recordsByRef = new Map(records.map((record) => [record.ref, record]))
+    if (confirmedRefs.some((ref) => !recordsByRef.has(ref))) throw new TraceError(ERR.VALIDATION, '确认目标不属于当前授权集')
     if (records.some((record) => this.now() >= record.expiresAtMs)) {
       this.deleteSet(setId)
       throw new TraceError(ERR.CONFLICT, '目标授权已过期，请重新选择')
@@ -252,6 +260,7 @@ export class AgentTargetService {
       throw new TraceError(ERR.CONFLICT, '目标授权已绑定到另一条用户消息')
     }
     for (const record of records) record.boundMessageId = messageId
+    for (const ref of confirmedRefs) recordsByRef.get(ref)!.confirmedMessageId = messageId
   }
 
   async validate(input: unknown): Promise<AgentTargetGrant> {
@@ -284,10 +293,10 @@ export class AgentTargetService {
     const { setId, ref } = parseValidationInput(input)
     const record = this.grants.get(ref)
     if (!record || record.setId !== setId) throw new TraceError(ERR.PATH_NOT_FOUND, '目标授权不存在或已失效')
-    if (record.boundMessageId !== messageId) throw new TraceError(ERR.CONFLICT, '目标授权未绑定到当前用户消息')
+    if (record.boundMessageId !== messageId || record.confirmedMessageId !== messageId) throw new TraceError(ERR.CONFLICT, '目标授权未包含在当前用户消息确认范围内')
     await this.validate({ setId, ref })
     const currentRecord = this.grants.get(ref)
-    if (!currentRecord || currentRecord.boundMessageId !== messageId) {
+    if (!currentRecord || currentRecord.boundMessageId !== messageId || currentRecord.confirmedMessageId !== messageId) {
       throw new TraceError(ERR.CONFLICT, '目标授权未绑定到当前用户消息')
     }
     const resolvedRecord = currentRecord
