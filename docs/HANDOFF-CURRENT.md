@@ -817,6 +817,17 @@
 5. **发布惯例**：版本三件套（package.json + package-lock + CLAUDE.md 当前版本行 + CHANGELOG）→ build:win → 归档 builds/windows/ + SHA-256（pwsh Get-FileHash）→ build_history/release_notes/release_history 三账本 → GitHub `gh release create + upload` → Gitee API（payload 文件法）→ 双端 push。
 6. **排序契约**：树子项 = `localeCompare(b, 'zh-CN', { ignorePunctuation: true })`——混用分隔符的命名按日期直觉序（2026-09-12 修复，勿回退为无参 localeCompare）。
 
+## Claude 的工作流程（应 Codex 请求显式化 · 2026-09-14）
+
+> Task 8 复盘（docs/research/2026-10-08-codex-task8-retrospective.md）的正面版本——同样的洋葱，这套流程两层剥完。
+
+1. **接手三件套（每次开工）**：`git status --short --branch` + `git log` **实测**（不信任何文件/记忆里写的 hash——本会话实证双方都会写错）；读 HANDOFF 当前节；核对所有权边界。接手后先跑 typecheck + test 基线对齐（当前 0 错 / 176），对不上先查环境。
+2. **领域语义清单先扫一遍再动手**（本项目实证踩过的坑，全部有据）：树懒加载（`expandedKeys` 空 = 顶层不渲染）、antd 两字按钮自动插空格（"取 消"）、菜单项 textContent 含快捷键 extra（"删除选中Del"）、order 是派生值非持久契约、弹层走 antd-host、动画容器必须 block/inline-flex、`color-scheme` 管原生控件。ERROR 库与本文备忘是这些坑的索引。
+3. **修复类任务 = 证据链驱动**：先写失败测试拿 RED 实证 → 最小实现 → GREEN → 全量。改完不跑验证不宣布完成。
+4. **失败的第一反应是拍全现场，不是猜**：任何超时/断言失败，第一动作是把完整状态 dump 进错误消息（可见元素列表 + 选中态 + 计算样式 + 异常文本 + 相关 store 状态），一次拿全再修。**禁止"根因未确认"状态下靠假设推进**——Task 8D3 的三轮盲修 vs Claude 的两轮通过，差距只在这一条。dump 走 stdout（拼进抛出的错误），不走会被收窄的独立诊断报告。
+5. **授权粒度请求整段**：验收/调试类工作向用户申请"诊断→修→重跑"的连续授权（失败现场 dump 属于验证本身，不需单独授权）；越界动作（改产品语义、放宽断言）单独列出请用户拍板并记录理由。
+6. **每步小提交 + 三层自检**：约定式 commit；完成后自检顺序 = 测试绿 → 逻辑走查 → **用户视角过一遍**（本会话两次自查抓到自己的漏检：TopBar 漏挂、t 重名）。阶段收尾三清单（下一步/等什么/还差什么）+ 沉淀判定（ERROR/记忆/文档）。
+
 ## 稳定用户偏好与设计理念（历史蒸馏）
 
 1. **产品方向**：Trace 是本地优先、明文件可迁移的计划管理器；可逐步长成日记工具，但当前决策应优先服务计划管理主线。
