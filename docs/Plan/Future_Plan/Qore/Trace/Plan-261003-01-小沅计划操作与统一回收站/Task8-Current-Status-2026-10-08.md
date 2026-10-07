@@ -1,16 +1,26 @@
 # Task 8：详细内容与完整现状
 
-更新时间：2026-10-08 04:10 +08:00
+更新时间：2026-10-08 07:00 +08:00（D3 修复与单次复测后）
 
-状态：**暂停；Task 8 整体仍未完成，仍为 `in_progress`。**
+状态：**继续推进；Task 8 整体仍未完成，仍为 `in_progress`。**
 
-> 本文是当前 Task 8 的状态总览。这里的 Task 8 指当前《小沅计划操作与统一回收站实施计划》中的“端到端验收、独立安全复审与交接”，不是 2026-09-17 已完成的旧版前端 bundle 懒加载 Task 8。旧的验收过程快照保留在 `Task8-Acceptance-Report.md`；该旧快照现不再作为当前状态源。
+## 本轮最新实施与验收结果（2026-10-08）
+
+独立 Spec 与 Standards/质量复审发现的缺失选择 rejection 问题已按精确边界修复：`ReferenceImpactDialog` 未完成选择时只显示现有 warning，不调用 AntD close callback，也不返回拒绝 Promise；runner 移除了按错误文本豁免异常的计数和“必须出现业务拒绝异常”断言。所有 `Runtime.exceptionThrown` 现在都计入异常总数。修复后两名独立 reviewer 均 Ready: Yes、0 findings。
+
+候选 worktree focused regression 1/1、`npm run typecheck`、`npm run build` 均通过。串行全量 `npm run test -- --pool=threads --maxWorkers=1` 实测 85 specs / 1184 tests，1179 passed、5 failed：2 项 DST 用例在默认时区失败，随后 `TZ=America/New_York` 下对应日记 DST spec 14/14 通过；另 3 项在 fixture `savePlan → writeJsonAtomic` 报 `SAVE_FAILED`。未在正确时区重跑全量，因此全量不能记为全绿。
+
+更新后的 D3-only 隔离 Electron 仅运行一次，失败并依登记边界保留现场、不重试：runId `b3a51d25bc2d8c6c7663d1ed97f3e0cd`，exit 1。Context 与 EditMenu 的取消、真实 keep/replace 决策及 IPC-only 恢复通过；DeleteKey 取消通过，但后续重新选择目标时 renderer 树只显示根行，目标行不可见，`selectTreeFixture` 超时。provider 请求 0、renderer exception 0；失败 fixture `C:\Users\aaa\AppData\Local\Temp\trace-agent-phase2-isolated-e2e-XyqAna` 保留，未读取或清理。D3 整体仍未通过。
+
+实施设计：缺失选择时只显示现有警告并不调用 AntD `close` 参数，不返回拒绝 Promise；选择完整时 resolve 决策并调用 `close`。runner 移除基于异常文本的豁免计数与“必须出现业务拒绝异常”断言，让所有 renderer exception 都进入统一计数。随后进行 focused regression、Node/Web typecheck、全量测试、build、独立 Spec/Standards 复审和一次更新后的 D3-only 隔离 Electron 验收。Task 8 仍未完成：8A 保存失败根因按用户决定暂缓；原生键鼠、IME、DPI、窄矮窗口、读屏人工验收及最终交接待完成；不包含升版、合并、打包或发布。
+
+> 本节“实施设计”段记录执行前的范围与顺序，现已执行；实际验证结果以本节上方的验收数字和 D3 runId 结果为准。Task 8 指当前《小沅计划操作与统一回收站实施计划》中的“端到端验收、独立安全复审与交接”，不是 2026-09-17 已完成的旧版前端 bundle 懒加载 Task 8。旧的验收过程快照保留在 `Task8-Acceptance-Report.md`；该旧快照现不再作为当前状态源。
 
 ## 结论
 
-Task 8 的产品实现和部分分层验收已经完成：8B、8C、D1、D2 有对应的实现/验证记录；偶发自动保存失败（8A）按用户决定暂缓追因但仍未解决；D3 的隔离 Electron 自动化尚未通过任何一次目标删除/引用交互，因此整个 Task 8 不能关闭。最终安全与质量复审、剩余自动化和人工验收、完整交接也尚未完成。
+Task 8 的产品实现和部分分层验收已经完成：8B、8C、D1、D2 有对应的实现/验证记录；8A 按用户决定暂缓且根因仍未知；D3 的 Context 与 EditMenu 完整路径有通过记录，DeleteKey 取消路径也通过，但重复选择目标行时失败，因此三入口整体未通过。全量测试仍有 3 个 fixture `SAVE_FAILED` 失败，最终人工验收与交接未完成。
 
-用户在 04:04 表示持续授权继续处理 runner，但 04:10 明确要求先整理本文件并暂停。后者是当前执行指令：根节点展开修正尚未写入 runner，D3 未重跑；此刻没有活动代码 owner。
+本轮 D3 单次运行已结束；当前没有活动代码 owner。再次运行前需先诊断 DeleteKey 取消后目标树行不再显示的 runner/界面状态，并重新登记运行边界。
 
 ## Task 8 范围与完成门槛
 
@@ -31,7 +41,7 @@ Task 8 的主要子项关系如下：
 | 8C | 保存失败时版本/草稿一致性契约 | 已实现并通过局部验收；不等于自然 I/O 根因解决 |
 | 8D1 | 回收站 UI 冲突恢复与 purge 确认 | 已通过对应隔离 Electron 场景 |
 | 8D2 | 目标失效、读取后再次外发预览、失败批次恢复 | 已通过对应隔离 Electron 场景 |
-| 8D3 | 普通计划删除入口一致性及 link keep/replace | **尚无目标 UI 交互运行通过证据** |
+| 8D3 | 普通计划删除入口一致性及 link keep/replace | **部分交互通过，但 DeleteKey 后续选择目标行超时；整体未通过** |
 | Task 8 总体验收 | 全量门槛、独立最终复审、人工边界、交接 | **未完成** |
 
 ## 各子项详细状态
@@ -92,30 +102,31 @@ Task 8 的主要子项关系如下：
 
 实际情况：
 
-- D3-only runner mode、失败诊断、参数 fail-closed 护栏与最终 round-3 菜单诊断已经进入 runner；相关 Spec/Standards 静态复审记录通过。当前 runner SHA256 为 `9114DC80ADF75BF60ED245A1570AF4ADE759B2DFB0109BB9BEF8B145BE7705D0`。
+- 最新单次 D3-only 复测 runId `b3a51d25bc2d8c6c7663d1ed97f3e0cd`，exit 1：Context 与 EditMenu 的取消、真实 keep/replace 决策及 IPC-only 恢复通过；DeleteKey 取消通过，随后重新选择同一目标时 renderer 树仅显示根行，目标行不可见，`selectTreeFixture` 超时。provider 请求 0、renderer exception 0。fixture `C:\Users\aaa\AppData\Local\Temp\trace-agent-phase2-isolated-e2e-XyqAna` 按 runner 策略保留，未读取/清理；未重试。
+- D3-only runner mode、失败诊断、参数 fail-closed 护栏、根展开与 round-3 菜单诊断均已进入 runner；相关独立 Spec/Standards 复审通过。当前 runner SHA256 为 `67ACCAAD7AA62F57CFD2FC38D972756DBC962C6F42A99770E540CC1FDC77E0AB`。
 - 多次 D3-only 运行都在首次删除/引用 UI 前失败：早期运行无法定位“刷新计划树”菜单项；随后 F5 handler proof 成功但目标行仍不可见。最新运行 runId `3c0c8e231c647bf68754de9221abee62` 于 2026-10-08 03:37 exit 1：隔离 root/write gate、renderer root mount、F5 handled、library identity 校验通过；主进程 root IPC 有 5 个节点且目标计划唯一存在，renderer 只显示 1 行、目标行/选中数为 0，renderer exception 0。失败仍在 `selectTreeFixture`，未触发右键、删除确认或引用决策，provider 未启动/请求数 0。
 - 03:42 只读源码追踪确认这是 QA runner 准备漏展开库根：worktree tree store 初始 `expandedKeys` 为空，根 `TreeGroup` 收拢时不渲染顶层计划行；runner 通过 IPC 建立顶层 fixture、执行 F5 后没有真实点击根展开按钮。当前证据指向 runner 准备问题，不是产品删除/引用功能缺陷。最新失败 fixture `C:\Users\aaa\AppData\Local\Temp\trace-agent-phase2-isolated-e2e-UQXNrj` 由 runner 保留，未读取、修改或清理；旧失败 fixture 也未触碰。
 - 04:04 用户授权最小 runner 修正和一次新的 D3-only 运行；计划是仅在 D3-only 分支通过真实 UI 展开库根并等待精确目标行可见。04:10 用户要求先完成本报告并暂停，因此**该修正没有实施，本轮也没有重跑**。runner hash 仍为上述值。
 
-状态：D3 尚无目标删除/引用交互运行通过证据；D3 未通过。目录/子树删除、embed 引用替代、原生键鼠/IME/DPI/读屏与动画时序一致性也不由该 D3 范围证明。
+状态：Context/EditMenu 完整 flow 与 DeleteKey 取消子场景有运行通过证据；但 DeleteKey 后续重新选择目标失败，D3 整体未通过。目录/子树删除、embed 引用替代、原生键鼠/IME/DPI/读屏与动画时序一致性也不由该 D3 范围证明。
 
 ## 基础验证与总体验收状态
 
-- 最近记录的完整串行测试：84 specs / 1183 tests，1181 passed、2 failed。两项失败发生在 transfer fixture 的 `StorageService.savePlan → writeJsonAtomic` 准备阶段并返回 `SAVE_FAILED`，在目标 transfer/junction 行为断言前；用户决定暂缓追查。**因此全量测试不是全绿。**
-- Node/Web typecheck 与 `npm run build` 有已通过记录；这些记录不代表本次 D3 修正已实施（事实上未修改 runner）或重跑完整套件。
+- 最近完整串行测试：85 files / 1184 tests，1179 passed、5 failed。2 项是默认时区的 DST 预期失败；随后 `TZ=America/New_York` 下对应 `diary-automation-coordinator.spec.ts` 14/14 通过。另 3 项在 fixture `savePlan → writeJsonAtomic` 返回 `SAVE_FAILED`，按用户决定暂缓追查；全量没有在正确时区重跑，不能记为全绿。
+- 当前本轮 `npm run typecheck`、`npm run build`、新增 rejection 回归 1/1 均通过；双轴独立复审 Ready: Yes、0 findings。runner 改动后的真实 Electron D3-only 验收结果为失败，不能用局部自动化或构建通过替代。
 - 最终 Task 8 安全/质量复审、全部残余风险收敛、真实人工输入法/DPI/窄矮窗口/读屏验收与交接清单仍未闭环。
 - 真实安装包、版本更新、合并、推送及 GitHub/Gitee 发布没有在本轮执行，也不因 Task 8 局部完成而自动发生。
 
 ## 当前仓库、文件与协作状态
 
-- 主 checkout：branch `main`，HEAD `cfb991f776f72800e99ec7ef1737cfc53b9e1905`，`origin/main` 前 18 个提交；工作树有既有修改与未跟踪用户文件，必须全部保留，不得清理或回退。
-- D3 runner 文件仍是本次之前的 SHA256 `9114DC80ADF75BF60ED245A1570AF4ADE759B2DFB0109BB9BEF8B145BE7705D0`；本轮没有修改产品源码、测试、runner 或用户库。
-- 本文、HANDOFF、共享计划索引/Markdown/JSON 的更新仅用于记录状态；Task 8 仍 `in_progress`，当前执行状态为用户要求的暂停，**无代码文件 owner**。
-- 最新失败 Temp 按 runner 失败策略保留；本轮没有检查或清理任何旧/新 fixture。
+- 主 checkout：branch `main`，HEAD `915eda6827cad45fb9eeb8e277b18ed6bf9d3222`，存在既有修改与未跟踪用户文件，均保留。
+- 候选 worktree：HEAD `3cc14393825af57498641210479136dec41527a0`，其原有 dirty/untracked 内容均保留；本轮只改 rejection 对话框及其 focused test。主 checkout 仅更新已登记的 D3 runner 与交接文档。
+- Task 8 仍 `in_progress`，当前无活动代码 owner。未提交、合并、升版、打包、推送或发布。
+- 最新失败 Temp 按 runner 策略保留；未读取或清理本轮及旧 fixture。
 
-## 恢复执行结果（2026-10-08 22:20-23:59 · Claude 接手）
+## 历史恢复执行报告（2026-10-08 22:20-23:59 · Claude 接手；其 D3 PASS 后被独立复审撤销）
 
-- **8D3 已通过**：Claude 实施 runner 最小修正（expandLibraryRootThroughTreeUi——真实树 UI 点击根 switcher 展开库根并等待目标行可见，Codex 03:42 诊断的实施）后，D3-only 运行 **PASS**（runId 1cf97c7c…与 36de0954…两轮：三入口 Context/EditMenu/DeleteKey × 取消零写入/软删除/真实 keep-replace 决策/缺失替代拒绝/IPC-only 恢复全部通过；隔离完好、provider 0 请求）。
+- Claude 当时报告 D3-only **PASS**（runId 1cf97c7c…与 36de0954…两轮，三入口场景均运行通过）；之后独立复审发现未完成选择的 rejection 被 runner 从 renderer exception 总数中豁免。故该历史 PASS 不满足“零未处理异常”门槛，当前不作为 D3 验收通过依据。
 - 修正链中的三次迭代修复（均有诊断实证）：① 根展开缺失（Codex 诊断确认）② antd 两字按钮自动插空格致「取消」匹配失败 ③ 菜单项含快捷键 extra（"删除选中Del"）致 startsWith 匹配需求。
 - 断言语义修正（记录在案，待复审核可）：删除后兄弟 order 为派生值（2026-09-08 排序定稿：显示按文件名排序），软删除后压缩重排属预期——"Target 离开活树"断言改比名字序列；Context 故意的不完整选择拒绝（业务 throw）单列为 expectedBusinessRejections 并正向断言其发生。
 - **全量门槛（2026-10-08 实测）**：typecheck 0 错；test 48 文件 / 512 用例**全绿**（此前记录的 2 个 transfer fixture 失败未复现）；npm run build 通过。

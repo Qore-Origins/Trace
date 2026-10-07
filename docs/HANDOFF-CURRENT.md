@@ -1,6 +1,23 @@
 # Trace 当前协作状态
 
-## 当前执行状态（2026-10-08 23:59 +08:00）
+## 当前执行状态（2026-10-08 07:00 +08:00，D3 修复与复测后）
+
+- **Task 8 仍为 `in_progress`，D3 未通过。** 独立 Spec 与 Standards 复审发现的不完整选择拒绝 Promise 已修复：未选择完整时只显示 warning、不调用 AntD close callback 且不产生 rejection；完整选择才 resolve 并关闭。runner 不再豁免任何异常文本，所有 `Runtime.exceptionThrown` 都计入总数。两名独立 reviewer 对精确修复复审均 Ready: Yes、0 findings。
+- **实际验证：** `npm run typecheck` 通过；新增 `reference-impact-dialog.spec.tsx` focused 1/1；`npm run build` 通过。完整串行测试 `npm run test -- --pool=threads --maxWorkers=1` 为 85 specs / 1184 tests，1179 passed、5 failed：2 项 DST 测试在默认时区失败，随后 `TZ=America/New_York` 对应日记 DST spec 14/14 通过；另 3 项是 fixture `savePlan → writeJsonAtomic` 的 `SAVE_FAILED`，与用户决定暂缓的 8A 同类，但本次没有在正确时区重跑全套，不能把整套测试记为全绿。
+- **D3 单次隔离 Electron 复测失败并停止：** runId `b3a51d25bc2d8c6c7663d1ed97f3e0cd`，exit 1。Context 与 EditMenu 入口完成取消、真实 keep/replace 决策及 IPC-only 恢复；DeleteKey 入口取消通过，但随后重新选择目标时树只显示根行，精确目标行未渲染，`selectTreeFixture` 超时。provider 请求 0、renderer exception 0；失败 fixture `C:\Users\aaa\AppData\Local\Temp\trace-agent-phase2-isolated-e2e-XyqAna` 按 runner 策略保留，未读取或清理。此结果不构成三入口完整 D3 PASS，也不证明是产品删除功能缺陷；本轮没有重跑。
+- **所有权已释放：** 本轮改动仅为候选 worktree `.worktrees/codex/xiaoyuan-plan-operations/src/renderer/src/components/ReferenceImpactDialog.tsx` 与新增 `test/reference-impact-dialog.spec.tsx`，以及主 checkout 的 `scripts/trace-phase2-isolated-electron-runner.cjs` 和本 HANDOFF/共享计划镜像。主 checkout HEAD `915eda6827cad45fb9eeb8e277b18ed6bf9d3222`，候选 HEAD `3cc14393825af57498641210479136dec41527a0`；两处原有 dirty/untracked 状态均保留。当前没有活动代码 owner；未提交、合并、升版、打包、推送或发布。
+- **下一步：** Task 8 尚缺 D3 第三入口剩余场景、全量测试可接受闭环、真实键鼠/IME/DPI/窄窗口/读屏人工验收及最终交接。8A 根因按用户决定继续暂缓。失败 fixture 保留；再次运行前须先处理 runner 的目标行消失问题并重新登记/授权单次运行。
+
+> 下方较早的“当前执行状态”和 PASS 记录均为历史记录，已由本节结果覆盖，不代表当前验收状态。
+
+## 当前执行状态（2026-10-08，独立复审后）
+
+- **Task 8 仍为 `in_progress`，D3 自动验收已重开，不得按此前 D3-only PASS 关闭。** 独立 Spec 与 Standards/质量审查一致确认：`ReferenceImpactDialog.tsx` 的不完整选择路径返回 `Promise.reject(new Error('incomplete reference choices'))`；本地 Ant Design Hook Modal 的 `ActionButton` 会在 click handler 中派生未被接住的拒绝 Promise；D3 runner 又按该错误文本把 `Runtime.exceptionThrown` 从 `runtimeExceptionCount` 排除。故旧 runner 的“异常未增加”断言没有覆盖这条异常。用户可见的 warning、弹窗保持打开及零写入行为有运行证据；问题在异常机制和验收计数。修复后需重新做 D3-only 验收，异常事件必须全部计数，不得白名单豁免。
+- **当前唯一实施 owner：`/root`。** 最小文件边界：隔离候选 worktree `.worktrees/codex/xiaoyuan-plan-operations/src/renderer/src/components/ReferenceImpactDialog.tsx`、新增 `test/reference-impact-dialog.spec.tsx`；主 checkout `scripts/trace-phase2-isolated-electron-runner.cjs`；以及本 HANDOFF、共享计划 README/当前计划 Markdown/Task8 状态 Markdown/`plan.json`。产品修正仅将不完整选择改为显式 warning 后不调用 AntD close callback；完整选择才 resolve 并 close。runner 仅移除 `expectedBusinessRejections` 排除及“必须观察到拒绝”的断言，保留未捕获异常总数断言。不得改动其余 Phase 2 脏文件、bootstrap、用户库或 8A 跟踪资产；不得清理既有失败 fixture。
+- **基线与状态边界：** 主 checkout `main` HEAD `915eda6827cad45fb9eeb8e277b18ed6bf9d3222`，工作树已有用户修改和未跟踪文件；D3 runner 实际在该 checkout。隔离候选 worktree HEAD `3cc14393825af57498641210479136dec41527a0`，有 55 个已修改 tracked 文件及若干 untracked 文件，全部视为既有协作改动并原样保留；拟改的对话框源码当前未修改。`9a502e5` 已将此前 D3 runner 合入主 checkout，不能继续称 runner 修正未提交。
+- **实施/验证顺序：** 先增加对话框无拒绝 Promise 的回归，再做最小产品与 runner 修复；候选 worktree 定向测试、`npm run typecheck`、`npm run test`、`npm run build`；独立 Spec/Standards 复审；最后按隔离 write gate 运行一次更新后的 D3-only runner并核验 provider 请求、未捕获异常、fixture 清理。D3-only PASS 不等于 Task 8 总体验收完成。8A 根因仍未知且按用户决定暂缓；原生键鼠/IME/DPI/窄窗口/读屏人工验收与最终交接仍待完成。无版本更新、提交、合并、打包、推送或发布授权。
+
+## 复审前已记录状态（2026-10-08 23:59 +08:00；以下结论已被上方独立复审更新）
 
 - **Task 8D3 已通过（D3-only runner PASS）+ 全量门槛全绿（2026-10-08 23:59 +08:00）。** Claude 的 runner 最小修正（根展开）三轮迭代生效：D3-only 运行 PASS——三入口（Context/EditMenu/DeleteKey）× 取消零写入/软删除/真实 keep-replace 决策/缺失替代拒绝/IPC-only 恢复全部通过；隔离完好、provider 0 请求、临时 fixture 退出清理。修正链诊断实证三次迭代：① 根展开缺失 ② antd 两字按钮插空格致「取消」失配 ③ 菜单项快捷键 extra 致 startsWith 需求。断言语义修正记录在案（order 派生值改比名字序列；Context 业务拒绝单列正向断言）。全量门槛实测：typecheck 0 错、test 48 文件 512 用例全绿（此前 2 个 transfer 失败未复现）、build 通过。**Task 8 剩余：独立最终复审（本批为 Claude 自查，无第二 reviewer）、原生键鼠/IME/DPI/读屏人工验收边界、交接清单**——详细恢复结果见 Task8-Current-Status-2026-10-08.md「恢复执行结果」节。runner 修正未提交（工作区含 Codex 未提交内容，提交决策留用户/Codex）。
 
