@@ -1,6 +1,122 @@
 # Trace 当前协作状态
 
-## 当前执行状态（2026-10-08 07:00 +08:00，D3 修复与复测后）
+## 当前执行状态（2026-10-09 02:48 +08:00，Task 1 CDP 问题交接给下一位智能体）
+
+- 用户要求把当前问题与整个执行流程整理成可交给另一智能体的工作流；本轮只写交接文档并同步计划，不再诊断、修改诊断代码或启动 Electron，不替用户派发智能体。
+- 新工作流：[Task 1 CDP 阻塞诊断交接与执行工作流](./Plan/Future_Plan/Qore/Trace/Plan-261008-01-Task8早期CDP自动附着/Task1-CDP-Diagnostic-Handoff-Workflow-2026-10-09.md)。其中区分完整 smoke 的 `Runtime.enable` pending、单目标 probe 的 Browser/page 命令差异，以及最近导航差分在 Browser WebSocket 前失败、未进入干预三件事；根因仍未知。
+- 代码状态不变：主 checkout `main` HEAD `7ced10c1371004e53452074ef812747c6493b710`（ahead origin/main 1，既有 dirty/untracked 均保留）；隔离 worktree `codex/task8-cdp-auto-attach` HEAD `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`，原有 smoke/probe 修改均保留。最近诊断 fixture `trace-cdp-navigation-timing-diagnostic-PBO9GQ` 保留，不复用、不删除。
+- 本轮只编辑共享 Markdown 与计划 JSON。没有运行 Electron、产品测试、typecheck 或 build；没有提交、合并、升版、打包、推送或发布。
+- 当前 owner 仅完成本交接文档；代码所有权已释放，下一位智能体开始实施前须重新核对两处工作树状态并在本文件登记自己的文件边界。之前的单次导航差分运行授权已用尽；工作流不延续旧的一次性授权，新的 Electron 运行按当前用户消息重新确认范围。
+- **下一步 / 等待 / 剩余：** 用户将工作流交给另一位智能体并接收其结果。本轮到此停止。Task 1 Browser CDP 硬门槛、Task 2-5、单独授权的 D3、人工键鼠/IME/DPI/窄窗口/读屏与安装包验收、Task 8 收官交接仍未完成；8A 偶发保存问题依用户决定继续记录并暂缓归因。
+
+## 当前执行状态（2026-10-09 00:56 +08:00，导航时序差分唯一运行未进入干预，结果不具判别力）
+
+- **Task 8 仍未完成；本轮只推进 Task 1 的隔离诊断。** 用户批准的单变量差分只运行一次，不能视为 Task 1 Browser CDP smoke 通过、协议修复或正式 runner 变更。
+- **差分边界：** 对照为 2026-10-08 已记录的单页 probe（paused page 未显式调用 `loadURL()`，`Runtime.enable` 超时）；原计划保持 Electron 44.2.0、隐藏合成窗口、FD3/FD4 gate、Browser WebSocket、page-only `waitForDebuggerOnStart=true` 与 CDP 命令不变，只在唯一 page attach 且 `Runtime.enable` 确认 pending 后，对同一窗口调用一次 `loadURL('about:blank')`。不恢复 paused target、不创建第二页、不联网、不访问 Trace 数据。
+- **唯一运行实测：** 隔离 worktree 中运行 `node scripts/trace-phase2-cdp-navigation-timing-diagnostic.cjs`，exit 1，脚本只报告 `category=runtime`。脱敏报告为 `observation=null`、Browser WebSocket `not-connected`、page attach 数为 0；事件仅确认 fixture `isolation-ready`，清理时发出 exit，故没有发送导航控制、没有调用 `loadURL()`，干预根本未发生。Electron 子进程正常 exit 0、stdio closed、FD3 到 EOF；运行后按隔离 Electron executable 精确匹配进程数为 0。新 fixture `trace-cdp-navigation-timing-diagnostic-PBO9GQ` 的 owner marker 类型和根目录均核验匹配并保留。报告只记录 stderr 字节数 100，不保存原始错误；确切失败操作无法从本轮证据确定。不得据此判断导航时序假设或归因 Task 1 根因。
+- **文件所有权与复核：** 唯一代码 owner `/root`，隔离 worktree `codex/task8-cdp-auto-attach` 中唯一新增脚本 SHA-256 `DE5B7B2FB448C90547723593C4B895CB9F9A18183A008F18D7B951ECFA218D5B`；双轴独立只读 review 均 Ready、0 个未解决阻断。审查基线/隔离 worktree HEAD 为 `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`。主 checkout `main` HEAD 为 `7ced10c1371004e53452074ef812747c6493b710`（ahead origin/main 1）；其余 dirty/untracked 内容及 worktree 既有 smoke/probes 均保留。本文件、`docs/Plan/README.md`、Task 8 状态、Task 1 实施计划和其 `plan.json` 由 `/root` 更新；不修改旧 fixture、其他脚本、正式 runner/bootstrap、产品、测试或 package scripts。
+- **已验证：** 执行前管理员身份 True、隔离 Electron executable 进程数 0；Node 外层脚本与嵌入 fixture 语法检查通过，PowerShell AST 检查通过，尾随空白/超 180 字符代码行均为 0，运行前 `git diff --check` 无错误。运行后再次确认精确匹配 Electron 进程数 0。未运行产品测试、typecheck 或 build（本轮只有隔离诊断脚本）。
+- **下一步 / 等待 / 剩余：** 本次单次授权已用尽；不重跑、不改写旧诊断、不清理现场。若继续，需要先根据“失败阶段未被脱敏报告记录”设计并明确授权下一项诊断，才能再次启动 Electron。等待：用户决定是否另批新的诊断范围。Task 1 Browser CDP 硬门槛、Task 2+、D3（单独授权）、Task 8 原生键鼠/IME/DPI/窄窗口/读屏验收与最终交接仍未完成。无提交、合并、升版、打包、推送或发布。
+
+## 历史快照（2026-10-08 23:51 +08:00，官方资料核查完成）
+
+- **Task 8 仍未完成；本轮范围仅是 Task 1 的单目标诊断 probe。** 用户同意另做独立诊断，用来区分 Browser 级 CDP 是否仍响应与 flattened page session 的 `Runtime.enable` 是否响应；这不是正式 runner 修改、协议修复或 Task 1 通过。
+- **文件所有权：** 原实施代理未落盘代码后已停止；唯一代码 owner 为主协调者 `/root`，只在隔离 worktree `codex/task8-cdp-auto-attach` 新增 `scripts/trace-phase2-cdp-single-target-diagnostic.cjs`。共享文档仍由 `/root` 维护。不改既有 CDP smoke、继承 FD probe、正式 runner/bootstrap、产品、测试、package scripts；不触碰两个旧失败 fixture。新文件 SHA-256：`DFFBF0A26708B9BEDFA5F45118F01AB807D4ADD9EA1675243245E1619AA6BA0C`。
+- **诊断契约：** 单个合成 hidden page；先设置 page-only paused auto-attach，再通过既有 FD3/FD4 gate 放行页面；对首个 flattened page session 命令仅发送 `Runtime.enable`，随后在它仍 pending 时检查 Browser 级 `Browser.getVersion` 是否响应。记录命令阶段/耗时、target type/paused 状态、URL 粗分类与 `Runtime.executionContextCreated` 计数；不记录原始 URL/endpoint、target/session ID、页面正文、凭据或完整异常栈。只使用现有 loopback CDP 与 FD3/FD4，不引入备用传输，不恢复被暂停页面、不改生产代码。
+- **静态验证与复审：** `node --check scripts/trace-phase2-cdp-single-target-diagnostic.cjs` 通过；尾随空白行 0；独立 Spec 与 Standards/Security 只读审查均 Ready。诊断报告隐私扫描通过。安全复审的非阻断边界：owner marker 仅在本地 fixture 保存绝对路径/PID/时间；进程匹配以精确 Electron 可执行文件、fixture 根路径和创建时间为依据但未绑定祖先链；fixture 创建早期若失败可能留下部分目录。原始路径不写入诊断报告或控制台。
+- **唯一运行结果：** 管理员身份为 True；运行前、运行后按隔离 Electron executable 完整路径精确匹配进程均为 0。`node scripts/trace-phase2-cdp-single-target-diagnostic.cjs` exit 0，约 9.5 秒。单个 page target `waitingForDebugger=true`；发送 `Runtime.enable` 后其保持 pending，在 6001 ms 超时；同一 Browser WebSocket 上 `Browser.getVersion` 在 20 ms 成功响应；Browser socket 仍 OPEN，`Runtime.executionContextCreated=0`，URL 类别为 `missing`（不推断 URL）。Electron exit 0、stdio closed、FD3 EOF。诊断采集成功不等同 Task 1 smoke 通过，根因仍未知。
+- **现场与边界：** 本轮唯一 fixture `trace-cdp-single-target-diagnostic-sDhrdy` owner marker 核验通过并保留；不读取或清理旧 smoke fixture。一次运行授权已用尽，不重跑；不改旧 smoke/正式 runner/bootstrap/产品/测试/package scripts，不扩展到 Task 2+/D3。主 checkout `main` HEAD `7ced10c1371004e53452074ef812747c6493b710`（ahead 1，既有 dirty/untracked 全部保留）；隔离 worktree `codex/task8-cdp-auto-attach` HEAD `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`，既有 CDP smoke 修改及未跟踪 FD probe 均保留。
+- **只读对照与研究结论：** 新旧 smoke 的 flattened command envelope（顶层 sessionId）、page-only paused auto-attach 参数一致；单页也能复现，四页并发不是必要条件。官方规范和四个相邻 issue 均未解释当前无响应；最值得验证的线索是 Electron 文档提到 pre-navigation `webContents.debugger.sendCommand()` 可能等到导航后才完成，而本次 hidden BrowserWindow 没有 `loadURL()`。但 API 传输方式、命令类型和版本均不同，因此只登记为未验证假设，不是根因。[完整一手资料记录](research/2026-10-08-electron-flat-cdp-runtime-enable-hang.md)。单次 probe 运行授权已用尽；若要再运行差分诊断、改协议或推进依赖 Task 1 的 Task 2+，须先明确新的范围/授权。Task 1 硬门槛、D3、Task 8 人工键鼠/IME/DPI/窄窗口/读屏验收及最终交接仍未完成。无提交、合并、升版、打包、推送或发布。
+
+## 历史快照（2026-10-08 23:08 +08:00，CDP 单次诊断复测仍失败）
+
+- **Task 8 仍未完成。** 当前仅推进 Task 1：Electron 44.2.0 独立 Browser CDP auto-attach smoke。FD 3/4 app-mode probe 五场景通过不等于 Browser CDP 通过。
+- **本轮授权运行结果：** 管理员 shell 运行前按隔离 worktree `electron.exe` 完整路径查询为 0 个进程；`node scripts/trace-phase2-cdp-auto-attach-smoke.cjs` 整体 exit 1，首个 `protocol` 场景超时，后续拒绝场景因此没有运行。FD 3/4 通道形状正常，Browser WebSocket 打开，`Target.setAutoAttach` 有成功响应；随后收到唯一 `continue`，创建四个 page target，均报告 `waitingForDebugger=true`。
+- **新增诊断定位：** 四个 page session 均发出 `Runtime.enable`；所有 4 个命令在场景超时快照时仍 pending，期间没有任何 CDP command response，也没有进入 `Page.enable`、首脚本 guard 安装或 `Runtime.runIfWaitingForDebugger`。`Runtime.exceptionThrown` 计数为 0；session 均停在 `runtime-enable`，browser WebSocket 快照仍为 OPEN，client failure 未置位。Electron 子进程随后正常 exit 0、stdio closed；runner 整体仍因超时 exit 1。由此可把卡点收窄到页面 session 的首个 `Runtime.enable` 响应，但**为什么无响应仍未确定**；归一化 role 为 unknown，本次没有记录 URL，不能据此推断 target URL 或 Chromium 内部原因。
+- **现场与清理：** 新失败 fixture `trace-cdp-auto-attach-smoke-HwhH2j` 位于本机 Temp，owner marker 核验为本轮 `protocol` 场景且根目录匹配；按授权保留。运行后以隔离 worktree Electron executable 精确查询，遗留进程数 0。旧 fixture `trace-cdp-auto-attach-smoke-wDk01l` 也仍保留；两者均未覆盖、复用或清理。此次 stderr 未提供可归因于 `Runtime.enable` 无响应的线索。
+- **协议核对（只作边界说明）：** Chrome DevTools Protocol 文档说明 flattened session 通过命令中的 `sessionId` 选定目标 session，等待调试器的 target 由 `Runtime.runIfWaitingForDebugger` 恢复；该规范没有解释本机为何不返回 `Runtime.enable` 响应，故原因仍属未知。[Target domain](https://chromedevtools.github.io/devtools-protocol/tot/Target/) · [Runtime domain](https://chromedevtools.github.io/devtools-protocol/tot/Runtime/)
+- **文件所有权与改动：** 代码改动仅在隔离 worktree `codex/task8-cdp-auto-attach` 的 `scripts/trace-phase2-cdp-auto-attach-smoke.cjs` 增加最多 128 项的脱敏 trace 与超时 snapshot；不改正式 runner/bootstrap、产品、测试、package scripts、transport、兼容探针或 fixture URL。`node --check` exit 0，目标文件 `git diff --check` 无错误；主 checkout `main` HEAD `7ced10c1371004e53452074ef812747c6493b710`，隔离 worktree HEAD `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`。文档与计划仅记录事实，不提交、不合并。
+- **下一步 / 等待 / 剩余：** 本轮唯一完整 smoke 授权已用完，按约定不重跑、不扩展协议、不擅自修复。下一步需先明确一个新的、隔离的最小诊断范围，再决定是否授权执行。Task 1 CDP 硬门槛未过；Task 2+、D3、Task 8 原生键鼠/IME/DPI/窄窗口/读屏人工验收与最终交接仍未完成；无升版、打包、推送或发布。
+
+## 历史快照（2026-10-08 21:49 +08:00，唯一 CDP smoke 失败并按界限停止）
+
+- **Task 8 仍未完成。** 当前只推进 Task 1：Electron 44.2.0 独立 Browser CDP auto-attach smoke。此前 FD 3/4 app-mode smoke 五场景通过，但它不包含 CDP、页面或 Trace bundle，不能作为 Task 1 通过证据。
+- **用户已批准 transport 修订：** 独立 smoke 用 child FD 3 → parent 的事件管道及 parent → child FD 4 控制管道；stdin 不参与协议，stdout/stderr 仅诊断。Gate 必须异步，保持 Electron event loop 可运行；控制帧为带 nonce/type 的 UTF-8 JSONL，单帧上限 4096 字节。失败 fail-closed，不回退 stdin/TCP/named pipe/晚 attach。
+- **当前文件所有权：** 主协调者 `/root` 维护共享规格与计划：`docs/HANDOFF-CURRENT.md`、`docs/Plan/README.md`、Task 8 当前状态、`plan.json`、Task 1 规格与实施计划。唯一代码 owner `/root/cdp_fd_smoke` 仅修改隔离 worktree 中已跟踪的 `scripts/trace-phase2-cdp-auto-attach-smoke.cjs`（基线为提交 `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b` 的原 stdin/stdout smoke）；不改正式 runner/bootstrap、产品、测试、package scripts 或其他文件。另一个未跟踪的兼容探针 `scripts/trace-phase2-inherited-fd-smoke.cjs` 不属于本次边界。完成后 owner 释放，先做独立 Spec 与 Standards/Security 复审，再由主协调者按已登记门槛运行真实 CDP smoke。
+- **基线：** 主 checkout `main` HEAD `7ced10c1371004e53452074ef812747c6493b710`，既有 dirty/untracked 内容全部保留。隔离 worktree `codex/task8-cdp-auto-attach` HEAD `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`，已有未跟踪 `scripts/trace-phase2-inherited-fd-smoke.cjs` 不修改；旧失败 Temp fixture 全部保留，不读取、不删除、不复用。本轮尚未启动 Electron，未创建新 smoke fixture。
+- **当前状态：** `/root/cdp_fd_smoke` 已在唯一登记脚本中补齐 9 个 pre-release 拒绝场景：错误 nonce、空帧、畸形 JSON、无效 UTF-8、超长帧、未知类型、FD4 纯 EOF、不完整帧 EOF、gate timeout。每场景断言精确 rejection reason、exit 23、无 `released`、无页面创建；duplicate continue 与 CDP 正向断言保持。协调者重新实测 `node --check scripts/trace-phase2-cdp-auto-attach-smoke.cjs` exit 0、目标 `git diff --check` 通过（仅有 LF/CRLF 提示），`git diff --name-only` 仅列目标脚本；已有未跟踪兼容探针未修改。独立 Spec 与 Standards/Security 复审均 Ready，无 Critical/Important；Spec reviewer 有一项非阻断 Minor：整批通过时预期拒绝类场景 fixture 也会保留。未运行 Electron。Task 1 仍 `in_progress`。
+- **唯一授权的真实 smoke：** 执行前精确匹配隔离 worktree 的 `electron.exe` 进程数为 0。`node scripts/trace-phase2-cdp-auto-attach-smoke.cjs` exit 1；第一个 `protocol` 场景等待 “all first exceptions and continuations” 超时，控制台报告 exceptions=0、进程已退出、stdio 已关闭。脚本保留 owner fixture `trace-cdp-auto-attach-smoke-wDk01l`。运行后按隔离 worktree executable 路径精确查询，残留进程数为 0。依用户既定边界未读取/清理 fixture 或日志，不重试。
+- **下一步 / 等待 / 剩余：** Task 1 Browser CDP 硬门槛未通过；本轮唯一 smoke 授权已用尽。先暂停，等待用户决定是否授权对保留 fixture 作只读诊断以及后续修复/验证；不得自行复跑或扩展到 Task 2+、D3。Task 8 人工验收边界及最终交接仍待完成；无提交、合并、升版、打包或推送。
+
+## 历史执行状态（2026-10-08 19:42 +08:00，timeout 场景唯一授权 smoke 通过）
+
+### 新授权：timeout 场景 FD4 生命周期跟进
+
+- 用户已授权：仅在隔离 worktree `C:\Users\aaa\.codex\worktrees\task8-cdp-auto-attach\Trace` 的新 smoke 脚本 `scripts/trace-phase2-inherited-fd-smoke.cjs` 中，于 `runTimeoutScenario()` 确认 `control-timeout` rejection 后、`awaitExit()` 前结束父端 FD4。保留 15 秒退出上限、现有断言、传输与失败现场策略；不改其它场景、正式 runner/bootstrap、产品代码、测试或 package scripts。
+- 唯一代码 owner `/root/inherited_fd_smoke_implementer` 已只增加上述一行并释放；隔离 HEAD 仍为 `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`，脚本 SHA-256 `E831F71B3A911F7CA086058F91A937F3D1BDFE134CB71BA7C0966C3489FF913C`。协调者新跑 `node --check` exit 0，超 120 字符行 0、尾随空白行 0；`git diff --check` 无错误；plan.json 可解析、12 个组件 ID 唯一。Spec/Standards 独立复审均 Ready。未运行 Electron/smoke、未清理 fixture。
+- 主智能体只读确认调用顺序为：收到并核验 `control-timeout` rejection → `endControlStream(..., 'control-timeout-rejection')` → 原 15 秒 `awaitExit()` 与无放行/无 action 断言。传输与诊断结构未扩大。
+- **唯一授权完整 smoke 实测：** 执行前精确 Electron executable 进程数为 0；`node scripts/trace-phase2-inherited-fd-smoke.cjs` exit 0，耗时 4.184 秒。`fragmented-continue`（exit 0）、`duplicate-continue`（exit 23）、`wrong-nonce`（exit 23）、`control-eof`（exit 23）、`control-timeout`（exit 23）均 PASS，且五个 child 的 stdio 均 closed=true；最终摘要为 `PASS inherited-fd compatibility smoke; scenarios=5; channels=fd3/fd4; Electron=44.2.0`。成功路径执行了脚本的有界 fixture 清理。运行后精确匹配 Electron executable 的进程数为 0。
+- 成功 stdout 只打印 duplicate 场景的 FD4 时序（parent end/finish 589 ms，child reader end/close 未观测）；未打印 timeout 场景的逐事件时间，成功 fixture 已按脚本设计清理。因此本轮证明 timeout 场景在提前结束父端 FD4 后能于 15 秒上限内退出，并支持 harness FD4 生命周期混淆假设，但没有 timeout reader/end/close 的独立时序证据，不把因果称为完全证明。
+- 如果唯一运行失败，保留其所有失败 fixture 和诊断，确认匹配 Electron 进程数后停止；不重跑、不换 TCP/named-pipe、不清理现场。若通过，也只代表 FD 3/4 app-mode probe 通过，不代表原 Browser CDP Task 1 或 Task 8 完成。
+- 授权时基线：主 checkout `main` HEAD `7ced10c1371004e53452074ef812747c6493b710`，保留所有既有 dirty/untracked 内容；隔离 worktree `codex/task8-cdp-auto-attach` HEAD `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`，仅有新 smoke 脚本未跟踪。该脚本已包含前一轮已审查的 duplicate rejection 后 FD4 关闭与时序记录，本次只新增 timeout rejection 后关闭。
+- **下一步 / 等待 / 剩余：** 此 smoke 的唯一运行授权已用完，不再运行或补采事件时序。此 FD 3/4 app-mode probe 通过，但原 Browser CDP Task 1 硬门槛仍未通过；Task 2+、D3 继续停止；Task 8 人工验收和最终交接未完成。后续要继续必须回到 Task 1 CDP 硬门槛并另行明确范围。
+
+### 上一轮 FD4 生命周期唯一运行结果（19:30 +08:00）
+
+- 用户当时批准的 duplicate 场景范围已实现：duplicate rejection reason 断言后、`awaitExit()` 前关闭父端 FD4；记录 parent end-call/finish 与 child reader end/close 的 fixture-relative 毫秒。隔离 worktree HEAD `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`，脚本 SHA-256 `9CC41432DD00642E406518DBA09A37F73DD61E521A33D9A4D54BA89435420D37`。`node --check` exit 0、超 120 字符行 0、尾随空白行 0，独立 Spec/Standards 复审 Ready。
+- 上一轮唯一完整运行 `node scripts/trace-phase2-inherited-fd-smoke.cjs` exit 1：`fragmented-continue`、`duplicate-continue`、`wrong-nonce`、`control-eof` 通过；`control-timeout` 等待 Electron exit/stdio close 时超时。Duplicate rejection +573 ms、父端 FD4 end-call/finish +602 ms、进程 exit/stdio-close +723 ms；单次 release/action 断言通过，但 child reader end/close 未观察到。Timeout rejection/app.exit +1,913 ms；父端写流在 awaitExit 超时后的 cleanup 才 finish +16,965 ms，进程 exit/stdio-close +17,080 ms，未调用 kill。此时序支持但未证明 FD4 生命周期假设。
+- 上一轮五个 fixture basename `trace-inherited-fd-smoke-yL4dcO`、`trace-inherited-fd-smoke-RuDK1x`、`trace-inherited-fd-smoke-BBwapw`、`trace-inherited-fd-smoke-sHnoQm`、`trace-inherited-fd-smoke-l0ZDLJ` 均保留；匹配 Electron executable 残留进程数为 0。当前新授权只覆盖 timeout 场景单点修改与最多一次完整 smoke，不追溯授权其他改动。
+
+### 上轮 FD4 假设及复核证据（19:10 +08:00）
+
+### FD 3/4 隔离 smoke 复跑结论与只读因果复核（19:10 +08:00）
+
+- **实施与复审：** 用户仅批准在隔离 worktree `C:\Users\aaa\.codex\worktrees\task8-cdp-auto-attach\Trace` 的新增 `scripts/trace-phase2-inherited-fd-smoke.cjs` 增加退出时序诊断，并把具名观察上限从 8 秒调至 15 秒；Spec 与 Standards 第三轮独立只读复审均未发现阻断项。当前新增脚本通过 `node --check`；代码中超 120 字符行 0、尾随空白行 0。实现与复审子代理均已结束，本批无活动代码 owner。未改既有 runner/bootstrap、产品代码、测试或 package scripts；未使用 TCP/named-pipe fallback。
+- **只读退出路径复核（假设，尚未验证）：** `runDuplicateScenario()` 在收到重复拒绝后直接等待 `awaitExit()`，此时没有关闭父端 `controlStream`；只有 `awaitExit()` 超时后进入 `terminate()`，后者才调用 `controlStream.end()`。子进程 FD4 是 `fs.createReadStream(..., { autoClose: true })`，其 `end` 处理在 `isTerminating` 时不再拒绝，因此父端结束写流后 child reader 可消费 EOF 并自动关闭。两轮 duplicate 的进程退出都发生在 wait 超时后的清理路径里（首轮约 8.7 秒，复跑从 app.exit 到 exit/close 15,251 ms）；相反，成功场景会在 awaitExit 前主动结束 controlStream，并约 0.2 秒后关闭。故“测试 harness 将父端 FD4 保持打开，令关闭等待被自身超时/清理污染”是当前首要解释，而非已证实的 Electron 退出缺陷。两轮均未记录 parent stream end/finish 和 child reader end/close 的时刻，因果尚需验证。
+- **最小后续验证提案（尚未授权执行）：** 在 duplicate 场景收到最终拒绝事件后、等待进程退出前关闭父端 `controlStream`，同时记录 parent end/finish 与 child reader end/close 的时间；保留 15 秒等待上限和原有一次性放行断言，不改变 transport。此项需要新的运行授权；现有一次复跑授权已用尽。本轮未修改代码、未启动 Electron、未再次运行 smoke。
+- **唯一授权复跑结果：** Electron 精确版本 `44.2.0`；`node scripts/trace-phase2-inherited-fd-smoke.cjs` exit 1 / 约 17.3 秒。`fragmented-continue` 通过。`duplicate-continue` 收到 `gate-rejected: duplicate-control`，只发生一次 release/action；子进程以预期退出码 23 自然退出。新增诊断显示 `app.exit(23)` 调用到子进程 exit/stdio-close 相隔 15,251 ms；父进程的 15,000 ms `awaitExit` 等待触发超时。清理阶段在强制终止前观察到其自然退出，未调用 kill。该轮未运行到 wrong-nonce、FD4 EOF 与 gate-timeout 场景，整体 smoke 失败；当前更像 harness 通道生命周期混淆，但尚未通过隔离试验验证。
+- **本机现场与授权边界：** 本轮两个失败策略要求保留的 fixture basename 为 `trace-inherited-fd-smoke-5lOUjk` 与 `trace-inherited-fd-smoke-EmYdml`；未删除或覆盖现场。复核诊断确认两个子进程均已退出且 stdio 已关闭；精确匹配隔离 Electron executable 的遗留进程数为 0。用户批准的“一次完整复跑”已用尽；未经新授权，不再调整等待时间、重跑或更换 IPC 传输方式。
+- **当前结论：** 目前只验证了 fragmented-continue 场景；duplicate 场景的单次放行/拒绝断言符合要求，但整体 smoke 失败且退出耗时可能被 harness 未提前关闭 FD4 混淆。该 probe 不含 CDP、BrowserWindow 或产品 bundle，不能作为 Task 1 Browser CDP 协议 smoke 通过证据。Task 1 与 Task 8 均未完成，Task 2+ 与 D3 继续停止。
+- **外部依据：** [Electron 官方 app API](https://www.electronjs.org/docs/latest/api/app) 将 `app.exit([exitCode])` 描述为立即退出；[Node.js v24 fs 文档](https://nodejs.org/download/release/latest-v24.x/docs/api/fs.html#fscreatereadstreampath-options) 说明 `autoClose: true` 的 ReadStream 会在 `end` 时关闭文件描述符。这些文档支持检查 FD4 生命周期假设，但不能单独证明当前运行的因果关系。
+
+### 历史 FD 3/4 smoke 首轮实测（18:51 +08:00，授权复跑结果见上文）
+
+- Electron `44.2.0` 首轮运行 exit 1 / 9.84 秒：`fragmented-continue` 通过；`duplicate-continue` 收到重复拒绝且只 release/action 一次，最终自然以退出码 23 退出，但约 8.7 秒才关闭，超过原 8 秒上限。首轮 fixture `trace-inherited-fd-smoke-LWJW57`、`trace-inherited-fd-smoke-CnRXdt` 均按失败策略保留；后查匹配 Electron 进程数为 0。
+
+### 历史 IPC 批次授权与初始实现登记（18:19 +08:00，后续实测见上文）
+
+- 用户已批准受限本机 IPC 的设计、威胁审查和 FD 3/4 最小隔离 smoke。唯一代码 owner `/root/inherited_fd_smoke_implementer` 只在隔离 worktree `C:\Users\aaa\.codex\worktrees\task8-cdp-auto-attach\Trace` 新增 `scripts/trace-phase2-inherited-fd-smoke.cjs`；运行时 fixture 和证据仅写入本次新建的系统临时目录。主智能体只维护本文件、共享计划文档及隔离 worktree 的 SDD 进度记录。
+- Smoke 仅覆盖 Electron 44.2.0 app-mode、无 CDP/BrowserWindow/product bundle 的双向匿名管道握手、消息分帧、EOF、超时、错误 nonce、单次放行/后续重复失败及本次创建资源的有界清理；nonce 仅作本轮关联值，不称作认证。失败现场保留；FD 不可用则停止并报告，不自动 fallback。
+- 明确不修改既有 CDP smoke、正式 runner/bootstrap、产品代码、测试套件或 package scripts；不接入 Browser CDP、不创建应用页面；不启动 Task 2 或 D3。实现后先独立审查，再由主智能体核验并运行一次隔离 smoke。Task 1 CDP 协议门槛仍阻塞，Task 8 仍未完成。
+
+- **Task 8 仍为 `in_progress`。** 用户已批准[早期 CDP 自动附着设计规格](superpowers/specs/2026-10-08-task8-early-cdp-auto-attach-design.md)、实施计划及子代理驱动。本批只执行 Task 1：独立 Electron 44.2.0 协议 smoke。Task 1 smoke 未通过；Task 2 之后全部保持停止，D3-only 仍需另行授权。
+- **工作区与精确所有权：** 隔离 worktree `C:\Users\aaa\.codex\worktrees\task8-cdp-auto-attach\Trace`，分支 `codex/task8-cdp-auto-attach`，基线 `7ced10c1371004e53452074ef812747c6493b710`。初始 smoke 提交 `67877f9611192665b96b1c0f2c31221a75281f2d`；修复提交 `f315ef4d602f4fed41ac2708ca12d96e2b77fc7b`，只改 smoke 脚本，当前 worktree clean。Task 1 初审的四项 findings 经 scoped re-review 全部判定 addressed，无新 Critical/Important；主工作树和其他 worktree 的既有 dirty/untracked 内容保持原样。
+- **设计、已做与未做：** 规格覆盖 Trace 顶层应用 page（主界面、审批窗、确认窗），排除 iframe/Worker。隔离 smoke 使用 Electron `v44.2.0`；最终 `node --check scripts/trace-phase2-cdp-auto-attach-smoke.cjs` exit 0。最终完整 smoke exit 1、4.18 秒：fixture `isolation-ready → stdin-end → runner-disconnected`，未发送 continue、未创建页面，也未达到 Browser WebSocket、`Target.setAutoAttach`、暂停恢复或首脚本异常验收。独立 review 认为修复差异通过，但 Task 1 本身仍未通过硬门槛。随后用两个无 CDP、无 BrowserWindow 的最小 Electron app fixture 重现：在 Electron 主脚本入口记录 `fd=null` 后立即收到 stdin `end`，早于 `app.whenReady()`；父进程没有先写数据，也没有调用 `stdin.end()`。其中 `windowsHide:true` 与 `false` 结果相同。相同 Node 24.18.0 父进程以相同 Windows overlapped stdio 启动普通 Node 子进程的控制探针，则成功收发 `probe-input` 并正常退出。证据把问题定位到当前 Electron app-mode 的标准输入生命周期/本机启动路径，不是 CDP filter 或页面 fixture；尚未定位 Electron 内部具体关闭原因，也不能泛化到所有 Electron/启动方式。普通 pipe 与 overlapped pipe 的完整 smoke 仍同样失败。用户确认的重复 continue 语义已实现：首个正确 nonce 立即只放行一次；后续重复使 smoke/run 失败但不回滚第一次合法放行可能已启动的页面，不增加等待窗口；此负向场景因前置 EOF 尚未运行。
+- **现场与清理：** 最终修复轮新增的两个 smoke 失败 fixture、此前五个 fixture，以及两个独立 no-CDP stdin 诊断失败 fixture 均保留于本机 Temp；未删除任何失败现场。最终清理曾按 pinned process handle、映像与命令/根目录/创建时间校验终止一个归属明确的 utility；本轮最后只读查询匹配 smoke/probe 前缀 Electron 进程为 0。详见隔离 worktree 的 `task-1-report.md` 与 SDD progress ledger。
+- **基线验证（隔离 worktree）：** `npm run typecheck` 通过。`TZ=America/New_York npm run test -- --pool=threads --maxWorkers=1` 有 512 passed、2 个 `buildYearHeatmap` 用例失败；同一 `test/diary-view-utils.spec.ts` 在默认 `Asia/Shanghai` 下 14/14 通过。用户确认将此记录为时区相关基线问题，不改本任务范围并继续 Task 1。该全量基线不是全绿。本轮未运行 D3 或 build。
+- **本机 IPC 评估授权与当前进度：** 用户已批准仅开展受限本机 IPC 的设计、威胁边界审查和最小隔离 smoke；尚未批准具体传输设计。本轮两名只读审查者比较了 inherited FD/Node IPC、loopback TCP 与 Windows named pipe。初步建议先验证额外继承的匿名管道（父子专有、无监听端口），Electron app-mode 对 FD 3/4 的支持仍未知；若不支持，不自动降级到 TCP/named pipe，另行报告。当前只完成只读评估，未写代码、未运行新 smoke、未启动 Electron。
+- **下一步 / 等待 / 剩余：** 等待用户审阅并批准具体的 FD 3/4 最小 smoke 设计；批准前不实现/运行该 spike、不改原 smoke 的 stdin/stdout、不改正式 runner/bootstrap、不进入 Task 2 或 D3。Task 1 仍被 stdin gate 阻塞；Task 8 尚有历史报告范围对齐、原生键鼠/IME/DPI/窄窗口/读屏与真实安装包验收及最终交接；8A 根因按用户决定暂缓。未合并、升版、打包、推送或发布。
+
+## 历史状态快照（2026-10-08 16:15 +08:00，Task 8 renderer 监测增量独立复审通过）
+
+- **Task 8 仍为 `in_progress`。** 第一轮独立 scoped review 发现关闭等待使用裸时间值、50ms 不能保证 CDP 事件排空，并指出 Runtime 只能从手动 attach/启用后计数。本轮已修正前两项：将 target 关闭与 WebSocket 关闭等待改为有名超时常量；target 从 `/json/list` 消失后等待其 CDP WebSocket `close` 事件，5 秒内未关闭则失败，不再以固定延迟声称“排空”。
+- **监测边界：** 主 renderer、外部审批窗、主进程确认窗的 `Runtime.exceptionThrown` 按 client 聚合；成功/失败摘要与场景断言使用聚合值。但连接仍在 `/json/list` 发现 target 后建立，异常在首次 attach / `Runtime.enable` 之前发生时不会被回放或计入。若要覆盖窗口创建到销毁的全生命周期，需要另行设计并验收 Browser CDP `Target.setAutoAttach` 等早期附着机制；本批未扩展到此范围。D3/完整 Electron runner 尚未重跑，故没有这项生命周期的实际 Electron 证据。
+- **验证：** 当前增量复验 `npm run test -- --pool=threads --maxWorkers=1 test/renderer-exception-monitor.spec.ts` 为 1 spec / 10 tests 通过；runner 与 helper 的 `node --check`、`npm run typecheck` Node/Web 检查、`git diff --check` 通过。计划镜像在本条目追加后于 16:15 再核验：`plan.json` 可解析且包含 222 个唯一 ID。本轮未重跑 build（改动只涉及 QA CJS runner/helper 与测试），未运行 D3/完整 runner/全量测试。先前 15:33–15:35 的 renderer build 结果只属于上一增量，不作为本轮验证。
+- **复核：** 三轮 Spec 与 Standards 只读复核均已完成；两轴最终均 Ready。本轮先修正命名超时与 50ms 启发式等待，再提取 `waitForWebSocketClose` 并增加 close 已观测、readyState/事件竞态、正常 close、timeout/清监听测试；最终 reviewers 未发现本增量阻断项或指定 smell。attach 前异常盲区保留并如实声明。
+- **所有权 / 基线：** 当前无活动代码 owner；`/root` 已释放本批对 `scripts/trace-phase2-isolated-electron-runner.cjs`、`scripts/renderer-exception-monitor.cjs`、`test/renderer-exception-monitor.spec.ts` 及相关共享状态文档的所有权。HEAD 仍为 `b403e0a3dfe7fbb61acae2debd23229c32819880`；runner 在本轮开始前 SHA-256 为 `57096116E909471B60B4AD46E43B86A4397D15022AA34FDF6121DB5F3806BF06`，当前 SHA-256 `CDA1D5EA65B3C734546A8364AFEE6D7F88D75045DEC0924D80512B369A7FD021`。未覆盖或回退其他 dirty/untracked 文件；未提交、合并、升版、打包、推送或发布。
+- **下一步 / 等待 / 剩余：** 需先决定当前“目标 attach 后计数”的边界是否可接受；如接受，D3-only Electron 验收仍须另行授权；如需覆盖窗口首次加载异常，则另开 Browser CDP 早期自动附着设计与实现范围。Task 8 仍需对齐历史 D3/全量报告口径、用户侧原生键鼠/IME/DPI/窄矮窗口/读屏与真实安装包验收。8A 根因仍未知并按用户决定暂缓。
+
+## 历史状态快照（2026-10-08 14:30 +08:00，Codex 交叉复审与 P1 修复后）
+
+- **Task 8 仍为 `in_progress`，尚未关闭。** Claude 最新摘要（用户转述）报告 D3 三入口通过，runId `1cf97c7c882860595768d57092098f8e`，全量测试 512/512、typecheck/build 通过，并称提交 `b403e0a` 双端同步；这些结果未由 Codex 重跑。当前本地历史材料还保留较早的 07:00 D3 失败 runId `b3a51d25bc2d8c6c7663d1ed97f3e0cd` / 1179/1184，`Task8-Final-Handoff.md` 则另记 1186/1187。它们属于不同时间或范围的报告，命令/范围仍待对齐；不把它们写成 Codex 实测。
+- **Codex 复审 P1 已修复：** 候选 worktree `.worktrees/codex/xiaoyuan-plan-operations` 的 `src/main/services/plan-repository.ts` 此前只在 rename 退避前检查一次冻结库身份；现在每次实际 rename 前都重新运行身份/目标守卫。`test/plan-repository.spec.ts` 新增回归：先 RED，身份变化后旧代码会进行第二次 rename；修复后拒绝并只调用一次。有限 `EPERM/EBUSY` 重试按用户选择保留。日志改为仅含重试序号和错误码，不再输出绝对路径或计划名。
+- **本轮实际验证：** `npm run test -- test/plan-repository.spec.ts test/plan-reference-ipc.spec.ts test/reference-impact-dialog.spec.tsx`：3 specs / 65 tests 通过；`npm run typecheck` Node/Web 均通过；`npm run build` 通过；`git diff --check` 通过，只有既有 `test/storage-service.spec.ts` CRLF→LF 提示。未重跑全量测试或 D3 runner。
+- **仍待处理/验收：** 复审发现 D3 runner 的异常计数尚无证据覆盖独立审批/确认窗口的 renderer；本轮未改 runner，记录为覆盖缺口。8A 自然保存失败根因仍未知；有限重试是经用户选择的韧性措施，不是根因已解决的证明。原生键鼠、IME、DPI、窄矮窗口、读屏及真实安装包人工验收仍未完成。
+- **复审边界：** 本轮 P1 修改由 Codex 实施并通过 scoped tests、typecheck 与 build；尚无第二名 reviewer 独立复核这一新增增量。
+- **所有权已释放：** 本轮实现/文档边界为候选 worktree `src/main/services/plan-repository.ts`、`test/plan-repository.spec.ts`，以及主 checkout 的本 HANDOFF、计划 README、Task 8 状态/计划/最终交接文档与 8A issue 记录；当前无活动代码 owner。主 checkout HEAD 实测 `b403e0a3dfe7fbb61acae2debd23229c32819880`，候选 HEAD 实测 `3cc14393825af57498641210479136dec41527a0`；两侧既有 dirty/untracked 资源均保留。未提交、合并、升版、打包、推送或发布。
+- **下一步：** 对齐 Task 8 的 D3/全量测试报告范围，处理或明确接受 runner 独立窗口异常覆盖缺口，再完成人工验收与关闭确认。合并/发布不在本轮范围。
+
+## 历史执行状态（2026-10-08 07:00 +08:00，D3 修复与复测后）
 
 - **Task 8 仍为 `in_progress`，D3 未通过。** 独立 Spec 与 Standards 复审发现的不完整选择拒绝 Promise 已修复：未选择完整时只显示 warning、不调用 AntD close callback 且不产生 rejection；完整选择才 resolve 并关闭。runner 不再豁免任何异常文本，所有 `Runtime.exceptionThrown` 都计入总数。两名独立 reviewer 对精确修复复审均 Ready: Yes、0 findings。
 - **实际验证：** `npm run typecheck` 通过；新增 `reference-impact-dialog.spec.tsx` focused 1/1；`npm run build` 通过。完整串行测试 `npm run test -- --pool=threads --maxWorkers=1` 为 85 specs / 1184 tests，1179 passed、5 failed：2 项 DST 测试在默认时区失败，随后 `TZ=America/New_York` 对应日记 DST spec 14/14 通过；另 3 项是 fixture `savePlan → writeJsonAtomic` 的 `SAVE_FAILED`，与用户决定暂缓的 8A 同类，但本次没有在正确时区重跑全套，不能把整套测试记为全绿。
@@ -849,6 +965,22 @@
 4. **失败的第一反应是拍全现场，不是猜**：任何超时/断言失败，第一动作是把完整状态 dump 进错误消息（可见元素列表 + 选中态 + 计算样式 + 异常文本 + 相关 store 状态），一次拿全再修。**禁止"根因未确认"状态下靠假设推进**——Task 8D3 的三轮盲修 vs Claude 的两轮通过，差距只在这一条。dump 走 stdout（拼进抛出的错误），不走会被收窄的独立诊断报告。
 5. **授权粒度请求整段**：验收/调试类工作向用户申请"诊断→修→重跑"的连续授权（失败现场 dump 属于验证本身，不需单独授权）；越界动作（改产品语义、放宽断言）单独列出请用户拍板并记录理由。
 6. **每步小提交 + 三层自检**：约定式 commit；完成后自检顺序 = 测试绿 → 逻辑走查 → **用户视角过一遍**（本会话两次自查抓到自己的漏检：TopBar 漏挂、t 重名）。阶段收尾三清单（下一步/等什么/还差什么）+ 沉淀判定（ERROR/记忆/文档）。
+
+
+## Claude 致 Codex：worktree 测试基建两处 flaky 的定位与 patch（2026-10-09）
+
+> 位置：隔离 worktree `codex/xiaoyuan-plan-operations`（修改在未提交工作区存活，接手时 `git status` 可见 test/ 的 M 条目）。以下 patch 已在该工作区实测：rm 重试后 agent-operation-ipc 64/64 连续两轮稳定；两 spec 单独跑 35/35。
+
+### Flaky 1：`agent-operation-ipc.spec.ts` afterEach 偶发 ENOTEMPTY
+- 根因：`fs.rm(directory, { recursive: true, force: true })` 单次调用，Windows 句柄/索引器延迟下偶发失败（agent-session 持久化异步写与清理竞态）。
+- patch：rm 退避重试（≤2 次 × 300ms，仅 ENOTEMPTY 触发）。
+
+### Flaky 2：`agent-target-picker.spec.tsx` / `plan-reference-ipc.spec.ts` 全量负载下 5s 超时
+- 根因：vitest 默认 testTimeout 5s 在全量并发负载下不够（bootstrap/IPC 初始化超限）。
+- patch：两文件顶部 `vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 })`。
+
+### 采纳方式
+两处均为测试基建稳定性修复，不改变断言语义；Codex 接手 worktree 时 `git status` 可见既有修改，确认内容后直接提交即可；若工作区已被清理，按上述描述重做（合计 <20 行）。
 
 ## 稳定用户偏好与设计理念（历史蒸馏）
 
