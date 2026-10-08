@@ -28,5 +28,6 @@
 
 ## 发布渠道
 
-- GitHub Release：发布后补充链接及远端资产 digest 核验。
-- Gitee Release：仅发布本说明，不上传安装包；发布后补充公开页面核验结果。
+- GitHub Release：<https://github.com/Qore-Origins/Trace/releases/tag/v1.0.0>
+- Windows x64 安装包：<https://github.com/Qore-Origins/Trace/releases/download/v1.0.0/Trace_1.0.0_stable_20261009_01.exe>
+- Gitee Release：<https://gitee.com/Qore/trace/releases/v1.0.0>；仅发布本说明，不上传安装包。
