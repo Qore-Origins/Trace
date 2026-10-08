@@ -686,6 +686,84 @@
         ],
         "publicPageStatus": 200
       }
+    },
+    {
+      "platform": "GitHub",
+      "repo": "Qore-Origins/Trace",
+      "tag": "v1.0.0",
+      "target": "main",
+      "title": "v1.0.0 — 溯源 Trace 正式版：计划协作与小沅 Agent",
+      "label": "None",
+      "status": "published",
+      "isLatest": true,
+      "isPreRelease": false,
+      "notesFile": "builds/release_notes/release_notes_v1.0.0.md",
+      "notesFormat": "markdown",
+      "assets": [
+        {
+          "name": "Trace_1.0.0_stable_20261009_01.exe",
+          "platform": "win32-x64",
+          "size": 210738662,
+          "sizeFormatted": "200.98 MiB",
+          "sha256": "76ED2D64F0313D0D9FDBE3333BDC306D6C10E839513BBE27D0328BDF1EA8157E",
+          "localPath": "builds/windows/Trace_1.0.0_stable_20261009_01.exe",
+          "downloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v1.0.0/Trace_1.0.0_stable_20261009_01.exe"
+        }
+      ],
+      "versionInPackageJson": "1.0.0",
+      "buildStatus": "stable",
+      "builtAt": "2026-10-09T05:09:47+08:00",
+      "commit": "7819ff6ad778456059f9232d69cd2c1c34986740",
+      "publishedAt": "2026-10-08T21:18:47Z",
+      "url": "https://github.com/Qore-Origins/Trace/releases/tag/v1.0.0",
+      "releaseId": 407270848,
+      "verification": {
+        "bodyMatchesLocalNotes": true,
+        "tag": "v1.0.0",
+        "targetCommit": "7819ff6ad778456059f9232d69cd2c1c34986740",
+        "preRelease": false,
+        "installerSize": 210738662,
+        "installerDigest": "sha256:76ed2d64f0313d0d9fdbe3333bdc306d6c10e839513bbe27d0328bdf1ea8157e"
+      }
+    },
+    {
+      "platform": "Gitee",
+      "repo": "Qore/trace",
+      "tag": "v1.0.0",
+      "target": "main",
+      "title": "v1.0.0 — 溯源 Trace 正式版：计划协作与小沅 Agent",
+      "label": "None",
+      "status": "published",
+      "isLatest": true,
+      "isPreRelease": false,
+      "notesFile": "builds/release_notes/release_notes_v1.0.0.md",
+      "notesFormat": "markdown",
+      "assets": [],
+      "platformGeneratedSourceArchives": [
+        "v1.0.0.zip",
+        "v1.0.0.tar.gz"
+      ],
+      "assetPolicy": "未上传 210,738,662 字节 Windows 安装包（超过 100 MB 上限）；Gitee 仅发布说明并链接 GitHub 下载，ZIP/TAR.GZ 为平台自动生成源码归档",
+      "externalDownloadUrl": "https://github.com/Qore-Origins/Trace/releases/download/v1.0.0/Trace_1.0.0_stable_20261009_01.exe",
+      "versionInPackageJson": "1.0.0",
+      "buildStatus": "stable",
+      "builtAt": "2026-10-09T05:09:47+08:00",
+      "commit": "7819ff6ad778456059f9232d69cd2c1c34986740",
+      "publishedAt": "2026-10-08T21:19:58Z",
+      "url": "https://gitee.com/Qore/trace/releases/v1.0.0",
+      "releaseId": 1191066,
+      "verification": {
+        "bodyMatchesLocalNotes": true,
+        "tag": "v1.0.0",
+        "targetCommit": "7819ff6ad778456059f9232d69cd2c1c34986740",
+        "preRelease": false,
+        "installerUploaded": false,
+        "platformGeneratedSourceArchives": [
+          "v1.0.0.zip",
+          "v1.0.0.tar.gz"
+        ],
+        "publicPageStatus": 200
+      }
     }
   ]
 }

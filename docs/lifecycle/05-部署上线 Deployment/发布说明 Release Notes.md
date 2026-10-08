@@ -40,5 +40,5 @@
 
 ## 已发布渠道
 
-- GitHub Release（Windows x64 安装包）：发布后补充 URL 与远端 digest 核验结果。
-- Gitee Release（仅说明，无安装包）：发布后补充公开页面、正文与 HTTP 状态核验结果。
+- GitHub Release（正式版、非预发布）：<https://github.com/Qore-Origins/Trace/releases/tag/v1.0.0>；唯一 EXE 为 210,738,662 字节，远端 digest 与本地 SHA-256 一致。
+- Gitee Release（正式版、无 EXE）：<https://gitee.com/Qore/trace/releases/v1.0.0>；Release ID `1191066`，公开页面 HTTP 200，正文与本地说明一致；仅有平台自动生成的 `v1.0.0.zip` / `v1.0.0.tar.gz` 源码归档。
