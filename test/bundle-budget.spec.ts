@@ -20,6 +20,44 @@ beforeAll(
 )
 
 describe('renderer bundle budget', () => {
+  it('does not patch stdout at config import or for dev/TTY, and only fills missing build cursor methods', async () => {
+    const stdoutBeforeImport = {
+      clearLine: process.stdout.clearLine,
+      cursorTo: process.stdout.cursorTo,
+      moveCursor: process.stdout.moveCursor
+    }
+    const configModule = await import('../electron.vite.config')
+    const configFactory = configModule.default as (environment: { command: string; mode: string }) => unknown
+    configFactory({ command: 'serve', mode: 'development' })
+    expect({
+      clearLine: process.stdout.clearLine,
+      cursorTo: process.stdout.cursorTo,
+      moveCursor: process.stdout.moveCursor
+    }).toEqual(stdoutBeforeImport)
+
+    const configure = configModule.configureReporterStdout
+    const pipe = { isTTY: false } as NodeJS.WriteStream
+    configure('serve', pipe)
+    expect(pipe.clearLine).toBeUndefined()
+    expect(pipe.cursorTo).toBeUndefined()
+    expect(pipe.moveCursor).toBeUndefined()
+    configure('build', pipe)
+    expect(typeof pipe.clearLine).toBe('function')
+    expect(typeof pipe.cursorTo).toBe('function')
+    expect(typeof pipe.moveCursor).toBe('function')
+
+    const ttyMethods = {
+      clearLine: () => true,
+      cursorTo: () => true,
+      moveCursor: () => true
+    }
+    const tty = { isTTY: true, ...ttyMethods } as NodeJS.WriteStream
+    configure('build', tty)
+    expect(tty.clearLine).toBe(ttyMethods.clearLine)
+    expect(tty.cursorTo).toBe(ttyMethods.cursorTo)
+    expect(tty.moveCursor).toBe(ttyMethods.moveCursor)
+  })
+
   it('keeps the initial entry below 700 KiB and emits page/vendor chunks', () => {
     const html = readFileSync(resolve(rendererOutput, 'index.html'), 'utf8')
     const entryMatch = html.match(/<script[^>]+src="\.\/assets\/(index-[^"]+\.js)"/)
@@ -30,11 +68,58 @@ describe('renderer bundle budget', () => {
 
     expect(statSync(resolve(assetsOutput, entryFile)).size).toBeLessThan(700 * 1024)
     expect(javascriptFiles.length).toBeGreaterThan(4)
+    expect(javascriptFiles.some((file) => file.startsWith('WorkspaceView-'))).toBe(true)
+    expect(javascriptFiles.some((file) => file.startsWith('ExportView-'))).toBe(true)
     expect(javascriptFiles.some((file) => file.startsWith('DiaryView-'))).toBe(true)
     expect(javascriptFiles.some((file) => file.startsWith('MemoriesView-'))).toBe(true)
     expect(javascriptFiles.some((file) => file.startsWith('vendor-react-'))).toBe(true)
     expect(javascriptFiles.some((file) => file.startsWith('vendor-antd-'))).toBe(true)
     expect(javascriptFiles.some((file) => file.startsWith('vendor-dnd-'))).toBe(true)
+  })
+
+  it('loads emitted workspace/export routes dynamically while keeping the application shell in the entry', () => {
+    const html = readFileSync(resolve(rendererOutput, 'index.html'), 'utf8')
+    const entryFile = html.match(/<script[^>]+src="\.\/assets\/(index-[^"]+\.js)"/)?.[1]
+    expect(entryFile).toBeDefined()
+    const entry = readFileSync(resolve(assetsOutput, entryFile ?? ''), 'utf8')
+    const javascriptFiles = readdirSync(assetsOutput).filter((file) => file.endsWith('.js'))
+    const initialGraph = new Set<string>()
+    const pendingFiles = [entryFile ?? '']
+    while (pendingFiles.length > 0) {
+      const file = pendingFiles.pop() ?? ''
+      if (initialGraph.has(file)) continue
+      initialGraph.add(file)
+      const chunk = readFileSync(resolve(assetsOutput, file), 'utf8')
+      for (const dependency of chunk.matchAll(/^import\s+(?:[^;\n]*?\s+from\s+)?["']\.\/([^"']+\.js)["']/gm)) {
+        pendingFiles.push(dependency[1])
+      }
+    }
+    for (const route of ['WorkspaceView', 'ExportView']) {
+      const routeFile = javascriptFiles.find((file) => file.startsWith(`${route}-`))
+      expect(routeFile, `${route} must have an emitted chunk`).toBeDefined()
+      const routeChunk = readFileSync(resolve(assetsOutput, routeFile ?? ''), 'utf8')
+      const escapedRoutePath = `./${routeFile}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+      expect(entry).toMatch(new RegExp(`import\\(["']${escapedRoutePath}["']\\)`))
+      expect(entry).not.toMatch(new RegExp(`(?:from\\s*|^import\\s*)["']${escapedRoutePath}["']`, 'm'))
+      expect(html).not.toMatch(new RegExp(`<link[^>]+rel="modulepreload"[^>]+href="[^"]*${route}-`))
+      expect(routeChunk).toContain(`function ${route}(`)
+      expect(entry).not.toContain(`function ${route}(`)
+      expect(initialGraph.has(routeFile ?? ''), `${route} must stay outside the initial static import graph`).toBe(false)
+    }
+    const cardsFile = javascriptFiles.find((file) => file.startsWith('cards-'))
+    expect(cardsFile, 'workspace and export must share an emitted cards chunk').toBeDefined()
+    expect(readFileSync(resolve(assetsOutput, cardsFile ?? ''), 'utf8')).toContain('function ComponentRenderer(')
+    expect(initialGraph.has(cardsFile ?? ''), 'card rendering must stay outside the initial static import graph').toBe(false)
+    const workspaceFile = javascriptFiles.find((file) => file.startsWith('WorkspaceView-')) ?? ''
+    const workspace = readFileSync(resolve(assetsOutput, workspaceFile), 'utf8')
+    for (const component of ['PlanTreePanel', 'ContentArea']) {
+      expect(workspace).toContain(`function ${component}(`)
+      expect(entry).not.toContain(`function ${component}(`)
+    }
+    for (const component of ['AppShell', 'TopBar', 'StatusBar', 'OnboardingView']) {
+      expect(entry).toContain(`function ${component}(`)
+    }
   })
 
   it('keeps Muya and diagram engines behind dynamic import boundaries', () => {

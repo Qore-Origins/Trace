@@ -1,0 +1,194 @@
+.card.plan-reference {
+  background: var(--paper-dim);
+  border-left: 4px solid var(--trace-500);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+}
+
+.plan-reference__heading,
+.plan-reference__name-row,
+.plan-reference__name-editor,
+.plan-reference__actions,
+.plan-reference__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-reference__heading {
+  justify-content: space-between;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding-right: 92px;
+}
+
+.plan-reference__name-row {
+  min-width: 0;
+}
+
+.plan-reference__name-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-reference__mode,
+.plan-reference__status,
+.plan-reference__meta {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.plan-reference__mode {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.plan-reference__link-note,
+.plan-reference__loading,
+.plan-reference__missing,
+.plan-reference__unavailable {
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.plan-reference__preview {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--split);
+  border-radius: var(--r-card);
+  background: var(--paper);
+  padding: 12px;
+}
+
+.plan-reference__native-title {
+  color: var(--text-1);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.plan-reference__description {
+  color: var(--text-2);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.plan-reference__list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.plan-reference__list li {
+  color: var(--text-1);
+  padding-left: 2px;
+}
+
+.plan-reference__list .plan-reference__status {
+  margin-right: 8px;
+}
+
+.plan-reference__actions {
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.plan-reference__name-editor {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-reference__name-editor .ant-input {
+  min-width: 0;
+}
+
+.plan-reference-picker .ant-modal-body {
+  padding-top: 8px;
+}
+
+.plan-reference-picker__body {
+  display: grid;
+  gap: 14px;
+}
+
+.plan-reference-picker__modes,
+.plan-reference-picker__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.plan-reference-picker__modes {
+  justify-content: flex-start;
+}
+
+.plan-reference-picker__results {
+  display: grid;
+  gap: 6px;
+  max-height: min(48vh, 420px);
+  min-height: 96px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 8px;
+}
+
+.plan-reference-picker__target.ant-btn {
+  display: grid;
+  height: auto;
+  justify-items: start;
+  gap: 2px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  white-space: normal;
+}
+
+.plan-reference-picker__target.is-selected {
+  background: var(--trace-bg);
+  color: var(--link);
+}
+
+.plan-reference-picker__target-name {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.plan-reference-picker__target-path {
+  color: var(--text-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.plan-reference-picker__status {
+  align-self: center;
+  color: var(--text-3);
+  padding: 12px;
+  text-align: center;
+}
+
+.plan-reference-picker__name {
+  display: grid;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.plan-reference-picker__error {
+  color: var(--danger-text);
+}
+
+@media (max-width: 640px) {
+  .plan-reference__heading {
+    align-items: flex-start;
+    flex-direction: column;
+    padding-right: 88px;
+  }
+
+  .plan-reference__name-editor {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+}

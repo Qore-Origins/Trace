@@ -1,0 +1,158 @@
+.trash-dialog .trash-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.trash-dialog .trash-toolbar p {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.trash-dialog .trash-entries {
+  display: grid;
+  gap: 8px;
+  max-height: min(54vh, 560px);
+  overflow: auto;
+  padding: 2px;
+}
+
+.trash-dialog .trash-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--paper-dim);
+}
+
+.trash-dialog .trash-entry-main,
+.trash-dialog .trash-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.trash-dialog .trash-entry-main strong,
+.trash-dialog .trash-entry-meta span,
+.trash-dialog .trash-entry-meta time {
+  overflow-wrap: anywhere;
+}
+
+.trash-dialog .trash-entry-main > span,
+.trash-dialog .trash-entry-meta {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.trash-dialog .trash-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trash-dialog .trash-entry-meta {
+  grid-column: 1 / -1;
+}
+
+.trash-dialog .trash-empty {
+  padding: 28px 12px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.trash-dialog .trash-error {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--danger-text);
+  border-radius: 6px;
+  background: var(--danger-hover-bg);
+  color: var(--danger-text);
+}
+
+.trash-dialog .trash-restore-form,
+.trash-dialog .trash-purge-confirmation {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.trash-dialog .trash-restore-form > p,
+.trash-dialog .trash-purge-confirmation > p {
+  margin: 0;
+}
+
+.trash-dialog .trash-parent-picker {
+  display: flex;
+  gap: 8px;
+}
+
+.trash-dialog .trash-parent-picker select,
+.trash-dialog .trash-restore-form input,
+.trash-dialog .trash-purge-confirmation input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--text-1);
+  font: inherit;
+}
+
+.trash-dialog .trash-parent-picker select,
+.trash-dialog .trash-restore-form input,
+.trash-dialog .trash-purge-confirmation input {
+  flex: 1;
+}
+
+.trash-dialog .trash-parent-picker select:focus-visible,
+.trash-dialog .trash-restore-form input:focus-visible,
+.trash-dialog .trash-purge-confirmation input:focus-visible {
+  outline: 2px solid var(--trace-500);
+  outline-offset: 2px;
+}
+
+.trash-dialog .trash-preview {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--paper-dim);
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .trash-dialog .trash-toolbar {
+    align-items: flex-start;
+  }
+
+  .trash-dialog .trash-entry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .trash-dialog .trash-entry-meta,
+  .trash-dialog .trash-entry-actions {
+    grid-column: 1;
+  }
+
+  .trash-dialog .trash-entry-actions > .ant-btn {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trash-dialog *,
+  .trash-dialog *::before,
+  .trash-dialog *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

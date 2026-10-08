@@ -10,7 +10,8 @@ import { useUiStore } from '../src/renderer/src/stores/ui-store'
 const pages = [
   { label: '计划', view: 'workspace' },
   { label: '日记', view: 'diary' },
-  { label: '回忆', view: 'memories' }
+  { label: '回忆', view: 'memories' },
+  { label: '小沅', view: 'agent' }
 ] as const
 
 let host: HTMLDivElement | undefined
@@ -63,15 +64,23 @@ function getNavigation(): HTMLElement {
 }
 
 describe('TopBar page navigation', () => {
+  it('keeps four readable English destinations with one current page', async () => {
+    await act(async () => { await i18n.changeLanguage('en-US'); useUiStore.getState().setView('agent') })
+    const buttons = Array.from(getNavigation().querySelectorAll('button'))
+    expect(buttons.map((item) => item.textContent?.trim())).toEqual(['Plans', 'Diary', 'Memories', 'Xiao Yuan'])
+    const currentButtons = buttons.filter((item) => item.getAttribute('aria-current') === 'page')
+    const currentLabels = currentButtons.map((item) => item.textContent?.trim())
+    expect(currentLabels).toEqual(['Xiao Yuan'])
+  })
   it('has an accessible name independent from the View command menu', () => {
     expect(getNavigation().getAttribute('aria-label')).toBe('页面导航')
   })
 
-  it('renders three native buttons in page order and changes the real UI store when clicked', async () => {
+  it('renders four native buttons in page order and changes the real UI store when clicked', async () => {
     const navigation = getNavigation()
     const buttons = Array.from(navigation.querySelectorAll<HTMLButtonElement>('button'))
 
-    expect(buttons).toHaveLength(3)
+    expect(buttons).toHaveLength(4)
     expect(buttons.map((button) => button.textContent?.trim())).toEqual(pages.map(({ label }) => label))
     expect(buttons.every((button) => button.type === 'button')).toBe(true)
 

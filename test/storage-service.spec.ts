@@ -6,25 +6,35 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PlanRepository } from '../src/main/services/plan-repository'
 import { StorageService } from '../src/main/services/storage-service'
+import { PlanReferenceService } from '../src/main/services/plan-reference-service'
 import { bus } from '../src/main/services/event-bus'
 import { TraceError, ERR } from '../src/shared/errors'
 import type { PlanDocument, Component } from '../src/shared/plan-types'
 
 let root: string
 let service: StorageService
+let repository: PlanRepository
+let referenceService: PlanReferenceService
 
 beforeEach(async () => {
   root = join(tmpdir(), `trace-svc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
   await fs.mkdir(root, { recursive: true })
-  const repo = new PlanRepository()
-  await repo.ensureLibraryRoot(root)
-  service = new StorageService(repo)
+  repository = new PlanRepository()
+  await repository.ensureLibraryRoot(root)
+  service = new StorageService(repository)
   service.setRoot(root)
+  referenceService = new PlanReferenceService(repository, () => service.getRootAbs())
+  referenceService.activateRoot(root)
 })
 
 afterEach(async () => {
+  referenceService.dispose()
   await fs.rm(root, { recursive: true, force: true })
 })
+
+async function queuedMove(path: string, targetParentPath: string): Promise<void> {
+  await referenceService.commitMove({ path, target_parent_path: targetParentPath }, service)
+}
 
 async function docOf(path: string): Promise<PlanDocument> {
   return JSON.parse(await fs.readFile(join(root, path, 'plan.json'), 'utf8')) as PlanDocument
@@ -44,6 +54,21 @@ describe('createPlan / treeGetChildren', () => {
   it('同级重名 → NAME_CONFLICT(12)', async () => {
     await service.createPlan('', 'A')
     await expect(service.createPlan('', 'A')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
+  })
+  it('plan.json 在新建目录后出现时不覆盖外部内容', async () => {
+    const writePlanAtomic = repository.writePlanAtomic.bind(repository)
+    const replacement = { marker: 'external plan file must be preserved' }
+    vi.spyOn(repository, 'writePlanAtomic').mockImplementationOnce(async (
+      rootAbs, relativePath, document, mutationGuard, targetMustNotExist
+    ) => {
+      await fs.writeFile(join(root, relativePath, 'plan.json'), JSON.stringify(replacement))
+      return writePlanAtomic(rootAbs, relativePath, document, mutationGuard, targetMustNotExist)
+    })
+
+    await expect(service.createPlan('', 'NoOverwrite')).rejects.toBeInstanceOf(Error)
+
+    await expect(fs.readFile(join(root, 'NoOverwrite', 'plan.json'), 'utf8'))
+      .resolves.toBe(JSON.stringify(replacement))
   })
   it('初始 plan.json 写入失败后清理新目录，允许同名重试并保留原始错误', async () => {
     const repo = new PlanRepository()
@@ -155,6 +180,19 @@ describe('文件夹容器（folder，无 plan.json）', () => {
 })
 
 describe('renamePlan / deletePlan', () => {
+  it('keeps the target when a confirmed structural change uses a stale plan revision', async () => {
+    await service.createPlan('', 'Target')
+    const original = await service.readPlan('Target')
+    const latest = structuredClone(original)
+    latest.components.push({ id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', type: 'heading', payload: { title: 'New', size: 18 } })
+    await service.savePlan('Target', latest, original.updated_at)
+
+    await expect(service.renamePlan('Target', 'Renamed', original.updated_at))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    await expect(service.deletePlan('Target', true, original.updated_at))
+      .rejects.toMatchObject({ code: ERR.CONFLICT })
+    expect((await service.readPlan('Target')).components).toHaveLength(1)
+  })
   it('重命名同步磁盘', async () => {
     await service.createPlan('', '旧名')
     const r = await service.renamePlan('旧名', '新名')
@@ -167,11 +205,90 @@ describe('renamePlan / deletePlan', () => {
     await service.createPlan('', 'A')
     await expect(service.deletePlan('A', false)).rejects.toMatchObject({ code: ERR.CONFIRMATION_REQUIRED })
   })
-  it('确认后递归删除', async () => {
+  it('confirmed deletion moves the complete plan subtree to trash and restores its IDs and contents', async () => {
     await service.createPlan('', 'A')
     await service.createPlan('A', '子')
-    await service.deletePlan('A', true)
-    await expect(fs.access(join(root, 'A'))).rejects.toThrow()
+    const parent = await service.readPlan('A')
+    parent.plan_id = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    parent.components.push({ id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', type: 'note', payload: { content: 'preserved parent' } })
+    await service.savePlan('A', parent, parent.updated_at)
+    const child = await service.readPlan('A/子')
+    child.plan_id = 'cccccccccccccccccccccccccccccccc'
+    child.components.push({ id: 'dddddddddddddddddddddddddddddddd', type: 'note', payload: { content: 'preserved child' } })
+    await service.savePlan('A/子', child, child.updated_at)
+
+    const latestParent = await service.readPlan('A')
+    await service.deletePlan('A', true, latestParent.updated_at)
+
+    await expect(fs.access(join(root, 'A'))).rejects.toMatchObject({ code: 'ENOENT' })
+    const entries = await service.listTrashEntries()
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ kind: 'plan', name: 'A', status: 'trashed' })
+
+    const preview = await service.previewTrashRestore(entries[0].id)
+    await service.commitTrashRestore(preview.confirmation_token)
+
+    await expect(service.readPlan('A')).resolves.toMatchObject({
+      plan_id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      components: [expect.objectContaining({ payload: { content: 'preserved parent' } })]
+    })
+    await expect(service.readPlan('A/子')).resolves.toMatchObject({
+      plan_id: 'cccccccccccccccccccccccccccccccc',
+      components: [expect.objectContaining({ payload: { content: 'preserved child' } })]
+    })
+  })
+  it('reads one trash entry by ID without enumerating all entries', async () => {
+    const plan = await service.createPlan('', 'Exact trash item')
+    const entry = await service.trashPlan(plan.path)
+    vi.spyOn(service, 'listTrashEntries').mockRejectedValue(new Error('full trash enumeration must not run'))
+
+    await expect(service.readTrashEntry(entry.id)).resolves.toMatchObject({
+      id: entry.id, name: 'Exact trash item', original_relative_path: 'Exact trash item', status: 'trashed'
+    })
+  })
+  it('peeks at the exact validated purge summary without consuming its token', async () => {
+    const plan = await service.createPlan('', 'Purge confirmation snapshot')
+    const entry = await service.trashPlan(plan.path)
+    const preview = await service.previewTrashPurge(entry.id)
+
+    await expect(service.getTrashPurgeConfirmationSnapshot(preview.confirmation_token)).resolves.toMatchObject({
+      entry_id: entry.id, kind: 'plan', name: 'Purge confirmation snapshot',
+      original_relative_path: 'Purge confirmation snapshot', plan_count: 1, reference_count: 0, status: 'trashed'
+    })
+    await expect(service.commitTrashPurge(preview.confirmation_token)).resolves.toHaveProperty('changed_plan_ids')
+  })
+  it('invalidates tree cache and notifies search/reference consumers only after trash and restore commit', async () => {
+    await service.createPlan('', 'CacheTarget')
+    const before = await service.readPlan('CacheTarget')
+    before.plan_id = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+    await service.savePlan('CacheTarget', before, before.updated_at)
+    await service.treeGetChildren('')
+    expect(service.treeCache.get('')).toContain('CacheTarget')
+
+    const changedPaths: string[] = []
+    const changedTargets: string[][] = []
+    const offPlan = bus.on('trace:plan-changed', ({ path }) => changedPaths.push(path))
+    const offReference = bus.on('trace:reference-target-changed', ({ plan_ids }) => changedTargets.push(plan_ids))
+    try {
+      const latest = await service.readPlan('CacheTarget')
+      await service.deletePlan('CacheTarget', true, latest.updated_at)
+      expect(service.treeCache.get('')).toBeUndefined()
+      expect((await service.treeGetChildren('')).map((node) => node.name)).not.toContain('CacheTarget')
+
+      const entry = (await service.listTrashEntries())[0]
+      const preview = await service.previewTrashRestore(entry.id)
+      await service.commitTrashRestore(preview.confirmation_token)
+      expect((await service.treeGetChildren('')).map((node) => node.name)).toContain('CacheTarget')
+    } finally {
+      offPlan()
+      offReference()
+    }
+
+    expect(changedPaths).toEqual(['CacheTarget', 'CacheTarget'])
+    expect(changedTargets).toEqual([
+      ['eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'],
+      ['eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee']
+    ])
   })
   it('删除成功发 plan-changed 事件（树刷新/索引重建依赖；2026-09-08 补）', async () => {
     await service.createPlan('', 'A')
@@ -184,23 +301,60 @@ describe('renamePlan / deletePlan', () => {
     }
     expect(events).toContain('A')
   })
+
+  it('notifies stable IDs in the affected nested subtree before rename, move, and delete', async () => {
+    const planIds = [
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      'cccccccccccccccccccccccccccccccc'
+    ]
+    await service.createFolder('', 'Archive')
+    await service.createFolder('', 'Target')
+    await service.createPlan('Archive', 'Parent')
+    await service.createPlan('Archive/Parent', 'Nested')
+    await fs.mkdir(join(root, 'Archive', 'Parent', 'Broken'))
+    await fs.writeFile(join(root, 'Archive', 'Parent', 'Broken', 'plan.json'), '{')
+    await service.createPlan('Archive/Parent/Broken', 'Healthy under broken plan')
+
+    for (const [path, planId] of [
+      ['Archive/Parent', planIds[0]],
+      ['Archive/Parent/Nested', planIds[1]],
+      ['Archive/Parent/Broken/Healthy under broken plan', planIds[2]]
+    ] as const) {
+      const document = await service.readPlan(path)
+      document.plan_id = planId
+      await service.savePlan(path, document, document.updated_at)
+    }
+
+    const events: string[][] = []
+    const off = bus.on('trace:reference-target-changed', (event) => events.push(event.plan_ids))
+    try {
+      await service.renamePlan('Archive/Parent', 'Renamed')
+      await queuedMove('Archive/Renamed', 'Target')
+      await service.deletePlan('Target/Renamed', true)
+    } finally {
+      off()
+    }
+
+    expect(events).toEqual([planIds, planIds, planIds])
+  })
 })
 
-describe('movePlan', () => {
+describe('movePlan through the reference commit queue', () => {
   it('移动 + 循环拒绝', async () => {
     await service.createPlan('', 'A')
     await service.createPlan('', 'B')
-    await service.movePlan('A', 'B')
+    await queuedMove('A', 'B')
     expect(await service.treeGetChildren('B').then((ns) => ns.map((n) => n.name))).toEqual(['A'])
 
-    await expect(service.movePlan('B/A', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
-    await expect(service.movePlan('B', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
+    await expect(queuedMove('B/A', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
+    await expect(queuedMove('B', 'B/A')).rejects.toMatchObject({ code: ERR.CIRCULAR_NESTING })
   })
 
   it('计划可拖入纯文件夹（容器）', async () => {
     await service.createPlan('', 'A')
     await service.createFolder('', '归档')
-    await service.movePlan('A', '归档')
+    await queuedMove('A', '归档')
     const kids = await service.treeGetChildren('归档')
     expect(kids.map((n) => n.name)).toEqual(['A'])
     expect(kids[0].kind).toBe('plan')
@@ -210,14 +364,14 @@ describe('movePlan', () => {
     await service.createPlan('', 'B')
     await service.createPlan('B', 'X')
     await service.createPlan('A', 'X')
-    await expect(service.movePlan('A/X', 'B')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
+    await expect(queuedMove('A/X', 'B')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
   })
 
   it('移动后按文件名落位（目标层重排与名序一致）', async () => {
     await service.createPlan('', 'B')
     await service.createPlan('', 'C')
     await service.createPlan('', 'A')
-    await service.movePlan('A', 'B')
+    await queuedMove('A', 'B')
     // B 的子层：A 唯一；顶层剩 B、C 按名序
     expect((await service.treeGetChildren('B')).map((n) => n.name)).toEqual(['A'])
     expect((await service.treeGetChildren('')).map((n) => n.name)).toEqual(['B', 'C'])
@@ -237,6 +391,77 @@ describe('movePlan', () => {
 })
 
 describe('savePlan CAS', () => {
+  it('retains the original CAS version after one precommit EPERM and saves the same draft on retry', async () => {
+    const target = join(root, 'Retryable', 'plan.json')
+    let failNextWrite = false
+    let replacementAttempts = 0
+    const retryableRepo = new PlanRepository({
+      renameRetryBackoffs: [], // 失败路径契约验证：禁用重试以保留单次 EPERM 注入（韧性重试另行覆盖）
+      renameFn: async (from, to) => {
+        if (to === target) {
+          replacementAttempts += 1
+          if (failNextWrite) {
+            failNextWrite = false
+            throw Object.assign(new Error('injected precommit rename denial'), { code: 'EPERM' })
+          }
+        }
+        await fs.rename(from, to)
+      }
+    })
+    const retryableService = new StorageService(retryableRepo)
+    retryableService.setRoot(root)
+    await retryableService.createPlan('', 'Retryable')
+    const draft = await retryableService.readPlan('Retryable')
+    const originalVersion = draft.updated_at
+    const originalBytes = await fs.readFile(target)
+    const draftComponent = { id: 'draft', type: 'note' as const, payload: { content: 'retained unsaved content' } }
+    draft.components.push(draftComponent)
+    failNextWrite = true
+
+    await expect(retryableService.savePlan('Retryable', draft, originalVersion))
+      .rejects.toMatchObject({ code: ERR.SAVE_FAILED })
+
+    expect(replacementAttempts).toBe(1)
+    expect(await fs.readFile(target)).toEqual(originalBytes)
+    expect((await retryableService.readPlan('Retryable')).updated_at).toBe(originalVersion)
+    expect(draft.updated_at).toBe(originalVersion)
+    expect(draft.components).toEqual([draftComponent])
+    expect(await fs.readdir(join(root, 'Retryable'))).toEqual(['plan.json'])
+
+    const result = await retryableService.savePlan('Retryable', draft, originalVersion)
+
+    expect(replacementAttempts).toBe(2)
+    const saved = await retryableService.readPlan('Retryable')
+    expect(saved).toEqual(draft)
+    expect(result.updated_at).toBe(saved.updated_at)
+    expect(Date.parse(saved.updated_at)).toBeGreaterThan(Date.parse(originalVersion))
+    expect(await fs.readdir(join(root, 'Retryable'))).toEqual(['plan.json'])
+  })
+
+  it('notifies only the prior and resulting stable target IDs for document saves', async () => {
+    await service.createPlan('', 'Target')
+    const document = await service.readPlan('Target')
+    document.plan_id = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    await service.savePlan('Target', document, document.updated_at)
+
+    const events: string[][] = []
+    const off = bus.on('trace:reference-target-changed', (event) => events.push(event.plan_ids))
+    try {
+      const latest = await service.readPlan('Target')
+      latest.plan_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+      await service.savePlan('Target', latest, latest.updated_at)
+      await service.createPlan('', 'No stable identity')
+      await service.appendComponent('No stable identity', { id: 'component', type: 'note', payload: { content: 'plain' } })
+    } finally {
+      off()
+    }
+
+    expect(events).toEqual([[
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    ]])
+  })
+
   it('expected_updated_at 不匹配 → CONFLICT(22)', async () => {
     await service.createPlan('', 'A')
     const doc = await service.readPlan('A')

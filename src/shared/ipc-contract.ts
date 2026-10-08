@@ -3,6 +3,25 @@
 import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
+import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
+import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
+import type { AgentRequestSendInput, AgentRequestCancelInput, AgentContinuationPreviewInput, AgentRequestIdentity } from './agent-types'
+import type { AgentOperationBatch, AgentOperationBatchReadInput, AgentOperationBatchConfirmInput, AgentOperationBatchCancelInput, AgentOperationResumeInput, AgentOperationUndoInput } from './agent-types'
+import type { AgentTargetGrantInput, AgentTargetGrantSet, AgentTargetValidationInput, AgentTargetGrantReleaseInput, AgentTargetGrant, AgentTargetChildrenInput, AgentTargetChild } from './agent-types'
+import type { AgentPermissionPolicy, AgentApprovalRequestSnapshot } from './agent-types'
+import type { WorkspaceTabsState } from './workspace-tabs-types'
+import type {
+  PlanReferenceMode, PlanReferenceTarget, ReferenceImpactCommit, ReferenceImpactPreview,
+  ReferenceImpactRequest
+} from './plan-reference-types'
+import type {
+  TrashEntry, TrashEntryTargetGrant, TrashOperationCommitResult, TrashOperationPreview,
+  TrashRestoreDestination
+} from './trash-types'
+export type {
+  PlanReferenceMode, PlanReferencePayload, PlanReferenceTarget, ReferenceImpactCommit,
+  ReferenceImpactPreview, ReferenceImpactRequest, ReferenceImpactDecision, ReferenceImpactItem
+} from './plan-reference-types'
 
 // ---------- 统一响应信封 ----------
 
@@ -18,6 +37,13 @@ export function fail(code: number, message: string): TraceResult<null> {
   return { ok: false, code, message, data: null }
 }
 
+/** Private channels for the isolated outbound-approval window; never part of `Channels`. */
+export const AGENT_APPROVAL_IPC = {
+  getSnapshot: 'trace:agent-approval:get-snapshot',
+  confirm: 'trace:agent-approval:confirm',
+  cancel: 'trace:agent-approval:cancel'
+} as const
+
 // ---------- DTO ----------
 
 export interface SearchHit {
@@ -26,6 +52,21 @@ export interface SearchHit {
   component_id?: string
   snippet: string
   matched_field: string
+}
+
+export interface PlanReferenceCandidate extends Omit<PlanReferenceTarget, 'plan_id'> {
+  plan_id?: string
+}
+
+export type PlanReferenceResolution =
+  | { status: 'found'; target: PlanReferenceTarget; component?: Component }
+  | { status: 'missing' | 'conflict' }
+
+export interface PlanReferenceInbound {
+  source_path: string
+  source_component_id: string
+  target_plan_id: string
+  target_component_id?: string
 }
 
 export interface PlanTreeNode {
@@ -78,6 +119,39 @@ export interface DiaryMemoryMilestone extends DiaryMemoryEntry {
 // ---------- 请求/响应载荷 ----------
 
 export interface Channels {
+  'agent:provider:list': { req: void; res: readonly AgentProviderPreset[] }
+  'agent:profile:list': { req: void; res: AgentProfileList }
+  'agent:profile:create': { req: AgentProfileInput; res: AgentProfile }
+  'agent:profile:update': { req: AgentProfileInput & { id: string }; res: AgentProfile }
+  'agent:profile:delete': { req: { id: string }; res: AgentProfileList }
+  'agent:profile:setDefault': { req: { id: string }; res: AgentProfile }
+  'agent:key:set': { req: { id: string; key: string }; res: AgentProfile }
+  'agent:key:remove': { req: { id: string }; res: AgentProfile }
+  'agent:capability:test': { req: { id: string }; res: AgentCapability }
+  'agent:session:list': { req: void; res: AgentSessionSummary[] }
+  'agent:session:create': { req: AgentSessionInput; res: AgentSession }
+  'agent:session:read': { req: { id: string }; res: AgentSession }
+  'agent:session:update': { req: AgentSessionInput & { id: string }; res: AgentSession }
+  'agent:session:delete': { req: { id: string }; res: null }
+  'agent:context:browse': { req: { parentPath: string }; res: PlanTreeNode[] }
+  'agent:context:read': { req: AgentContextSelection; res: AgentContextEntry }
+  'agent:target:grant': { req: AgentTargetGrantInput; res: AgentTargetGrantSet }
+  'agent:target:validate': { req: AgentTargetValidationInput; res: AgentTargetGrant }
+  'agent:target:release': { req: AgentTargetGrantReleaseInput; res: null }
+  'agent:target:children': { req: AgentTargetChildrenInput; res: AgentTargetChild[] }
+  'agent:policy:get': { req: void; res: AgentPermissionPolicy }
+  'agent:policy:set': { req: AgentPermissionPolicy; res: AgentPermissionPolicy }
+  'agent:preview:create': { req: AgentPreviewInput; res: AgentOutboundPreview }
+  'agent:preview:cancel': { req: { token: string }; res: null }
+  'agent:request:send': { req: AgentRequestSendInput; res: AgentRequestIdentity }
+  'agent:request:cancel': { req: AgentRequestCancelInput; res: null }
+  'agent:request:continue': { req: AgentContinuationPreviewInput; res: AgentRequestIdentity }
+  'agent:operation:read': { req: AgentOperationBatchReadInput; res: AgentOperationBatch }
+  'agent:operation:confirm': { req: AgentOperationBatchConfirmInput; res: AgentOperationBatch }
+  'agent:operation:cancel': { req: AgentOperationBatchCancelInput; res: null }
+  'agent:operation:retry': { req: AgentOperationResumeInput; res: AgentOperationBatch }
+  'agent:operation:continue': { req: AgentOperationResumeInput; res: AgentOperationBatch }
+  'agent:operation:undo': { req: AgentOperationUndoInput; res: AgentOperationBatch }
   // app
   'app:getAppInfo': { req: void; res: AppInfo }
   'app:bootstrap': { req: void; res: BootstrapInfo }
@@ -90,8 +164,8 @@ export interface Channels {
   'storage:treeGetChildren': { req: { parent_path: string }; res: PlanTreeNode[] }
   'storage:createPlan': { req: { parent_path: string; name: string }; res: PlanTreeNode }
   'storage:createFolder': { req: { parent_path: string; name: string }; res: PlanTreeNode }
+  // Destructive structural changes go through the explicit reference-impact confirmation flow.
   'storage:renamePlan': { req: { path: string; new_name: string }; res: { path: string } }
-  'storage:deletePlan': { req: { path: string; confirmed: boolean }; res: null }
   'storage:movePlan': { req: { path: string; target_parent_path: string }; res: null }
   'storage:readPlan': { req: { path: string }; res: PlanDocument }
   'storage:savePlan': {
@@ -109,6 +183,35 @@ export interface Channels {
   'plan-template:get': { req: void; res: PlanNameTemplateSettings }
   'plan-template:set': { req: { parent_path: string; template: string }; res: PlanNameTemplateSettings }
   'plan-template:remove': { req: { parent_path: string }; res: PlanNameTemplateSettings }
+  // workspace tabs (the active library is selected in main)
+  'workspace-tabs:get': { req: void; res: WorkspaceTabsState }
+  'workspace-tabs:set': { req: { state: WorkspaceTabsState }; res: null }
+  // references: paths are relative to the library selected by main
+  'plan-reference:search': { req: { library_id: string; query: string }; res: { targets: PlanReferenceCandidate[] } }
+  'plan-reference:resolve': {
+    req: { library_id: string; plan_id: string; component_id?: string }
+    res: PlanReferenceResolution
+  }
+  'plan-reference:commitTarget': {
+    req: { library_id: string; path: string; component_id?: string; mode: PlanReferenceMode }
+    res: PlanReferenceTarget
+  }
+  'plan-reference:inbound': {
+    req: { library_id: string; plan_id: string; component_id?: string }
+    res: { references: PlanReferenceInbound[] }
+  }
+  'plan-reference:previewImpact': { req: ReferenceImpactRequest; res: ReferenceImpactPreview }
+  'plan-reference:commitImpact': { req: ReferenceImpactCommit; res: { path?: string } }
+  // trash: operation targets are opaque entry IDs; renderer never supplies a library root/absolute path.
+  'trash:list': { req: void; res: TrashEntry[] }
+  'trash:entryTarget': { req: { entry_id: string }; res: TrashEntryTargetGrant }
+  'trash:restore-preview': {
+    req: { entry_id: string; destination?: TrashRestoreDestination; entry_target_token?: string }
+    res: TrashOperationPreview
+  }
+  'trash:restore-commit': { req: { confirmation_token: string }; res: TrashOperationCommitResult }
+  'trash:purge-preview': { req: { entry_id: string; entry_target_token?: string }; res: TrashOperationPreview }
+  'trash:purge-commit': { req: { confirmation_token: string }; res: TrashOperationCommitResult }
   // search（溯源检索）
   'search:query': { req: { keywords: string[] }; res: SearchHit[] }
   'search:getStatus': { req: void; res: { state: 'building' | 'ready' | 'error'; indexed: number } }
@@ -153,6 +256,22 @@ export interface Channels {
       random: DiaryMemoryEntry | null
     }
   }
+}
+
+/** Typed contract for the isolated approval preload, deliberately excluded from TraceBridge. */
+export interface AgentApprovalChannels {
+  [AGENT_APPROVAL_IPC.getSnapshot]: { req: void; res: AgentApprovalRequestSnapshot | null }
+  [AGENT_APPROVAL_IPC.confirm]: { req: void; res: boolean }
+  [AGENT_APPROVAL_IPC.cancel]: { req: void; res: boolean }
+}
+
+export type AgentApprovalChannelName = keyof AgentApprovalChannels
+
+/** Private bridge for the isolated approval window; never added to window.trace. */
+export interface AgentApprovalBridge {
+  getSnapshot(): Promise<AgentApprovalChannels[typeof AGENT_APPROVAL_IPC.getSnapshot]['res']>
+  confirm(): Promise<AgentApprovalChannels[typeof AGENT_APPROVAL_IPC.confirm]['res']>
+  cancel(): Promise<AgentApprovalChannels[typeof AGENT_APPROVAL_IPC.cancel]['res']>
 }
 
 export type ChannelName = keyof Channels

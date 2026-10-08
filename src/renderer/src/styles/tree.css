@@ -3,6 +3,8 @@
 .tree-resizer { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; z-index: 5; background: transparent; }
 .tree-resizer:hover, .tree-resizer:active { background: var(--resizer-hover); }
 .ws-tree .tree-scroll { flex: 1; overflow: auto; padding: 8px 6px 4px; }
+.tree-trash-entry { flex: none; display: flex; padding: 8px 6px 4px; border-top: 1px solid var(--split); }
+.tree-trash-entry .trace-action { flex: 1; justify-content: flex-start; min-height: 38px; }
 .ws-tree .tree-footer { flex: none; display: flex; gap: 6px; padding: 8px 6px 10px; border-top: 1px solid var(--split); }
 
 @media (max-width: 959px) {

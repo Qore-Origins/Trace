@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, shell } from 'electron'
+import { createHash } from 'node:crypto'
 import { spawn as spawnChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { PlanRepository } from './services/plan-repository'
@@ -8,11 +9,15 @@ import { AppService } from './services/app-service'
 import { WatchService } from './services/watch-service'
 import { TransferService } from './services/transfer-service'
 import { SearchService } from './services/search-service'
+import { getAgentToolDefinitions } from './services/agent-tool-registry'
 import { PlanNameTemplateService } from './services/plan-name-template-service'
+import { WorkspaceTabsService } from './services/workspace-tabs-service'
+import { PlanReferenceService } from './services/plan-reference-service'
 import { DIARY_DIR, reconcileDiaryPages, setDiaryRepo } from './services/diary-service'
 import { createDiaryAutomationCoordinator } from './services/diary-automation-coordinator'
 import { ExportService, resolveRendererSource } from './services/export-service'
 import { registerIpc } from './ipc/register'
+import { AgentApprovalWindowService } from './services/agent-approval-window-service'
 import { bus } from './services/event-bus'
 import { createExternalLinkWindowHandler } from './services/external-link-service'
 import { checkPlantumlEndpoint, createPlantumlService, type PlantumlChildProcess } from './services/plantuml-service'
@@ -40,6 +45,21 @@ const storage = new StorageService(repo)
 const watch = new WatchService(storage.treeCache)
 watchRef = watch
 const planNameTemplates = new PlanNameTemplateService(repo)
+const workspaceTabs = new WorkspaceTabsService(repo, () => storage.getRootAbs())
+const planReferences = new PlanReferenceService(repo, () => storage.getRootAbs())
+storage.setTrashReferenceImpactReader(async (libraryId, planIds) => {
+  const references = (await Promise.all(planIds.map(async (planId) =>
+    (await planReferences.inbound({ library_id: libraryId, plan_id: planId })).references
+  ))).flat()
+  references.sort((left, right) =>
+    `${left.target_plan_id}\0${left.target_component_id ?? ''}\0${left.source_path}\0${left.source_component_id}`
+      .localeCompare(`${right.target_plan_id}\0${right.target_component_id ?? ''}\0${right.source_path}\0${right.source_component_id}`)
+  )
+  return {
+    signature: createHash('sha256').update(JSON.stringify(references)).digest('hex'),
+    reference_count: references.length
+  }
+})
 const search = new SearchService(repo)
 const diaryAutomation = createDiaryAutomationCoordinator({
   reconcile: reconcileDiaryPages,
@@ -57,11 +77,12 @@ const transfer = new TransferService(repo, storage.treeCache, () => {
   return r
 })
 const appService = new AppService(config, repo, storage, (rootAbs) => {
+  planReferences.activateRoot(rootAbs)
   watch.start(rootAbs)
   search.stop()
   search.start(rootAbs) // 根目录变化 → 索引重建（含首启全量）
   diaryAutomation.activateRoot(rootAbs)
-}, () => search.getState())
+}, () => search.getState(), planReferences)
 // 导出为（BR-008）：离屏窗口渲染，PDF/PNG 双路；渲染层源与主窗口同源加载
 const exportService = new ExportService(repo, () => storage.getRootAbs() ?? '', resolveRendererSource(__dirname), join(__dirname, '../preload/index.js'))
 const plantumlService = createPlantumlService({
@@ -184,6 +205,12 @@ if (!app.requestSingleInstanceLock()) {
       activateConfiguredRoot: () => appService.activateConfiguredRoot(),
       onRootActivationError: () => console.error('[trace] Configured plan library activation failed')
     })
+    const agentApprovalWindowService = new AgentApprovalWindowService({
+      getOwnerWindow: () => mainWindow,
+      preloadPath: join(__dirname, '../preload/agent-approval.js'),
+      approvalHtmlPath: join(__dirname, '../renderer/agent-approval.html'),
+      rendererUrl: process.env['ELECTRON_RENDERER_URL']
+    })
 
     // IPC 先注册，renderer bootstrap 可在 ready-to-show 前安全排队等待根目录激活。
     const disposeIpc = registerIpc({
@@ -194,6 +221,11 @@ if (!app.requestSingleInstanceLock()) {
       export: exportService,
       search,
       planNameTemplates,
+      agentUserDataDir: app.getPath('userData'),
+      agentApprovalWindowService,
+      workspaceTabs,
+      planReferences,
+      agentToolDefinitions: getAgentToolDefinitions,
       plantuml: plantumlService,
       startup,
       captureDiaryRootGuard: (root) => diaryAutomation.captureRootGuard(root),
@@ -207,6 +239,7 @@ if (!app.requestSingleInstanceLock()) {
       shutdown: () => plantumlService.shutdown(),
       disposeIpc: () => {
         diaryAutomation.dispose()
+        planReferences.dispose()
         mainWindow?.removeListener('focus', onWindowFocus)
         disposeIpc()
       },

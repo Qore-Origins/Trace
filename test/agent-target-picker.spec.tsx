@@ -1,0 +1,83 @@
+// @vitest-environment happy-dom
+import { act } from 'react'
+import { expect, it, vi } from 'vitest'
+
+// 全量并发负载下 bootstrap/交互可能超默认 5s——放宽至 20s（负载型超时 flaky，2026-09-12 实证）
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 })
+import { i18n } from '../src/renderer/src/i18n'
+import { bridge, data, storage, host, bodies, electron, check, click, plan, profile, setProfileId, startConversation, previewDraft, until } from './agent-view-test-support'
+
+it.each(['zh-CN', 'en-US'])('keeps multiple @ targets separate from outbound body contexts in %s', async (language) => {
+  await i18n.changeLanguage(language)
+  setProfileId(await profile())
+  await plan('Folder/Private', 'PRIVATE_BODY_NOT_ATTACHED')
+  await plan('Second', 'SECOND_BODY_NOT_ATTACHED')
+  await plan('Diary/2026-10-05', 'DIARY_NOT_A_TARGET')
+  await startConversation(language === 'zh-CN' ? '新建会话' : 'New conversation')
+  expect(host.textContent).toContain(i18n.t('agentChat.noTargets'))
+  await click(i18n.t('agentChat.targets'))
+  await until(() => !!document.querySelector('input[aria-label="' + i18n.t('agentChat.selectTarget', { path: 'Folder' }) + '"]'))
+  expect(document.querySelector('.agent-target-picker')!.textContent).not.toContain('Diary')
+  await check(i18n.t('agentChat.selectTarget', { path: 'Folder' }))
+  await check(i18n.t('agentChat.selectTarget', { path: 'Second' }))
+  expect(electron.calls.filter((call) => call.name === 'agent:context:read')).toHaveLength(0)
+  expect(electron.calls.filter((call) => call.name === 'agent:target:grant')).toHaveLength(0)
+  await click(i18n.t('agentChat.done'))
+  await previewDraft('Work on these targets')
+  const dialog = document.querySelector('[role="dialog"]')!
+  expect(dialog.textContent).toContain('Folder')
+  expect(dialog.textContent).toContain('Second')
+  expect(dialog.textContent).not.toContain('PRIVATE_BODY_NOT_ATTACHED')
+  expect(dialog.textContent).not.toContain('SECOND_BODY_NOT_ATTACHED')
+  const preview = electron.calls.filter((call) => call.name === 'agent:preview:create').at(-1)!.payload as { selections: unknown[]; targetRefs: string[] }
+  expect(preview.selections).toEqual([])
+  expect(preview.targetRefs).toHaveLength(2)
+  await click(i18n.t('agentChat.cancel'), dialog)
+  await until(() => electron.calls.some((call) => call.name === 'agent:target:release'))
+  expect(bodies).toEqual([])
+  await previewDraft('Approved targets')
+  await click(i18n.t('agentChat.confirm'))
+  await until(() => host.textContent!.includes(i18n.t('agentChat.noTargets')))
+  expect(host.querySelector('textarea')?.value).toBe('')
+  await until(() => host.querySelector('.agent-transcript')!.textContent!.includes('正常回复') && !host.textContent!.includes(i18n.t('agentChat.streaming')))
+})
+
+it('browses and selects a single Trash entry without restoring or purging it', async () => {
+  setProfileId(await profile())
+  await plan('OldPlan', 'TRASH_BODY_NEVER_ATTACHED')
+  const entry = await storage.trashPlan('OldPlan')
+  await startConversation()
+  await click('选择 @ 目标')
+  await click('回收站', document.querySelector('[role="dialog"]')!)
+  await until(() => !!document.querySelector('input[aria-label="选择目标 OldPlan"]'))
+  await check('选择目标 OldPlan')
+  await click('完成')
+  expect(electron.calls.some((call) => /trash:(restore|purge)/.test(call.name))).toBe(false)
+  expect(data(await bridge.invoke('trash:list')).map((item) => item.id)).toEqual([entry.id])
+  await previewDraft('Restore this entry under a new name')
+  expect(document.querySelector('[role="dialog"]')!.textContent).toContain('OldPlan')
+  expect(document.querySelector('[role="dialog"]')!.textContent).not.toContain('TRASH_BODY_NEVER_ATTACHED')
+  await click('取消', document.querySelector('[role="dialog"]')!)
+  expect(bodies).toEqual([])
+  expect(data(await bridge.invoke('trash:list')).map((item) => item.id)).toEqual([entry.id])
+})
+
+it('clears explicit context attachments after sending instead of carrying them to the next message', async () => {
+  setProfileId(await profile())
+  await plan('Source', 'EXPLICIT_CONTEXT')
+  await startConversation()
+  await click('选择计划 / 日记')
+  await until(() => !!document.querySelector('input[aria-label="选择 Source"]'))
+  await check('选择 Source')
+  await until(() => document.body.textContent!.includes('EXPLICIT_CONTEXT'))
+  await click('完成')
+  await previewDraft('First message')
+  await click('确认发送')
+  await until(() => host.querySelector('.agent-transcript')!.textContent!.includes('正常回复') && !host.textContent!.includes('正在回复'))
+  expect(host.querySelector('.agent-selected-sources')!.textContent).toBe('')
+  await previewDraft('Second message')
+  const payload = electron.calls.filter((call) => call.name === 'agent:preview:create').at(-1)!.payload as { selections: unknown[] }
+  expect(payload.selections).toEqual([])
+  expect(document.querySelector('[role="dialog"]')!.textContent).not.toContain('EXPLICIT_CONTEXT')
+  await click('取消', document.querySelector('[role="dialog"]')!)
+})

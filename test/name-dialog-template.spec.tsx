@@ -10,6 +10,7 @@ import { i18n } from '../src/renderer/src/i18n'
 import { useAppStore } from '../src/renderer/src/stores/app-store'
 import { useTreeStore } from '../src/renderer/src/stores/tree-store'
 import { useUiStore } from '../src/renderer/src/stores/ui-store'
+import { useWorkspaceTabsStore } from '../src/renderer/src/stores/workspace-tabs-store'
 
 type MockResponse = { ok: true; code: 0; message: 'ok'; data: unknown } | { ok: false; code: number; message: string; data: null }
 type MockBridge = {
@@ -29,6 +30,7 @@ const ORIGINAL_ROOT = useAppStore.getState().rootDir
 const ORIGINAL_TREE_STATE = useTreeStore.getState()
 const ORIGINAL_UI_STATE = useUiStore.getState()
 const ORIGINAL_LANGUAGE = i18n.language
+const ORIGINAL_TABS_STATE = useWorkspaceTabsStore.getState()
 
 let host: HTMLDivElement
 let root: ReturnType<typeof createRoot>
@@ -93,7 +95,11 @@ function defaultHandler(channel: string, payload: unknown): unknown {
     return { path: request.parent_path ? `${request.parent_path}/${request.name}` : request.name, name: request.name, has_children: false, order: 0, kind: 'folder' }
   }
   if (channel === 'storage:treeGetChildren') return []
-  if (channel === 'storage:renamePlan') return { path: 'Old/Renamed' }
+  if (channel === 'plan-reference:previewImpact') return {
+    operation: 'rename-plan', path: 'Old', new_name: 'Renamed',
+    target_plan_ids: [], references: []
+  }
+  if (channel === 'plan-reference:commitImpact') return { path: 'Renamed' }
   throw new Error(`Unexpected IPC channel ${channel}`)
 }
 
@@ -104,6 +110,7 @@ beforeEach(async () => {
   useAppStore.setState({ rootDir: ROOT_A })
   useUiStore.setState({ nameDialog: null })
   useTreeStore.setState({ childrenMap: {}, loaded: {}, expandedKeys: [], selectedPath: null, selectedKind: null })
+  useWorkspaceTabsStore.setState({ library_id: '11111111111111111111111111111111' })
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
@@ -121,6 +128,7 @@ afterEach(async () => {
     selectedPath: ORIGINAL_TREE_STATE.selectedPath,
     selectedKind: ORIGINAL_TREE_STATE.selectedKind
   })
+  useWorkspaceTabsStore.setState(ORIGINAL_TABS_STATE)
   await i18n.changeLanguage(ORIGINAL_LANGUAGE)
   if (previousTraceDescriptor) Object.defineProperty(window, 'trace', previousTraceDescriptor)
   else Reflect.deleteProperty(window, 'trace')
@@ -250,7 +258,11 @@ describe('NameDialogModal plan templates', () => {
     await renderDialog()
     await enterName(inputWithLabel('计划名称'), 'Renamed')
     await act(async () => { dialogButton('重命名').click() })
-    expect(calls.find((call) => call.channel === 'storage:renamePlan')?.payload).toEqual({ path: 'Old', new_name: 'Renamed' })
+    expect(calls.find((call) => call.channel === 'plan-reference:previewImpact')?.payload)
+      .toEqual({ library_id: '11111111111111111111111111111111', operation: 'rename-plan', path: 'Old',
+        new_name: 'Renamed', locale: 'zh-CN' })
+    expect(calls.find((call) => call.channel === 'plan-reference:commitImpact')?.payload)
+      .toMatchObject({ library_id: '11111111111111111111111111111111', rename_action: 'update' })
     expect(calls.some((call) => call.channel === 'plan-template:get')).toBe(false)
 
     let savedPreset = ''

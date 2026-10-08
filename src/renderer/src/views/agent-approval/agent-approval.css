@@ -1,0 +1,21 @@
+:root {
+  color-scheme: light dark;
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; background: Canvas; color: CanvasText; }
+
+.agent-approval { display: grid; gap: 1.25rem; padding: 1.5rem; min-height: 100vh; }
+.agent-approval h1, .agent-approval h2, .agent-approval p { margin: 0; }
+.agent-approval header { display: grid; gap: 0.5rem; }
+.agent-approval header p { color: GrayText; }
+.agent-approval__target { display: grid; gap: 0.75rem; margin: 0; }
+.agent-approval__target div { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 0.75rem; }
+.agent-approval__target dt { color: GrayText; }
+.agent-approval__target dd { margin: 0; overflow-wrap: anywhere; }
+.agent-approval section { display: grid; gap: 0.5rem; min-height: 0; }
+.agent-approval pre { max-height: 52vh; overflow: auto; margin: 0; padding: 1rem; border: 1px solid GrayText; border-radius: 0.5rem; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.85rem/1.5 Consolas, monospace; }
+.agent-approval footer { display: flex; justify-content: flex-end; gap: 0.75rem; }
+.agent-approval button { min-width: 7rem; min-height: 2.5rem; font: inherit; }

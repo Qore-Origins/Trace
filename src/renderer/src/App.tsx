@@ -6,8 +6,6 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Badge, Button, Descriptions, Input, Modal, Radio, Spin, Switch, Tooltip } from 'antd'
 import OnboardingView from './views/OnboardingView'
-import WorkspaceView from './views/WorkspaceView'
-import ExportView from './views/ExportView'
 import NameDialogModal from './components/NameDialogModal'
 import PlanNameTemplateSettingsPanel from './components/PlanNameTemplateSettings'
 import SearchOverlay from './components/SearchOverlay'
@@ -17,6 +15,7 @@ import { useAppStore, subscribeAppEvents } from './stores/app-store'
 import { subscribeTreeEvents, useTreeStore } from './stores/tree-store'
 import { subscribePlanEvents } from './stores/plan-store'
 import { subscribeSearchEvents, useSearchStore } from './stores/search-store'
+import { useWorkspaceTabsStore } from './stores/workspace-tabs-store'
 import { useUiStore } from './stores/ui-store'
 import { usePrefStore, type DealDirection, type Language, type ScoreAnim, type ThemeMode } from './stores/pref-store'
 import { usePlantumlStatusStore } from './stores/plantuml-status-store'
@@ -29,8 +28,12 @@ import { validatePlantumlServer } from './components/muya-note/muya-config'
 import { validatePlantumlPort } from '@shared/plantuml-types'
 import { markTrace, startTraceMeasure } from './perf/marks'
 
+const WorkspaceView = lazy(() => import('./views/WorkspaceView'))
+const ExportView = lazy(() => import('./views/ExportView'))
 const DiaryView = lazy(() => import('./views/DiaryView'))
 const MemoriesView = lazy(() => import('./views/MemoriesView'))
+const AgentView = lazy(() => import('./views/AgentView'))
+const AgentSettingsSection = lazy(() => import('./components/AgentSettingsSection'))
 const PLANTUML_BADGE_STATUS = {
   stopped: 'default',
   starting: 'processing',
@@ -190,6 +193,10 @@ export default function App(): React.JSX.Element {
     }
   }, [bootstrap])
 
+  useEffect(() => {
+    void useWorkspaceTabsStore.getState().hydrate(phase === 'ready' ? rootDir : null)
+  }, [phase, rootDir])
+
   // 全局快捷键（ready 阶段生效，两视图共用）：Ctrl+, 设置 / Ctrl+F 搜索 / Ctrl+N 新建计划 / F5 刷新 / Ctrl+Shift+I 开发者工具
   // 树选中相关（F2 重命名 / Delete 删除）留在 WorkspaceView——日记视图下选中不可见，全局触发会误删隐藏选中
   useEffect(() => {
@@ -229,7 +236,11 @@ export default function App(): React.JSX.Element {
   // 不走 onboarding/ready 流程与全局底座（ThemeGate 对导出模式恒亮色）
   const exportParams = new URLSearchParams(window.location.search)
   if (exportParams.get('export') === '1') {
-    return <ExportView path={exportParams.get('path') ?? ''} />
+    return (
+      <Suspense fallback={null}>
+        <ExportView path={exportParams.get('path') ?? ''} />
+      </Suspense>
+    )
   }
 
   if (phase === 'checking') {
@@ -273,6 +284,8 @@ export default function App(): React.JSX.Element {
             <DiaryView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
           ) : view === 'memories' ? (
             <MemoriesView key={rootDir ?? 'none'} onOpenInTree={openInTree} />
+          ) : view === 'agent' ? (
+            <AgentView key={rootDir ?? 'none'} />
           ) : (
             <WorkspaceView />
           )}
@@ -624,6 +637,11 @@ function TopBarSettingsHost(): React.JSX.Element {
         </Descriptions.Item>
         <Descriptions.Item label={t('settings.templateTitle')}>
           <PlanNameTemplateSettingsPanel active={open} />
+        </Descriptions.Item>
+        <Descriptions.Item label={t('agentSettings.title')}>
+          {open && <Suspense fallback={<span role="status">{t('common.loading')}</span>}>
+            <AgentSettingsSection active={open} />
+          </Suspense>}
         </Descriptions.Item>
         <Descriptions.Item label={t('settings.version')}>{version || '…'}</Descriptions.Item>
         <Descriptions.Item label={t('settings.data')}>

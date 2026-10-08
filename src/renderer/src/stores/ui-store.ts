@@ -7,7 +7,7 @@ import { confirmAction } from '../components/ui/ConfirmAction'
 export type NameDialogMode = 'create-plan' | 'create-folder' | 'rename' | 'preset'
 
 // 顶栏视图（纯 session 态，不持久化）：workspace 默认；diary 路由由 App 渲染（导航入口 Task 5 接线）
-export type ViewName = 'workspace' | 'diary' | 'memories'
+export type ViewName = 'workspace' | 'diary' | 'memories' | 'agent'
 
 // 命名对话框的定制分支（如预设保存）：title/placeholder/okText/校验/提交动作全部由调用方注入，
 // mode:'preset' 仅作判别（preset 分支完全由 customize 驱动）
@@ -29,20 +29,24 @@ export interface NameDialog {
 interface UiState {
   nameDialog: NameDialog | null
   settingsOpen: boolean
+  trashOpen: boolean
   view: ViewName
   openNameDialog: (d: NameDialog) => void
   closeNameDialog: () => void
   setSettingsOpen: (open: boolean) => void
+  setTrashOpen: (open: boolean) => void
   setView: (view: ViewName) => void
 }
 
 export const useUiStore = create<UiState>()((set) => ({
   nameDialog: null,
   settingsOpen: false,
+  trashOpen: false,
   view: 'workspace',
   openNameDialog: (d) => set({ nameDialog: d }),
   closeNameDialog: () => set({ nameDialog: null }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setTrashOpen: (open) => set({ trashOpen: open }),
   setView: (view) => set({ view })
 }))
 
@@ -54,7 +58,8 @@ export function confirmRemoveTree(path: string, kind: 'plan' | 'folder', onConfi
     title: i18n.t(kind === 'folder' ? 'confirm.deleteFolderTitle' : 'confirm.deletePlanTitle', { name }),
     description: i18n.t(kind === 'folder' ? 'confirm.deleteFolderDesc' : 'confirm.deletePlanDesc'),
     afterCancel: () => {
-      const row = Array.from(document.querySelectorAll<HTMLElement>('.tree-row')).find(element => element.dataset.path === path)
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('.tree-row'))
+      const row = rows.find((element) => element.dataset.path === path)
       row?.focus()
     },
     onConfirm: () => {

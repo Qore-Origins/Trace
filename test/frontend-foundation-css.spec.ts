@@ -18,23 +18,42 @@ function luminance(hex: string): number {
   })
   return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722
 }
-describe('frontend information and interaction foundation', () => {
+describe('Theme readability', () => {
   it('keeps ordinary information text readable on all theme surfaces', () => {
     const blocks = [...tokens.matchAll(/(?:\:root|html\.theme-dark)\s*\{([^}]+)\}/g)]
     expect(blocks).toHaveLength(2)
     let values: Record<string, string> = {}
     for (const block of blocks) {
-      values = { ...values, ...Object.fromEntries([...block[1].matchAll(/--([\w-]+):\s*(#[a-f\d]{6})/gi)].map((m) => [m[1], m[2]])) }
-      for (const text of ['text-1', 'text-2', 'text-3', 'link']) for (const surface of ['paper', 'paper-dim', 'fill', 'trace-bg']) {
-        const light = luminance(values[text]), background = luminance(values[surface])
-        expect((Math.max(light, background) + .05) / (Math.min(light, background) + .05), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
+      const blockValues = [...block[1].matchAll(/--([\w-]+):\s*(#[a-f\d]{6})/gi)]
+        .map((match) => [match[1], match[2]])
+      values = { ...values, ...Object.fromEntries(blockValues) }
+      const textTokens = ['text-1', 'text-2', 'text-3', 'link']
+      const surfaces = ['paper', 'paper-dim', 'fill', 'trace-bg']
+      for (const text of textTokens) {
+        for (const surface of surfaces) {
+          const light = luminance(values[text]), background = luminance(values[surface])
+          const contrast = (Math.max(light, background) + .05) /
+            (Math.min(light, background) + .05)
+          expect(contrast, `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
+        }
       }
-      for (const [text, surface] of [['warn-text', 'warn-bg'], ['danger-text', 'paper'], ['on-primary', 'trace-700'], ['on-primary', 'origin']]) {
+      const specialPairs = [
+        ['warn-text', 'warn-bg'],
+        ['danger-text', 'paper'],
+        ['on-primary', 'trace-700'],
+        ['on-primary', 'origin']
+      ]
+      for (const [text, surface] of specialPairs) {
         const light = luminance(values[text]), background = luminance(values[surface])
-        expect((Math.max(light, background) + .05) / (Math.min(light, background) + .05), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
+        const contrast = (Math.max(light, background) + .05) /
+          (Math.min(light, background) + .05)
+        expect(contrast, `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
       }
     }
   })
+})
+
+describe('Global style contracts', () => {
   it('keeps tokens and global rules behind the compatible workspace entry', () => {
     expect(workspace).toContain('@import "./tokens.css"')
     expect(workspace).toContain('@import "./base.css"')
@@ -42,14 +61,26 @@ describe('frontend information and interaction foundation', () => {
     expect(base).toContain('::view-transition-old(root)')
   })
   it('reserves muted decoration for non-information elements', () => {
-    for (const selector of ['.mem-date', '.mem-empty', '.mem-pv-empty', '.card .kind', '.note-time', '.mood-meta', '.o-section', '.diary-comps', '.diary-cal-foot']) {
+    const selectors = [
+      '.mem-date', '.mem-empty', '.mem-pv-empty', '.card .kind', '.note-time',
+      '.mood-meta', '.o-section', '.diary-comps', '.diary-cal-foot'
+    ]
+    for (const selector of selectors) {
       expect(css.indexOf(selector), selector).toBeGreaterThanOrEqual(0)
       const rule = css.slice(css.indexOf(selector), css.indexOf('}', css.indexOf(selector)))
       expect(rule, selector).not.toContain('var(--text-4)')
     }
   })
+})
+
+describe('Keyboard focus and motion', () => {
   it('makes outline-free editors visibly focusable', () => {
-    for (const selector of ['.single-title:focus-visible', '.task-title input:focus-visible', '.o-input:focus-visible']) expect(base).toContain(selector)
+    const selectors = [
+      '.single-title:focus-visible',
+      '.task-title input:focus-visible',
+      '.o-input:focus-visible'
+    ]
+    for (const selector of selectors) expect(base).toContain(selector)
     expect(base).toContain('.mem-card:focus-visible')
   })
   it('styles the in-progress task ring and title from the rendered row class', () => {
@@ -67,21 +98,26 @@ describe('frontend information and interaction foundation', () => {
     expect(readFileSync(resolve(root, 'components/StatusBar.tsx'), 'utf8')).toContain('aria-live="polite"')
   })
   it('reveals keyboard focused tree quick actions at their original vertical position', () => {
-    expect(css).toContain('.tree-row:focus-within .tree-quick')
-    const rule = css.slice(css.indexOf('.tree-row:focus-within .tree-quick'), css.indexOf('}', css.indexOf('.tree-row:focus-within .tree-quick')))
+    const selector = '.tree-row:focus-within .tree-quick'
+    const start = css.indexOf(selector)
+    const rule = css.slice(start, css.indexOf('}', start))
     expect(rule).toContain('opacity: 1')
     expect(rule).toContain('translateY(-50%) translateX(0)')
   })
   it('uses native keyboard activation for menus and explicit activation for search results', () => {
-    expect(readFileSync(resolve(root, 'components/TopBar.tsx'), 'utf8')).toContain('<button type="button" className="menu-title"')
+    expect(readFileSync(resolve(root, 'components/TopBar.tsx'), 'utf8'))
+      .toContain('<button type="button" className="menu-title"')
     const search = readFileSync(resolve(root, 'components/SearchOverlay.tsx'), 'utf8')
     expect(search).toMatch(/<button[\s\S]*?className="o-item"/)
     expect(search).toContain('SEARCH_PAGE_SIZE')
   })
+})
 
-  it('keeps the page navigation on a three-segment token-based capsule', () => {
+describe('Page capsule navigation', () => {
+  it('keeps four readable page labels on a four-segment token-based capsule', () => {
     const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
-    expect(shell).toMatch(/\.view-nav\s*\{[^}]*width:\s*226px;[^}]*height:\s*42px;/)
+    expect(shell).toMatch(/\.view-nav\s*\{[^}]*width:\s*294px;[^}]*height:\s*42px;/)
+    expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*left:[^;]*\/ 4[^;]*;[^}]*width:[^;]*\/ 4/)
     expect(shell).toMatch(/\.view-nav\s*\{[^}]*background:\s*var\(--fill\);[^}]*border:\s*1px solid var\(--border\);/)
     expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*background:\s*var\(--trace-bg\);/)
     expect(shell).toMatch(/\.nav-btn\s*\{[^}]*flex:\s*1;/)
@@ -94,16 +130,21 @@ describe('frontend information and interaction foundation', () => {
     expect(shell).toMatch(/@property\s+--nav-position\s*\{/)
     expect(shell).toMatch(/\.view-nav:has\(\.nav-btn\.active:nth-child\(2\)\)\s*\{[^}]*--nav-position:\s*1;/)
     expect(shell).toMatch(/\.view-nav:has\(\.nav-btn\.active:nth-child\(3\)\)\s*\{[^}]*--nav-position:\s*2;/)
-    expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*transition:\s*--nav-position\s+5[0-9]{2}ms\s+var\(--ease-spring\);/)
+    expect(shell).toMatch(/\.view-nav:has\(\.nav-btn\.active:nth-child\(4\)\)\s*\{[^}]*--nav-position:\s*3;/)
+    expect(shell).toMatch(
+      /\.view-nav::before\s*\{[^}]*transition:\s*--nav-position\s+5[0-9]{2}ms\s+var\(--ease-spring\);/
+    )
     expect(shell).toMatch(/\.view-nav::before\s*\{[^}]*abs\(/)
-    expect(shell).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.view-nav::before\s*\{[^}]*transition:\s*none/)
+    expect(shell).toMatch(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.view-nav::before\s*\{[^}]*transition:\s*none/
+    )
   })
 
   it('contains first-to-last and last-to-first spring overshoot inside the capsule', () => {
     const shell = readFileSync(resolve(root, 'styles/shell.css'), 'utf8')
     const overshootProgress = 1.06
-    expect(2 * overshootProgress).toBeGreaterThan(2)
-    expect(2 - 2 * overshootProgress).toBeLessThan(0)
+    expect(3 * overshootProgress).toBeGreaterThan(3)
+    expect(3 - 3 * overshootProgress).toBeLessThan(0)
     expect(shell).toMatch(/\.view-nav\s*\{[^}]*overflow:\s*hidden;/)
     expect(shell).toMatch(/\.nav-btn:focus-visible\s*\{[^}]*outline-offset:\s*-2px;/)
   })
