@@ -2,6 +2,8 @@
 import { act } from 'react'
 import { expect, it, vi } from 'vitest'
 
+// 全量并发负载下 bootstrap/交互可能超默认 5s——放宽至 20s（负载型超时 flaky，2026-09-12 实证）
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 })
 import { i18n } from '../src/renderer/src/i18n'
 import { bridge, data, storage, host, bodies, electron, check, click, plan, profile, setProfileId, startConversation, previewDraft, until } from './agent-view-test-support'
 
