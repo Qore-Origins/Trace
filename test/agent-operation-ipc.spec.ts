@@ -200,7 +200,16 @@ afterEach(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()))
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
-  await fs.rm(directory, { recursive: true, force: true })
+  // Windows 句柄/索引器偶发延迟会让递归 rm 报 ENOTEMPTY——短退避重试（测试基建稳定性）
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.rm(directory, { recursive: true, force: true })
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOTEMPTY' || attempt >= 2) throw error
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+  }
 })
 
 describe('agent operation batch typed IPC and loopback provider', () => {
