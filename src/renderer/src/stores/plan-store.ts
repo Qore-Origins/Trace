@@ -10,7 +10,7 @@ import { ERR } from '@shared/errors'
 import { i18n } from '../i18n'
 import { markTrace, startTraceMeasure } from '../perf/marks'
 import { requestReferenceImpactDecision } from '../components/ReferenceImpactDialog'
-import { useWorkspaceTabsStore } from './workspace-tabs-store'
+import { registerWorkspaceTabPlanActions, useWorkspaceTabsStore } from './workspace-tabs-store'
 
 export type SaveState = 'idle' | 'editing' | 'saved' | 'error'
 
@@ -446,3 +446,10 @@ export function subscribePlanEvents(): () => void {
     off3()
   }
 }
+
+registerWorkspaceTabPlanActions({
+  flushPlan: () => usePlanStore.getState().flush(),
+  openPlan: (path) => usePlanStore.getState().open(path),
+  closePlan: () => usePlanStore.getState().close(),
+  currentPlanPath: () => usePlanStore.getState().currentPath
+})

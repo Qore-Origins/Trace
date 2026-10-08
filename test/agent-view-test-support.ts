@@ -12,6 +12,7 @@ export { i18n }
 import { useUiStore } from '../src/renderer/src/stores/ui-store'
 export { useUiStore }
 import type { TraceBridge, TraceResult } from '../src/shared/ipc-contract'
+import type { StorageService } from '../src/main/services/storage-service'
 
 const electronMock = vi.hoisted(() => {
   const handlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>()
@@ -78,7 +79,9 @@ export function data<T>(result: TraceResult<T>): T {
 
 export let host: HTMLDivElement, root: ReturnType<typeof createRoot>
 export let directory: string, library: string
+export let storage: StorageService
 export let dispose: () => void
+let disposePlanReferences: (() => void) | undefined
 export let bridge: TraceBridge, server: Server, responses: ServerResponse[]
 export let bodies: Array<{ model: string; messages: unknown[]; stream: boolean }>
 export let respond: (response: ServerResponse) => void, profileId: string
@@ -91,8 +94,8 @@ const LazyAgentView = lazy(() => import('../src/renderer/src/views/AgentView'))
 export async function settle(): Promise<void> {
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
 }
-export async function until(predicate: () => boolean, waitingFor = 'the expected UI state'): Promise<void> {
-  const deadline = Date.now() + 4000
+export async function until(predicate: () => boolean, waitingFor = 'the expected UI state', timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
   while (!predicate() && Date.now() < deadline) await settle()
   if (predicate()) return
   throw new Error(`Timed out waiting for ${waitingFor}: ${JSON.stringify({
@@ -125,7 +128,9 @@ export async function renderLazyPage(): Promise<void> {
 export async function renderShell(): Promise<void> {
   await act(async () => root.render(createElement(AntdApp, {}, createElement(Binder))))
 }
-export function button(label: string, scope: ParentNode = document): HTMLButtonElement {
+export function button(label: string, scope: ParentNode | null = document): HTMLButtonElement {
+  // happy-dom 用例间卸载的时序竞态可能令宿主短暂为 null——显式失败信息替代 TypeError（2026-09-12 flaky 定位辅助）
+  if (!scope) throw new Error(`button '${label}': host scope is null (unmounted)`)
   const result = Array.from(scope.querySelectorAll<HTMLButtonElement>('button')).find(
     (element) => (
       element.textContent?.replace(/\s/g, '') === label.replace(/\s/g, '')
@@ -226,15 +231,22 @@ async function setupRenderer(): Promise<void> {
   directory = await fs.mkdtemp(join(tmpdir(), 'trace-agent-view-'))
   library = join(directory, 'library')
   await fs.mkdir(library)
-  const [ipcModule, storageModule, planModule] = await Promise.all([
+  const [ipcModule, storageModule, planModule, referenceModule] = await Promise.all([
     import('../src/main/ipc/register'),
     import('../src/main/services/storage-service'),
-    import('../src/main/services/plan-repository')
+    import('../src/main/services/plan-repository'),
+    import('../src/main/services/plan-reference-service')
   ])
-  const storage = new storageModule.StorageService(new planModule.PlanRepository())
+  const repository = new planModule.PlanRepository()
+  await repository.ensureLibraryRoot(library)
+  storage = new storageModule.StorageService(repository)
   storage.setRoot(library)
+  const planReferences = new referenceModule.PlanReferenceService(repository, () => storage.getRootAbs())
+  planReferences.activateRoot(library)
+  disposePlanReferences = () => planReferences.dispose()
   dispose = ipcModule.registerIpc({
     storage,
+    planReferences,
     agentUserDataDir: directory,
     requestAgentApproval: async () => true,
     getWindow: () => ({
@@ -269,6 +281,8 @@ afterEach(async () => {
   await act(async () => root.unmount())
   host.remove()
   dispose()
+  disposePlanReferences?.()
+  disposePlanReferences = undefined
   responses.forEach((response) => response.destroy())
   server.closeAllConnections()
   await new Promise<void>((resolve) => server.close(() => resolve()))

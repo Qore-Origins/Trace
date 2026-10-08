@@ -44,6 +44,7 @@ function deferred<T>() {
 describe('plan trash IPC boundary', () => {
   let root: string
   let dispose: (() => void) | undefined
+  let disposeReferences: (() => void) | undefined
 
   beforeEach(() => {
     vi.resetModules()
@@ -54,15 +55,18 @@ describe('plan trash IPC boundary', () => {
   afterEach(async () => {
     dispose?.()
     dispose = undefined
+    disposeReferences?.()
+    disposeReferences = undefined
     if (root) await fs.rm(root, { recursive: true, force: true })
     vi.restoreAllMocks()
   })
 
   it('exposes typed trash routes without roots and rejects the stale delete route without touching storage', async () => {
-    const [{ registerIpc }, { PlanRepository }, { StorageService }] = await Promise.all([
+    const [{ registerIpc }, { PlanRepository }, { StorageService }, { PlanReferenceService }] = await Promise.all([
       import('../src/main/ipc/register'),
       import('../src/main/services/plan-repository'),
-      import('../src/main/services/storage-service')
+      import('../src/main/services/storage-service'),
+      import('../src/main/services/plan-reference-service')
     ])
     await import('../src/preload/index')
     const bridge = electronMocks.contextBridge.exposeInMainWorld.mock.calls.at(-1)?.[1] as Bridge
@@ -71,6 +75,9 @@ describe('plan trash IPC boundary', () => {
     await repo.ensureLibraryRoot(root)
     const storage = new StorageService(repo)
     storage.setRoot(root)
+    const planReferences = new PlanReferenceService(repo, () => storage.getRootAbs())
+    planReferences.activateRoot(root)
+    disposeReferences = () => planReferences.dispose()
     await storage.createPlan('', 'Protected')
     const deleteSpy = vi.spyOn(storage, 'deletePlan')
     const startup = {
@@ -81,7 +88,7 @@ describe('plan trash IPC boundary', () => {
       markRootActivated: vi.fn(), onWindowShown: vi.fn()
     }
     dispose = registerIpc({
-      app: {}, storage, config: {}, transfer: {}, export: {}, search: {}, startup,
+      app: {}, storage, config: {}, transfer: {}, export: {}, search: {}, startup, planReferences,
       getWindow: () => null, log: vi.fn()
     } as unknown as Parameters<typeof registerIpc>[0])
 
@@ -106,6 +113,87 @@ describe('plan trash IPC boundary', () => {
     const result = await bridge.invoke('trash:debug-delete', { path: 'anything' })
     expect(result).toMatchObject({ ok: false, code: 50, data: null })
     expect(electronMocks.ipcRenderer.invoke).not.toHaveBeenCalled()
+  })
+
+  it('requires trusted main-window acceptance for the exact validated purge snapshot', async () => {
+    const [{ registerIpc }, { PlanRepository }, { StorageService }] = await Promise.all([
+      import('../src/main/ipc/register'),
+      import('../src/main/services/plan-repository'),
+      import('../src/main/services/storage-service')
+    ])
+    await import('../src/preload/index')
+    const bridge = electronMocks.contextBridge.exposeInMainWorld.mock.calls.at(-1)?.[1] as Bridge
+    root = await fs.mkdtemp(join(tmpdir(), 'trace-trash-purge-confirmation-'))
+    const repo = new PlanRepository()
+    await repo.ensureLibraryRoot(root)
+    const storage = new StorageService(repo)
+    storage.setRoot(root)
+    const validToken = 'main-owned-one-shot-token'
+    const snapshot = {
+      entry_id: 'trash-entry-01', kind: 'plan' as const, name: 'Reviewed plan',
+      original_relative_path: 'Daily_Plan/Reviewed plan', plan_count: 1, reference_count: 2,
+      status: 'trashed' as const, expires_at: new Date(Date.now() + 60_000).toISOString()
+    }
+    const snapshotReader = vi.spyOn(storage, 'getTrashPurgeConfirmationSnapshot').mockImplementation(async (token) => {
+      if (token !== validToken) throw new Error('purge preview token is not valid')
+      return snapshot
+    })
+    const commitTrashPurge = vi.fn(async (_storage: unknown, token: string) => {
+      expect(token).toBe(validToken)
+      return { changed_plan_ids: ['plan-id-01'] }
+    })
+    const presented: unknown[] = []
+    let ownerAvailable = false
+    let acceptInTrustedWindow = false
+    const trustedOwner = {
+      isDestroyed: () => false,
+      webContents: { isDestroyed: () => false }
+    }
+    const startup = {
+      waitForRootActivation: async () => undefined,
+      waitForBootstrap: async () => undefined,
+      getRootActivationStatus: () => 'active',
+      runAfterRootActivation: (operation: () => unknown) => Promise.resolve().then(operation),
+      markRootActivated: vi.fn(), onWindowShown: vi.fn()
+    }
+    const disposeHandlers = registerIpc({
+      app: {}, storage, config: {}, transfer: {}, export: {}, search: {}, startup,
+      planReferences: { commitTrashPurge },
+      requestTrustedTrashPurgeConfirmation: async (authoritativeSnapshot: unknown, accept: () => Promise<unknown>) => {
+        presented.push(authoritativeSnapshot)
+        if (acceptInTrustedWindow) await accept()
+      },
+      getWindow: () => ownerAvailable ? trustedOwner : null,
+      log: vi.fn()
+    } as unknown as Parameters<typeof registerIpc>[0])
+    dispose = disposeHandlers
+
+    const invokePurge = (confirmation_token: string) => bridge.invoke('trash:purge-commit', { confirmation_token })
+
+    const missingOwner = await invokePurge(validToken)
+    expect(missingOwner).toMatchObject({ ok: false, code: ERR.CONFIRMATION_REQUIRED })
+    expect(presented).toHaveLength(0)
+    expect(commitTrashPurge).not.toHaveBeenCalled()
+
+    ownerAvailable = true
+    const forged = await invokePurge('renderer-forged-token')
+    expect(forged).toMatchObject({ ok: false })
+    expect(presented).toHaveLength(0)
+    expect(commitTrashPurge).not.toHaveBeenCalled()
+
+    const cancelled = await invokePurge(validToken)
+    expect(cancelled).toMatchObject({ ok: false, code: ERR.CONFIRMATION_REQUIRED })
+    expect(presented).toEqual([snapshot])
+    expect(JSON.stringify(presented)).not.toContain(validToken)
+    expect(commitTrashPurge).not.toHaveBeenCalled()
+
+    acceptInTrustedWindow = true
+    await expect(invokePurge(validToken)).resolves.toMatchObject({
+      ok: true, data: { changed_plan_ids: ['plan-id-01'] }
+    })
+    expect(presented).toEqual([snapshot, snapshot])
+    expect(snapshotReader).toHaveBeenCalledTimes(4)
+    expect(commitTrashPurge).toHaveBeenCalledOnce()
   })
 
   it('serializes reference-impact commits with library root switches', async () => {
@@ -175,6 +263,10 @@ describe('plan trash IPC boundary', () => {
     await repo.ensureLibraryRoot(root)
     const storage = new StorageService(repo)
     storage.setRoot(root)
+    vi.spyOn(storage, 'getTrashPurgeConfirmationSnapshot').mockResolvedValue({
+      entry_id: 'entry', kind: 'plan', name: 'Purge source', original_relative_path: 'Source',
+      plan_count: 1, reference_count: 0, status: 'trashed', expires_at: new Date(Date.now() + 60_000).toISOString()
+    })
     const purgeStarted = deferred<void>()
     const releasePurge = deferred<void>()
     const order: string[] = []
@@ -214,6 +306,7 @@ describe('plan trash IPC boundary', () => {
       runAfterRootActivation: (operation: () => unknown) => Promise.resolve().then(operation),
       markRootActivated: vi.fn(), onWindowShown: vi.fn()
     }
+    const trustedOwner = { isDestroyed: () => false, webContents: { isDestroyed: () => false } }
     dispose = registerIpc({
       app: {}, storage, config: {}, transfer: { importPlan }, export: {}, search: {}, startup,
       planReferences: {
@@ -225,7 +318,8 @@ describe('plan trash IPC boundary', () => {
         commitTrashPurge,
         runRendererMutation
       },
-      getWindow: () => null, log: vi.fn()
+      requestTrustedTrashPurgeConfirmation: async (_snapshot: unknown, accept: () => Promise<unknown>) => { await accept() },
+      getWindow: () => trustedOwner, log: vi.fn()
     } as unknown as Parameters<typeof registerIpc>[0])
 
     const purge = bridge.invoke('trash:purge-commit', { confirmation_token: 'one-shot-token' })

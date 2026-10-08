@@ -1,8 +1,9 @@
 import { ERR, TraceError } from '../../shared/errors'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { promises as fs } from 'node:fs'
+import type { Dirent } from 'node:fs'
 import type { Component, PlanDocument } from '../../shared/plan-types'
-import type { TrashOperationCommitResult } from '../../shared/trash-types'
+import type { TrashEntry, TrashOperationCommitResult } from '../../shared/trash-types'
 import type {
   PlanReferenceCandidate, PlanReferenceInbound, PlanReferenceResolution
 } from '../../shared/ipc-contract'
@@ -15,8 +16,35 @@ import { isPlanReferencePayload, isReferenceTargetType } from '../../shared/plan
 import { isUuid32, uuid32, validatePlanName } from '../../shared/validation'
 import { bus } from './event-bus'
 import { assertRealPathWithinRoot, isSelfOrDescendant, parentRel, resolveWithin } from './path-safety'
-import { PlanRepository } from './plan-repository'
+import { PlanRepository, type AgentLibraryMutationGuard } from './plan-repository'
 import type { StorageService } from './storage-service'
+
+export interface AgentRootSnapshot {
+  rootHash: string
+  libraryId: string
+  rootGeneration: number
+  rootDirectoryIdentity: string
+}
+
+type AgentRootSnapshotValidator = () => Promise<void>
+
+export interface AgentRootCommitBinding {
+  rootSnapshot: AgentRootSnapshot
+  validateRootSnapshot: AgentRootSnapshotValidator
+}
+
+interface AgentPlanTargetSnapshot {
+  path: string
+  directoryIdentity: string
+  planId: string | null
+  updatedAt: string
+}
+
+interface AgentImpactCommitBinding {
+  rootSnapshot: AgentRootSnapshot
+  validateRootSnapshot: AgentRootSnapshotValidator
+  target: AgentPlanTargetSnapshot
+}
 
 interface LibrarySnapshot {
   root: string
@@ -31,9 +59,89 @@ interface ScannedPlan {
 }
 
 const MAX_QUERY_LENGTH = 200
+const AGENT_MOVE_PREVIEW_TTL_MS = 2 * 60 * 1000
+const AGENT_FOLDER_PREVIEW_TTL_MS = 2 * 60 * 1000
+const MAX_AGENT_MOVE_PREVIEWS = 64
+const MAX_AGENT_FOLDER_PREVIEWS = 64
+
+type AgentFolderOperation = 'rename' | 'trash'
+
+export interface AgentFolderSubtreeEntry {
+  relative_path: string
+  kind: 'folder' | 'plan'
+  plan_id?: string
+}
+
+interface AgentFolderSubtreeSnapshotEntry extends AgentFolderSubtreeEntry {
+  directory_identity: string
+  plan_file_identity?: string
+  plan_updated_at?: string
+}
+
+interface ExpectedPlanFileAfterWrite {
+  plan_id: string | null
+  plan_file_identity: string
+  plan_updated_at: string
+}
+
+interface AgentFolderPreviewRecord {
+  snapshot: LibrarySnapshot
+  impactPreview: ReferenceImpactPreview
+  subtreeSnapshot: AgentFolderSubtreeSnapshotEntry[]
+  operation: AgentFolderOperation
+  digest: string
+  expiresAt: number
+}
+
+export interface AgentFolderOperationPreview {
+  token: string
+  operation: AgentFolderOperation
+  path: string
+  destination_path?: string
+  affected_subtree: AgentFolderSubtreeEntry[]
+  target_plan_ids: string[]
+  target_snapshot_digest: string
+  references: ReferenceImpactPreview['references']
+  snapshot_digest: string
+  expires_at: string
+}
+
+export interface AgentFolderOperationCommitResult {
+  path?: string
+  trash_entry_id?: string
+}
+
+export interface AgentMovePreview {
+  token: string
+  source_path: string
+  target_parent_path: string
+  destination_path: string
+  source_plans: PlanMoveTargetSnapshot[]
+  snapshot_digest: string
+  expires_at: string
+}
+
+interface AgentMovePreviewRecord {
+  snapshot: PlanMoveSnapshot
+  sourceSubtreeSnapshot: AgentFolderSubtreeSnapshotEntry[]
+  digest: string
+  expiresAt: number
+}
 
 function impactKey(reference: Pick<ReferenceImpactItem, 'source_path' | 'source_component_id'>): string {
   return `${reference.source_path}\0${reference.source_component_id}`
+}
+
+function exactPlainRecord(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    return false
+  }
+  const ownKeys = Reflect.ownKeys(value)
+  return ownKeys.length === keys.length && ownKeys.every((key) => typeof key === 'string' && keys.includes(key)) &&
+    keys.every((key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      return descriptor !== undefined && 'value' in descriptor
+    })
 }
 
 function componentName(component: Component): string {
@@ -68,6 +176,8 @@ export class PlanReferenceService {
   private commitQueue: Promise<void> = Promise.resolve()
   private switchingRoot = false
   private readonly unsubscribe: Array<() => void>
+  private readonly agentMovePreviews = new Map<string, AgentMovePreviewRecord>()
+  private readonly agentFolderPreviews = new Map<string, AgentFolderPreviewRecord>()
 
   constructor(private repo: PlanRepository, private getRoot: () => string | null) {
     this.unsubscribe = [
@@ -89,6 +199,8 @@ export class PlanReferenceService {
     this.reverseCache = null
     this.scanCache = null
     this.switchingRoot = false
+    this.agentMovePreviews.clear()
+    this.agentFolderPreviews.clear()
   }
 
   beginRootSwitch(): Promise<() => void> {
@@ -109,6 +221,8 @@ export class PlanReferenceService {
   dispose(): void {
     this.unsubscribe.forEach((unsubscribe) => unsubscribe())
     this.unsubscribe.length = 0
+    this.agentMovePreviews.clear()
+    this.agentFolderPreviews.clear()
   }
 
   private current(snapshot: LibrarySnapshot): void {
@@ -139,6 +253,33 @@ export class PlanReferenceService {
 
   runRendererMutation<T>(operation: () => Promise<T>): Promise<T> {
     return this.enqueueCommit(operation)
+  }
+
+  listTrashEntries(storage: StorageService): Promise<TrashEntry[]> {
+    return this.enqueueCommit(() => storage.listTrashEntries())
+  }
+
+  readTrashEntry(storage: StorageService, entryId: string, expectedManifestRevision: number): Promise<TrashEntry> {
+    if (typeof entryId !== 'string' || !isUuid32(entryId) || !Number.isSafeInteger(expectedManifestRevision) ||
+      expectedManifestRevision < 0) {
+      throw new TraceError(ERR.VALIDATION, '回收站条目读取请求无效')
+    }
+    return this.enqueueCommit(async () => {
+      let entry: TrashEntry
+      try {
+        entry = await storage.readTrashEntry(entryId)
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code === 'ENOENT' || (error instanceof TraceError && error.code === ERR.PATH_NOT_FOUND)) {
+          throw new TraceError(ERR.CONFLICT, '回收站条目已变化，请重新选择')
+        }
+        throw error
+      }
+      if (entry.manifest_revision !== expectedManifestRevision) {
+        throw new TraceError(ERR.CONFLICT, '回收站条目已变化，请重新选择')
+      }
+      return entry
+    })
   }
 
   private async snapshot(libraryId: unknown): Promise<LibrarySnapshot> {
@@ -287,6 +428,165 @@ export class PlanReferenceService {
     return { plans, directoryIdentity, digest }
   }
 
+  private async captureAgentFolderSubtreeSnapshot(
+    snapshot: LibrarySnapshot,
+    path: string,
+    plans: ScannedPlan[]
+  ): Promise<AgentFolderSubtreeSnapshotEntry[]> {
+    const planByPath = new Map(plans.map((plan) => [plan.path, plan]))
+    const pending: Array<{ absolutePath: string; relativePath: string }> = [
+      { absolutePath: resolveWithin(snapshot.root, path).abs, relativePath: '' }
+    ]
+    const subtree: AgentFolderSubtreeSnapshotEntry[] = []
+
+    while (pending.length > 0) {
+      const current = pending.pop()!
+      const objectPath = current.relativePath ? `${path}/${current.relativePath}` : path
+      await assertRealPathWithinRoot(snapshot.root, current.absolutePath)
+      this.currentRevision(snapshot)
+      const directoryIdentity = await readDirectoryIdentityKey(current.absolutePath)
+      const listingVersion = await readDirectoryListingVersionKey(current.absolutePath)
+      let children: Dirent[]
+      try {
+        children = await fs.readdir(current.absolutePath, { withFileTypes: true })
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw new TraceError(ERR.CONFLICT, '文件夹子树已变化，请重新预览')
+        }
+        throw error
+      }
+      this.currentRevision(snapshot)
+      if (listingVersion !== await readDirectoryListingVersionKey(current.absolutePath)) {
+        throw new TraceError(ERR.CONFLICT, '文件夹子树读取期间已变化，请重新预览')
+      }
+
+      const planFilePath = resolveWithin(snapshot.root, `${objectPath}/plan.json`).abs
+      let planFileIdentity: string | undefined
+      let hasPlanFile = false
+      try {
+        const planFileStat = await fs.lstat(planFilePath, { bigint: true })
+        if (planFileStat.isSymbolicLink() || !planFileStat.isFile()) {
+          throw new TraceError(ERR.PATH_UNSAFE, '计划文件身份无效')
+        }
+        await assertRealPathWithinRoot(snapshot.root, planFilePath)
+        const verifiedPlanFileStat = await fs.lstat(planFilePath, { bigint: true })
+        const identityOf = (stat: typeof planFileStat): string =>
+          `${stat.dev}:${stat.ino}:${stat.birthtimeNs}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`
+        if (verifiedPlanFileStat.isSymbolicLink() || !verifiedPlanFileStat.isFile() ||
+          identityOf(planFileStat) !== identityOf(verifiedPlanFileStat)) {
+          throw new TraceError(ERR.CONFLICT, '计划文件已变化，请重新预览')
+        }
+        planFileIdentity = identityOf(verifiedPlanFileStat)
+        hasPlanFile = true
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code !== 'ENOENT' && !(error instanceof TraceError && error.code === ERR.PATH_NOT_FOUND)) throw error
+      }
+
+      this.currentRevision(snapshot)
+      const planId = planByPath.get(objectPath)?.document.plan_id
+      subtree.push({
+        relative_path: current.relativePath,
+        kind: hasPlanFile ? 'plan' : 'folder',
+        ...(typeof planId === 'string' ? { plan_id: planId } : {}),
+        directory_identity: directoryIdentity,
+        ...(planFileIdentity ? { plan_file_identity: planFileIdentity } : {}),
+        ...(typeof planByPath.get(objectPath)?.document.updated_at === 'string'
+          ? { plan_updated_at: planByPath.get(objectPath)!.document.updated_at } : {})
+      })
+
+      for (const child of children) {
+        // A symlink is not a folder in this library's physical subtree and must not be traversed.
+        if (child.isSymbolicLink() || !child.isDirectory()) continue
+        const childRelativePath = current.relativePath ? `${current.relativePath}/${child.name}` : child.name
+        pending.push({
+          absolutePath: resolveWithin(snapshot.root, `${path}/${childRelativePath}`).abs,
+          relativePath: childRelativePath
+        })
+      }
+    }
+
+    subtree.sort((left, right) => left.relative_path.localeCompare(right.relative_path))
+    return subtree
+  }
+
+  private async assertAgentFolderSubtreeUnchanged(
+    snapshot: LibrarySnapshot,
+    path: string,
+    frozenSubtree: AgentFolderSubtreeSnapshotEntry[],
+    expectedAfterPlanFiles: ReadonlyMap<string, ExpectedPlanFileAfterWrite> = new Map()
+  ): Promise<void> {
+    this.currentRevision(snapshot)
+    // Do not trust the revision cache at a destructive/structural mutation seam.
+    const plans = await this.scan(snapshot)
+    const currentSubtree = await this.captureAgentFolderSubtreeSnapshot(snapshot, path, plans)
+    this.currentRevision(snapshot)
+    const comparable = (entries: AgentFolderSubtreeSnapshotEntry[], normalizeAuthorizedWrites = false) => entries.map((entry) => {
+      // An approved source write advances only the frozen baseline. The live subtree must keep
+      // its observed identity and revision so a same-path replacement cannot inherit that exemption.
+      const expectedAfterWrite = normalizeAuthorizedWrites
+        ? expectedAfterPlanFiles.get(entry.relative_path)
+        : undefined
+      const planId = expectedAfterWrite ? expectedAfterWrite.plan_id : entry.plan_id
+      return {
+        relative_path: entry.relative_path,
+        kind: entry.kind,
+        ...(typeof planId === 'string' ? { plan_id: planId } : {}),
+        directory_identity: entry.directory_identity,
+        ...(expectedAfterWrite
+          ? {
+              plan_file_identity: expectedAfterWrite.plan_file_identity,
+              plan_updated_at: expectedAfterWrite.plan_updated_at
+            }
+          : {
+              ...(entry.plan_file_identity ? { plan_file_identity: entry.plan_file_identity } : {}),
+              ...(entry.plan_updated_at ? { plan_updated_at: entry.plan_updated_at } : {})
+            })
+      }
+    })
+    if (JSON.stringify(comparable(currentSubtree)) !== JSON.stringify(comparable(frozenSubtree, true))) {
+      throw new TraceError(ERR.CONFLICT, '文件夹子树已变化，请重新预览确认')
+    }
+  }
+
+  private async captureExpectedPlanFileAfterWrite(
+    snapshot: LibrarySnapshot,
+    folderPath: string,
+    planPath: string,
+    expectedDocument: PlanDocument
+  ): Promise<{ relativePath: string; expected: ExpectedPlanFileAfterWrite } | null> {
+    if (!isSelfOrDescendant(folderPath, planPath)) return null
+    const relativePath = planPath === folderPath ? '' : planPath.slice(folderPath.length + 1)
+    const expectedSerializedDocument = JSON.stringify(expectedDocument)
+    const matchesExpectedDocument = (document: PlanDocument): boolean =>
+      JSON.stringify(document) === expectedSerializedDocument
+    const freshPlans = await this.scan(snapshot)
+    this.currentRevision(snapshot)
+    const writtenPlan = freshPlans.find((plan) => plan.path === planPath)
+    if (!writtenPlan || !matchesExpectedDocument(writtenPlan.document)) {
+      throw new TraceError(ERR.CONFLICT, '关联计划写入后身份已变化，请刷新后核对')
+    }
+    const subtree = await this.captureAgentFolderSubtreeSnapshot(snapshot, folderPath, freshPlans)
+    const writtenEntry = subtree.find((entry) => entry.relative_path === relativePath)
+    if (!writtenEntry?.plan_file_identity || writtenEntry.plan_updated_at !== expectedDocument.updated_at) {
+      throw new TraceError(ERR.CONFLICT, '关联计划写入后身份已变化，请刷新后核对')
+    }
+    // Bind the captured identity to the approved write's contents. The first scan precedes the
+    // lstat snapshot, so a same-path replacement between those operations must be rejected here.
+    const documentAfterIdentityCapture = await this.securePlan(snapshot, planPath)
+    if (!matchesExpectedDocument(documentAfterIdentityCapture)) {
+      throw new TraceError(ERR.CONFLICT, '关联计划写入后身份已变化，请刷新后核对')
+    }
+    return {
+      relativePath,
+      expected: {
+        plan_id: typeof expectedDocument.plan_id === 'string' ? expectedDocument.plan_id : null,
+        plan_file_identity: writtenEntry.plan_file_identity,
+        plan_updated_at: expectedDocument.updated_at
+      }
+    }
+  }
+
   private async freezeMoveSnapshot(
     request: { path: string; target_parent_path: string },
     storage: StorageService
@@ -336,13 +636,84 @@ export class PlanReferenceService {
     }
   }
 
+  async previewAgentMove(request: { path: string; target_parent_path: string }, storage: StorageService): Promise<AgentMovePreview> {
+    if (!request || typeof request !== 'object' || Array.isArray(request) ||
+      Object.getPrototypeOf(request) !== Object.prototype || Reflect.ownKeys(request).length !== 2 ||
+      !Object.hasOwn(request, 'path') || !Object.hasOwn(request, 'target_parent_path')) {
+      throw new TraceError(ERR.VALIDATION, '移动请求无效')
+    }
+    const snapshot = await this.freezeMoveSnapshot(request, storage)
+    const librarySnapshot = await this.snapshot(snapshot.library_id)
+    if (librarySnapshot.generation !== snapshot.root_generation ||
+      librarySnapshot.changeRevision !== snapshot.change_revision) {
+      throw new TraceError(ERR.CONFLICT, '移动子树已变化，请重新预览确认')
+    }
+    const freshPlans = await this.scan(librarySnapshot)
+    const sourceSubtreeSnapshot = await this.captureAgentFolderSubtreeSnapshot(
+      librarySnapshot, snapshot.source_path, freshPlans
+    )
+    const currentSourcePlans = freshPlans.filter((plan) => isSelfOrDescendant(snapshot.source_path, plan.path))
+      .sort((left, right) => left.path.localeCompare(right.path))
+      .map((plan) => ({
+        path: plan.path,
+        plan_id: typeof plan.document.plan_id === 'string' ? plan.document.plan_id : null,
+        updated_at: plan.document.updated_at
+      }))
+    if (JSON.stringify(currentSourcePlans) !== JSON.stringify(snapshot.source_plans)) {
+      throw new TraceError(ERR.CONFLICT, '移动子树已变化，请重新预览确认')
+    }
+    const digest = createHash('sha256').update(JSON.stringify({ snapshot, sourceSubtreeSnapshot })).digest('hex')
+    const token = randomBytes(32).toString('base64url')
+    const expiresAt = Date.now() + AGENT_MOVE_PREVIEW_TTL_MS
+    for (const [existingToken, preview] of this.agentMovePreviews) {
+      if (preview.expiresAt <= Date.now()) this.agentMovePreviews.delete(existingToken)
+    }
+    if (this.agentMovePreviews.size >= MAX_AGENT_MOVE_PREVIEWS) throw new TraceError(ERR.STATE_MACHINE, '待确认移动预览过多')
+    this.agentMovePreviews.set(token, { snapshot, sourceSubtreeSnapshot, digest, expiresAt })
+    const sourceName = basenameRel(snapshot.source_path)
+    return {
+      token,
+      source_path: snapshot.source_path,
+      target_parent_path: snapshot.target_parent_path,
+      destination_path: snapshot.target_parent_path ? `${snapshot.target_parent_path}/${sourceName}` : sourceName,
+      source_plans: structuredClone(snapshot.source_plans),
+      snapshot_digest: digest,
+      expires_at: new Date(expiresAt).toISOString()
+    }
+  }
+
+  async commitAgentMove(token: unknown, storage: StorageService, binding: AgentRootCommitBinding): Promise<{ path: string }> {
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
+      throw new TraceError(ERR.VALIDATION, '移动确认无效')
+    }
+    this.assertAgentRootCommitBinding(binding)
+    const preview = this.agentMovePreviews.get(token)
+    this.agentMovePreviews.delete(token)
+    if (!preview || preview.expiresAt <= Date.now()) {
+      throw new TraceError(ERR.CONFLICT, '移动预览已失效，请重新预览确认')
+    }
+    const currentDigest = createHash('sha256').update(JSON.stringify({
+      snapshot: preview.snapshot,
+      sourceSubtreeSnapshot: preview.sourceSubtreeSnapshot
+    })).digest('hex')
+    if (currentDigest !== preview.digest) throw new TraceError(ERR.CONFLICT, '移动预览已变化，请重新预览确认')
+    return this.commitFrozenMove(preview.snapshot, storage, binding, preview.sourceSubtreeSnapshot)
+  }
+
   async commitMove(request: { path: string; target_parent_path: string }, storage: StorageService): Promise<{ path: string }> {
     const frozen = await this.freezeMoveSnapshot(request, storage)
+    return this.commitFrozenMove(frozen, storage)
+  }
+
+  private async commitFrozenMove(frozen: PlanMoveSnapshot, storage: StorageService,
+    binding?: AgentRootCommitBinding,
+    sourceSubtreeSnapshot?: AgentFolderSubtreeSnapshotEntry[]): Promise<{ path: string }> {
     return this.enqueueCommit(async () => {
       const snapshot = await this.snapshot(frozen.library_id)
       if (snapshot.generation !== frozen.root_generation || snapshot.changeRevision !== frozen.change_revision) {
         throw new TraceError(ERR.CONFLICT, '计划内容已变化，请重新预览确认')
       }
+      if (binding) await this.assertAgentRootForSnapshot(storage, binding, snapshot)
       const currentDirectories = await storage.captureMoveDirectorySnapshot(frozen.source_path, frozen.target_parent_path)
       if (currentDirectories.root_generation !== frozen.storage_root_generation ||
         currentDirectories.source_directory_identity !== frozen.source_directory_identity ||
@@ -379,12 +750,221 @@ export class PlanReferenceService {
       if (siblings.includes(basenameRel(frozen.source_path))) {
         throw new TraceError(ERR.NAME_CONFLICT, '目标位置已存在同名计划或文件夹')
       }
-      await storage.movePlanRaw(frozen, frozen.storage_root_generation)
+      if (binding) await this.assertAgentRootForSnapshot(storage, binding, snapshot)
+      const mutationGuard = binding
+        ? this.createAgentMutationGuard(storage, binding.rootSnapshot, binding.validateRootSnapshot, snapshot, async () => {
+          const currentSnapshot = await this.assertAgentRootForSnapshot(storage, binding, snapshot)
+          const currentDirectories = await storage.captureMoveDirectorySnapshot(
+            frozen.source_path, frozen.target_parent_path
+          )
+          if (currentDirectories.root_generation !== frozen.storage_root_generation ||
+            currentDirectories.source_directory_identity !== frozen.source_directory_identity ||
+            currentDirectories.target_directory_identity !== frozen.target_directory_identity) {
+            throw new TraceError(ERR.CONFLICT, '移动目录身份已变化，请重新预览确认')
+          }
+          if (sourceSubtreeSnapshot) {
+            await this.assertAgentFolderSubtreeUnchanged(
+              currentSnapshot, frozen.source_path, sourceSubtreeSnapshot
+            )
+          }
+        })
+        : undefined
+      await storage.movePlanRaw(frozen, frozen.storage_root_generation, mutationGuard)
       storage.treeCache.invalidatePrefix(frozen.source_path)
       storage.treeCache.invalidatePrefix(frozen.target_parent_path)
       bus.emit('trace:plan-changed', { path: targetPath })
       if (sourceIds.length > 0) bus.emit('trace:reference-target-changed', { plan_ids: sourceIds.sort() })
       return { path: targetPath }
+    })
+  }
+
+  async previewAgentFolderOperation(request: unknown, storage: StorageService): Promise<AgentFolderOperationPreview> {
+    if (!request || typeof request !== 'object' || Array.isArray(request) ||
+      Object.getPrototypeOf(request) !== Object.prototype || typeof (request as Record<string, unknown>).operation !== 'string') {
+      throw new TraceError(ERR.VALIDATION, '文件夹操作预览无效')
+    }
+    const candidate = request as Record<string, unknown>
+    const operation = candidate.operation
+    const keys = operation === 'rename' ? ['operation', 'path', 'new_name'] : ['operation', 'path']
+    if ((operation !== 'rename' && operation !== 'trash') || !exactPlainRecord(request, keys) ||
+      typeof candidate.path !== 'string' || (operation === 'rename' && typeof candidate.new_name !== 'string')) {
+      throw new TraceError(ERR.VALIDATION, '文件夹操作预览无效')
+    }
+
+    const snapshot = await this.activeSnapshot()
+    const path = resolveWithin(snapshot.root, candidate.path as string).rel
+    if (!path || path !== candidate.path || isReferenceReservedPath(path)) {
+      throw new TraceError(ERR.PATH_UNSAFE, '该文件夹不可操作')
+    }
+    await assertRealPathWithinRoot(snapshot.root, resolveWithin(snapshot.root, path).abs)
+    this.currentRevision(snapshot)
+    if (await this.repo.hasPlanFile(snapshot.root, path)) {
+      throw new TraceError(ERR.VALIDATION, 'Agent 文件夹操作不能指向计划节点')
+    }
+
+    const impactPreview = await this.previewImpact({
+      library_id: snapshot.libraryId,
+      operation: operation === 'rename' ? 'rename-plan' : 'delete-plan',
+      path,
+      ...(operation === 'rename' ? { new_name: candidate.new_name as string } : {})
+    })
+    this.currentRevision(snapshot)
+    if (!impactPreview.target_snapshot_digest) {
+      throw new TraceError(ERR.CONFLICT, '文件夹快照不完整，请重新预览')
+    }
+
+    const allPlans = await this.scanForSnapshot(snapshot)
+    this.currentRevision(snapshot)
+    const subtreeSnapshot = await this.captureAgentFolderSubtreeSnapshot(snapshot, path, allPlans)
+    if (subtreeSnapshot[0]?.kind !== 'folder') {
+      throw new TraceError(ERR.CONFLICT, '目标文件夹结构已变化，请重新预览')
+    }
+    this.currentRevision(snapshot)
+    const digest = createHash('sha256').update(JSON.stringify({
+      operation, snapshot: {
+        library_id: snapshot.libraryId,
+        root_generation: snapshot.generation,
+        change_revision: snapshot.changeRevision
+      },
+      impactPreview,
+      subtreeSnapshot
+    })).digest('hex')
+    const token = randomBytes(32).toString('base64url')
+    const expiresAt = Date.now() + AGENT_FOLDER_PREVIEW_TTL_MS
+    for (const [existingToken, preview] of this.agentFolderPreviews) {
+      if (preview.expiresAt <= Date.now()) this.agentFolderPreviews.delete(existingToken)
+    }
+    if (this.agentFolderPreviews.size >= MAX_AGENT_FOLDER_PREVIEWS) {
+      throw new TraceError(ERR.STATE_MACHINE, '待确认文件夹操作预览过多')
+    }
+    this.agentFolderPreviews.set(token, { snapshot, impactPreview, subtreeSnapshot, operation, digest, expiresAt })
+    const newName = operation === 'rename' ? candidate.new_name as string : undefined
+    return {
+      token,
+      operation,
+      path,
+      ...(newName ? { destination_path: `${parentRel(path) ? `${parentRel(path)}/` : ''}${newName}` } : {}),
+      affected_subtree: subtreeSnapshot.map(({ relative_path, kind, plan_id }) => ({
+        relative_path, kind, ...(plan_id ? { plan_id } : {})
+      })),
+      target_plan_ids: [...impactPreview.target_plan_ids],
+      target_snapshot_digest: impactPreview.target_snapshot_digest,
+      references: structuredClone(impactPreview.references),
+      snapshot_digest: digest,
+      expires_at: new Date(expiresAt).toISOString()
+    }
+  }
+
+  async commitAgentFolderOperation(request: unknown, storage: StorageService,
+    binding: AgentRootCommitBinding): Promise<AgentFolderOperationCommitResult> {
+    if (!request || typeof request !== 'object' || Array.isArray(request) ||
+      Object.getPrototypeOf(request) !== Object.prototype || typeof (request as Record<string, unknown>).token !== 'string') {
+      throw new TraceError(ERR.VALIDATION, '文件夹操作确认无效')
+    }
+    const candidate = request as Record<string, unknown>
+    this.assertAgentRootCommitBinding(binding)
+    const token = candidate.token as string
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) throw new TraceError(ERR.VALIDATION, '文件夹操作确认无效')
+    const preview = this.agentFolderPreviews.get(token)
+    if (!preview || preview.expiresAt <= Date.now()) {
+      this.agentFolderPreviews.delete(token)
+      throw new TraceError(ERR.CONFLICT, '文件夹操作预览已失效，请重新预览确认')
+    }
+
+    let renameAction: ReferenceImpactCommit['rename_action']
+    let decisions: ReferenceImpactCommit['decisions']
+    if (preview.operation === 'rename') {
+      const hasReferences = preview.impactPreview.references.length > 0
+      const keys = Object.hasOwn(request, 'rename_action') ? ['token', 'rename_action'] : ['token']
+      const hasValidRenameAction = candidate.rename_action === 'update' || candidate.rename_action === 'keep'
+      if (!exactPlainRecord(request, keys) ||
+        (hasReferences && !hasValidRenameAction) ||
+        (candidate.rename_action !== undefined && !hasValidRenameAction)) {
+        throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请选择是否更新受影响的计划引用')
+      }
+      renameAction = hasValidRenameAction ? candidate.rename_action as 'update' | 'keep' : undefined
+    } else {
+      if (!exactPlainRecord(request, ['token', 'decisions']) || !Array.isArray(candidate.decisions)) {
+        throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请逐条确认受影响的计划引用')
+      }
+      const validatedDecisions = candidate.decisions as NonNullable<ReferenceImpactCommit['decisions']>
+      decisions = validatedDecisions
+      if (validatedDecisions.length !== preview.impactPreview.references.length) {
+        throw new TraceError(ERR.CONFIRMATION_REQUIRED, '请逐条确认全部受影响的计划引用')
+      }
+      const seen = new Set<string>()
+      for (const decision of validatedDecisions) {
+        if (!decision || typeof decision !== 'object' || Array.isArray(decision) ||
+          (decision.action !== 'keep' && decision.action !== 'replace')) {
+          throw new TraceError(ERR.VALIDATION, '计划引用处理选择无效')
+        }
+        const allowedKeys = decision.action === 'replace' ? ['source_path', 'source_component_id', 'action', 'replacement']
+          : ['source_path', 'source_component_id', 'action']
+        if (!exactPlainRecord(decision, allowedKeys) || typeof decision.source_path !== 'string' ||
+          typeof decision.source_component_id !== 'string') {
+          throw new TraceError(ERR.VALIDATION, '计划引用处理选择无效')
+        }
+        const key = impactKey(decision)
+        if (seen.has(key) || !preview.impactPreview.references.some((reference) => impactKey(reference) === key)) {
+          throw new TraceError(ERR.VALIDATION, '计划引用处理选择与冻结预览不匹配')
+        }
+        seen.add(key)
+        if (decision.action === 'replace') {
+          const replacement = decision.replacement
+          if (!exactPlainRecord(replacement, Object.hasOwn(replacement ?? {}, 'component_id')
+            ? ['path', 'component_id'] : ['path']) || typeof replacement.path !== 'string' ||
+            (replacement.component_id !== undefined && typeof replacement.component_id !== 'string')) {
+            throw new TraceError(ERR.VALIDATION, '计划引用替代目标无效')
+          }
+          const replacementPath = resolveWithin(preview.snapshot.root, replacement.path).rel
+          if (!replacementPath || replacementPath !== replacement.path || isReferenceReservedPath(replacementPath)) {
+            throw new TraceError(ERR.PATH_UNSAFE, '计划引用替代目标路径无效')
+          }
+        }
+      }
+    }
+
+    this.agentFolderPreviews.delete(token)
+    return this.enqueueCommit(async () => {
+      const boundSnapshot = await this.assertAgentRootForSnapshot(storage, binding, preview.snapshot)
+      const expectedAfterPlanFiles = new Map<string, ExpectedPlanFileAfterWrite>()
+      const mutationGuard = this.createAgentMutationGuard(
+        storage, binding.rootSnapshot, binding.validateRootSnapshot, boundSnapshot, async () => {
+          const current = await this.assertAgentRootForSnapshot(storage, binding, boundSnapshot)
+          await this.assertAgentFolderSubtreeUnchanged(current, preview.impactPreview.path,
+            preview.subtreeSnapshot, expectedAfterPlanFiles)
+        }
+      )
+      this.currentRevision(preview.snapshot)
+      await this.assertAgentFolderSubtreeUnchanged(preview.snapshot, preview.impactPreview.path, preview.subtreeSnapshot)
+      const storedDigest = createHash('sha256').update(JSON.stringify({
+        operation: preview.operation,
+        snapshot: {
+          library_id: preview.snapshot.libraryId,
+          root_generation: preview.snapshot.generation,
+          change_revision: preview.snapshot.changeRevision
+        },
+        impactPreview: preview.impactPreview,
+        subtreeSnapshot: preview.subtreeSnapshot
+      })).digest('hex')
+      if (storedDigest !== preview.digest) throw new TraceError(ERR.CONFLICT, '文件夹操作预览已变化，请重新预览')
+      const result = await this.commitImpactNow({
+        library_id: preview.snapshot.libraryId,
+        preview: preview.impactPreview,
+        ...(renameAction ? { rename_action: renameAction } : {}),
+        ...(decisions ? { decisions } : {})
+      }, storage, preview.subtreeSnapshot, undefined, async () => {
+        const current = await this.assertAgentRootForSnapshot(storage, binding, boundSnapshot)
+        await this.assertAgentFolderSubtreeUnchanged(current, preview.impactPreview.path,
+          preview.subtreeSnapshot, expectedAfterPlanFiles)
+      }, mutationGuard, async (path, expectedDocument) => {
+        const current = await this.assertAgentRootForSnapshot(storage, binding, boundSnapshot)
+        const written = await this.captureExpectedPlanFileAfterWrite(
+          current, preview.impactPreview.path, path, expectedDocument
+        )
+        if (written) expectedAfterPlanFiles.set(written.relativePath, written.expected)
+      }, expectedAfterPlanFiles)
+      return result
     })
   }
 
@@ -539,6 +1119,232 @@ export class PlanReferenceService {
       await this.assertRendererSaveDoesNotChangeReferencedTargets(path, document, expectedUpdatedAt)
       return storage.savePlan(path, document, expectedUpdatedAt)
     })
+  }
+
+  /** Capture the physical root directory identity alongside Agent's path/id/generation snapshot. */
+  async captureAgentRootSnapshot(
+    storage: StorageService,
+    expected: { rootHash: string; libraryId: string; rootGeneration: number },
+    validateRootSnapshot: AgentRootSnapshotValidator
+  ): Promise<AgentRootSnapshot> {
+    if (!exactPlainRecord(expected, ['rootHash', 'libraryId', 'rootGeneration']) ||
+      typeof expected.rootHash !== 'string' || !/^[a-f0-9]{64}$/.test(expected.rootHash) ||
+      typeof expected.libraryId !== 'string' || !isUuid32(expected.libraryId) ||
+      typeof expected.rootGeneration !== 'number' || !Number.isSafeInteger(expected.rootGeneration) || expected.rootGeneration < 0) {
+      throw new TraceError(ERR.VALIDATION, 'Agent 计划库快照无效')
+    }
+    await validateRootSnapshot()
+    const snapshot = await this.snapshot(expected.libraryId)
+    const canonicalRoot = await fs.realpath(snapshot.root)
+    const rootDirectoryIdentity = await readDirectoryIdentityKey(canonicalRoot)
+    await validateRootSnapshot()
+    const current = await this.snapshot(expected.libraryId)
+    const currentCanonicalRoot = await fs.realpath(current.root)
+    const currentRootDirectoryIdentity = await readDirectoryIdentityKey(currentCanonicalRoot)
+    if (current.root !== snapshot.root || currentCanonicalRoot !== canonicalRoot ||
+      currentRootDirectoryIdentity !== rootDirectoryIdentity ||
+      storage.getRootAbs() !== snapshot.root) {
+      throw new TraceError(ERR.CONFLICT, 'Agent 计划库目录身份已变化，请重新预检')
+    }
+    return { ...expected, rootDirectoryIdentity }
+  }
+
+  /** Agent-only save path: the frozen library and target are revalidated inside commitQueue. */
+  async saveAgentPlan(
+    storage: StorageService,
+    path: string,
+    document: PlanDocument,
+    rootSnapshot: AgentRootSnapshot,
+    targetSnapshot: AgentPlanTargetSnapshot,
+    validateRootSnapshot: AgentRootSnapshotValidator
+  ): Promise<{ updated_at: string }> {
+    this.assertAgentPlanTargetSnapshot(targetSnapshot)
+    return this.enqueueCommit(async () => {
+      const snapshot = await this.assertAgentRootSnapshot(storage, rootSnapshot, validateRootSnapshot)
+      await this.assertAgentPlanTarget(snapshot, path, targetSnapshot)
+      await this.assertRendererSaveDoesNotChangeReferencedTargets(path, document, targetSnapshot.updatedAt)
+      // Re-read identity and revision after reference validation, immediately before the write.
+      await this.assertAgentRootSnapshot(storage, rootSnapshot, validateRootSnapshot)
+      await this.assertAgentPlanTarget(snapshot, path, targetSnapshot)
+      const mutationGuard = this.createAgentMutationGuard(storage, rootSnapshot, validateRootSnapshot, snapshot,
+        () => this.assertAgentDirectoryIdentity(snapshot, path, targetSnapshot.directoryIdentity))
+      return storage.savePlan(path, document, targetSnapshot.updatedAt, mutationGuard)
+    })
+  }
+
+  /** Agent-only creation path: root and optional parent identity are checked in commitQueue before mkdir/write. */
+  async createAgentNode(
+    storage: StorageService,
+    input: {
+      kind: 'plan' | 'folder'
+      parentPath: string
+      name: string
+      parentDirectoryIdentity?: string
+    },
+    rootSnapshot: AgentRootSnapshot,
+    validateRootSnapshot: AgentRootSnapshotValidator
+  ): Promise<Awaited<ReturnType<StorageService['createPlan']>>> {
+    if (!input || (input.kind !== 'plan' && input.kind !== 'folder') || typeof input.parentPath !== 'string' ||
+      typeof input.name !== 'string' || (input.parentDirectoryIdentity !== undefined &&
+        (typeof input.parentDirectoryIdentity !== 'string' || input.parentDirectoryIdentity.length === 0 || input.parentDirectoryIdentity.length > 128)) ||
+      (input.parentPath === '') !== (input.parentDirectoryIdentity === undefined)) {
+      throw new TraceError(ERR.VALIDATION, 'Agent 新建目标身份无效')
+    }
+    validatePlanName(input.name)
+    return this.enqueueCommit(async () => {
+      const snapshot = await this.assertAgentRootSnapshot(storage, rootSnapshot, validateRootSnapshot)
+      const parent = resolveWithin(snapshot.root, input.parentPath)
+      if (parent.rel !== input.parentPath) throw new TraceError(ERR.PATH_UNSAFE, 'Agent 新建父目录路径无效')
+      await assertRealPathWithinRoot(snapshot.root, parent.abs)
+      const beforeCanonicalParent = await fs.realpath(parent.abs)
+      const before = await readDirectoryIdentityKey(beforeCanonicalParent)
+      await assertRealPathWithinRoot(snapshot.root, parent.abs)
+      const afterCanonicalParent = await fs.realpath(parent.abs)
+      const after = await readDirectoryIdentityKey(afterCanonicalParent)
+      const expectedParentDirectoryIdentity = input.parentPath === ''
+        ? rootSnapshot.rootDirectoryIdentity
+        : input.parentDirectoryIdentity
+      this.currentRevision(snapshot)
+      if (beforeCanonicalParent !== afterCanonicalParent || before !== after || after !== expectedParentDirectoryIdentity) {
+        throw new TraceError(ERR.CONFLICT, 'Agent 新建父目录身份已变化，请重新预检')
+      }
+      await this.assertAgentRootSnapshot(storage, rootSnapshot, validateRootSnapshot)
+      const mutationGuard = this.createAgentMutationGuard(storage, rootSnapshot, validateRootSnapshot, snapshot,
+        () => this.assertAgentDirectoryIdentity(snapshot, input.parentPath, expectedParentDirectoryIdentity))
+      if (input.kind === 'plan') return storage.createPlan(input.parentPath, input.name, mutationGuard)
+      return storage.createFolder(input.parentPath, input.name, mutationGuard)
+    })
+  }
+
+  private async assertAgentRootSnapshot(
+    storage: StorageService,
+    expected: AgentRootSnapshot,
+    validateRootSnapshot: AgentRootSnapshotValidator
+  ): Promise<LibrarySnapshot> {
+    if (!exactPlainRecord(expected, ['rootHash', 'libraryId', 'rootGeneration', 'rootDirectoryIdentity']) ||
+      typeof expected.rootHash !== 'string' || !/^[a-f0-9]{64}$/.test(expected.rootHash) ||
+      typeof expected.libraryId !== 'string' || !isUuid32(expected.libraryId) ||
+      typeof expected.rootGeneration !== 'number' || !Number.isSafeInteger(expected.rootGeneration) || expected.rootGeneration < 0 ||
+      typeof expected.rootDirectoryIdentity !== 'string' || expected.rootDirectoryIdentity.length === 0 ||
+      expected.rootDirectoryIdentity.length > 128) {
+      throw new TraceError(ERR.VALIDATION, 'Agent 计划库快照无效')
+    }
+    await validateRootSnapshot()
+    const snapshot = await this.snapshot(expected.libraryId)
+    const canonicalRoot = await fs.realpath(snapshot.root)
+    const rootKey = process.platform === 'win32' ? canonicalRoot.toLowerCase() : canonicalRoot
+    const rootHash = createHash('sha256').update(rootKey).digest('hex')
+    const rootDirectoryIdentity = await readDirectoryIdentityKey(canonicalRoot)
+    if (rootHash !== expected.rootHash || snapshot.libraryId !== expected.libraryId ||
+      rootDirectoryIdentity !== expected.rootDirectoryIdentity || storage.getRootAbs() !== snapshot.root) {
+      throw new TraceError(ERR.CONFLICT, 'Agent 计划库身份已变化，请重新预检')
+    }
+    await validateRootSnapshot()
+    const current = await this.snapshot(expected.libraryId)
+    const currentCanonicalRoot = await fs.realpath(current.root)
+    const currentRootDirectoryIdentity = await readDirectoryIdentityKey(currentCanonicalRoot)
+    if (current.root !== snapshot.root || currentCanonicalRoot !== canonicalRoot ||
+      currentRootDirectoryIdentity !== expected.rootDirectoryIdentity ||
+      storage.getRootAbs() !== snapshot.root) {
+      throw new TraceError(ERR.CONFLICT, 'Agent 计划库目录身份已变化，请重新预检')
+    }
+    this.currentRevision(snapshot)
+    return snapshot
+  }
+
+  private createAgentMutationGuard(
+    storage: StorageService,
+    rootSnapshot: AgentRootSnapshot,
+    validateRootSnapshot: AgentRootSnapshotValidator,
+    expectedLibrarySnapshot?: LibrarySnapshot,
+    assertBeforeMutation?: () => Promise<void>
+  ): AgentLibraryMutationGuard {
+    return {
+      rootDirectoryIdentity: rootSnapshot.rootDirectoryIdentity,
+      rootGeneration: rootSnapshot.rootGeneration,
+      assertCurrent: async () => {
+        const current = await this.assertAgentRootSnapshot(storage, rootSnapshot, validateRootSnapshot)
+        if (expectedLibrarySnapshot && (current.root !== expectedLibrarySnapshot.root ||
+          current.libraryId !== expectedLibrarySnapshot.libraryId ||
+          current.generation !== expectedLibrarySnapshot.generation)) {
+          throw new TraceError(ERR.CONFLICT, '预览对应的计划库已变化，请重新预检')
+        }
+      },
+      ...(assertBeforeMutation ? { assertBeforeMutation } : {})
+    }
+  }
+
+  private async assertAgentDirectoryIdentity(
+    snapshot: LibrarySnapshot,
+    path: string,
+    expectedIdentity: string
+  ): Promise<void> {
+    const resolved = resolveWithin(snapshot.root, path)
+    if (resolved.rel !== path) throw new TraceError(ERR.PATH_UNSAFE, 'Agent 目标目录路径无效')
+    try {
+      await assertRealPathWithinRoot(snapshot.root, resolved.abs)
+      const before = await readDirectoryIdentityKey(resolved.abs)
+      await assertRealPathWithinRoot(snapshot.root, resolved.abs)
+      const after = await readDirectoryIdentityKey(resolved.abs)
+      const currentSnapshot = await this.snapshot(snapshot.libraryId)
+      if (currentSnapshot.root !== snapshot.root || currentSnapshot.generation !== snapshot.generation) {
+        throw new TraceError(ERR.CONFLICT, 'Agent 目标计划库已变化，请重新预检')
+      }
+      if (before === after && after === expectedIdentity) return
+    } catch (error) {
+      if (error instanceof TraceError && error.code === ERR.PATH_UNSAFE) throw error
+    }
+    throw new TraceError(ERR.CONFLICT, 'Agent 目标目录身份已变化，请重新预检')
+  }
+
+  private assertAgentRootCommitBinding(binding: AgentRootCommitBinding): void {
+    if (!exactPlainRecord(binding, ['rootSnapshot', 'validateRootSnapshot']) ||
+      typeof binding.validateRootSnapshot !== 'function') {
+      throw new TraceError(ERR.VALIDATION, 'Agent 计划库提交快照无效')
+    }
+  }
+
+  private async assertAgentRootForSnapshot(
+    storage: StorageService,
+    binding: AgentRootCommitBinding,
+    expected: LibrarySnapshot
+  ): Promise<LibrarySnapshot> {
+    const current = await this.assertAgentRootSnapshot(storage, binding.rootSnapshot, binding.validateRootSnapshot)
+    if (current.root !== expected.root || current.libraryId !== expected.libraryId || current.generation !== expected.generation) {
+      throw new TraceError(ERR.CONFLICT, '预览对应的计划库已变化，请重新预检')
+    }
+    return current
+  }
+
+  private assertAgentPlanTargetSnapshot(target: AgentPlanTargetSnapshot): void {
+    if (!exactPlainRecord(target, ['path', 'directoryIdentity', 'planId', 'updatedAt']) ||
+      typeof target.path !== 'string' || !target.path || typeof target.directoryIdentity !== 'string' ||
+      target.directoryIdentity.length === 0 || target.directoryIdentity.length > 128 ||
+      (target.planId !== null && !isUuid32(target.planId)) || typeof target.updatedAt !== 'string' ||
+      !Number.isFinite(Date.parse(target.updatedAt))) {
+      throw new TraceError(ERR.VALIDATION, 'Agent 计划目标快照无效')
+    }
+  }
+
+  private async assertAgentPlanTarget(
+    snapshot: LibrarySnapshot,
+    path: string,
+    target: AgentPlanTargetSnapshot
+  ): Promise<void> {
+    const resolved = resolveWithin(snapshot.root, path)
+    if (!resolved.rel || resolved.rel !== path || target.path !== path) {
+      throw new TraceError(ERR.PATH_UNSAFE, 'Agent 计划目标路径无效')
+    }
+    await assertRealPathWithinRoot(snapshot.root, resolved.abs)
+    const before = await readDirectoryIdentityKey(resolved.abs)
+    const document = await this.securePlan(snapshot, path)
+    await assertRealPathWithinRoot(snapshot.root, resolved.abs)
+    const after = await readDirectoryIdentityKey(resolved.abs)
+    this.currentRevision(snapshot)
+    if (before !== after || after !== target.directoryIdentity || (document.plan_id ?? null) !== target.planId ||
+      document.updated_at !== target.updatedAt) {
+      throw new TraceError(ERR.CONFLICT, 'Agent 计划目标身份或版本已变化，请重新预检')
+    }
   }
 
   async appendRendererComponent(storage: StorageService, path: string, component: Component): Promise<void> {
@@ -770,23 +1576,82 @@ export class PlanReferenceService {
   }
 
   async commitImpact(request: ReferenceImpactCommit, storage: StorageService): Promise<{ path?: string }> {
-    return this.enqueueCommit(() => this.commitImpactNow(request, storage))
+    const result = await this.enqueueCommit(() => this.commitImpactNow(request, storage))
+    return result.path ? { path: result.path } : {}
   }
 
-  commitTrashRestore(storage: StorageService, confirmationToken: string): Promise<TrashOperationCommitResult> {
-    return this.enqueueCommit(() => storage.commitTrashRestore(confirmationToken))
+  /** Agent-only result surface; retains the trash receipt without changing the regular UI contract. */
+  commitAgentImpact(request: ReferenceImpactCommit, storage: StorageService,
+    binding: AgentImpactCommitBinding): Promise<AgentFolderOperationCommitResult> {
+    if (!exactPlainRecord(binding, ['rootSnapshot', 'validateRootSnapshot', 'target']) ||
+      typeof binding.validateRootSnapshot !== 'function' || !request?.preview ||
+      request.preview.path !== binding.target?.path) {
+      throw new TraceError(ERR.VALIDATION, 'Agent 引用操作库和目标快照无效')
+    }
+    this.assertAgentPlanTargetSnapshot(binding.target)
+    if (request.preview.operation === 'delete-component' &&
+      typeof binding.target.directoryIdentity !== 'string') {
+      throw new TraceError(ERR.VALIDATION, 'Agent 组件删除目标身份无效')
+    }
+    return this.enqueueCommit(async () => {
+      const snapshot = await this.assertAgentRootSnapshot(storage, binding.rootSnapshot, binding.validateRootSnapshot)
+      await this.assertAgentPlanTarget(snapshot, binding.target.path, binding.target)
+      const expectedAgentTarget = { path: binding.target.path, directoryIdentity: binding.target.directoryIdentity }
+      const assertTargetIdentity = () => this.assertAgentImpactTargetIdentity(snapshot, request.preview, expectedAgentTarget)
+      const mutationGuard = this.createAgentMutationGuard(
+        storage, binding.rootSnapshot, binding.validateRootSnapshot, snapshot, assertTargetIdentity
+      )
+      return this.commitImpactNow(request, storage, undefined, expectedAgentTarget,
+        async () => {
+          await this.assertAgentRootSnapshot(storage, binding.rootSnapshot, binding.validateRootSnapshot)
+          await assertTargetIdentity()
+        },
+        mutationGuard)
+    })
   }
 
-  commitTrashPurge(storage: StorageService, confirmationToken: string): Promise<TrashOperationCommitResult> {
-    return this.enqueueCommit(() => storage.commitTrashPurge(confirmationToken))
+  commitTrashRestore(storage: StorageService, confirmationToken: string,
+    binding?: AgentRootCommitBinding): Promise<TrashOperationCommitResult> {
+    if (binding) this.assertAgentRootCommitBinding(binding)
+    return this.enqueueCommit(async () => {
+      if (!binding) return storage.commitTrashRestore(confirmationToken)
+      const snapshot = await this.assertAgentRootSnapshot(storage, binding.rootSnapshot, binding.validateRootSnapshot)
+      const mutationGuard = this.createAgentMutationGuard(
+        storage, binding.rootSnapshot, binding.validateRootSnapshot, snapshot
+      )
+      return storage.commitTrashRestore(confirmationToken, mutationGuard)
+    })
   }
 
-  private async commitImpactNow(request: ReferenceImpactCommit, storage: StorageService): Promise<{ path?: string }> {
+  commitTrashPurge(storage: StorageService, confirmationToken: string,
+    binding?: AgentRootCommitBinding): Promise<TrashOperationCommitResult> {
+    if (binding) this.assertAgentRootCommitBinding(binding)
+    return this.enqueueCommit(async () => {
+      if (!binding) return storage.commitTrashPurge(confirmationToken)
+      const snapshot = await this.assertAgentRootSnapshot(storage, binding.rootSnapshot, binding.validateRootSnapshot)
+      const mutationGuard = this.createAgentMutationGuard(
+        storage, binding.rootSnapshot, binding.validateRootSnapshot, snapshot
+      )
+      return storage.commitTrashPurge(confirmationToken, mutationGuard)
+    })
+  }
+
+  private async commitImpactNow(
+    request: ReferenceImpactCommit,
+    storage: StorageService,
+    expectedAgentSubtree?: AgentFolderSubtreeSnapshotEntry[],
+    expectedAgentTarget?: { path: string; directoryIdentity: string },
+    beforeFilesystemWrite?: (completedWrites: number) => Promise<void>,
+    mutationGuard?: AgentLibraryMutationGuard,
+    afterFilesystemWrite?: (path: string, document: PlanDocument) => Promise<void>,
+    expectedAgentAfterPlanFiles?: ReadonlyMap<string, ExpectedPlanFileAfterWrite>
+  ): Promise<AgentFolderOperationCommitResult> {
     if (!request || !request.preview || !Array.isArray(request.preview.references)) {
       throw new TraceError(ERR.VALIDATION, '引用影响确认无效')
     }
     const { preview } = request
     const snapshot = await this.snapshot(request.library_id)
+    await this.assertAgentImpactTargetIdentity(snapshot, preview, expectedAgentTarget)
     const fresh = await this.previewImpact({
       library_id: request.library_id, operation: preview.operation, path: preview.path,
       component_id: preview.component_id, new_name: preview.new_name, new_title: preview.new_title,
@@ -881,6 +1746,10 @@ export class PlanReferenceService {
     }
     this.currentRevision(snapshot)
     if (this.switchingRoot) throw new TraceError(ERR.CONFLICT, '计划库正在切换，请重试')
+    await this.assertAgentImpactTargetIdentity(snapshot, preview, expectedAgentTarget)
+    if (expectedAgentSubtree) {
+      await this.assertAgentFolderSubtreeUnchanged(snapshot, preview.path, expectedAgentSubtree)
+    }
 
     // Legacy replacement plans receive an ID only after every choice has been validated.
     const usedIds = new Set(plansBefore.map((plan) => plan.document.plan_id).filter((id): id is string => !!id))
@@ -894,16 +1763,18 @@ export class PlanReferenceService {
         let id = uuid32()
         while (usedIds.has(id)) id = uuid32()
         usedIds.add(id)
+        await beforeFilesystemWrite?.(writes)
         const assigned = await this.repo.mutatePlanAtomic(snapshot.root, path, (current) => {
           if (current.updated_at !== expected || current.plan_id) {
             throw new TraceError(ERR.CONFLICT, '替代计划已变化，请重新预览确认')
           }
           current.plan_id = id
           return current
-        })
+        }, mutationGuard)
         writes += 1
         assignedDocs.set(path, assigned)
         writtenRevisions.set(path, assigned.updated_at)
+        await afterFilesystemWrite?.(path, assigned)
         if (sourceDocs.has(path)) sourceDocs.set(path, assigned)
         bus.emit('trace:plan-changed', { path })
         bus.emit('trace:reference-target-changed', { plan_ids: [id] })
@@ -973,9 +1844,11 @@ export class PlanReferenceService {
         if (path === preview.path && !preview.operation.endsWith('-component') &&
           !fresh.references.some((reference) => reference.source_path === path &&
             (isRename ? request.rename_action === 'update' : decisionMap.get(impactKey(reference))?.action === 'replace'))) continue
-        const saved = await storage.savePlan(path, draft, draft.updated_at)
+        await beforeFilesystemWrite?.(writes)
+        const saved = await storage.savePlan(path, draft, draft.updated_at, mutationGuard)
         writtenRevisions.set(path, saved.updated_at)
         writes += 1
+        await afterFilesystemWrite?.(path, { ...draft, updated_at: saved.updated_at })
       }
       // Keep a component target unwritten until this check passes. Other plans may have added
       // inbound refs while their atomic source writes were awaited above.
@@ -1008,13 +1881,28 @@ export class PlanReferenceService {
         observedSignature !== referenceSignature(expectedReferences)) {
         throw new TraceError(ERR.CONFLICT, '关联影响已变化，请重新预览确认')
       }
-      if (preview.operation === 'rename-plan') return await storage.renamePlan(
-        preview.path, preview.new_name as string,
-        writtenRevisions.get(preview.path) ?? sourceDocs.get(preview.path)?.updated_at ?? fresh.target_updated_at
-      )
+      if (preview.operation === 'rename-plan') {
+        if (expectedAgentSubtree) {
+          const latestSnapshot = await this.snapshot(request.library_id)
+          if (latestSnapshot.root !== snapshot.root || latestSnapshot.generation !== snapshot.generation) {
+            throw new TraceError(ERR.CONFLICT, '计划库已切换，请重新预览确认')
+          }
+          await this.assertAgentFolderSubtreeUnchanged(
+            latestSnapshot, preview.path, expectedAgentSubtree, expectedAgentAfterPlanFiles
+          )
+        }
+        await beforeFilesystemWrite?.(writes)
+        return await storage.renamePlan(
+          preview.path, preview.new_name as string,
+          writtenRevisions.get(preview.path) ?? sourceDocs.get(preview.path)?.updated_at ?? fresh.target_updated_at,
+          mutationGuard
+        )
+      }
       if (preview.operation.endsWith('-component')) {
+        await this.assertAgentImpactTargetIdentity(snapshot, preview, expectedAgentTarget)
         const target = sourceDocs.get(preview.path)!
-        const saved = await storage.savePlan(preview.path, target, target.updated_at)
+        await beforeFilesystemWrite?.(writes)
+        const saved = await storage.savePlan(preview.path, target, target.updated_at, mutationGuard)
         writtenRevisions.set(preview.path, saved.updated_at)
         writes += 1
       }
@@ -1035,13 +1923,45 @@ export class PlanReferenceService {
           throw new TraceError(ERR.CONFLICT, '关联影响已变化，请重新预览确认')
         }
         const directory = await storage.captureMoveDirectorySnapshot(preview.path, parentRel(preview.path))
-        await storage.trashPlan(preview.path, targetUpdatedAt, directory.source_directory_identity)
+        if (expectedAgentSubtree) {
+          const latestSnapshot = await this.snapshot(request.library_id)
+          if (latestSnapshot.root !== snapshot.root || latestSnapshot.generation !== snapshot.generation) {
+            throw new TraceError(ERR.CONFLICT, '计划库已切换，请重新预览确认')
+          }
+          await this.assertAgentFolderSubtreeUnchanged(
+            latestSnapshot, preview.path, expectedAgentSubtree, expectedAgentAfterPlanFiles
+          )
+        }
+        await beforeFilesystemWrite?.(writes)
+        const trashed = await storage.trashPlan(
+          preview.path, targetUpdatedAt, directory.source_directory_identity, mutationGuard
+        )
+        return { trash_entry_id: trashed.id }
       }
       return {}
     } catch (error) {
+      if (writes > 0 && error instanceof TraceError && error.code === ERR.CONFLICT) {
+        throw new TraceError(ERR.CONFLICT, `${error.message}；此前完成的关联更新已保留，请刷新后核对`)
+      }
       if (writes > 0) throw new TraceError(ERR.SAVE_FAILED, '部分关联更新已完成，目标仍保留；请刷新后重试')
       throw error
     }
+  }
+
+  private async assertAgentImpactTargetIdentity(
+    snapshot: LibrarySnapshot,
+    preview: ReferenceImpactPreview,
+    expected?: { path: string; directoryIdentity: string }
+  ): Promise<void> {
+    if (!expected) return
+    if (preview.path !== expected.path) {
+      throw new TraceError(ERR.VALIDATION, 'Agent 目标路径与冻结身份不匹配')
+    }
+    const resolved = resolveWithin(snapshot.root, expected.path)
+    if (!resolved.rel || resolved.rel !== expected.path) {
+      throw new TraceError(ERR.PATH_UNSAFE, 'Agent 目标路径无效')
+    }
+    await this.assertAgentDirectoryIdentity(snapshot, expected.path, expected.directoryIdentity)
   }
 }
 
@@ -1061,4 +1981,12 @@ async function readDirectoryIdentityKey(path: string): Promise<string> {
     throw new TraceError(ERR.PATH_UNSAFE, '计划目录身份无效')
   }
   return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`
+}
+
+async function readDirectoryListingVersionKey(path: string): Promise<string> {
+  const stat = await fs.lstat(path, { bigint: true })
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new TraceError(ERR.PATH_UNSAFE, '计划目录身份无效')
+  }
+  return `${stat.dev}:${stat.ino}:${stat.mtimeNs}:${stat.ctimeNs}`
 }

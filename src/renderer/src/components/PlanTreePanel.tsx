@@ -11,7 +11,8 @@ import {
   HolderOutlined,
   LoadingOutlined,
   PlusOutlined,
-  ReadOutlined
+  ReadOutlined,
+  DeleteOutlined
 } from '@ant-design/icons'
 import {
   DndContext,
@@ -437,6 +438,7 @@ export default function PlanTreePanel(): React.JSX.Element {
   const removePlan = useTreeStore((s) => s.removePlan)
   const openPlan = useWorkspaceTabsStore((s) => s.openPlan)
   const openNameDialog = useUiStore((s) => s.openNameDialog)
+  const setTrashOpen = useUiStore((s) => s.setTrashOpen)
   const { t } = useTranslation()
 
   useEffect(() => {
@@ -625,6 +627,10 @@ export default function PlanTreePanel(): React.JSX.Element {
           </RemovingPathsCtx.Provider>
           </ClosingPathsCtx.Provider>
         </DndContext>
+      </div>
+      <div className="tree-trash-entry">
+        <ActionButton intent="secondary" label={t('trash.title')} icon={<DeleteOutlined />}
+          onClick={() => setTrashOpen(true)} />
       </div>
       <div className="tree-footer">
         <ActionButton intent="secondary" label={t('tree.newPlanBtn')} icon={<PlusOutlined />} onClick={() => openNameDialog({ mode: 'create-plan', targetPath: '', initialName: '' })} />

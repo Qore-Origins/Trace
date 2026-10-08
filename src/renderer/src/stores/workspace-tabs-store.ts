@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 import type { WorkspaceTabsState } from '@shared/workspace-tabs-types'
 import { invoke } from '../ipc-client'
-import { usePlanStore } from './plan-store'
+
+export interface WorkspaceTabPlanActions {
+  flushPlan: () => Promise<boolean>
+  openPlan: (path: string) => Promise<boolean>
+  closePlan: () => void
+  currentPlanPath: () => string | null
+}
 
 export interface WorkspaceTabsPort {
   load: () => Promise<WorkspaceTabsState>
@@ -226,13 +232,19 @@ export function createWorkspaceTabsStore(api: WorkspaceTabsPort) {
   })
 }
 
+let planActions: WorkspaceTabPlanActions | null = null
+
 const workspaceTabsPort: WorkspaceTabsPort = {
   load: () => invoke('workspace-tabs:get'),
   save: async (state) => { await invoke('workspace-tabs:set', { state }) },
-  flushPlan: () => usePlanStore.getState().flush(),
-  openPlan: (path) => usePlanStore.getState().open(path),
-  closePlan: () => usePlanStore.getState().close(),
-  currentPlanPath: () => usePlanStore.getState().currentPath
+  flushPlan: () => planActions?.flushPlan() ?? Promise.resolve(false),
+  openPlan: (path) => planActions?.openPlan(path) ?? Promise.resolve(false),
+  closePlan: () => planActions?.closePlan(),
+  currentPlanPath: () => planActions?.currentPlanPath() ?? null
+}
+
+export function registerWorkspaceTabPlanActions(actions: WorkspaceTabPlanActions | null): void {
+  planActions = actions
 }
 
 export function registerWorkspaceTabSelection(selectPlan: (path: string) => void): void {

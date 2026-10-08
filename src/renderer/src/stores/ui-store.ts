@@ -29,20 +29,24 @@ export interface NameDialog {
 interface UiState {
   nameDialog: NameDialog | null
   settingsOpen: boolean
+  trashOpen: boolean
   view: ViewName
   openNameDialog: (d: NameDialog) => void
   closeNameDialog: () => void
   setSettingsOpen: (open: boolean) => void
+  setTrashOpen: (open: boolean) => void
   setView: (view: ViewName) => void
 }
 
 export const useUiStore = create<UiState>()((set) => ({
   nameDialog: null,
   settingsOpen: false,
+  trashOpen: false,
   view: 'workspace',
   openNameDialog: (d) => set({ nameDialog: d }),
   closeNameDialog: () => set({ nameDialog: null }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setTrashOpen: (open) => set({ trashOpen: open }),
   setView: (view) => set({ view })
 }))
 

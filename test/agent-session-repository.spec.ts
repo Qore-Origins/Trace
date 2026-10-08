@@ -115,5 +115,292 @@ describe('agent session tool transcript persistence', () => {
     orphan.messages.push({ id: randomUUID(), requestId, role: 'tool', toolCallId: 'orphan', content: 'unexpected', status: 'complete', createdAt: timestamp })
     await fs.writeFile(file, JSON.stringify(orphan))
     await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+
+    const arrayRole = structuredClone(base)
+    arrayRole.messages[0].role = ['user']
+    arrayRole.messages[1].toolCalls[0].function.arguments = '{}'
+    await fs.writeFile(file, JSON.stringify(arrayRole))
+    await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+
+    const arrayStatus = structuredClone(base)
+    arrayStatus.messages[0].status = ['complete']
+    arrayStatus.messages[1].toolCalls[0].function.arguments = '{}'
+    await fs.writeFile(file, JSON.stringify(arrayStatus))
+    await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+  })
+
+  it('strictly persists and parses reconciliation-required operation outcomes', async () => {
+    const session = await repository.create({ title: 'Reconciliation audit', profileId })
+    const requestId = randomUUID()
+    const assistantMessageId = randomUUID()
+    const userMessageId = randomUUID()
+    const batchId = randomUUID()
+    const batch = {
+      id: batchId, requestId, assistantMessageId, userMessageId, createdAt: timestamp, updatedAt: timestamp,
+      policyMode: 'confirm', status: 'reconciliation-required', confirmationSource: 'user', requiredConfirmation: true,
+      operations: [{
+        callId: 'audit_uncertain_call', operation: 'component.update', status: 'outcome-unknown',
+        libraryId: 'a'.repeat(32), rootHash: 'b'.repeat(64), rootGeneration: 0, changes: [],
+        requiredConfirmation: true, confirmationSource: 'user', reversible: true, undoStatus: 'unavailable', errorCategory: 'storage',
+        reconciliationReason: 'success-audit-persistence-failed', createdAt: timestamp, completedAt: timestamp
+      }]
+    }
+    await repository.mutate(session.id, (current) => {
+      current.operationBatches.push(batch as unknown as typeof current.operationBatches[number])
+    })
+    await expect(new AgentSessionRepository(directory).read(session.id)).resolves.toMatchObject({
+      operationBatches: [{ status: 'reconciliation-required', operations: [{
+        status: 'outcome-unknown', reconciliationReason: 'success-audit-persistence-failed'
+      }] }]
+    })
+
+    const file = join(directory, 'agent-sessions', `${session.id}.json`)
+    const persisted = JSON.parse(await fs.readFile(file, 'utf8')) as { operationBatches: Array<Record<string, unknown>> }
+    const postSideEffectOutcome = structuredClone(persisted)
+    const postSideEffectOperations = postSideEffectOutcome.operationBatches[0].operations as Array<Record<string, unknown>>
+    postSideEffectOperations[0].reconciliationReason = 'post-side-effect-verification-failed'
+    await fs.writeFile(file, JSON.stringify(postSideEffectOutcome))
+    await expect(new AgentSessionRepository(directory).read(session.id)).resolves.toMatchObject({
+      operationBatches: [{ status: 'reconciliation-required', operations: [{ reconciliationReason: 'post-side-effect-verification-failed' }] }]
+    })
+
+    persisted.operationBatches[0].operations = [{
+      ...(persisted.operationBatches[0].operations as Array<Record<string, unknown>>)[0],
+      reconciliationReason: 'absolute-path-or-private-content'
+    }]
+    await fs.writeFile(file, JSON.stringify(persisted))
+    await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+  })
+
+  it('rejects malformed operation lifecycle enums, attempt lineage, and undo availability', async () => {
+    const session = await repository.create({ title: 'Invalid operation lifecycle', profileId })
+    const requestId = randomUUID()
+    const batchId = randomUUID()
+    const operationBatch = {
+      id: batchId, requestId, assistantMessageId: randomUUID(), userMessageId: randomUUID(),
+      createdAt: timestamp, updatedAt: timestamp, policyMode: 'confirm', status: 'execution-failed',
+      confirmationSource: 'user', requiredConfirmation: true,
+      operations: [{
+        callId: 'failed_operation', operation: 'plan.create', status: 'failed', libraryId: 'a'.repeat(32),
+        rootHash: 'b'.repeat(64), rootGeneration: 0, changes: [], requiredConfirmation: true,
+        confirmationSource: 'user', reversible: true, undoStatus: 'unavailable', errorCategory: 'storage',
+        createdAt: timestamp, completedAt: timestamp
+      }]
+    }
+    await repository.mutate(session.id, (current) => {
+      current.operationBatches.push(operationBatch as unknown as typeof current.operationBatches[number])
+    })
+    const file = join(directory, 'agent-sessions', `${session.id}.json`)
+    const valid = JSON.parse(await fs.readFile(file, 'utf8')) as {
+      operationBatches: Array<Record<string, unknown> & { operations: Array<Record<string, unknown>> }>
+    }
+
+    const invalidRecords: Array<(record: typeof valid) => void> = [
+      (record) => { record.operationBatches[0].policyMode = ['confirm'] },
+      (record) => { record.operationBatches[0].status = ['execution-failed'] },
+      (record) => { record.operationBatches[0].operations[0].status = ['failed'] },
+      (record) => { record.operationBatches[0].attemptOf = randomUUID() },
+      (record) => { record.operationBatches[0].attemptKind = 'retry' },
+      (record) => { record.operationBatches[0].operations[0].undoStatus = 'available' },
+      (record) => {
+        record.operationBatches[0].status = 'reconciliation-required'
+      },
+      (record) => {
+        record.operationBatches[0].status = 'completed'
+        record.operationBatches[0].operations[0].status = 'outcome-unknown'
+        record.operationBatches[0].operations[0].reconciliationReason = 'success-audit-persistence-failed'
+      },
+      (record) => {
+        const batch = record.operationBatches[0]
+        const unknown = batch.operations[0]
+        batch.status = 'reconciliation-required'
+        unknown.status = 'outcome-unknown'
+        unknown.errorCategory = 'storage'
+        unknown.undoStatus = 'unavailable'
+        unknown.reconciliationReason = 'post-side-effect-verification-failed'
+        delete unknown.completedAt
+      },
+      (record) => {
+        const batch = record.operationBatches[0]
+        const unknown = batch.operations[0]
+        batch.status = 'reconciliation-required'
+        unknown.status = 'outcome-unknown'
+        unknown.errorCategory = 'storage'
+        unknown.undoStatus = 'unavailable'
+        unknown.reconciliationReason = 'post-side-effect-verification-failed'
+        unknown.completedAt = timestamp
+        unknown.resolvedByAttempt = randomUUID()
+      },
+      (record) => {
+        const batch = record.operationBatches[0]
+        const unknown = batch.operations[0]
+        batch.status = 'reconciliation-required'
+        unknown.status = 'outcome-unknown'
+        unknown.errorCategory = 'storage'
+        unknown.undoStatus = 'unavailable'
+        unknown.reconciliationReason = 'post-side-effect-verification-failed'
+        unknown.completedAt = timestamp
+        batch.operations.push({ ...unknown, callId: 'ready_after_unknown', status: 'ready', reconciliationReason: undefined,
+          errorCategory: undefined, completedAt: undefined })
+      },
+      (record) => {
+        const batch = record.operationBatches[0]
+        const unknown = batch.operations[0]
+        batch.status = 'execution-failed'
+        unknown.status = 'outcome-unknown'
+        unknown.errorCategory = 'storage'
+        unknown.undoStatus = 'unavailable'
+        unknown.reconciliationReason = 'post-side-effect-verification-failed'
+        unknown.completedAt = timestamp
+        batch.operations.push({ ...unknown, callId: 'second_unknown_outcome' })
+      },
+      (record) => {
+        const batch = record.operationBatches[0]
+        const operation = batch.operations[0]
+        batch.status = 'pending-confirmation'
+        operation.status = 'succeeded'
+        operation.undoStatus = 'available'
+        delete operation.errorCategory
+      },
+      (record) => {
+        const batch = record.operationBatches[0]
+        const operation = batch.operations[0]
+        batch.status = 'completed'
+        operation.status = 'ready'
+        operation.undoStatus = 'unavailable'
+        delete operation.errorCategory
+        delete operation.completedAt
+      },
+      (record) => {
+        const batch = record.operationBatches[0]
+        const operation = batch.operations[0]
+        batch.status = 'execution-failed'
+        operation.status = 'succeeded'
+        operation.undoStatus = 'available'
+        delete operation.errorCategory
+      },
+      (record) => {
+        const batch = record.operationBatches[0]
+        batch.attemptOf = batch.id
+        batch.attemptKind = 'retry'
+      },
+      (record) => {
+        record.operationBatches[0].attemptOf = randomUUID()
+        record.operationBatches[0].attemptKind = 'retry'
+      }
+    ]
+
+    for (const mutateRecord of invalidRecords) {
+      const invalid = structuredClone(valid)
+      mutateRecord(invalid)
+      await fs.writeFile(file, JSON.stringify(invalid))
+      await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+    }
+  })
+
+  it('rejects cyclic and future operation attempt ancestors', async () => {
+    const session = await repository.create({ title: 'Invalid attempt ancestry', profileId })
+    const requestId = randomUUID()
+    const rootId = randomUUID()
+    const childId = randomUUID()
+    const makeBatch = (id: string, attemptOf?: string) => ({
+      id, requestId, assistantMessageId: randomUUID(), userMessageId: randomUUID(),
+      createdAt: timestamp, updatedAt: timestamp, policyMode: 'confirm', status: 'execution-failed',
+      confirmationSource: 'user', requiredConfirmation: true,
+      ...(attemptOf ? { attemptOf, attemptKind: 'retry' } : {}),
+      operations: [{
+        callId: 'ancestry_call', operation: 'plan.create', status: 'failed', libraryId: 'a'.repeat(32),
+        rootHash: 'b'.repeat(64), rootGeneration: 0, changes: [], requiredConfirmation: true,
+        confirmationSource: 'user', reversible: true, undoStatus: 'unavailable', errorCategory: 'storage',
+        createdAt: timestamp, completedAt: timestamp
+      }]
+    })
+    const file = join(directory, 'agent-sessions', `${session.id}.json`)
+    await repository.mutate(session.id, (current) => {
+      current.operationBatches.push(makeBatch(rootId) as unknown as typeof current.operationBatches[number])
+    })
+    const valid = JSON.parse(await fs.readFile(file, 'utf8')) as {
+      operationBatches: Array<Record<string, unknown>>
+    }
+
+    const futureParent = structuredClone(valid)
+    futureParent.operationBatches = [makeBatch(childId, rootId), makeBatch(rootId)]
+    await fs.writeFile(file, JSON.stringify(futureParent))
+    await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+
+    const cycle = structuredClone(valid)
+    cycle.operationBatches = [makeBatch(rootId, childId), makeBatch(childId, rootId)]
+    await fs.writeFile(file, JSON.stringify(cycle))
+    await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+  })
+
+  it('marks the first possibly executed operation for manual verification after a crash', async () => {
+    const session = await repository.create({ title: 'Executing crash prefix', profileId })
+    const requestId = randomUUID()
+    const batch = {
+      id: randomUUID(), requestId, assistantMessageId: randomUUID(), userMessageId: randomUUID(),
+      createdAt: timestamp, updatedAt: timestamp, policyMode: 'confirm', status: 'executing',
+      confirmationSource: 'user', requiredConfirmation: true,
+      operations: [
+        {
+          callId: 'completed_prefix', operation: 'plan.create', status: 'succeeded', libraryId: 'a'.repeat(32),
+          rootHash: 'b'.repeat(64), rootGeneration: 0, changes: [], requiredConfirmation: true,
+          confirmationSource: 'user', reversible: true, undoStatus: 'available', createdAt: timestamp, completedAt: timestamp
+        },
+        {
+          callId: 'pending_suffix', operation: 'folder.create', status: 'ready', libraryId: 'a'.repeat(32),
+          rootHash: 'b'.repeat(64), rootGeneration: 0, changes: [], requiredConfirmation: true,
+          confirmationSource: 'none', reversible: true, undoStatus: 'unavailable', createdAt: timestamp
+        },
+        {
+          callId: 'untouched_suffix', operation: 'folder.create', status: 'ready', libraryId: 'a'.repeat(32),
+          rootHash: 'b'.repeat(64), rootGeneration: 0, changes: [], requiredConfirmation: true,
+          confirmationSource: 'none', reversible: true, undoStatus: 'unavailable', createdAt: timestamp
+        }
+      ]
+    }
+    await repository.mutate(session.id, (current) => {
+      current.operationBatches.push(batch as unknown as typeof current.operationBatches[number])
+    })
+
+    const reloaded = await new AgentSessionRepository(directory).read(session.id)
+    expect(reloaded.operationBatches).toMatchObject([{
+      status: 'reconciliation-required', operations: [
+        { status: 'succeeded' },
+        { status: 'outcome-unknown', reconciliationReason: 'process-interrupted', errorCategory: 'storage', undoStatus: 'unavailable' },
+        { status: 'not-executed', confirmationSource: 'none' }
+      ]
+    }])
+    expect(reloaded.operationBatches[0].operations[1].completedAt).toBeDefined()
+
+    const persisted = JSON.parse(await fs.readFile(join(directory, 'agent-sessions', `${session.id}.json`), 'utf8')) as {
+      operationBatches: Array<{ status: string; operations: Array<{ status: string }> }>
+    }
+    expect(persisted.operationBatches[0]).toMatchObject({
+      status: 'reconciliation-required', operations: [{ status: 'succeeded' }, { status: 'outcome-unknown' }, { status: 'not-executed' }]
+    })
+    const revision = reloaded.revision
+    await expect(new AgentSessionRepository(directory).read(session.id)).resolves.toMatchObject({ revision })
+  })
+
+  it('moves a fully audited executing batch to outbound preview after a crash', async () => {
+    const session = await repository.create({ title: 'Fully audited batch', profileId })
+    const batch = {
+      id: randomUUID(), requestId: randomUUID(), assistantMessageId: randomUUID(), userMessageId: randomUUID(),
+      createdAt: timestamp, updatedAt: timestamp, policyMode: 'confirm', status: 'executing',
+      confirmationSource: 'user', requiredConfirmation: true,
+      operations: [{
+        callId: 'fully_audited', operation: 'plan.create', status: 'succeeded', libraryId: 'a'.repeat(32),
+        rootHash: 'b'.repeat(64), rootGeneration: 0, changes: [], requiredConfirmation: true,
+        confirmationSource: 'user', reversible: true, undoStatus: 'available', createdAt: timestamp, completedAt: timestamp
+      }]
+    }
+    await repository.mutate(session.id, (current) => {
+      current.operationBatches.push(batch as unknown as typeof current.operationBatches[number])
+    })
+
+    await expect(new AgentSessionRepository(directory).read(session.id)).resolves.toMatchObject({
+      operationBatches: [{ status: 'awaiting-outbound-preview', operations: [{ status: 'succeeded' }] }]
+    })
   })
 })

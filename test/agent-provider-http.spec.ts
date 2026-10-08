@@ -61,6 +61,19 @@ describe('OpenAI Chat Completions HTTP stream', () => {
     expect(body).toEqual({ model: 'synthetic-model', messages, stream: true, tools, tool_choice: 'auto' })
   })
 
+  it('accepts the specification maximum string argument length and rejects larger schemas', () => {
+    const messages = [{ role: 'user' as const, content: 'Use the bounded field.' }]
+    const tool = (maxLength: number) => ({ type: 'function' as const, function: {
+      name: 'component.add', description: 'Add a component.', parameters: {
+        type: 'object', properties: { text: { type: 'string', maxLength } }, additionalProperties: false
+      }
+    } })
+
+    expect(() => serializeAgentChatRequest('synthetic-model', messages, { tools: [tool(20_000)], toolChoice: 'auto' })).not.toThrow()
+    expect(() => serializeAgentChatRequest('synthetic-model', messages, { tools: [tool(20_001)], toolChoice: 'auto' }))
+      .toThrowError(expect.objectContaining({ category: 'validation' }))
+  })
+
   it('preserves assistant tool-call and matching tool-result message semantics', () => {
     const messages = [
       { role: 'assistant' as const, content: null, tool_calls: [{ id: 'call_1', type: 'function' as const, function: { name: 'plan.read', arguments: '{"ref":"abc"}' } }] },
@@ -68,6 +81,44 @@ describe('OpenAI Chat Completions HTTP stream', () => {
       { role: 'user' as const, content: 'Continue.' }
     ]
     expect(JSON.parse(serializeAgentChatRequest('synthetic-model', messages))).toMatchObject({ messages })
+  })
+
+  it('accepts a nullable mood score tool argument but rejects unrelated types', async () => {
+    const tool = { type: 'function' as const, function: {
+      name: 'component.add', description: 'Add a mood component.', parameters: {
+        type: 'object', properties: { score: { type: ['number', 'null'], minimum: 0, maximum: 100 } },
+        required: ['score'], additionalProperties: false
+      }
+    } }
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_mood', type: 'function', function: { name: 'component.add', arguments: '{"score":null}' } }] } }] }) +
+        chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + 'data: [DONE]\n\n')
+    })
+    const result = await streamChatCompletion(input(endpoint), { tools: [tool], toolChoice: 'auto' })
+    expect(result.toolCalls).toEqual([{ id: 'call_mood', name: 'component.add', arguments: { score: null } }])
+
+    const invalidEndpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_mood', type: 'function', function: { name: 'component.add', arguments: '{"score":"none"}' } }] } }] }) +
+        chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + 'data: [DONE]\n\n')
+    })
+    await expect(streamChatCompletion(input(invalidEndpoint), { tools: [tool], toolChoice: 'auto' }))
+      .rejects.toMatchObject({ category: 'protocol' })
+
+    const invalidSchemas = [
+      { type: ['string', 'null'] },
+      { type: ['number', 'null', 'boolean'] },
+      { type: 'number', anyOf: [{ type: 'null' }] }
+    ]
+    for (const scoreSchema of invalidSchemas) {
+      const invalidTool = { ...tool, function: { ...tool.function, parameters: {
+        type: 'object', properties: { score: scoreSchema }, required: ['score'], additionalProperties: false
+      } } }
+      expect(() => serializeAgentChatRequest('synthetic-model', [{ role: 'user', content: 'test' }], {
+        tools: [invalidTool], toolChoice: 'auto'
+      })).toThrowError(expect.objectContaining({ category: 'validation' }))
+    }
   })
 
   it.each([

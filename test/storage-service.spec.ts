@@ -55,6 +55,21 @@ describe('createPlan / treeGetChildren', () => {
     await service.createPlan('', 'A')
     await expect(service.createPlan('', 'A')).rejects.toMatchObject({ code: ERR.NAME_CONFLICT })
   })
+  it('plan.json 在新建目录后出现时不覆盖外部内容', async () => {
+    const writePlanAtomic = repository.writePlanAtomic.bind(repository)
+    const replacement = { marker: 'external plan file must be preserved' }
+    vi.spyOn(repository, 'writePlanAtomic').mockImplementationOnce(async (
+      rootAbs, relativePath, document, mutationGuard, targetMustNotExist
+    ) => {
+      await fs.writeFile(join(root, relativePath, 'plan.json'), JSON.stringify(replacement))
+      return writePlanAtomic(rootAbs, relativePath, document, mutationGuard, targetMustNotExist)
+    })
+
+    await expect(service.createPlan('', 'NoOverwrite')).rejects.toBeInstanceOf(Error)
+
+    await expect(fs.readFile(join(root, 'NoOverwrite', 'plan.json'), 'utf8'))
+      .resolves.toBe(JSON.stringify(replacement))
+  })
   it('初始 plan.json 写入失败后清理新目录，允许同名重试并保留原始错误', async () => {
     const repo = new PlanRepository()
     await repo.ensureLibraryRoot(root)
@@ -222,6 +237,26 @@ describe('renamePlan / deletePlan', () => {
       components: [expect.objectContaining({ payload: { content: 'preserved child' } })]
     })
   })
+  it('reads one trash entry by ID without enumerating all entries', async () => {
+    const plan = await service.createPlan('', 'Exact trash item')
+    const entry = await service.trashPlan(plan.path)
+    vi.spyOn(service, 'listTrashEntries').mockRejectedValue(new Error('full trash enumeration must not run'))
+
+    await expect(service.readTrashEntry(entry.id)).resolves.toMatchObject({
+      id: entry.id, name: 'Exact trash item', original_relative_path: 'Exact trash item', status: 'trashed'
+    })
+  })
+  it('peeks at the exact validated purge summary without consuming its token', async () => {
+    const plan = await service.createPlan('', 'Purge confirmation snapshot')
+    const entry = await service.trashPlan(plan.path)
+    const preview = await service.previewTrashPurge(entry.id)
+
+    await expect(service.getTrashPurgeConfirmationSnapshot(preview.confirmation_token)).resolves.toMatchObject({
+      entry_id: entry.id, kind: 'plan', name: 'Purge confirmation snapshot',
+      original_relative_path: 'Purge confirmation snapshot', plan_count: 1, reference_count: 0, status: 'trashed'
+    })
+    await expect(service.commitTrashPurge(preview.confirmation_token)).resolves.toHaveProperty('changed_plan_ids')
+  })
   it('invalidates tree cache and notifies search/reference consumers only after trash and restore commit', async () => {
     await service.createPlan('', 'CacheTarget')
     const before = await service.readPlan('CacheTarget')
@@ -356,6 +391,53 @@ describe('movePlan through the reference commit queue', () => {
 })
 
 describe('savePlan CAS', () => {
+  it('retains the original CAS version after one precommit EPERM and saves the same draft on retry', async () => {
+    const target = join(root, 'Retryable', 'plan.json')
+    let failNextWrite = false
+    let replacementAttempts = 0
+    const retryableRepo = new PlanRepository({
+      renameRetryBackoffs: [], // 失败路径契约验证：禁用重试以保留单次 EPERM 注入（韧性重试另行覆盖）
+      renameFn: async (from, to) => {
+        if (to === target) {
+          replacementAttempts += 1
+          if (failNextWrite) {
+            failNextWrite = false
+            throw Object.assign(new Error('injected precommit rename denial'), { code: 'EPERM' })
+          }
+        }
+        await fs.rename(from, to)
+      }
+    })
+    const retryableService = new StorageService(retryableRepo)
+    retryableService.setRoot(root)
+    await retryableService.createPlan('', 'Retryable')
+    const draft = await retryableService.readPlan('Retryable')
+    const originalVersion = draft.updated_at
+    const originalBytes = await fs.readFile(target)
+    const draftComponent = { id: 'draft', type: 'note' as const, payload: { content: 'retained unsaved content' } }
+    draft.components.push(draftComponent)
+    failNextWrite = true
+
+    await expect(retryableService.savePlan('Retryable', draft, originalVersion))
+      .rejects.toMatchObject({ code: ERR.SAVE_FAILED })
+
+    expect(replacementAttempts).toBe(1)
+    expect(await fs.readFile(target)).toEqual(originalBytes)
+    expect((await retryableService.readPlan('Retryable')).updated_at).toBe(originalVersion)
+    expect(draft.updated_at).toBe(originalVersion)
+    expect(draft.components).toEqual([draftComponent])
+    expect(await fs.readdir(join(root, 'Retryable'))).toEqual(['plan.json'])
+
+    const result = await retryableService.savePlan('Retryable', draft, originalVersion)
+
+    expect(replacementAttempts).toBe(2)
+    const saved = await retryableService.readPlan('Retryable')
+    expect(saved).toEqual(draft)
+    expect(result.updated_at).toBe(saved.updated_at)
+    expect(Date.parse(saved.updated_at)).toBeGreaterThan(Date.parse(originalVersion))
+    expect(await fs.readdir(join(root, 'Retryable'))).toEqual(['plan.json'])
+  })
+
   it('notifies only the prior and resulting stable target IDs for document saves', async () => {
     await service.createPlan('', 'Target')
     const document = await service.readPlan('Target')

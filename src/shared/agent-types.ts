@@ -118,6 +118,124 @@ export interface AgentRequestProvenance {
   toolRounds?: number
   toolCallCount?: number
 }
+
+export type AgentOperationBatchStatus =
+  | 'preflight-failed' | 'pending-confirmation' | 'executing'
+  | 'awaiting-outbound-preview' | 'completed' | 'execution-failed' | 'reconciliation-required' | 'cancelled'
+export type AgentOperationItemStatus = 'ready' | 'succeeded' | 'failed' | 'outcome-unknown' | 'not-executed' | 'cancelled'
+export type AgentOperationConfirmationSource = 'user' | 'policy' | 'none'
+export type AgentOperationErrorCategory = 'validation' | 'authorization' | 'conflict' | 'not-found' | 'name-conflict' | 'storage' | 'internal'
+export type AgentOperationAttemptKind = 'retry' | 'continue' | 'undo'
+export interface AgentOperationValueChange {
+  field: string
+  before: string | null
+  after: string | null
+}
+export interface AgentOperationAuditItem {
+  callId: string
+  operation: string
+  status: AgentOperationItemStatus
+  targetKind?: 'plan' | 'folder' | 'trash'
+  targetPath?: string
+  targetStableId?: string
+  targetDirectoryIdentity?: string
+  targetPlanId?: string
+  trashEntryId?: string
+  componentId?: string
+  libraryId: string
+  rootHash: string
+  rootGeneration: number
+  beforeUpdatedAt?: string
+  afterUpdatedAt?: string
+  changes: AgentOperationValueChange[]
+  requiredConfirmation: boolean
+  confirmationSource: AgentOperationConfirmationSource
+  reversible: boolean
+  undoStatus: 'unavailable' | 'available' | 'undone' | 'stale'
+  reconciliationReason?: 'success-audit-persistence-failed' | 'post-side-effect-verification-failed' | 'process-interrupted'
+  errorCategory?: AgentOperationErrorCategory
+  resolvedByAttempt?: string
+  createdAt: string
+  completedAt?: string
+}
+export interface AgentOperationBatchAudit {
+  id: string
+  requestId: string
+  assistantMessageId: string
+  userMessageId: string
+  createdAt: string
+  updatedAt: string
+  policyMode: AgentPermissionMode
+  attemptOf?: string
+  attemptKind?: AgentOperationAttemptKind
+  status: AgentOperationBatchStatus
+  confirmationSource: AgentOperationConfirmationSource
+  requiredConfirmation: boolean
+  operations: AgentOperationAuditItem[]
+}
+export interface AgentOperationReferencePreviewItem {
+  callId: string
+  sourcePath: string
+  sourceComponentId: string
+  mode: 'link' | 'embed'
+  targetNameSnapshot: string
+  allowedActions: Array<'update' | 'keep' | 'replace'>
+}
+export interface AgentOperationSubtreePreviewEntry {
+  relativePath: string
+  kind: 'folder' | 'plan'
+  planId?: string
+}
+export interface AgentOperationAffectedSubtreePreview {
+  callId: string
+  targetPath: string
+  entries: AgentOperationSubtreePreviewEntry[]
+}
+export interface AgentOperationTrashPreviewItem {
+  callId: string
+  operation: 'restore' | 'purge'
+  entryId: string
+  name: string
+  originalRelativePath: string
+  restoreRelativePath: string | null
+  planCount: number
+  referenceCount: number
+}
+export interface AgentOperationConfirmationPreview {
+  references: AgentOperationReferencePreviewItem[]
+  affectedSubtrees?: AgentOperationAffectedSubtreePreview[]
+  trashOperations?: AgentOperationTrashPreviewItem[]
+}
+export interface AgentOperationBatch extends AgentOperationBatchAudit {
+  confirmationPreview?: AgentOperationConfirmationPreview
+}
+export interface AgentOperationBatchReadInput { sessionId: string; batchId: string }
+export interface AgentOperationDecision {
+  callId: string
+  renameAction?: 'update' | 'keep'
+  referenceDecisions?: Array<{
+    sourcePath: string
+    sourceComponentId: string
+    action: 'keep' | 'replace'
+    replacement?: { path: string; componentId?: string }
+  }>
+  strongConfirmation?: boolean
+}
+export interface AgentOperationBatchConfirmInput {
+  sessionId: string
+  batchId: string
+  decisions?: AgentOperationDecision[]
+}
+export interface AgentOperationBatchCancelInput { sessionId: string; batchId: string }
+export interface AgentOperationResumeInput { sessionId: string; batchId: string; callIds: string[] }
+export interface AgentOperationUndoInput { sessionId: string; batchId: string; callId: string }
+export interface AgentContinuationPreviewInput { sessionId: string; batchId: string }
+export interface AgentOperationEvent {
+  sessionId: string
+  requestId: string
+  batchId: string
+  status: AgentOperationBatchStatus
+}
 export interface AgentSession {
   id: string
   title: string
@@ -127,8 +245,9 @@ export interface AgentSession {
   revision: number
   messages: AgentMessage[]
   requests: AgentRequestProvenance[]
+  operationBatches: AgentOperationBatchAudit[]
 }
-export type AgentSessionSummary = Omit<AgentSession, 'messages' | 'requests'>
+export type AgentSessionSummary = Omit<AgentSession, 'messages' | 'requests' | 'operationBatches'>
 export interface AgentSessionInput { title: string; profileId: string }
 export interface AgentPreviewInput {
   sessionId: string

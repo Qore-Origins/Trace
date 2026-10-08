@@ -1,14 +1,18 @@
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentContextSource, type AgentMessage, type AgentRequestProvenance, type AgentSession, type AgentSessionInput, type AgentSessionSummary } from '../../shared/agent-types'
+import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentContextSource, type AgentMessage, type AgentOperationBatchAudit, type AgentRequestProvenance, type AgentSession, type AgentSessionInput, type AgentSessionSummary } from '../../shared/agent-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { assertRealPathWithinRoot } from './path-safety'
 
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 export const AGENT_MAX_MESSAGE_LENGTH = 256 * 1024
+export const AGENT_MAX_AUDIT_FIELD_BYTES = 50_000
 const MAX_SESSION_FILE_BYTES = 16 * 1024 * 1024
 const MAX_SESSION_TITLE_LENGTH = 120
+const MAX_SESSION_OPERATION_BATCHES = 2048
+const MAX_OPERATION_TARGET_RELATIVE_PATH_LENGTH = 4096
+const MAX_OPERATION_AUDIT_CHANGES_PER_ITEM = 64
 
 export function assertAgentSessionId(value: unknown): asserts value is string {
   if (typeof value !== 'string' || !ID_PATTERN.test(value)) throw new TraceError(ERR.VALIDATION, '会话标识无效')
@@ -44,6 +48,202 @@ function toolCalls(value: unknown): AgentChatToolCall[] {
   if (new Set(calls.map((item) => item.id)).size !== calls.length) throw new Error('duplicate tool call identifiers')
   return calls
 }
+function operationBatches(value: unknown): AgentOperationBatchAudit[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > MAX_SESSION_OPERATION_BATCHES) throw new Error('invalid operation batches')
+  const confirmationSources = new Set(['user', 'policy', 'none'])
+  const batchStatuses = new Set(['preflight-failed', 'pending-confirmation', 'executing', 'awaiting-outbound-preview', 'completed', 'execution-failed', 'reconciliation-required', 'cancelled'])
+  const itemStatuses = new Set(['ready', 'succeeded', 'failed', 'outcome-unknown', 'not-executed', 'cancelled'])
+  const errorCategories = new Set(['validation', 'authorization', 'conflict', 'not-found', 'name-conflict', 'storage', 'internal'])
+  const policyModes = new Set(['confirm', 'restricted', 'unrestricted'])
+  const attemptKinds = new Set(['retry', 'continue', 'undo'])
+  const undoStatuses = new Set(['unavailable', 'available', 'undone', 'stale'])
+  const reconciliationReasons = new Set(['success-audit-persistence-failed', 'post-side-effect-verification-failed', 'process-interrupted'])
+  const targetKinds = new Set(['plan', 'folder', 'trash'])
+  const safeRelativePath = (path: unknown): path is string => typeof path === 'string' && path.length > 0 && path.length <= MAX_OPERATION_TARGET_RELATIVE_PATH_LENGTH &&
+    !path.startsWith('/') && !path.startsWith('\\') && !/^[A-Za-z]:/.test(path) && !path.includes('\\') &&
+    path.split('/').every((part) => part !== '' && part !== '.' && part !== '..')
+  const batches = value.map((candidate: unknown): AgentOperationBatchAudit => {
+    if (!agentRecord(candidate) || typeof candidate.id !== 'string' || typeof candidate.requestId !== 'string' ||
+      typeof candidate.assistantMessageId !== 'string' || typeof candidate.userMessageId !== 'string' ||
+      typeof candidate.policyMode !== 'string' || !policyModes.has(candidate.policyMode) ||
+      typeof candidate.status !== 'string' || !batchStatuses.has(candidate.status) ||
+      typeof candidate.confirmationSource !== 'string' || !confirmationSources.has(candidate.confirmationSource) ||
+      typeof candidate.requiredConfirmation !== 'boolean' ||
+      (candidate.attemptOf !== undefined && typeof candidate.attemptOf !== 'string') ||
+      (candidate.attemptKind !== undefined && (typeof candidate.attemptKind !== 'string' || !attemptKinds.has(candidate.attemptKind))) ||
+      ((candidate.attemptOf === undefined) !== (candidate.attemptKind === undefined)) ||
+      !Array.isArray(candidate.operations) ||
+      candidate.operations.length < 1 || candidate.operations.length > AGENT_MAX_TOOL_CALLS_PER_REQUEST) throw new Error('invalid operation batch')
+    assertAgentSessionId(candidate.id); assertAgentSessionId(candidate.requestId)
+    assertAgentSessionId(candidate.assistantMessageId); assertAgentSessionId(candidate.userMessageId)
+    if (candidate.attemptOf !== undefined) assertAgentSessionId(candidate.attemptOf)
+    const createdAt = timestamp(candidate.createdAt), updatedAt = timestamp(candidate.updatedAt)
+    const operations = candidate.operations.map((entry: unknown) => {
+      if (!agentRecord(entry) || typeof entry.callId !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(entry.callId) ||
+        typeof entry.operation !== 'string' || !/^[a-z_]+(?:\.[a-z_]+)?$/.test(entry.operation) ||
+        typeof entry.status !== 'string' || !itemStatuses.has(entry.status) || typeof entry.libraryId !== 'string' || !/^[0-9a-f]{32}$/.test(entry.libraryId) ||
+        typeof entry.rootHash !== 'string' || !/^[0-9a-f]{64}$/.test(entry.rootHash) ||
+        !Number.isSafeInteger(entry.rootGeneration) || Number(entry.rootGeneration) < 0 ||
+        typeof entry.requiredConfirmation !== 'boolean' || typeof entry.confirmationSource !== 'string' || !confirmationSources.has(entry.confirmationSource) ||
+        typeof entry.reversible !== 'boolean' || typeof entry.undoStatus !== 'string' || !undoStatuses.has(entry.undoStatus) ||
+        !Array.isArray(entry.changes) || entry.changes.length > MAX_OPERATION_AUDIT_CHANGES_PER_ITEM) throw new Error('invalid operation item')
+      if (entry.targetKind !== undefined && (typeof entry.targetKind !== 'string' || !targetKinds.has(entry.targetKind))) throw new Error('invalid operation target kind')
+      if (entry.targetPath !== undefined && !safeRelativePath(entry.targetPath)) throw new Error('invalid operation target path')
+      if (entry.targetStableId !== undefined && (typeof entry.targetStableId !== 'string' || entry.targetStableId.length > 128 ||
+        /^[A-Za-z]:[\\/]/.test(entry.targetStableId) || entry.targetStableId.includes('\\'))) throw new Error('invalid operation stable identity')
+      if (entry.targetDirectoryIdentity !== undefined && (typeof entry.targetDirectoryIdentity !== 'string' ||
+        entry.targetDirectoryIdentity.length > 128 || !/^\d+:\d+:\d+$/.test(entry.targetDirectoryIdentity))) throw new Error('invalid operation directory identity')
+      if (entry.targetPlanId !== undefined && (typeof entry.targetPlanId !== 'string' || !/^[0-9a-f]{32}$/.test(entry.targetPlanId))) throw new Error('invalid operation plan identity')
+      if (entry.trashEntryId !== undefined && (typeof entry.trashEntryId !== 'string' || !/^[0-9a-f]{32}$/.test(entry.trashEntryId))) throw new Error('invalid operation trash identity')
+      if (entry.componentId !== undefined && (typeof entry.componentId !== 'string' || !/^[0-9a-f]{32}$/.test(entry.componentId))) throw new Error('invalid operation component identity')
+      if (entry.beforeUpdatedAt !== undefined) timestamp(entry.beforeUpdatedAt)
+      if (entry.afterUpdatedAt !== undefined) timestamp(entry.afterUpdatedAt)
+      if (entry.errorCategory !== undefined && (typeof entry.errorCategory !== 'string' || !errorCategories.has(entry.errorCategory))) throw new Error('invalid operation error category')
+      if (entry.reconciliationReason !== undefined && (typeof entry.reconciliationReason !== 'string' || !reconciliationReasons.has(entry.reconciliationReason))) throw new Error('invalid reconciliation reason')
+      if (entry.status !== 'succeeded' && entry.undoStatus === 'available') throw new Error('non-succeeded operation has undo available')
+      if (entry.resolvedByAttempt !== undefined) assertAgentSessionId(entry.resolvedByAttempt)
+      const itemCreatedAt = timestamp(entry.createdAt)
+      const completedAt = entry.completedAt === undefined ? undefined : timestamp(entry.completedAt)
+      const changes = entry.changes.map((change: unknown) => {
+        if (!agentRecord(change) || typeof change.field !== 'string' || !/^[a-z_][a-z0-9_.-]{0,127}$/.test(change.field) ||
+          (change.before !== null && typeof change.before !== 'string') || (change.after !== null && typeof change.after !== 'string') ||
+          (typeof change.before === 'string' && Buffer.byteLength(change.before) > AGENT_MAX_AUDIT_FIELD_BYTES) ||
+          (typeof change.after === 'string' && Buffer.byteLength(change.after) > AGENT_MAX_AUDIT_FIELD_BYTES)) throw new Error('invalid operation diff')
+        return { field: change.field, before: change.before as string | null, after: change.after as string | null }
+      })
+      return {
+        callId: entry.callId, operation: entry.operation, status: entry.status as AgentOperationBatchAudit['operations'][number]['status'],
+        ...(entry.targetKind !== undefined ? { targetKind: entry.targetKind as AgentOperationBatchAudit['operations'][number]['targetKind'] } : {}),
+        ...(entry.targetPath !== undefined ? { targetPath: entry.targetPath } : {}),
+        ...(entry.targetStableId !== undefined ? { targetStableId: entry.targetStableId } : {}),
+        ...(entry.targetDirectoryIdentity !== undefined ? { targetDirectoryIdentity: entry.targetDirectoryIdentity } : {}),
+        ...(entry.targetPlanId !== undefined ? { targetPlanId: entry.targetPlanId } : {}),
+        ...(entry.trashEntryId !== undefined ? { trashEntryId: entry.trashEntryId } : {}),
+        ...(entry.componentId !== undefined ? { componentId: entry.componentId } : {}),
+        libraryId: entry.libraryId, rootHash: entry.rootHash, rootGeneration: Number(entry.rootGeneration),
+        ...(entry.beforeUpdatedAt !== undefined ? { beforeUpdatedAt: entry.beforeUpdatedAt as string } : {}),
+        ...(entry.afterUpdatedAt !== undefined ? { afterUpdatedAt: entry.afterUpdatedAt as string } : {}),
+        changes, requiredConfirmation: entry.requiredConfirmation, confirmationSource: entry.confirmationSource as AgentOperationBatchAudit['confirmationSource'],
+        reversible: entry.reversible, undoStatus: entry.undoStatus as AgentOperationBatchAudit['operations'][number]['undoStatus'],
+        ...(entry.reconciliationReason !== undefined ? { reconciliationReason: entry.reconciliationReason as AgentOperationBatchAudit['operations'][number]['reconciliationReason'] } : {}),
+        ...(entry.errorCategory !== undefined ? { errorCategory: entry.errorCategory as AgentOperationBatchAudit['operations'][number]['errorCategory'] } : {}),
+        ...(entry.resolvedByAttempt !== undefined ? { resolvedByAttempt: entry.resolvedByAttempt as string } : {}),
+        createdAt: itemCreatedAt, ...(completedAt ? { completedAt } : {})
+      }
+    })
+    if (new Set(operations.map((entry) => entry.callId)).size !== operations.length) throw new Error('duplicate operation call id')
+    const unknownOutcomes = operations.flatMap((entry, index) => entry.status === 'outcome-unknown' ? [index] : [])
+    const hasReconciliationStatus = candidate.status === 'reconciliation-required'
+    if ((hasReconciliationStatus ? unknownOutcomes.length !== 1 : unknownOutcomes.length !== 0) || operations.some((entry) => entry.status === 'outcome-unknown'
+      ? entry.reconciliationReason === undefined || entry.errorCategory !== 'storage' || entry.undoStatus !== 'unavailable' ||
+        entry.completedAt === undefined || entry.resolvedByAttempt !== undefined
+      : entry.reconciliationReason !== undefined)) throw new Error('invalid reconciliation outcome')
+    if (hasReconciliationStatus) {
+      const unknownIndex = unknownOutcomes[0]
+      for (let index = 0; index < operations.length; index += 1) {
+        const expected = index < unknownIndex ? 'succeeded' : index === unknownIndex ? 'outcome-unknown' : 'not-executed'
+        if (operations[index].status !== expected) throw new Error('invalid reconciliation sequence')
+      }
+    }
+    const statuses = operations.map((operation) => operation.status)
+    const failureIndexes = statuses.flatMap((status, index) => status === 'failed' ? [index] : [])
+    const validLifecycle = (() => {
+      switch (candidate.status) {
+        case 'preflight-failed':
+          return failureIndexes.length === 1 && statuses.every((status, index) =>
+            index === failureIndexes[0] ? status === 'failed' : status === 'not-executed')
+        case 'pending-confirmation':
+          return statuses.every((status) => status === 'ready')
+        case 'executing': {
+          let encounteredReady = false
+          for (const status of statuses) {
+            if (status === 'ready') encounteredReady = true
+            else if (status !== 'succeeded' || encounteredReady) return false
+          }
+          return true
+        }
+        case 'awaiting-outbound-preview':
+        case 'completed':
+          return statuses.every((status) => status === 'succeeded')
+        case 'execution-failed':
+          return failureIndexes.length === 1 && statuses.every((status, index) => {
+            if (index < failureIndexes[0]) return status === 'succeeded'
+            if (index === failureIndexes[0]) return status === 'failed'
+            return status === 'not-executed'
+          })
+        case 'reconciliation-required':
+          return statuses.includes('outcome-unknown')
+        case 'cancelled':
+          return statuses.every((status) => status === 'cancelled')
+        default:
+          return false
+      }
+    })()
+    if (!validLifecycle) throw new Error('invalid operation batch lifecycle')
+    for (const operation of operations) {
+      if (operation.status === 'ready' && (operation.completedAt !== undefined || operation.errorCategory !== undefined) ||
+        operation.status === 'succeeded' && (operation.completedAt === undefined || operation.errorCategory !== undefined) ||
+        operation.status === 'failed' && (operation.completedAt === undefined || operation.errorCategory === undefined) ||
+        operation.status === 'not-executed' && (operation.completedAt === undefined || operation.errorCategory !== undefined) ||
+        operation.status === 'cancelled' && (operation.completedAt === undefined || operation.errorCategory !== undefined) ||
+        operation.resolvedByAttempt !== undefined && operation.status !== 'failed' && operation.status !== 'not-executed') {
+        throw new Error('invalid operation item lifecycle')
+      }
+    }
+    return {
+      id: candidate.id, requestId: candidate.requestId, assistantMessageId: candidate.assistantMessageId,
+      userMessageId: candidate.userMessageId, createdAt, updatedAt,
+      policyMode: candidate.policyMode as AgentOperationBatchAudit['policyMode'],
+      ...(candidate.attemptOf !== undefined ? { attemptOf: candidate.attemptOf as string } : {}),
+      ...(candidate.attemptKind !== undefined ? { attemptKind: candidate.attemptKind as AgentOperationBatchAudit['attemptKind'] } : {}),
+      status: candidate.status as AgentOperationBatchAudit['status'],
+      confirmationSource: candidate.confirmationSource as AgentOperationBatchAudit['confirmationSource'],
+      requiredConfirmation: candidate.requiredConfirmation, operations
+    }
+  })
+  const batchIndexes = new Map<string, number>()
+  for (const [index, batch] of batches.entries()) {
+    if (batchIndexes.has(batch.id)) throw new Error('duplicate operation batch id')
+    batchIndexes.set(batch.id, index)
+  }
+  for (const [index, batch] of batches.entries()) {
+    if (batch.attemptOf !== undefined) {
+      const parentIndex = batchIndexes.get(batch.attemptOf)
+      if (parentIndex === undefined || parentIndex >= index) throw new Error('missing or future operation attempt ancestor')
+      const parent = batches[parentIndex]
+      if (parent.requestId !== batch.requestId || parent.assistantMessageId !== batch.assistantMessageId ||
+        parent.userMessageId !== batch.userMessageId || batch.operations.some((operation) =>
+          !parent.operations.some((parentOperation) => parentOperation.callId === operation.callId))) {
+        throw new Error('invalid operation attempt ancestor')
+      }
+    }
+    for (const operation of batch.operations) {
+      if (operation.resolvedByAttempt === undefined) continue
+      const targetIndex = batchIndexes.get(operation.resolvedByAttempt)
+      if (targetIndex === undefined || targetIndex <= index) throw new Error('missing or invalid resolved operation attempt')
+      let currentIndex = targetIndex
+      let descendsFromBatch = false
+      while (currentIndex > 0) {
+        const current = batches[currentIndex]
+        if (current.attemptOf === batch.id) {
+          descendsFromBatch = true
+          break
+        }
+        if (!current.attemptOf) break
+        const ancestorIndex = batchIndexes.get(current.attemptOf)
+        if (ancestorIndex === undefined || ancestorIndex >= currentIndex) throw new Error('invalid resolved operation ancestry')
+        currentIndex = ancestorIndex
+      }
+      const resolvedAttempt = batches[targetIndex]
+      if (!descendsFromBatch || resolvedAttempt.attemptKind === 'undo' ||
+        !resolvedAttempt.operations.some((candidate) => candidate.callId === operation.callId && candidate.status === 'succeeded')) {
+        throw new Error('invalid resolved operation attempt')
+      }
+    }
+  }
+  return batches
+}
 function parseSession(value: unknown, id: string): AgentSession {
   if (!agentRecord(value) || value.id !== id || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || !Array.isArray(value.messages) || !Array.isArray(value.requests)) throw new Error('invalid session')
   const input = parseSessionInput(value)
@@ -55,7 +255,8 @@ function parseSession(value: unknown, id: string): AgentSession {
     return { id: item.id, profileId: item.profileId, profileName: item.profileName, presetId: item.presetId, model: item.model, requestedAt: timestamp(item.requestedAt), sources: item.sources.map(source), toolRounds: Number(toolRounds), toolCallCount: Number(toolCallCount) }
   })
   const messages: AgentMessage[] = value.messages.map((item: unknown) => {
-    if (!agentRecord(item) || !['user', 'assistant', 'tool'].includes(String(item.role)) || !['complete', 'streaming', 'user-interrupted', 'error-interrupted'].includes(String(item.status))) throw new Error('invalid message')
+    if (!agentRecord(item) || typeof item.role !== 'string' || !['user', 'assistant', 'tool'].includes(item.role) ||
+      typeof item.status !== 'string' || !['complete', 'streaming', 'user-interrupted', 'error-interrupted'].includes(item.status)) throw new Error('invalid message')
     assertAgentSessionId(item.id); assertAgentSessionId(item.requestId); assertAgentMessageText(item.content)
     if (!requests.some((request) => request.id === item.requestId) || (item.role !== 'assistant' && item.status !== 'complete')) throw new Error('invalid message request')
     const message: AgentMessage = { id: item.id, requestId: item.requestId, role: item.role as AgentMessage['role'], content: item.content, status: item.status as AgentMessage['status'], createdAt: timestamp(item.createdAt) }
@@ -115,7 +316,7 @@ function parseSession(value: unknown, id: string): AgentSession {
     const calls = callsByRequest.get(request.id) ?? new Set<string>()
     if ([...(resultsByRequest.get(request.id) ?? [])].some((callId) => !calls.has(callId))) throw new Error('orphaned tool result')
   }
-  return { id, ...input, createdAt: timestamp(value.createdAt), updatedAt: timestamp(value.updatedAt), revision: Number(value.revision), messages, requests }
+  return { id, ...input, createdAt: timestamp(value.createdAt), updatedAt: timestamp(value.updatedAt), revision: Number(value.revision), messages, requests, operationBatches: operationBatches(value.operationBatches) }
 }
 
 export class AgentSessionRepository {
@@ -174,11 +375,51 @@ export class AgentSessionRepository {
       if (isMissing(error)) throw new TraceError(ERR.PATH_NOT_FOUND, '会话不存在')
       throw new TraceError(ERR.FORMAT_INVALID, '会话记录无法读取')
     }
-    if (!this.loadedSessions.has(id) && session.messages.some((message) => message.status === 'streaming')) {
-      session.messages = session.messages.map((message) => message.status === 'streaming' ? { ...message, status: 'error-interrupted' } : message)
-      session.revision += 1
-      session.updatedAt = new Date().toISOString()
-      await this.write(session)
+    if (!this.loadedSessions.has(id)) {
+      let repaired = false
+      const repairedAt = new Date().toISOString()
+      if (session.messages.some((message) => message.status === 'streaming')) {
+        session.messages = session.messages.map((message) => message.status === 'streaming' ? { ...message, status: 'error-interrupted' } : message)
+        repaired = true
+      }
+      for (const batch of session.operationBatches) {
+        if (batch.status !== 'executing') continue
+        const uncertainIndex = batch.operations.findIndex((operation) => operation.status === 'ready')
+        if (uncertainIndex < 0) {
+          batch.status = 'awaiting-outbound-preview'
+          batch.updatedAt = repairedAt
+          repaired = true
+          continue
+        }
+        batch.status = 'reconciliation-required'
+        batch.updatedAt = repairedAt
+        batch.operations = batch.operations.map((operation, index) => {
+          if (index < uncertainIndex) return operation
+          if (index === uncertainIndex) return {
+            ...operation,
+            status: 'outcome-unknown',
+            confirmationSource: operation.requiredConfirmation ? batch.confirmationSource : 'policy',
+            undoStatus: 'unavailable',
+            reconciliationReason: 'process-interrupted',
+            errorCategory: 'storage',
+            completedAt: repairedAt
+          }
+          return {
+            ...operation,
+            status: 'not-executed',
+            confirmationSource: 'none',
+            undoStatus: 'unavailable',
+            completedAt: repairedAt
+          }
+        })
+        repaired = true
+      }
+      if (repaired) {
+        session.revision += 1
+        session.updatedAt = repairedAt
+        session = parseSession(session, id)
+        await this.write(session)
+      }
     }
     this.loadedSessions.add(id)
     return session
@@ -186,7 +427,7 @@ export class AgentSessionRepository {
   create(input: AgentSessionInput): Promise<AgentSession> {
     return this.serial(async () => {
       const now = new Date().toISOString()
-      const session: AgentSession = { id: randomUUID(), ...parseSessionInput(input), createdAt: now, updatedAt: now, revision: 0, messages: [], requests: [] }
+      const session: AgentSession = { id: randomUUID(), ...parseSessionInput(input), createdAt: now, updatedAt: now, revision: 0, messages: [], requests: [], operationBatches: [] }
       await this.write(session)
       return session
     })

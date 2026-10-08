@@ -45,14 +45,14 @@ describe('App composition', () => {
     expect(app).toContain("showStatus={view === 'workspace'}")
   })
 
-  it('lazy-loads secondary views while keeping the workspace in the initial graph', () => {
+  it('lazy-loads workspace, export and secondary views while preserving their loading surfaces', () => {
     const app = readFileSync(resolve(rendererRoot, 'App.tsx'), 'utf8')
 
-    expect(app).toContain("const DiaryView = lazy(() => import('./views/DiaryView'))")
-    expect(app).toContain("const MemoriesView = lazy(() => import('./views/MemoriesView'))")
-    expect(app).toContain("import WorkspaceView from './views/WorkspaceView'")
-    expect(app).not.toContain("import DiaryView from './views/DiaryView'")
-    expect(app).not.toContain("import MemoriesView from './views/MemoriesView'")
+    for (const view of ['WorkspaceView', 'ExportView', 'DiaryView', 'MemoriesView']) {
+      expect(app).toContain(`const ${view} = lazy(() => import('./views/${view}'))`)
+      expect(app).not.toContain(`import ${view} from './views/${view}'`)
+    }
+    expect(app).toMatch(/<Suspense fallback=\{null\}>\s*<ExportView\b[^>]*\/>\s*<\/Suspense>/)
     expect(app).toContain("background: 'var(--paper)'")
     expect(app).toContain("color: 'var(--text-2)'")
   })

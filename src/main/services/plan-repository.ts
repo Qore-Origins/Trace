@@ -1,5 +1,5 @@
 // PlanRepository：计划库文件访问层（LLD §2.1.2）
-// 铁律：一切落盘走原子写（tmp → fsync → rename）；跨盘 rename EXDEV → copy+rm fallback（SPIKE-3 实证）
+// 铁律：一切落盘走原子写（tmp → fsync → rename；新建计划使用 hard-link create-only）；跨盘 rename EXDEV → copy+rm fallback（SPIKE-3 实证）
 import { promises as fs, type Dirent } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -14,6 +14,8 @@ const LIB_FILE = 'plan-library.json'
 const PLAN_FILE = 'plan.json'
 
 type RenameFn = (from: string, to: string) => Promise<void>
+type LinkFn = (from: string, to: string) => Promise<void>
+type UnlinkFn = (path: string) => Promise<void>
 
 // fs 底层错误 → 业务错误码（Windows 常见：EPERM/EACCES/EBUSY=占用；ENOENT=消失；EEXIST=重名）
 function fsErrorToTrace(e: unknown): Error {
@@ -33,11 +35,29 @@ export interface RepoDeps {
   onInternalWrite?: (absPath: string) => void
   /** 可注入 rename（测试 EXDEV fallback 用） */
   renameFn?: RenameFn
+  /** 可注入 hard-link 创建；仅新建计划使用，以保证目标不存在时原子提交。 */
+  linkFn?: LinkFn
+  /** 可注入临时 hard-link 清理，用于验证目标提交成功后的清理故障语义。 */
+  unlinkFn?: UnlinkFn
+  /** rename EPERM/EBUSY 退避序列（毫秒；默认 [50,200,500]；注入 [] 禁用重试——8C 契约测试用） */
+  renameRetryBackoffs?: number[]
+}
+
+/** Frozen Agent library identity threaded to the final filesystem mutation seam. */
+export interface AgentLibraryMutationGuard {
+  rootDirectoryIdentity: string
+  rootGeneration: number
+  assertCurrent: () => Promise<void>
+  assertBeforeMutation?: () => Promise<void>
 }
 
 export class PlanRepository {
   private deps: RepoDeps
   private rename: RenameFn
+  private link: LinkFn
+  private unlink: UnlinkFn
+  // rename EPERM/EBUSY 退避序列（毫秒；默认 [50,200,500]；注入 [] 禁用重试——8C 契约测试用）
+  private readonly retryBackoffs: number[]
   // updated_at 单调性保障：CAS 锚点必须每次写都变化（同毫秒并发写时 +1ms）
   private lastWriteMs = 0
   private readonly planWriteQueues = new Map<string, Promise<void>>()
@@ -46,6 +66,9 @@ export class PlanRepository {
     // 注意顺序：类字段初始化器先于构造体执行，依赖必须在此显式赋值（不能用字段初始化器引用 this.deps）
     this.deps = deps
     this.rename = deps.renameFn ?? ((from, to) => fs.rename(from, to))
+    this.link = deps.linkFn ?? ((from, to) => fs.link(from, to))
+    this.unlink = deps.unlinkFn ?? ((path) => fs.unlink(path))
+    this.retryBackoffs = deps.renameRetryBackoffs ?? [50, 200, 500]
   }
 
   private notifyWrite(absPath: string): void {
@@ -130,16 +153,19 @@ export class PlanRepository {
     }
   }
 
-  // 原子写（LLD §6.1）：同目录临时文件 → fsync → rename
-  async writePlanAtomic(rootAbs: string, rel: string, doc: PlanDocument): Promise<void> {
-    await this.withPlanWriteLock(rootAbs, rel, () => this.writePlanUnlocked(rootAbs, rel, doc))
+  // 原子写（LLD §6.1）：同目录临时文件 → fsync → rename；新建计划可选择原子 create-only link
+  async writePlanAtomic(rootAbs: string, rel: string, doc: PlanDocument,
+    mutationGuard?: AgentLibraryMutationGuard, targetMustNotExist = false): Promise<void> {
+    await this.withPlanWriteLock(rootAbs, rel, () =>
+      this.writePlanUnlocked(rootAbs, rel, doc, mutationGuard, targetMustNotExist))
   }
 
   // 同实例的所有计划写共享同一路径锁；读/比较/写在锁内完成，避免丢失 plan_id 或新组件。
   async mutatePlanAtomic(
     rootAbs: string,
     rel: string,
-    mutate: (current: PlanDocument) => PlanDocument | null
+    mutate: (current: PlanDocument) => PlanDocument | null,
+    mutationGuard?: AgentLibraryMutationGuard
   ): Promise<PlanDocument> {
     return this.withPlanWriteLock(rootAbs, rel, async () => {
       const directory = resolveWithin(rootAbs, rel)
@@ -149,9 +175,10 @@ export class PlanRepository {
       const current = await this.readPlan(rootAbs, directory.rel)
       const next = mutate(current)
       if (!next) return current
+      await this.assertMutationGuard(mutationGuard)
       await assertRealPathWithinRoot(rootAbs, directory.abs)
       await assertRealPathWithinRoot(rootAbs, resolveWithin(rootAbs, `${directory.rel}/${PLAN_FILE}`).abs)
-      await this.writePlanUnlocked(rootAbs, directory.rel, next)
+      await this.writePlanUnlocked(rootAbs, directory.rel, next, mutationGuard)
       return next
     })
   }
@@ -173,10 +200,12 @@ export class PlanRepository {
     }
   }
 
-  private async writePlanUnlocked(rootAbs: string, rel: string, doc: PlanDocument): Promise<void> {
+  private async writePlanUnlocked(rootAbs: string, rel: string, doc: PlanDocument,
+    mutationGuard?: AgentLibraryMutationGuard, targetMustNotExist = false): Promise<void> {
     const target = join(rootAbs, rel, PLAN_FILE)
-    doc.updated_at = this.nextTimestamp()
-    await this.writeJsonAtomic(target, doc)
+    const candidate = { ...doc, updated_at: this.nextTimestamp() }
+    await this.writeJsonAtomic(target, candidate, mutationGuard, targetMustNotExist)
+    doc.updated_at = candidate.updated_at
   }
 
   // 严格递增的 ISO 时间戳（CAS 锚点正确性的前提）
@@ -187,24 +216,76 @@ export class PlanRepository {
     return new Date(ms).toISOString()
   }
 
-  async writeJsonAtomic(target: string, data: unknown): Promise<void> {
+  // EPERM/EBUSY may be transient. Bounded retries are a resilience measure, not a root-cause claim.
+  private async renameWithRetry(from: string, to: string, mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
+    const backoffs = this.retryBackoffs
+    for (let attempt = 0; ; attempt++) {
+      await this.assertBeforeMutation(mutationGuard)
+      try {
+        await this.rename(from, to)
+        return
+      } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code
+        if ((code === 'EPERM' || code === 'EBUSY') && attempt < backoffs.length) {
+          console.warn(`[plan-repository] rename retry ${attempt + 1}/${backoffs.length} (${code})`)
+          await new Promise((resolve) => setTimeout(resolve, backoffs[attempt]))
+          continue
+        }
+        throw e
+      }
+    }
+  }
+
+  async writeJsonAtomic(target: string, data: unknown, mutationGuard?: AgentLibraryMutationGuard,
+    targetMustNotExist = false): Promise<void> {
     const dir = dirname(target)
     // mkdir 前登记目录：新建目录（如日记日页首次写入）的 addDir 事件同样被 watch 抑制（评审 Important-3）
     this.notifyWrite(dir)
+    await this.assertBeforeMutation(mutationGuard)
     await fs.mkdir(dir, { recursive: true })
     const tmp = join(dir, `.${target.split(/[\\/]/).pop() ?? 'file'}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`)
     let handle: fs.FileHandle | undefined
     try {
+      await this.assertBeforeMutation(mutationGuard)
       handle = await fs.open(tmp, 'w')
+      await this.assertBeforeMutation(mutationGuard)
       await handle.writeFile(JSON.stringify(data, null, 2), 'utf8')
+      await this.assertMutationGuard(mutationGuard)
       await handle.sync()
       await handle.close()
       handle = undefined
       this.notifyWrite(tmp)
-      await this.rename(tmp, target)
+      if (targetMustNotExist) {
+        await this.assertBeforeMutation(mutationGuard)
+        try {
+          // Hard-link creation is atomic and fails with EEXIST; unlike rename on Windows/POSIX,
+          // it can never replace a plan.json that appeared after the last identity check.
+          await this.link(tmp, target)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+            throw new TraceError(ERR.NAME_CONFLICT, '新建计划文件已存在，请刷新后重试')
+          }
+          throw error
+        }
+        try {
+          await this.unlink(tmp)
+        } catch {
+          // The hard link already committed the complete target; failure to remove its temporary alias
+          // must not tell callers the plan was not created. Make one best-effort cleanup attempt.
+          await fs.rm(tmp, { force: true }).catch(() => {})
+        }
+      } else {
+        await this.renameWithRetry(tmp, target, mutationGuard)
+      }
       this.notifyWrite(target)
+      await this.assertMutationGuard(mutationGuard)
     } catch (e) {
-      await fs.rm(tmp, { force: true }).catch(() => {})
+      try {
+        await this.assertBeforeMutation(mutationGuard)
+        await fs.rm(tmp, { force: true })
+      } catch {
+        // A failed Agent identity check must not clean up a same-path replacement library.
+      }
       if (e instanceof TraceError) throw e
       throw new TraceError(ERR.SAVE_FAILED, '保存失败，内容已保留（编辑态可重试）')
     } finally {
@@ -244,13 +325,16 @@ export class PlanRepository {
     }
   }
 
-  async mkdirPlan(rootAbs: string, parentRelPath: string, name: string): Promise<string> {
+  async mkdirPlan(rootAbs: string, parentRelPath: string, name: string,
+    mutationGuard?: AgentLibraryMutationGuard): Promise<string> {
     const parentAbs = parentRelPath === '' ? rootAbs : join(rootAbs, parentRelPath)
     const dirAbs = join(parentAbs, name)
     // 内部写登记：新建目录的 addDir 事件须被 watch 抑制（否则回声触发整树重载——2026-09-10 用户反馈）
     this.notifyWrite(dirAbs)
     try {
+      await this.assertBeforeMutation(mutationGuard)
       await fs.mkdir(dirAbs) // 已存在则抛 EEXIST → 转 NAME_CONFLICT
+      await this.assertMutationGuard(mutationGuard)
     } catch (e) {
       throw fsErrorToTrace(e)
     }
@@ -276,17 +360,19 @@ export class PlanRepository {
     }
   }
 
-  async renamePlanDir(rootAbs: string, rel: string, newName: string): Promise<void> {
+  async renamePlanDir(rootAbs: string, rel: string, newName: string,
+    mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
     const from = join(rootAbs, rel)
     const to = join(dirname(from), newName)
-    await this.moveDir(from, to)
+    await this.moveDir(from, to, mutationGuard)
   }
 
-  async rmRecursive(rootAbs: string, rel: string): Promise<void> {
+  async rmRecursive(rootAbs: string, rel: string, mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
     const abs = join(rootAbs, rel)
     // 内部写登记：unlinkDir 及其内全部 unlink 事件须被 watch 抑制（2026-09-10 用户反馈——删除致整树重载）
     this.notifyWrite(abs)
     try {
+      await this.assertBeforeMutation(mutationGuard)
       await fs.rm(abs, { recursive: true, force: false })
     } catch (e) {
       throw fsErrorToTrace(e)
@@ -295,36 +381,62 @@ export class PlanRepository {
 
   // Same-volume transactional moves must never fall back to copy+recursive-delete. The trash
   // service relies on rename atomicity so its manifest can distinguish each crash boundary.
-  async moveDirAtomic(fromAbs: string, toAbs: string): Promise<void> {
+  async moveDirAtomic(fromAbs: string, toAbs: string, mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
     this.notifyWrite(fromAbs)
     this.notifyWrite(toAbs)
     try {
-      await this.rename(fromAbs, toAbs)
+      await this.renameWithRetry(fromAbs, toAbs, mutationGuard)
+      await this.assertMutationGuard(mutationGuard)
     } catch (error) {
       throw fsErrorToTrace(error)
     }
   }
 
   // 跨盘安全移动：同盘 rename；EXDEV → copy 目录 + rm 源（SPIKE-3 定案）
-  async moveDir(fromAbs: string, toAbs: string): Promise<void> {
+  async moveDir(fromAbs: string, toAbs: string, mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
     // 内部写登记：源侧 unlinkDir 与目标侧 addDir 回声均抑制（含 EXDEV copy 产生的目标子树事件）
     this.notifyWrite(fromAbs)
     this.notifyWrite(toAbs)
     try {
-      await this.rename(fromAbs, toAbs)
+      await this.renameWithRetry(fromAbs, toAbs, mutationGuard)
+      await this.assertMutationGuard(mutationGuard)
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw fsErrorToTrace(e)
       try {
-        await this.copyDirRecursive(fromAbs, toAbs)
+        await this.copyDirRecursive(fromAbs, toAbs, mutationGuard)
+        await this.assertMutationGuard(mutationGuard)
+        await this.assertBeforeMutation(mutationGuard)
         await fs.rm(fromAbs, { recursive: true, force: true }) // 源已在本方法开头登记抑制
+        await this.assertMutationGuard(mutationGuard)
       } catch (e2) {
         throw fsErrorToTrace(e2)
       }
     }
   }
 
-  private async copyDirRecursive(from: string, to: string): Promise<void> {
+  private async copyDirRecursive(from: string, to: string, mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
+    await this.assertBeforeMutation(mutationGuard)
     await fs.mkdir(dirname(to), { recursive: true })
+    await this.assertBeforeMutation(mutationGuard)
     await fs.cp(from, to, { recursive: true, errorOnExist: true, force: false })
+  }
+
+  private async assertMutationGuard(mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
+    if (!mutationGuard) return
+    if (!mutationGuard || typeof mutationGuard !== 'object' ||
+      typeof mutationGuard.rootDirectoryIdentity !== 'string' || mutationGuard.rootDirectoryIdentity.length === 0 ||
+      mutationGuard.rootDirectoryIdentity.length > 128 || !Number.isSafeInteger(mutationGuard.rootGeneration) ||
+      mutationGuard.rootGeneration < 0 || typeof mutationGuard.assertCurrent !== 'function') {
+      throw new TraceError(ERR.VALIDATION, 'Agent 写入库身份守卫无效')
+    }
+    if (mutationGuard.assertBeforeMutation !== undefined && typeof mutationGuard.assertBeforeMutation !== 'function') {
+      throw new TraceError(ERR.VALIDATION, 'Agent 写入目标身份守卫无效')
+    }
+    await mutationGuard.assertCurrent()
+  }
+
+  private async assertBeforeMutation(mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
+    await this.assertMutationGuard(mutationGuard)
+    await mutationGuard?.assertBeforeMutation?.()
   }
 }

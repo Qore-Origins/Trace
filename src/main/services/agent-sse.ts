@@ -135,6 +135,11 @@ function validArguments(value: Record<string, unknown>, schema: Record<string, u
 
 function validSchemaValue(value: unknown, schema: Record<string, unknown>): boolean {
   if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => Object.is(candidate, value))) return false
+  if (Array.isArray(schema.type)) {
+    return schema.type.length === 2 && schema.type.includes('number') && schema.type.includes('null') &&
+      new Set(schema.type).size === 2 && (value === null || (typeof value === 'number' && Number.isFinite(value) &&
+        value >= Number(schema.minimum ?? Number.NEGATIVE_INFINITY) && value <= Number(schema.maximum ?? Number.POSITIVE_INFINITY)))
+  }
   switch (schema.type) {
     case 'string': return typeof value === 'string' && value.length >= Number(schema.minLength ?? 0) && value.length <= Number(schema.maxLength ?? 16_384)
     case 'number': return typeof value === 'number' && Number.isFinite(value) && value >= Number(schema.minimum ?? Number.NEGATIVE_INFINITY) && value <= Number(schema.maximum ?? Number.POSITIVE_INFINITY)

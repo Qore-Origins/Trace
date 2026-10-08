@@ -95,6 +95,7 @@ function createAgentSession({
 function resetConversationDraft(state: AgentChatState): void {
   state.setDraft('')
   state.setSources([])
+  state.setTargets([])
   state.setIncludeHistory(true)
   state.setPartialIds([])
 }

@@ -6,8 +6,6 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Badge, Button, Descriptions, Input, Modal, Radio, Spin, Switch, Tooltip } from 'antd'
 import OnboardingView from './views/OnboardingView'
-import WorkspaceView from './views/WorkspaceView'
-import ExportView from './views/ExportView'
 import NameDialogModal from './components/NameDialogModal'
 import PlanNameTemplateSettingsPanel from './components/PlanNameTemplateSettings'
 import SearchOverlay from './components/SearchOverlay'
@@ -30,6 +28,8 @@ import { validatePlantumlServer } from './components/muya-note/muya-config'
 import { validatePlantumlPort } from '@shared/plantuml-types'
 import { markTrace, startTraceMeasure } from './perf/marks'
 
+const WorkspaceView = lazy(() => import('./views/WorkspaceView'))
+const ExportView = lazy(() => import('./views/ExportView'))
 const DiaryView = lazy(() => import('./views/DiaryView'))
 const MemoriesView = lazy(() => import('./views/MemoriesView'))
 const AgentView = lazy(() => import('./views/AgentView'))
@@ -236,7 +236,11 @@ export default function App(): React.JSX.Element {
   // 不走 onboarding/ready 流程与全局底座（ThemeGate 对导出模式恒亮色）
   const exportParams = new URLSearchParams(window.location.search)
   if (exportParams.get('export') === '1') {
-    return <ExportView path={exportParams.get('path') ?? ''} />
+    return (
+      <Suspense fallback={null}>
+        <ExportView path={exportParams.get('path') ?? ''} />
+      </Suspense>
+    )
   }
 
   if (phase === 'checking') {

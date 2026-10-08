@@ -12,11 +12,11 @@ import type {
   TrashReferenceImpactSummary, TrashRestoreDestination
 } from '../../shared/trash-types'
 import type { PlanMoveSnapshot } from '../../shared/plan-reference-types'
-import { PlanRepository } from './plan-repository'
+import { PlanRepository, type AgentLibraryMutationGuard } from './plan-repository'
 import { TreeCache } from './tree-cache'
 import { assertRealPathWithinRoot, resolveWithin, isSelfOrDescendant, parentRel } from './path-safety'
 import { bus } from './event-bus'
-import { TrashService, type TrashChange, type TrashLibraryContext } from './trash-service'
+import { TrashService, type TrashChange, type TrashLibraryContext, type TrashPurgeConfirmationSnapshot } from './trash-service'
 
 export class StorageService {
   private rootAbs: string | null = null
@@ -138,20 +138,23 @@ export class StorageService {
   }
 
   // 新建纯容器文件夹（无 plan.json）：仅 mkdir，计划可拖入
-  async createFolder(parentPathRel: string, name: string): Promise<PlanTreeNode> {
+  async createFolder(parentPathRel: string, name: string,
+    agentGuard?: AgentLibraryMutationGuard): Promise<PlanTreeNode> {
     validatePlanName(name)
     const parent = this.safe(parentPathRel)
     const root = this.root()
+    const mutationGuard = this.bindMutationGuard(root, agentGuard)
     const siblings = await this.repo.listPlanDirs(root, parent)
     if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
     try {
-      await this.repo.mkdirPlan(root, parent, name)
+      await this.repo.mkdirPlan(root, parent, name, mutationGuard)
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
         throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
       }
       throw e
     }
+    await mutationGuard?.assertCurrent()
     this.treeCache.invalidatePrefix(parent)
     const path = parent === '' ? name : `${parent}/${name}`
     bus.emit('trace:plan-changed', { path })
@@ -160,31 +163,55 @@ export class StorageService {
 
   // ---------- 计划 CRUD ----------
 
-  async createPlan(parentPathRel: string, name: string): Promise<PlanTreeNode> {
+  async createPlan(parentPathRel: string, name: string, agentGuard?: AgentLibraryMutationGuard): Promise<PlanTreeNode> {
     validatePlanName(name)
     const parent = this.safe(parentPathRel)
     const root = this.root()
+    const mutationGuard = this.bindMutationGuard(root, agentGuard)
 
     const siblings = await this.repo.listPlanDirs(root, parent)
     if (siblings.includes(name)) throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
 
     let dirAbs: string
     try {
-      dirAbs = await this.repo.mkdirPlan(root, parent, name)
+      dirAbs = await this.repo.mkdirPlan(root, parent, name, mutationGuard)
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
         throw new TraceError(ERR.NAME_CONFLICT, '同名计划或文件夹已存在，请换一个名称')
       }
       throw e
     }
+    await mutationGuard?.assertCurrent()
     const createdDirIdentity = await getDirectoryIdentity(dirAbs)
+    await mutationGuard?.assertCurrent()
 
     const now = new Date().toISOString()
     const doc: PlanDocument = { format_version: '1', created_at: now, updated_at: now, components: [] }
+    const planFile = join(dirAbs, 'plan.json')
+    const planMutationGuard = mutationGuard && createdDirIdentity ? {
+      ...mutationGuard,
+      assertBeforeMutation: async () => {
+        await mutationGuard.assertBeforeMutation?.()
+        await assertRealPathWithinRoot(root, dirAbs)
+        const currentDirectoryIdentity = await getDirectoryIdentity(dirAbs)
+        if (!sameDirectoryIdentity(createdDirIdentity, currentDirectoryIdentity)) {
+          throw new TraceError(ERR.CONFLICT, 'Agent 新建计划目录身份已变化，请重新预检')
+        }
+        await assertRealPathWithinRoot(root, planFile, { allowMissing: true })
+        try {
+          await fs.lstat(planFile)
+          throw new TraceError(ERR.CONFLICT, 'Agent 新建计划文件已出现，请重新预检')
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+      }
+    } : mutationGuard
     try {
-      await this.repo.writePlanAtomic(root, parent === '' ? name : `${parent}/${name}`, doc)
+      await this.repo.writePlanAtomic(root, parent === '' ? name : `${parent}/${name}`, doc, planMutationGuard, true)
+      await mutationGuard?.assertCurrent()
     } catch (writeError) {
       try {
+        await mutationGuard?.assertCurrent()
         const currentDirIdentity = await getDirectoryIdentity(dirAbs)
         if (createdDirIdentity && sameDirectoryIdentity(createdDirIdentity, currentDirIdentity)) {
           this.repo.markInternalWrite(dirAbs)
@@ -202,11 +229,13 @@ export class StorageService {
     return { path, name, has_children: false, order: Number.MAX_SAFE_INTEGER, kind: 'plan' }
   }
 
-  async renamePlan(pathRel: string, newName: string, expectedUpdatedAt?: string): Promise<{ path: string }> {
+  async renamePlan(pathRel: string, newName: string, expectedUpdatedAt?: string,
+    agentGuard?: AgentLibraryMutationGuard): Promise<{ path: string }> {
     validatePlanName(newName)
     const rel = this.safe(pathRel)
     if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录不可重命名')
     const root = this.root()
+    const mutationGuard = this.bindMutationGuard(root, agentGuard)
     const parent = parentRel(rel)
     const oldName = rel.slice(rel.lastIndexOf('/') + 1)
     if (expectedUpdatedAt !== undefined) await this.assertPlanRevision(root, rel, expectedUpdatedAt)
@@ -217,7 +246,8 @@ export class StorageService {
     }
 
     const affectedPlanIds = await this.collectSubtreePlanIds(root, rel)
-    await this.repo.renamePlanDir(root, rel, newName)
+    await this.repo.renamePlanDir(root, rel, newName, mutationGuard)
+    await mutationGuard?.assertCurrent()
 
     this.treeCache.invalidatePrefix(rel)
     const newPath = parent === '' ? newName : `${parent}/${newName}`
@@ -238,9 +268,15 @@ export class StorageService {
     return result.entries
   }
 
-  async trashPlan(pathRel: string, expectedUpdatedAt?: string, expectedDirectoryIdentity?: string): Promise<TrashEntry> {
+  async readTrashEntry(entryId: string): Promise<TrashEntry> {
+    return this.trash.readEntryById(await this.trashContext(), entryId)
+  }
+
+  async trashPlan(pathRel: string, expectedUpdatedAt?: string, expectedDirectoryIdentity?: string,
+    agentGuard?: AgentLibraryMutationGuard): Promise<TrashEntry> {
     const context = await this.trashContext()
-    const result = await this.trash.trashPlan(context, pathRel, expectedUpdatedAt, expectedDirectoryIdentity)
+    const mutationGuard = this.bindMutationGuard(context.root, agentGuard)
+    const result = await this.trash.trashPlan(context, pathRel, expectedUpdatedAt, expectedDirectoryIdentity, mutationGuard)
     if (result.changed) this.applyTrashChanges([{
       path: result.entry.original_relative_path,
       plan_ids: result.changed_plan_ids
@@ -260,8 +296,10 @@ export class StorageService {
     return this.trash.previewRestore(await this.trashContext(), entryId, destination, entryTargetToken)
   }
 
-  async commitTrashRestore(confirmationToken: string): Promise<TrashOperationCommitResult> {
-    const result = await this.trash.commitRestore(await this.trashContext(), confirmationToken)
+  async commitTrashRestore(confirmationToken: string, agentGuard?: AgentLibraryMutationGuard): Promise<TrashOperationCommitResult> {
+    const context = await this.trashContext()
+    const mutationGuard = this.bindMutationGuard(context.root, agentGuard)
+    const result = await this.trash.commitRestore(context, confirmationToken, mutationGuard)
     if (result.path) this.applyTrashChanges([{ path: result.path, plan_ids: result.changed_plan_ids }])
     return result
   }
@@ -270,8 +308,14 @@ export class StorageService {
     return this.trash.previewPurge(await this.trashContext(), entryId, entryTargetToken)
   }
 
-  async commitTrashPurge(confirmationToken: string): Promise<TrashOperationCommitResult> {
-    const result = await this.trash.commitPurge(await this.trashContext(), confirmationToken)
+  async getTrashPurgeConfirmationSnapshot(confirmationToken: string): Promise<TrashPurgeConfirmationSnapshot> {
+    return this.trash.getPurgeConfirmationSnapshot(await this.trashContext(), confirmationToken)
+  }
+
+  async commitTrashPurge(confirmationToken: string, agentGuard?: AgentLibraryMutationGuard): Promise<TrashOperationCommitResult> {
+    const context = await this.trashContext()
+    const mutationGuard = this.bindMutationGuard(context.root, agentGuard)
+    const result = await this.trash.commitPurge(context, confirmationToken, mutationGuard)
     this.emitReferenceTargetChanges(result.changed_plan_ids)
     return result
   }
@@ -301,9 +345,11 @@ export class StorageService {
   }
 
   /** Low-level move used only by PlanReferenceService while holding its commit queue. */
-  async movePlanRaw(snapshot: PlanMoveSnapshot, storageRootGeneration: number): Promise<void> {
+  async movePlanRaw(snapshot: PlanMoveSnapshot, storageRootGeneration: number,
+    agentGuard?: AgentLibraryMutationGuard): Promise<void> {
     const root = this.root()
     if (storageRootGeneration !== this.rootGeneration) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
+    const mutationGuard = this.bindMutationGuard(root, agentGuard)
     const source = this.safe(snapshot.source_path)
     const targetParent = this.safe(snapshot.target_parent_path)
     if (!source || isReservedMovePath(source) || isReservedMovePath(targetParent) ||
@@ -328,7 +374,8 @@ export class StorageService {
     }
     await assertRealPathWithinRoot(root, resolveWithin(root, source).abs)
     await assertRealPathWithinRoot(root, resolveWithin(root, targetParent).abs)
-    await this.repo.moveDirAtomic(resolveWithin(root, source).abs, targetAbs)
+    await this.repo.moveDirAtomic(resolveWithin(root, source).abs, targetAbs, mutationGuard)
+    await mutationGuard?.assertCurrent()
   }
 
   async movePlan(pathRel: string, targetParentRel: string): Promise<void> {
@@ -376,10 +423,31 @@ export class StorageService {
     }
   }
 
-  async savePlan(pathRel: string, document: PlanDocument, expectedUpdatedAt: string): Promise<{ updated_at: string }> {
+  private bindMutationGuard(root: string, agentGuard?: AgentLibraryMutationGuard): AgentLibraryMutationGuard | undefined {
+    if (!agentGuard) return undefined
+    const rootGeneration = this.rootGeneration
+    return {
+      rootDirectoryIdentity: agentGuard.rootDirectoryIdentity,
+      rootGeneration: agentGuard.rootGeneration,
+      assertCurrent: async () => {
+        if (this.rootAbs !== root || this.rootGeneration !== rootGeneration) {
+          throw new TraceError(ERR.CONFLICT, '计划库已切换，请重新预检')
+        }
+        await agentGuard.assertCurrent()
+        if (this.rootAbs !== root || this.rootGeneration !== rootGeneration) {
+          throw new TraceError(ERR.CONFLICT, '计划库已切换，请重新预检')
+        }
+      },
+      ...(agentGuard.assertBeforeMutation ? { assertBeforeMutation: agentGuard.assertBeforeMutation } : {})
+    }
+  }
+
+  async savePlan(pathRel: string, document: PlanDocument, expectedUpdatedAt: string,
+    agentGuard?: AgentLibraryMutationGuard): Promise<{ updated_at: string }> {
     const rel = this.safe(pathRel)
     if (rel === '') throw new TraceError(ERR.VALIDATION, '根目录无内容可保存')
     const root = this.root()
+    const mutationGuard = this.bindMutationGuard(root, agentGuard)
     let previousPlanId: unknown
     const saved = await this.repo.mutatePlanAtomic(root, rel, (current) => {
       if (current.updated_at !== expectedUpdatedAt) {
@@ -387,7 +455,8 @@ export class StorageService {
       }
       previousPlanId = current.plan_id
       return document
-    })
+    }, mutationGuard)
+    await mutationGuard?.assertCurrent()
     bus.emit('trace:plan-changed', { path: rel })
     this.emitReferenceTargetChanges([previousPlanId, saved.plan_id])
     bus.emit('trace:save-status', { path: rel, saved: true, at: new Date().toISOString() })

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小沅 · 操作与恢复原型 / Xiaoyuan operations</title>
+<style>
+:root{color-scheme:light;--trace-500:#1677ff;--link:#0958d9;--on-primary:#fff;--paper:#fff;--paper-dim:#fafafa;--fill:#f5f5f5;--text-1:#262626;--text-2:#595959;--text-3:#666;--border:#d9d9d9;--split:#f0f0f0;--trace-bg:#e6f4ff;--warn-bg:#fffbe6;--warn-text:#8a5700;--danger-text:#cf1322;--danger-hover-bg:#fff2f0;--code-bg:#f6f8fa;--mask:rgba(0,0,0,.5);--success-ink:#237804;--shadow:0 4px 16px rgba(0,0,0,.12);--r-card:8px;--t-ui:180ms}
+html.theme-dark{color-scheme:dark;--link:#85baff;--paper:#1f1f1f;--paper-dim:#2b2b2b;--fill:#303030;--text-1:#e6e6e6;--text-2:#bfbfbf;--text-3:#ababab;--border:#434343;--split:#333;--trace-bg:#112a45;--warn-bg:#2b2411;--warn-text:#d89614;--danger-text:#ff7875;--danger-hover-bg:#2c1315;--code-bg:#161616;--success-ink:#95de64;--shadow:0 4px 16px rgba(0,0,0,.5)}
+*{box-sizing:border-box}body{margin:0;background:var(--paper-dim);color:var(--text-1);font:14px/1.6 'Segoe UI','Microsoft YaHei',sans-serif}button,input,textarea,select{font:inherit}button{min-height:36px;border:1px solid var(--border);border-radius:6px;padding:6px 12px;background:var(--paper);color:var(--text-1);cursor:pointer;transition:background var(--t-ui),color var(--t-ui)}button:hover{background:var(--fill)}button:disabled{opacity:.5;cursor:not-allowed}button.primary{background:var(--trace-500);border-color:var(--trace-500);color:var(--on-primary)}button.danger{color:var(--danger-text)}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--link);outline-offset:3px}input,select,textarea{background:var(--paper);color:var(--text-1);border:1px solid var(--border);border-radius:6px;padding:8px;max-width:100%}textarea{width:100%;resize:vertical;min-height:88px}h1,h2,h3,p{margin:0}h1{font-size:20px;font-weight:650;letter-spacing:.02em}h2{font-size:17px}h3{font-size:14px}small,.muted{color:var(--text-3)}header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 28px;background:var(--paper);border-bottom:1px solid var(--border)}.brand small{display:block}.tools,.actions,.chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.shell{max-width:1420px;margin:0 auto;padding:22px 28px 100px}.intro{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:18px}.intro p{max-width:760px;color:var(--text-2)}.panel{background:var(--paper);border:1px solid var(--border);border-radius:var(--r-card);padding:20px;min-width:0}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px}.chat{display:flex;flex-direction:column;gap:16px}.message{border-left:2px solid var(--border);padding:0 0 0 14px}.message.user{border-color:var(--trace-500)}.speaker{font-size:12px;color:var(--text-3);margin-bottom:4px}.composer{border-top:1px solid var(--split);padding-top:16px}.composer label{display:block;margin-bottom:7px}.chip{background:var(--trace-bg);color:var(--link);border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-size:12px}.scope{padding:12px;background:var(--paper-dim);border-radius:6px;margin:12px 0}.scope p{margin-top:6px;font-size:12px;color:var(--text-2)}.batch{border-top:3px solid var(--trace-500)}.batch-meta{display:flex;justify-content:space-between;gap:12px;margin-bottom:14px}.badge{display:inline-flex;align-items:center;border-radius:4px;padding:2px 8px;background:var(--fill);font-size:12px;white-space:nowrap}.badge.failed,.badge.verification{background:var(--warn-bg);color:var(--warn-text)}.badge.success{color:var(--success-ink)}.badge.running{color:var(--link)}.operation{padding:14px 0;border-top:1px solid var(--split)}.operation-head{display:flex;align-items:start;justify-content:space-between;gap:12px}.operation p{color:var(--text-2);font-size:12px;margin:5px 0}details{margin-top:8px}summary{cursor:pointer;color:var(--link)}.diff{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.diff div{background:var(--code-bg);padding:10px;border-radius:5px;white-space:pre-wrap;overflow-wrap:anywhere}.diff small{display:block;margin-bottom:5px}.warning{padding:12px 14px;border:1px solid var(--warn-text);border-radius:6px;background:var(--warn-bg);color:var(--warn-text);margin:12px 0}.warning strong{display:block}.batch .actions{border-top:1px solid var(--split);padding-top:14px;margin-top:8px}.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:20px;align-items:start}.timeline{max-width:900px;margin:auto}.timeline .batch{margin:4px 0 4px 28px}.timeline .conversation{background:transparent;border:0;padding:0}.timeline .composer{background:var(--paper);padding:18px;border:1px solid var(--border);border-radius:8px}.flow{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px}.flow-rail{align-self:start;position:sticky;top:20px;display:flex;flex-direction:column;gap:8px}.flow-rail button{text-align:left;padding:14px}.flow-rail button[aria-current]{border-color:var(--link);background:var(--trace-bg);color:var(--link)}.flow-rail small{display:block;color:inherit}.flow-content{display:flex;flex-direction:column;gap:18px}.recovery{margin-top:20px}.trash-list{display:flex;flex-direction:column;gap:10px}.trash-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px;background:var(--paper-dim);border:1px solid var(--border);border-radius:6px}.trash-row small{display:block}.trash-row .actions{flex-shrink:0}.empty{padding:28px;text-align:center;background:var(--fill);border-radius:6px}.notice{min-height:26px;color:var(--link);padding-top:8px;font-size:12px}.step-title{display:flex;align-items:center;gap:10px;margin-bottom:12px}.step-number{font-family:Consolas,monospace;color:var(--link)}dialog{background:var(--paper);color:var(--text-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-width:min(680px,calc(100vw - 32px));width:680px;padding:0;max-height:85vh}dialog::backdrop{background:var(--mask)}.dialog-body{padding:24px;overflow:auto;max-height:65vh}.dialog-body h2{margin-bottom:12px}.dialog-footer{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px;border-top:1px solid var(--border)}.field{display:block;margin:12px 0}.preview{padding:12px;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere}.check-row{display:flex;align-items:start;gap:8px;padding:7px 0}.check-row input{margin-top:5px}.context-list{border-top:1px solid var(--split);margin-top:12px;padding-top:12px}.lock-panel{border-left:4px solid var(--warn-text)}
+@media(max-width:900px){.split{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.flow-rail{position:static;flex-direction:row;flex-wrap:wrap}.flow-rail button{flex:1;min-width:140px}.shell{padding:16px 16px 100px}header{padding:14px 16px}.intro{align-items:start;flex-direction:column}.timeline .batch{margin-left:0}}
+@media(max-width:520px){header{align-items:start;flex-direction:column}.panel{padding:16px}.trash-row{align-items:start;flex-direction:column}.diff{grid-template-columns:1fr}.tools button,.actions button,.chip{min-height:44px}.batch-meta{flex-wrap:wrap}.dialog-body{padding:18px}.dialog-footer{padding:12px 18px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+<style>
+body{height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+.topbar{min-height:64px;padding:10px 22px;gap:12px}
+.topbar .brand{min-width:0}.topbar .tools{flex-wrap:nowrap;justify-content:flex-end}
+.shell{width:100%;height:100%;max-width:1560px;margin:0 auto;padding:14px 22px 10px;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:10px;min-height:0}
+.intro{margin:0;min-height:42px;align-items:center;gap:16px}.intro h2{font-size:16px}.intro p{font-size:12px;line-height:1.45}.intro>label{display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px}
+.intro select{min-height:34px;padding:5px 8px}
+.workspace{display:grid;grid-template-columns:minmax(340px,40fr) minmax(0,60fr);grid-template-rows:minmax(0,1fr) auto;gap:12px;min-width:0;min-height:0}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.conversation-pane{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:14px}
+.panel-head{margin:0;min-width:0}.panel-head>div{min-width:0}.panel-head h2{overflow-wrap:anywhere}.task-subtitle{display:block;font-size:11px;margin-top:2px}
+.chat-scroll{flex:1;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;padding:2px 4px 8px 0;scrollbar-gutter:stable}
+.chat{gap:12px}.message{min-width:0;overflow-wrap:anywhere}.message p{white-space:pre-wrap}.message .scope{margin:8px 0 0;padding:8px 10px}.message .scope p{font-size:11px}
+.shared-composer{grid-column:1;grid-row:2;min-width:0;display:grid;grid-template-rows:auto minmax(72px,1fr) auto auto auto;gap:7px;padding:12px 14px;background:var(--paper);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:var(--shadow)}
+.composer-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.composer-heading h3{font-size:13px}.composer-heading small{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shared-composer label{display:block;margin:0}.shared-composer textarea{min-height:72px;height:82px;max-height:120px;resize:none;overflow:auto;line-height:1.45}
+.draft-scope{min-width:0;margin:0;padding:7px 9px;background:var(--paper-dim);border-radius:6px}.draft-scope-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.draft-scope-head strong{font-size:11px}.draft-scope-head small{font-size:10px}.draft-scope .chips{gap:5px;margin-top:4px;min-height:20px}.draft-scope .chip{padding:2px 6px;font-size:11px}.draft-scope p{font-size:10px;line-height:1.35;margin-top:3px;color:var(--text-2)}
+.composer-actions{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px}.composer-actions button{min-height:40px;max-width:100%;font-size:12px;padding:5px 9px}.composer-help{font-size:10px;line-height:1.3}
+.work-pane{grid-column:2;grid-row:1 / span 2;display:grid;grid-template-areas:"head" "nav" "warning" "body" "actions";grid-template-rows:auto auto auto minmax(0,1fr) auto;gap:9px;min-width:0;min-height:0;padding:14px}
+.work-head{grid-area:head}.stage-nav{grid-area:nav}.verification-slot{grid-area:warning}.work-scroll{grid-area:body}.work-actions{grid-area:actions}
+.work-head{display:flex;justify-content:space-between;align-items:center;gap:10px;min-width:0}.work-title{min-width:0}.work-title h2{font-size:16px}.work-title small{display:block;font-size:11px;overflow-wrap:anywhere}.work-head label{display:flex;align-items:center;gap:5px;font-size:10px;white-space:nowrap;min-width:0}.work-head select{width:min(38%,250px);min-width:125px;min-height:34px;padding:4px 7px;font-size:11px}
+.stage-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding:4px;background:var(--paper-dim);border:1px solid var(--border);border-radius:8px}
+.stage-nav button{min-width:0;min-height:42px;padding:5px 8px;text-align:left;background:transparent;border-color:transparent;line-height:1.25}
+.stage-nav button[aria-current="step"]{background:var(--trace-bg);border-color:var(--link);color:var(--link)}
+.stage-nav strong{display:block;font-size:12px}.stage-nav small{display:block;font-size:10px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stage-nav button[aria-current="step"] small{color:inherit}
+.verification-slot:empty{display:none}.verification-slot .warning{margin:0;padding:8px 10px;font-size:11px;line-height:1.4}.verification-slot .warning strong{font-size:12px}
+.work-scroll{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;padding:1px 5px 4px 0;scrollbar-gutter:stable}
+.work-scroll>.scope:first-child{margin-top:0}.work-section{padding:12px;background:var(--paper-dim);border:1px solid var(--border);border-radius:7px;margin-bottom:10px;min-width:0}.work-section h3{margin-bottom:5px}.work-section>p{color:var(--text-2);font-size:12px}.operation{padding:10px 0}.operation:first-child{border-top:0}.operation details{margin-top:5px}.operation summary{font-size:12px}
+.operation .diff{grid-template-columns:repeat(2,minmax(0,1fr))}.operation .diff div{min-width:0;overflow-wrap:anywhere;font-size:12px}.operation .diff small{font-size:10px}
+.ledger{margin:10px 0 0;padding:9px 11px;background:var(--paper-dim);border:1px solid var(--border);border-radius:7px}.ledger>summary{font-size:12px;font-weight:600}.ledger .operation{padding:8px 0}.ledger .operation p{overflow-wrap:anywhere}
+.work-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:7px;padding-top:8px;border-top:1px solid var(--split);min-height:44px}.work-actions>small{margin-right:auto;font-size:10px;max-width:55%}.work-actions button{min-height:40px}
+.trash-list{gap:7px}.trash-row{padding:9px 10px;gap:10px}.trash-row .actions{gap:5px}.trash-row button{min-height:34px;padding:4px 8px;font-size:11px}.recovery{padding:12px;margin-top:10px}.recovery .panel-head{margin-bottom:9px}
+.mobile-switch{display:none}.notice{min-height:18px;padding:0 2px;overflow-wrap:anywhere;font-size:11px}
+@media(max-width:960px){
+ body{grid-template-rows:auto minmax(0,1fr)}.topbar{min-height:54px;padding:7px 12px}.topbar .brand small{display:none}.topbar h1{font-size:17px}.topbar .tools{gap:4px}.topbar .tools button{min-height:34px;padding:4px 7px;font-size:11px}
+ .shell{padding:9px 10px 7px;gap:7px}.intro{min-height:36px}.intro p{display:none}.intro h2{font-size:14px}.intro>label{font-size:10px;gap:4px}.intro select{font-size:11px;min-height:30px}
+ .mobile-switch{display:grid;grid-template-columns:1fr 1fr;gap:5px}.mobile-switch button{min-height:36px;padding:5px 8px;font-size:12px}.mobile-switch button[aria-current="page"]{background:var(--trace-bg);border-color:var(--link);color:var(--link)}
+ .workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;gap:7px}.conversation-pane,.work-pane{grid-column:1;grid-row:1}.work-pane{grid-template-areas:"head" "nav" "warning" "body" "actions"}.shared-composer{grid-column:1;grid-row:2;padding:8px 10px;gap:5px}
+ .workspace[data-mobile-view="work"] #conversation-pane{display:none}.workspace[data-mobile-view="conversation"] #work-pane{display:none}
+ .conversation-pane,.work-pane{padding:10px}.chat-scroll{padding-right:2px}.composer-heading small{max-width:48vw}.shared-composer textarea{height:70px;min-height:60px;max-height:96px}.draft-scope{padding:5px 7px}.draft-scope p{display:none}.composer-actions button{min-height:36px}.composer-help{display:none}
+ .stage-nav{gap:4px;padding:3px}.stage-nav button{min-height:37px;padding:4px 5px;text-align:center}.stage-nav small{font-size:9px}.work-head select{min-width:110px;width:40%}.work-actions button{min-height:36px}.work-actions>small{max-width:100%;width:100%}
+}
+@media(max-width:520px){.shell{padding:7px;gap:5px}.topbar{flex-wrap:wrap}.topbar .tools{flex-wrap:wrap}.topbar .tools button{font-size:10px;padding:3px 5px}.topbar h1{font-size:15px}.panel-head .badge{font-size:9px;padding:2px 5px}.conversation-pane,.work-pane{padding:8px}.stage-nav strong{font-size:11px}.stage-nav small{font-size:8px}.operation .diff{grid-template-columns:minmax(0,1fr)}.trash-row{align-items:flex-start;flex-direction:column}.trash-row .actions{width:100%}.trash-row .actions button{flex:1}.work-head{flex-wrap:wrap}.work-head label{width:100%;justify-content:space-between}.work-head select{min-width:0;width:70%}.composer-heading h3{font-size:12px}.shared-composer textarea{height:62px;min-height:54px}.draft-scope-head strong,.draft-scope-head small{min-width:0;overflow-wrap:anywhere}.draft-scope .chip{font-size:10px}.work-actions{justify-content:stretch}.work-actions button{flex:1}}
+@media(max-height:720px){.shell{padding-top:7px;padding-bottom:5px;gap:5px}.intro{min-height:28px}.intro h2{font-size:13px}.conversation-pane,.work-pane{padding-top:8px;padding-bottom:8px}.shared-composer{padding-top:6px;padding-bottom:6px;grid-template-rows:auto minmax(54px,1fr) auto auto auto}.shared-composer textarea{height:58px;min-height:52px}.draft-scope p{display:none}.notice{display:none}
+ .work-pane{display:block;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}.work-head,.stage-nav,.verification-slot,.work-actions{margin-bottom:9px}.work-scroll{min-height:auto;overflow:visible;padding:1px 5px 4px 0}.work-actions{margin-top:8px}
+}
+@media(prefers-reduced-motion:reduce){.stage-nav button,.mobile-switch button{transition:none}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="brand"><h1>小沅 / Xiaoyuan</h1><small id="subtitle"></small></div><div class="tools"><button id="language" type="button">English</button><button id="theme" type="button"></button><button id="reset" type="button"></button></div></header>
+<main class="shell"><div class="intro"><div><h2 id="direction"></h2><p id="description"></p></div><label><span id="scenario-label"></span> <select id="scenario"><option value="normal"></option><option value="verification"></option></select></label></div>
+<nav id="mobile-switch" class="mobile-switch" role="tablist" aria-label="工作区视图"><button id="mobile-tab-conversation" type="button" role="tab" aria-controls="conversation-pane" data-action="mobile:conversation" aria-current="page" aria-selected="true"></button><button id="mobile-tab-work" type="button" role="tab" aria-controls="work-pane" data-action="mobile:work" aria-selected="false" tabindex="-1"></button></nav>
+<div id="workspace" class="workspace" data-mobile-view="conversation">
+ <section id="conversation-pane" class="panel conversation-pane" role="tabpanel" tabindex="0" aria-labelledby="mobile-tab-conversation conversation-title"><div class="panel-head"><div><h2 id="conversation-title"></h2><small id="task-subtitle" class="task-subtitle"></small></div><span id="conversation-badge" class="badge"></span></div><div id="messages-view" class="chat chat-scroll" aria-label="当前任务对话"></div></section>
+ <section id="work-pane" class="panel work-pane" role="tabpanel" tabindex="0" aria-labelledby="mobile-tab-work work-title"><div class="work-head"><div class="work-title"><h2 id="work-title"></h2><small id="work-subtitle"></small></div><label><span id="batch-label"></span><select id="batch-choice"></select></label></div>
+  <nav id="stage-nav" class="stage-nav" aria-label="任务阶段"><button type="button" data-action="step:0"><strong data-stage-title="0"></strong><small data-stage-description="0"></small></button><button type="button" data-action="step:1"><strong data-stage-title="1"></strong><small data-stage-description="1"></small></button><button type="button" data-action="step:2"><strong data-stage-title="2"></strong><small data-stage-description="2"></small></button></nav>
+  <div id="verification-slot" class="verification-slot"></div><div id="work-content" class="work-scroll"></div><footer id="stage-actions" class="work-actions"></footer>
+ </section>
+ <section class="shared-composer" aria-labelledby="composer-title"><div class="composer-heading"><h3 id="composer-title"></h3><small id="composer-task"></small></div><label class="sr-only" for="request" id="request-label"></label><textarea id="request" placeholder=""></textarea><div id="draft-scope" class="draft-scope"><div class="draft-scope-head"><strong id="draft-scope-title"></strong><small id="draft-scope-hint"></small></div><div id="draft-target-chips" class="chips"></div><p id="draft-scope-description"></p></div><div class="composer-actions"><button type="button" data-action="targets" id="targets-button"></button><button type="button" data-action="send" id="send-button" class="primary"></button></div><small id="composer-help" class="composer-help"></small></section>
+</div><p class="notice" id="notice" role="status" aria-live="polite"></p></main>
+<dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+<script>
+'use strict';
+const $ = (selector) => document.querySelector(selector);
+let lang = 'zh', flowStep = 0, mobileView = 'conversation', generation = 0, busy = false, modal = null, composing = false, renderedFlowStep = 0;
+const t = (zh,en) => lang === 'zh' ? zh : en;
+const esc = (value) => String(value).replace(/[&<>"']/g,(char)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const targets = [{id:'plan',zh:'计划 · 秋季阅读',en:'Plan · Autumn reading'},{id:'folder',zh:'文件夹 · 学习',en:'Folder · Study'},{id:'review',zh:'计划 · 每周复盘',en:'Plan · Weekly review'}];
+let selected = [];
+let statuses, trash, requestText, uncertain, sources, batches, activeBatch, restoreReceipts;
+const detailState = new Map();
+const stageScrollPositions = [0,0,0];
+function freezeMessage(text,targetIds,kind='send',payload=''){
+ return Object.freeze({id:'message-'+String(sources.length+1).padStart(4,'0'),text,targets:Object.freeze([...targetIds]),kind,payload});
+}
+function allowed(index,source=activeBatch.source){return source.targets.includes('folder') || (index!==1 && source.targets.includes('plan'));}
+function addBatch(source){
+ const record={id:'batch-'+String(batches.length+42).padStart(4,'0'),source,continuationSources:[],turns:[{source,reply:''}],statuses:operationData.map((_,index)=>allowed(index,source)?'pending':'out-of-scope'),attemptLedger:Object.freeze([])};
+ batches.push(record);activeBatch=record;statuses=record.statuses;
+ return record;
+}
+function targetChips(ids){return ids.map(id=>{const target=targets.find(item=>item.id===id);return `<span class="chip">@ ${esc(target[lang])} <small>[${id}]</small></span>`;}).join('') || t('无目标','No targets');}
+function frozenScope(source){return `<div class="scope" data-source="${source.id}"><strong>${t('冻结的消息授权','Frozen message grant')} · ${source.id}</strong><div class="chips">${targetChips(source.targets)}</div><p>${t('仅此消息的本地读取范围；写入需独立确认。当前输入框标签不改变此授权。','Local read scope for this message only; writes need separate confirmation. Composer tags cannot change this grant.')}</p></div>`;}
+function attemptKind(kind){return {execute:t('初次执行','Initial execution'),retry:t('重试失败项','Retry failed item'),continue:t('继续未执行项','Continue unexecuted items'),undo:t('撤销','Undo')}[kind];}
+function appendAttemptEvent(record,event){
+ // Each event and each ledger version are immutable; the only update appends.
+ const entry=Object.freeze({...event,sequence:record.attemptLedger.length+1});
+ record.attemptLedger=Object.freeze([...record.attemptLedger,entry]);
+ return entry;
+}
+function callSnapshot(index){
+ const operation=operationData[index];
+ return Object.freeze({index,title:Object.freeze([...operation.title]),target:Object.freeze([...operation.target]),before:Object.freeze([...operation.before]),after:Object.freeze([...operation.after])});
+}
+function ledgerText(ledger){
+ return ledger.map(event=>{
+  const heading=`${event.sequence}. ${event.attemptId} · ${attemptKind(event.kind)} · ${event.phase==='approved'?t('已批准','Approved'):t('逐项回执','Item receipts')} · ${t('来源','Source')} ${event.source.id} · ${t('冻结目标','Frozen targets')} ${event.source.targets.join(', ')}`;
+  const calls=event.phase==='approved'?event.calls.map(call=>`${call.index+1}. ${t(...call.title)} → ${t(...call.target)}\n${t('参数：','Arguments: ')}${t(...call.before)} → ${t(...call.after)}`).join('\n'):event.results.map(result=>`${result.call.index+1}. ${t(...result.call.title)} → ${t(...result.call.target)}\n${t('参数：','Arguments: ')}${t(...result.call.before)} → ${t(...result.call.after)}\n${result.status} · ${t(...result.reason)}`).join('\n');
+  return heading+'\n'+calls;
+ }).join('\n\n');
+}
+function ledgerView(ledger,collapsible=true,key='attempt-ledger'){
+ const attempts=ledger.filter(event=>event.phase==='approved').length;
+ const content=ledger.length?ledger.map(event=>`<article class="operation" data-attempt-event="${event.sequence}"><h3>${event.sequence}. ${event.attemptId} · ${attemptKind(event.kind)} · ${event.phase==='approved'?t('已批准','Approved'):t('逐项回执','Item receipts')}</h3><p>${t('来源消息','Source message')} ${event.source.id} · ${t('冻结目标','Frozen targets')}: ${esc(event.source.targets.join(', '))}</p>${event.phase==='approved'?event.calls.map(call=>`<p>${call.index+1}. ${esc(t(...call.title))} → ${esc(t(...call.target))}</p>`).join(''):event.results.map(result=>`<p>${result.call.index+1}. ${esc(t(...result.call.title))} · <strong>${result.status}</strong> · ${esc(t(...result.reason))}</p>`).join('')}</article>`).join(''):`<p>${t('尚无批准尝试。','No approved attempts yet.')}</p>`;
+ const summary=`${t('尝试记录','Attempt history')} · ${attempts} ${t('次尝试','attempts')} / ${ledger.length} ${t('条记录','events')}`;
+ return collapsible?`<details class="ledger" data-detail-key="${esc(key)}" data-attempt-ledger><summary data-focus-key="summary:${esc(key)}">${summary}</summary>${content}</details>`:`<section class="scope" data-attempt-ledger><h3>${t('按时间顺序的批准与回执（只追加）','Approvals and receipts in time order (append only)')}</h3>${content}</section>`;
+}
+function reset(){
+ generation++;busy=false;uncertain=$('#scenario').value==='verification';
+ trash=[{id:'old',zh:'旧阅读提纲',en:'Old reading outline',kind:['计划','Plan'],path:'学习 / 旧阅读提纲',conflict:true},{id:'folder-old',zh:'临时资料',en:'Temporary resources',kind:['文件夹 · 2 个子计划','Folder · 2 child plans'],path:'学习 / 临时资料',conflict:false}];
+  sources=[];batches=[];restoreReceipts=[];detailState.clear();
+ requestText=t('整理阅读计划，改名旧提纲并把旧计划移入回收站。','Organize the reading plan, rename the old outline, and move the old plan to Trash.');
+  selected=[];const source=freezeMessage(requestText,['plan','folder']);sources.push(source);const sampleBatch=addBatch(source);sampleBatch.turns[0].reply=t('这是已有计划的样例批次：本消息冻结了 @计划 与 @文件夹授权。新消息的目标从空白开始，不会继承这份授权。','This sample batch represents existing plans: its source froze the @plan and @folder grants. New messages start with no targets and never inherit this grant.');
+  flowStep=0;mobileView='conversation';renderedFlowStep=0;stageScrollPositions.fill(0);$('#notice').textContent='';render();
+}
+const operationData = [
+ {title:['新增阅读任务','Add reading task'],target:['学习 / 秋季阅读','Study / Autumn reading'],permission:['需确认 · 写入该计划','Confirm · write to this plan'],before:['任务：阅读第一章','Task: Read chapter one'],after:['任务：阅读第一章\n任务：整理三条读书笔记','Task: Read chapter one\nTask: Summarize three reading notes'],reference:['无引用影响','No reference impact']},
+ {title:['改名旧提纲','Rename old outline'],target:['学习 / 旧阅读提纲 → 阅读资料','Study / Old outline → Reading resources'],permission:['需确认 · 结构变更','Confirm · structural change'],before:['名称：旧阅读提纲','Name: Old outline'],after:['名称：阅读资料','Name: Reading resources'],reference:['1 处引用：每周复盘 → 旧阅读提纲；保持目标身份，更新显示名称。','1 reference: Weekly review → Old outline; preserve target identity, update its label.']},
+ {title:['删除旧阅读计划','Delete old reading plan'],target:['学习 / 秋季阅读 / 旧阅读计划','Study / Autumn reading / Old reading plan'],permission:['需确认 · 移入本地回收站','Confirm · move to local Trash'],before:['计划：旧阅读计划','Plan: Old reading plan'],after:['本地回收站：可恢复，不永久删除','Local Trash: recoverable, not permanently deleted'],reference:['无引用影响','No reference impact']}
+];
+function labelStatus(s){return {pending:t('未执行','Not run'),running:t('执行中','Running'),success:t('已完成','Completed'),failed:t('失败 · 目标已变化','Failed · target changed'),undone:t('已撤销','Undone'),verification:t('待核验','Needs verification'),'out-of-scope':t('无范围内操作','No operations within grant')}[s];}
+function button(action,zh,en,disabled=false,style=''){return `<button type="button" data-action="${action}" class="${style}" ${disabled?'disabled':''}>${t(zh,en)}</button>`;}
+function lock(){return `<aside class="warning lock-panel" role="alert"><strong>${t('待核验 · 停止自动操作','Needs verification · automated actions blocked')}</strong>${t('本地变更可能已发生，但成功审计写入失败，无法确认结果。请先在计划中人工核对并核对操作记录。此批次和条目不能重试、继续或撤销；不可自动重放。','Local changes may have happened, but writing the success audit failed. Inspect the plan and operation records manually. Retry, continue, and undo are blocked for this batch and its item; never replay automatically.')}</aside>`;}
+function recycle(){return `<section class="panel recovery"><div class="panel-head"><div><h2>${t('本地回收站','Local Trash')}</h2><small>${t('所有入口共用；保留原位置与删除原因','Shared by all entry points; original location and reason retained')}</small></div><span class="badge">${trash.length} ${t('项','items')}</span></div><div class="trash-list">${trash.length?trash.map(item=>`<article class="trash-row"><div><h3>${esc(item[lang])}</h3><small>${t(...item.kind)} · ${esc(item.path)}</small><small>${t('来源：小沅批次 0039 · 误删可恢复','Source: Xiaoyuan batch 0039 · recoverable')}${item.conflict?' · '+t('原位置已有同名项目','Name conflict at original location'):''}</small></div><div class="actions">${button('restore:'+item.id,'恢复','Restore',busy)}${button('purge:'+item.id,'永久清除','Permanently delete',busy,'danger')}</div></article>`).join(''):`<p class="empty">${t('回收站为空。','Trash is empty.')}</p>`}</div>${restoreReceipts.length?`<section class="scope"><h3>${t('恢复回执','Restore receipts')}</h3>${restoreReceipts.map(receipt=>`<p data-restore-receipt="${receipt.id}">${t('已恢复：','Restored: ')}<strong>${esc(receipt.name)}</strong> · ${esc(receipt.location)}</p>`).join('')}</section>`:''}</section>`;}
+function workspaceState(){
+ const failed=statuses.includes('failed'),anySuccess=statuses.includes('success'),pending=statuses.includes('pending');
+ const state=uncertain?'verification':busy?'running':failed?'failed':statuses.every(s=>s==='out-of-scope')?'out-of-scope':statuses.every(s=>['success','undone','out-of-scope'].includes(s))?'success':'pending';
+ return {failed,anySuccess,pending,state};
+}
+function stageActions(){
+ const {failed,anySuccess,pending}=workspaceState();
+ if(flowStep===0)return `${button('step:1','前往执行阶段','Continue to execution')}`;
+ if(flowStep===1)return `${button('execute','检查并执行批次','Review and execute batch',uncertain||busy||!pending||statuses.some(s=>!['pending','out-of-scope'].includes(s)),'primary')}${button('step:2','查看恢复选项','Open recovery options')}`;
+ return `${button('retry','仅重试失败项','Retry failed item only',uncertain||busy||!failed)}${button('continue','继续未执行项','Continue unexecuted items',uncertain||busy||failed||!pending||!anySuccess)}${button('undo','撤销安全成功项','Undo safe completed item',uncertain||busy||!anySuccess,'danger')}`;
+}
+function precheckContent(){
+ const key=`${activeBatch.id}:precheck`;
+ return `<section class="work-section"><h3>${t('本次任务请求','Current task request')}</h3><p>${esc(activeBatch.source.text)}</p>${frozenScope(activeBatch.source)}${activeBatch.attemptSource?`<div class="context-list"><strong>${t('最近续轮消息授权','Latest continuation grant')}</strong>${frozenScope(activeBatch.attemptSource)}</div>`:''}</section><section class="work-section"><h3>${t('预检 · 差异与引用影响','Precheck · differences and references')}</h3><p>${t('先按需核对各项变更；仍需单独批准本地写入。','Review each proposed change as needed; local writes still require separate approval.')}</p>${operationData.map((op,index)=>{const detailKey=`${key}:${index}`,open=detailState.get(detailKey)??false;return `<article class="operation"><div class="operation-head"><div><h3>${index+1}. ${esc(t(...op.title))}</h3><p>${esc(t(...op.target))}</p></div><span class="badge ${statuses[index]}">${statuses[index]==='out-of-scope'?t('未授权 · 不执行','Outside grant · blocked'):labelStatus(statuses[index])}</span></div><details data-detail-key="${detailKey}" ${open?'open':''}><summary data-focus-key="summary:${detailKey}">${t('查看前后差异与引用影响','View before/after and reference impact')}</summary><div class="diff"><div><small>${t('之前','Before')}</small>${esc(t(...op.before))}</div><div><small>${t('之后','After')}</small>${esc(t(...op.after))}</div></div><p>${esc(t(...op.reference))}</p></details></article>`;}).join('')}</section>`;
+}
+function executionContent(){
+ const counts=statuses.reduce((result,status)=>{result[status]=(result[status]||0)+1;return result;},{});
+ const ledger=activeBatch.attemptLedger;
+ return `<section class="work-section"><h3>${t('执行状态','Execution status')}</h3><p>${t('按顺序执行 · 首错停止；状态是最新投影，历史回执只追加。','Sequential, stop on first failure. This is the latest state projection; receipts are append-only.')}</p><div class="trash-list">${operationData.map((op,index)=>`<article class="trash-row"><div><h3>${index+1}. ${esc(t(...op.title))}</h3><small>${esc(t(...op.target))}</small></div><span class="badge ${statuses[index]}">${labelStatus(statuses[index])}</span></article>`).join('')}</div><p class="muted">${t('未执行','Not run')}: ${counts.pending||0} · ${t('已完成','Completed')}: ${counts.success||0} · ${t('失败','Failed')}: ${counts.failed||0}</p></section>${ledgerView(ledger,true,`${activeBatch.id}:ledger`)}`;
+}
+function recoveryContent(){
+ const {failed,anySuccess,pending}=workspaceState();
+ const recoverySummary=failed?t('重试仅会重新预检失败项；此前成功和失败回执都保留。','Retry rechecks only failed items; prior success and failure receipts remain.'):pending&&anySuccess?t('继续操作先冻结完整尝试历史，再仅处理未执行项。','Continue freezes the complete attempt history and processes only pending items.'):t('撤销每次只处理一个安全成功项；回收站永久清除也必须逐项确认。','Undo handles one safe completed item at a time; permanent Trash cleanup is confirmed per item.');
+ return `<section class="work-section"><h3>${t('恢复与人工处理','Recovery and manual review')}</h3><p>${recoverySummary}</p>${activeBatch.attemptLedger.length?ledgerView(activeBatch.attemptLedger,true,`${activeBatch.id}:recovery-ledger`):''}</section>${recycle()}`;
+}
+function conversationContent(){
+ const turns=activeBatch.turns;
+ return `${turns.map(({source,reply})=>`<article class="message user"><p class="speaker">${t('你 · 已确认消息','You · confirmed message')} · ${source.id}</p><p>${esc(source.text)}</p><details data-detail-key="source:${source.id}"><summary data-focus-key="source-summary:${source.id}">${t('本消息冻结授权','Frozen grant for this message')} · ${source.targets.length} ${t('个目标','targets')}</summary>${frozenScope(source)}</details></article>${reply?`<article class="message"><p class="speaker">${t('小沅 · 本地模拟回复','Xiaoyuan · local simulated reply')} · ${source.id}</p><p>${esc(reply)}</p></article>`:''}`).join('')}${busy?`<p role="status">${t('正在本地模拟响应…','Simulating a response locally…')}</p>`:''}`;
+}
+function render(){
+ $('#subtitle').textContent=t('计划有迹可循 · 独立交互原型','Plans with a trace · independent interaction prototype');
+ $('#theme').textContent=document.documentElement.classList.contains('theme-dark')?t('亮色','Light'):t('暗色','Dark');
+ $('#reset').textContent=t('重置样例','Reset sample');$('#language').textContent=lang==='zh'?'English':'中文';
+ $('#scenario-label').textContent=t('状态样例','Scenario');$('#scenario').options[0].textContent=t('分批失败与恢复','Partial failure and recovery');$('#scenario').options[1].textContent=t('待核验 · 禁止自动重放','Needs verification · replay blocked');
+ $('#direction').textContent=t('小沅任务工作台','Xiaoyuan task workspace');$('#description').textContent=t('左侧对话与常驻输入，右侧按预检、执行和恢复推进；完整尝试记录按需展开。','Conversation and persistent composer on the left; precheck, execution, and recovery on the right. Expand the attempt history when needed.');
+ $('#conversation-title').textContent=t('当前任务交流','Current task conversation');$('#task-subtitle').textContent=`${t('合成任务','Synthetic task')} · ${activeBatch.id} · ${activeBatch.source.id}`;$('#conversation-badge').textContent=t('本地模拟','Local simulation');
+ $('#work-title').textContent=t('操作任务流','Operation workflow');$('#work-subtitle').textContent=`${t('来源消息','Source message')} ${activeBatch.source.id} · ${labelStatus(workspaceState().state)}`;$('#batch-label').textContent=t('批次','Batch');
+ $('#batch-choice').innerHTML=batches.map(record=>`<option value="${record.id}" ${record===activeBatch?'selected':''}>${record.id} / ${record.source.id}</option>`).join('');$('#batch-choice').disabled=busy;
+ $('#mobile-switch').setAttribute('aria-label',t('工作区视图','Workspace views'));const mobileTabs=[...$('#mobile-switch').querySelectorAll('[data-action]')];mobileTabs.forEach(tab=>{const view=tab.dataset.action.split(':')[1];tab.textContent=view==='conversation'?t('任务交流','Conversation'):t('工作内容','Work content');const isSelected=view===mobileView;tab.tabIndex=isSelected?0:-1;if(isSelected){tab.setAttribute('aria-current','page');tab.setAttribute('aria-selected','true');}else{tab.removeAttribute('aria-current');tab.setAttribute('aria-selected','false');}});$('#workspace').dataset.mobileView=mobileView;
+ $('#stage-nav').setAttribute('aria-label',t('任务阶段','Task stages'));const stageLabels=[[t('预检','Precheck'),t('目标与差异','Targets and changes')],[t('执行','Execute'),t('状态与回执','Status and receipts')],[t('恢复','Recover'),t('撤销与回收站','Undo and Trash')]];[...$('#stage-nav').querySelectorAll('button')].forEach((button,index)=>{button.querySelector('[data-stage-title]').textContent=`${index+1}. ${stageLabels[index][0]}`;button.querySelector('[data-stage-description]').textContent=stageLabels[index][1];if(index===flowStep)button.setAttribute('aria-current','step');else button.removeAttribute('aria-current');});
+ $('#composer-title').textContent=t('给小沅发消息','Message Xiaoyuan');$('#composer-task').textContent=`${t('当前任务','Current task')} · ${activeBatch.id}`;$('#request-label').textContent=t('消息内容','Message');$('#request').placeholder=t('描述目标；需要操作已有计划时，可用 @ 标注范围；新建无需 @','Describe the goal; use @ to scope existing plans; new items need no @');if($('#request').value!==requestText)$('#request').value=requestText;
+ $('#draft-scope-title').textContent=t('下次消息目标 · 草稿','Next message targets · draft');$('#draft-scope-hint').textContent=t('不改变既有批次授权','Does not change existing grants');$('#draft-target-chips').innerHTML=selected.map(id=>{const target=targets.find(item=>item.id===id);return `<span class="chip">@ ${esc(target[lang])}</span>`;}).join('')||`<span class="muted">${t('尚未选择目标','No target selected')}</span>`;$('#draft-scope-description').textContent=t('@ 仅限定本次本地读取；不自动附加正文。外发与写入仍分步确认。','@ limits local reads for this message only; no body is attached. Outgoing content and writes are confirmed separately.');
+ $('#targets-button').textContent=t('添加 / 修改 @ 目标','Add / edit @ targets');$('#targets-button').disabled=busy;$('#send-button').textContent=t('预览本次外发','Preview outgoing request');$('#send-button').disabled=busy;$('#composer-help').textContent=t('Enter 换行 · Ctrl + Enter 预览 · 输入法组合期间不会提交','Enter for a new line · Ctrl + Enter to preview · IME composition is preserved');
+ const messageScroller=$('#messages-view'),messageTop=messageScroller.scrollTop;messageScroller.innerHTML=conversationContent();messageScroller.querySelectorAll('[data-detail-key]').forEach(detail=>{if(detailState.has(detail.dataset.detailKey))detail.open=detailState.get(detail.dataset.detailKey);});messageScroller.scrollTop=messageTop;
+ $('#verification-slot').innerHTML=uncertain?lock():'';const workScroller=$('#work-content');stageScrollPositions[renderedFlowStep]=workScroller.scrollTop;workScroller.innerHTML=flowStep===0?precheckContent():flowStep===1?executionContent():recoveryContent();workScroller.scrollTop=stageScrollPositions[flowStep]||0;renderedFlowStep=flowStep;
+ workScroller.querySelectorAll('[data-detail-key]').forEach(detail=>{if(detailState.has(detail.dataset.detailKey))detail.open=detailState.get(detail.dataset.detailKey);});$('#stage-actions').innerHTML=stageActions();
+}
+// Keep timer-driven updates from interrupting a message or an IME composition.
+const renderContent = render;
+render = function renderStable(){
+ if(composing)return;
+ const editor=document.activeElement;
+ const selection=editor?.id==='request'?{start:editor.selectionStart,end:editor.selectionEnd,scroll:editor.scrollTop}:null;
+ const focusKey=editor?.dataset?.focusKey;
+ const focusAction=editor?.dataset?.action;
+ const selectId=editor?.id==='batch-choice'?editor.id:null;
+ document.querySelectorAll('[data-detail-key]').forEach(detail=>detailState.set(detail.dataset.detailKey,detail.open));
+ renderContent();
+ if(focusKey){const next=[...document.querySelectorAll('[data-focus-key]')].find(node=>node.dataset.focusKey===focusKey);next?.focus({preventScroll:true});}
+ if(focusAction&&!$('#dialog').open){const control=[...document.querySelectorAll('[data-action]')].find(node=>node.dataset.action===focusAction);if(control&&!control.disabled)control.focus({preventScroll:true});else if(control?.disabled)document.querySelector(`#stage-nav [data-action="step:${flowStep}"]`)?.focus({preventScroll:true});}
+ if(selectId)$('#'+selectId)?.focus({preventScroll:true});
+ if(selection&&$('#request')){const next=$('#request');next.focus({preventScroll:true});next.setSelectionRange(selection.start,selection.end);next.scrollTop=selection.scroll;}
+};
+document.addEventListener('compositionstart',event=>{if(event.target.id==='request')composing=true;});
+document.addEventListener('compositionend',event=>{if(event.target.id==='request'){requestText=event.target.value;composing=false;render();}});
+function say(zh,en){$('#notice').textContent=t(zh,en);}
+function openDialog(title,body,confirm,confirmText,options={}){modal={confirm,...options};$('#dialog-content').innerHTML=`<div class="dialog-body"><h2 id="dialog-title">${title}</h2>${body}</div><footer class="dialog-footer">${button('cancel','取消','Cancel')}<button type="button" data-action="confirm" class="${options.danger?'danger':'primary'}" ${options.phrase?'disabled':''}>${confirmText}</button></footer>`;$('#dialog').showModal();}
+function closeDialog(){ $('#dialog').close(); modal=null; }
+function outbound(kind){
+ if(busy)return;
+ if(uncertain && kind!=='send'){say('待核验批次不可继续或重试。请先人工核对。','A batch needing verification cannot continue or retry. Inspect it manually.');return;}
+ const record=activeBatch,runGeneration=generation;
+ const frozenTargets=Object.freeze([...(kind==='continue'?record.source.targets:selected)]);
+ const results=Object.freeze(statuses.map((status,index)=>Object.freeze({index,status,title:t(...operationData[index].title)})));
+ const remaining=results.filter(result=>result.status==='pending').map(result=>result.index+1);
+ if(kind==='continue'&&(!remaining.length||statuses.includes('failed')))return;
+ const text=kind==='continue'?t(`继续 ${record.id} / ${record.source.id}：只处理未执行项 ${remaining.join('、')}；不重放已成功项或已撤销项。`,`Continue ${record.id} / ${record.source.id}: process only unexecuted items ${remaining.join(', ')}; never replay completed or undone items.`):requestText;
+ const draft=Object.freeze({text,targets:frozenTargets,kind,history:sources.map(source=>`${source.id}: ${source.text}`).join('\n'),results:kind==='continue'?results:null,attemptLedger:kind==='continue'?Object.freeze([...record.attemptLedger]):null,record,runGeneration});
+ const canReadBody=frozenTargets.includes('plan')||frozenTargets.includes('folder');
+ openDialog(t('独立外发确认 · 本地模拟','Isolated outgoing confirmation · local simulation'),`<p>${t('以下目标将冻结为这条消息的授权，标签元数据与正文附件分离。取消后可改标签再重新预览。没有网络请求。','These exact targets become the frozen grant for this message. Target metadata is separate from body attachments. Cancel to edit targets and preview again. No network request.')}</p><div class="scope" id="outgoing-targets"><strong>${t('本消息即将授权的精确目标','Exact targets this message will grant')}</strong><div class="chips">${targetChips(frozenTargets)}</div>${kind==='continue'?`<p>${t('继承冻结来源','Frozen source')} ${record.source.id} / ${record.id}</p>`:''}</div><div class="preview">${esc(text)}</div>${draft.results?`<section class="scope"><h3>${t('前一轮工具结果（冻结）','Previous tool results (frozen)')}</h3>${results.map(result=>`<p>${result.index+1}. ${esc(result.title)} · ${result.status==='out-of-scope'?t('未授权，不执行','Outside grant, blocked'):labelStatus(result.status)}</p>`).join('')}</section>`:''}<div class="context-list"><label class="check-row"><input type="checkbox" data-context="history" checked>${t('带入已确认的会话历史','Include approved conversation history')}</label><label class="check-row"><input type="checkbox" data-context="preference" checked>${t('带入已审核偏好：任务命名使用动词开头','Include reviewed preference: begin task names with verbs')}</label><label class="check-row"><input type="checkbox" data-context="body" ${canReadBody?'':'disabled'}>${t('附加范围内已本地读取的阅读摘要（默认不发送）','Attach reading summary read within grant (off by default)')}</label><h3>${t('准确外发内容','Exact outgoing content')}</h3><div id="payload" class="preview"></div></div>`,()=>{
+  if(generation!==runGeneration||activeBatch!==record)return;
+  const payload=$('#payload').textContent;
+  const source=freezeMessage(draft.text,draft.targets,kind,payload);
+  const attemptLedger=draft.attemptLedger;
+  closeDialog();
+  if(kind==='send'){sources.push(source);simulateResponse(source);}else reviewExecution('continue',{source,record,results,attemptLedger,runGeneration});
+ },t('确认模拟外发','Confirm simulated send'),{draft});
+ updatePayload();
+}
+function updatePayload(){
+ const draft=modal.draft,on=name=>$(`[data-context="${name}"]`).checked;
+ const targetMetadata=draft.targets.length?draft.targets.map(id=>{const target=targets.find(item=>item.id===id);return `${id}: ${target[lang]}`;}).join('; '):t('无 @ 授权；所有已有对象操作均越界阻止。','No @ grant; all existing-object operations are out of scope and blocked.');
+ $('#payload').textContent=[t('目标元数据（不含正文）：','Target metadata (no bodies): ')+targetMetadata,draft.attemptLedger?t('完整先前尝试（按时间顺序）：\n','Complete previous attempts (in time order):\n')+ledgerText(draft.attemptLedger):null,draft.results?t('最新状态投影（不替代历史）：','Latest state projection (does not replace history): ')+draft.results.map(result=>`${result.index+1}. ${result.title}: ${result.status}`).join('\n'):null,t('本次用户请求：','Current user request: ')+draft.text,on('history')?t('历史：','History: ')+draft.history:null,on('preference')?t('偏好：任务名称以动词开头。','Preference: Begin task names with verbs.'):null,on('body')?t('阅读摘要：第一章已读完，等待整理三条笔记。（合成内容）','Reading summary: Chapter one finished; summarize three notes. (Synthetic content)'):null].filter(Boolean).join('\n\n');
+ if(draft.attemptLedger&&!$('#dialog-content [data-attempt-ledger]'))$('#dialog-content .dialog-body > .preview').insertAdjacentHTML('beforebegin',ledgerView(draft.attemptLedger));
+}
+function reviewExecution(kind,continuation=null){
+ if(uncertain||busy)return;
+ const record=activeBatch,runGeneration=generation;
+ if(continuation&&(continuation.record!==record||continuation.runGeneration!==runGeneration||continuation.results.some(result=>statuses[result.index]!==result.status)||continuation.attemptLedger.length!==record.attemptLedger.length))return;
+ const indices=Object.freeze(statuses.flatMap((status,index)=>allowed(index)&&(kind==='retry'?status==='failed':status==='pending')?[index]:[]));
+ if(!indices.length)return;
+ const source=continuation?.source||record.source;
+ openDialog(t('确认本地操作范围','Confirm local operation scope'),`<p>${t('本地新尝试只授权以下冻结操作；仍需勾选写入确认。取消不会执行，也不会更改批次。','This new local attempt grants only the frozen operations below; explicit write approval is still required. Cancel does not execute or change the batch.')}</p>${frozenScope(source)}${indices.map(i=>`<div class="scope"><h3>${i+1}. ${t(...operationData[i].title)}</h3><p>${t(...operationData[i].target)}</p><div class="diff"><div>${esc(t(...operationData[i].before))}</div><div>${esc(t(...operationData[i].after))}</div></div><p>${t(...operationData[i].reference)}</p></div>`).join('')}<label class="check-row"><input type="checkbox" id="write-grant">${t('我已核对目标、差异和引用影响，允许这些操作','I checked targets, differences, and references and approve these operations')}</label>`,()=>{
+  if(!$('#write-grant').checked||generation!==runGeneration||activeBatch!==record)return;
+  if(continuation){sources.push(source);record.attemptSource=source;record.continuationSources.push(source);record.turns.push({source,reply:t(`此续轮已绑定到 ${record.id}，继承来源消息的冻结授权；后续本地操作仍需单独确认。`,`This continuation is bound to ${record.id} and inherits its source message's frozen grant. Local operations still require separate confirmation.`)});}
+  closeDialog();execute(kind,indices,record,source);
+ },t('确认执行','Confirm execution'));$('[data-action="confirm"]').disabled=true;
+}
+function execute(kind,approvedIndices,record,source){
+ if(uncertain||busy||record!==activeBatch||!approvedIndices?.length)return;
+ const queue=approvedIndices.filter(index=>allowed(index)&&statuses[index]===(kind==='retry'?'failed':'pending'));
+ if(queue.length!==approvedIndices.length)return;
+ const attemptId=record.id+'-attempt-'+String(record.attemptLedger.filter(event=>event.phase==='approved').length+1).padStart(2,'0');
+ appendAttemptEvent(record,{attemptId,phase:'approved',kind,source,calls:Object.freeze(queue.map(callSnapshot))});
+ busy=true;const runGeneration=generation;let cursor=0;const outcomes=new Map();
+ function settle(stopped){
+  const results=Object.freeze(operationData.map((_,index)=>Object.freeze({call:callSnapshot(index),status:outcomes.get(index)||'not-executed',reason:Object.freeze(outcomes.get(index)==='failed'?['预览后目标版本变化；后续调用停止。','Target version changed after preview; later calls stopped.']:outcomes.has(index)?['本次调用成功。','This call succeeded.']:!queue.includes(index)?['不属于本次批准调用；此前结果保留，不重放。','Not approved in this attempt; prior results retained without replay.']:stopped?['此前调用失败，未执行此项。','An earlier call failed; this item was not executed.']:['本次未执行。','Not executed in this attempt.'])})));
+  appendAttemptEvent(record,{attemptId,phase:'settled',kind,source,results});busy=false;render();
+ }
+ function next(){
+  if(runGeneration!==generation)return;
+  if(cursor>=queue.length){settle(false);say('本次尝试已结束；历史回执只追加，成功项未重放。','Attempt finished; receipts were appended, completed calls were not replayed.');return;}
+  const index=queue[cursor++];statuses[index]='running';render();
+  setTimeout(()=>{
+   if(runGeneration!==generation)return;
+   if(index===1&&kind==='execute'){statuses[index]='failed';outcomes.set(index,'failed');settle(true);say('第二项失败，后续操作已停止。失败原因与未执行项已保留在首轮回执。','The second item failed and later calls stopped. Failure reason and unexecuted items are retained in the initial receipt.');return;}
+   statuses[index]='success';outcomes.set(index,'success');
+    if(index===2&&!trash.some(item=>item.id==='new-plan'))trash.push({id:'new-plan',zh:'旧阅读计划',en:'Old reading plan',kind:['计划','Plan'],path:'学习 / 秋季阅读 / 旧阅读计划',conflict:false});next();
+  },650);
+ }next();
+}
+function simulateResponse(source){
+ busy=true;const runGeneration=generation;const record=addBatch(source),turn=record.turns[0];
+ const words=source.targets.length?(lang==='zh'?['已确认外发预览。','正在检查冻结目标范围。','新批次只允许消息授权范围内的操作。']:['Outgoing preview approved. ','Checking frozen target scope. ','A new batch permits only operations within this message grant.']):(lang==='zh'?['这条消息没有 @ 目标，因此不会操作任何已有计划或文件夹。','需要操作已有计划时，请用 @ 指定目标；新建计划或文件夹无需 @。','当前批次的已有对象工具全部标记为越界并阻止执行。']:['This message has no @ targets, so no existing plan or folder will be operated on.','To work on existing plans, use @ to specify a target; new plans or folders need no @.','All existing-object tools in this batch are marked out of scope and blocked.']);let index=0;render();
+ function tick(){if(runGeneration!==generation)return;turn.reply+=words[index++];if(index===words.length){busy=false;render();say('模拟响应已绑定当前批次；旧批次范围保留。','The simulated reply is bound to the selected batch; older grants remain unchanged.');return;}render();setTimeout(tick,450);}setTimeout(tick,450);
+}
+function restoreItem(id){
+ const item=trash.find(row=>row.id===id);if(!item)return;
+ openDialog(t('恢复到本地计划','Restore to local plan'),`<p>${esc(item[lang])}</p><div class="scope">${t('原位置：','Original location: ')}${esc(item.path)}</div>${item.conflict?`<div class="warning">${t('同名项目已存在。不会覆盖它，请指定新名称。','An item with this name exists. It will not be overwritten; choose a new name.')}</div><label class="field" for="restore-name">${t('恢复名称（单个名称，不含路径分隔符）','Restore name (one name, no path separators)')}</label><input id="restore-name" value="${esc(item[lang]+t('（恢复）',' (restored)'))}">`:`<p>${t('将保留原项目身份与引用，回到原位置。','Preserve item identity and references at its original location.')}</p>`}<p id="restore-error" role="alert"></p>`,()=>{
+  const name=item.conflict?$('#restore-name').value.trim():item[lang];
+  if(!name||name===item[lang]&&item.conflict||/[\\/]/.test(name)){$('#restore-error').textContent=t('请填写不同于原名称且不含路径分隔符的新名称。','Enter a new name without path separators, different from the original.');return;}
+  const parent=item.path.split(' / ').slice(0,-1).join(' / ');
+  const location=parent+' / '+name;
+  restoreReceipts.push(Object.freeze({id:item.id,name,location}));trash=trash.filter(row=>row.id!==id);
+  closeDialog();render();say(`已模拟恢复：${name} · ${location}；未覆盖同名项目。`,`Restored in simulation: ${name} · ${location}; no existing item was overwritten.`);
+ },t('确认恢复','Confirm restore'));
+}
+function purgeItem(id){const item=trash.find(row=>row.id===id);if(!item)return;const phrase=t('永久清除','DELETE');openDialog(t('永久清除 · 无法撤销','Permanent deletion · cannot undo'),`<div class="warning"><strong>${esc(item[lang])}</strong>${t('只清除这一项的本地回收副本，无法恢复。','Delete only this local Trash copy. It cannot be recovered.')}</div><p>${esc(item.path)}</p><label class="field" for="purge-phrase">${t('输入“永久清除”确认','Type DELETE to confirm')}</label><input id="purge-phrase" autocomplete="off">`,()=>{if($('#purge-phrase').value!==phrase)return;trash=trash.filter(row=>row.id!==id);closeDialog();render();say('该合成项目已永久清除。','The synthetic item was permanently deleted.');},t('永久清除这一项','Permanently delete this item'),{danger:true,phrase});}
+function dispatch(action){if(action==='cancel'){closeDialog();return;}if(action==='confirm'){modal?.confirm();return;}if(action.startsWith('step:')){flowStep=Number(action.split(':')[1]);render();return;}if(action==='targets'){openDialog(t('选择本次操作目标','Choose targets for this message'),`<p>${t('可选择多个计划或文件夹；不选择也可以发送普通消息，但该消息不能操作任何已有计划或文件夹。目标只限定本次本地读取范围，不自动发送内容。','Choose plans or folders, or leave all unchecked for ordinary chat. Without targets, this message cannot operate on existing plans or folders. Targets only limit local read scope; they do not attach content.')}</p>${targets.map(target=>`<label class="check-row"><input type="checkbox" name="target" value="${target.id}" ${selected.includes(target.id)?'checked':''}>${esc(target[lang])}</label>`).join('')}`,()=>{selected=[...document.querySelectorAll('[name="target"]:checked')].map(input=>input.value);closeDialog();render();},t('使用这些目标','Use these targets'));return;}if(action==='send'){outbound('send');return;}if(action==='execute'){reviewExecution('execute');return;}if(action==='retry'){reviewExecution('retry');return;}if(action==='continue'){outbound('continue');return;}if(action==='undo'){if(uncertain||busy)return;const index=statuses.findIndex(s=>s==='success');if(index<0)return;openDialog(t('撤销安全成功项','Undo safe completed item'),`<p>${t(...operationData[index].title)}</p><p>${t('目标版本复核通过（模拟）；仅撤销此项，其他成功项保留。','Target version recheck passed (simulation); undo only this item, retain other completed work.')}</p>`,()=>{statuses[index]='undone';if(index===2)trash=trash.filter(item=>item.id!=='new-plan');closeDialog();render();say('安全成功项已撤销。','Safe completed item undone.');},t('确认撤销','Confirm undo'));return;}if(action.startsWith('restore:'))restoreItem(action.split(':')[1]);if(action.startsWith('purge:'))purgeItem(action.split(':')[1]);}
+document.addEventListener('click',event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.dataset.action.startsWith('mobile:')){mobileView=button.dataset.action.slice('mobile:'.length);render();return;}dispatch(button.dataset.action);});
+document.addEventListener('input',event=>{if(event.target.id==='request')requestText=event.target.value;if(event.target.id==='purge-phrase')$('[data-action="confirm"]').disabled=event.target.value!==modal.phrase;});
+document.addEventListener('change',event=>{if(event.target.dataset.context)updatePayload();if(event.target.id==='write-grant')$('[data-action="confirm"]').disabled=!event.target.checked;if(event.target.id==='batch-choice'&&!busy){const record=batches.find(item=>item.id===event.target.value);if(record){activeBatch=record;statuses=record.statuses;render();}}});
+$('#dialog').addEventListener('cancel',()=>{modal=null;});$('#language').addEventListener('click',()=>{lang=lang==='zh'?'en':'zh';document.documentElement.lang=lang==='zh'?'zh-CN':'en';render();});$('#theme').addEventListener('click',()=>{document.documentElement.classList.toggle('theme-dark');render();});$('#reset').addEventListener('click',reset);$('#scenario').addEventListener('change',reset);
+document.addEventListener('keydown',event=>{if(event.isComposing||event.keyCode===229)return;if(event.target.id==='request'&&event.ctrlKey&&event.key==='Enter'){event.preventDefault();if(!busy)outbound('send');return;}if(event.target.closest?.('#mobile-switch')&&(event.key==='ArrowLeft'||event.key==='ArrowRight')){event.preventDefault();const tabs=[...$('#mobile-switch').querySelectorAll('[role="tab"]')],index=tabs.indexOf(event.target),next=tabs[(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];next?.focus();next?.click();}});
+reset();
+</script>
+</body>
+</html>

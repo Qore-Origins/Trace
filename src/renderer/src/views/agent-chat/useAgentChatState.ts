@@ -6,7 +6,8 @@ import type {
   AgentRequestEvent,
   AgentRequestIdentity,
   AgentSession,
-  AgentSessionSummary
+  AgentSessionSummary,
+  AgentTargetSelection
 } from '@shared/agent-types'
 import { useUiStore } from '../../stores/ui-store'
 import type { AgentChatState, AgentPreviewState, AgentSessionState } from './types'
@@ -27,6 +28,9 @@ function useAgentSessionState(): AgentSessionState {
   const [error, setError] = useState('')
   const [draft, setDraft] = useState('')
   const [sources, setSources] = useState<AgentContextEntry[]>([])
+  const [targets, setTargets] = useState<AgentTargetSelection[]>([])
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false)
+  const targetGrantSet = useRef<string | null>(null)
   const activeId = useRef<string | null>(null)
   const readEpoch = useRef(0)
   const refreshEpoch = useRef(0)
@@ -52,6 +56,7 @@ function useAgentSessionState(): AgentSessionState {
     setDraft,
     sources,
     setSources,
+    targets, setTargets, targetPickerOpen, setTargetPickerOpen, targetGrantSet,
     activeId,
     readEpoch,
     refreshEpoch,

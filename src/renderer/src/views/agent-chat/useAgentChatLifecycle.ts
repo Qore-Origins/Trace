@@ -21,6 +21,12 @@ export function useAgentChatLifecycle(state: AgentChatState): AgentChatLifecycle
   useAgentUnmount({ state, cancelPreview })
   useSettingsRefresh({ state, refresh, closePreview })
   useRequestEvents({ state, readSession, t })
+  useEffect(() => onEvent('trace:agent-operation', (event) => {
+    if (!state.live.current || event.sessionId !== state.activeId.current) return
+    void readSession(event.sessionId).catch(() => {
+      if (state.live.current) state.setError(t('agentChat.failed'))
+    })
+  }), [])
   return { readSession, refresh, cancelPreview, closePreview }
 }
 
@@ -60,6 +66,7 @@ function useSettingsRefresh({
     state.refreshEpoch.current += 1
     closePreview()
     state.setPickerOpen(false)
+    state.setTargetPickerOpen(false)
   }, [state.settingsOpen])
 }
 
@@ -219,8 +226,11 @@ function updateActiveSession({
 
 async function cancelPreviewToken(state: AgentChatState): Promise<void> {
   const token = state.previewToken.current
+  const setId = state.targetGrantSet.current
   state.previewToken.current = null
+  state.targetGrantSet.current = null
   if (token) await invoke('agent:preview:cancel', { token })
+  if (setId) await invoke('agent:target:release', { setId })
 }
 
 function closePreviewModal({

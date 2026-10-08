@@ -219,7 +219,15 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
     const loaded: TreeState['loaded'] = {}
     for (const [k, v] of Object.entries(get().loaded)) if (!under(k)) loaded[k] = v
     set({ expandedKeys: get().expandedKeys.filter((k) => !under(k)), childrenMap, loaded })
-    await refreshAround(set, get, path)
+    try {
+      await refreshAround(set, get, path)
+    } catch {
+      try {
+        await get().refreshAll()
+      } catch {
+        getMessage().warning(i18n.t('tree.deleteRefreshFailed'))
+      }
+    }
     if (get().selectedPath === path || get().selectedPath?.startsWith(path + '/')) {
       get().select(null)
     }
