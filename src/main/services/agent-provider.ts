@@ -40,11 +40,23 @@ function exactKeys(value: Record<string, unknown>, required: readonly string[], 
 }
 
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/
+const TOOL_STRING_MAX_LENGTH = 20_000
 const TOOL_ARGUMENT_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object'])
 const PROPERTY_SCHEMA_KEYS = new Set(['type', 'description', 'enum', 'minLength', 'maxLength', 'minimum', 'maximum', 'minItems', 'maxItems', 'items', 'additionalItems', 'properties', 'required', 'additionalProperties'])
 
 function validPropertySchema(value: unknown, depth = 0): value is Record<string, unknown> {
-  if (!plainRecord(value) || depth > 4 || typeof value.type !== 'string' || !TOOL_ARGUMENT_TYPES.has(value.type)) return false
+  if (!plainRecord(value) || depth > 4) return false
+  const nullableNumber = Array.isArray(value.type) && value.type.length === 2 &&
+    value.type.includes('number') && value.type.includes('null') &&
+    new Set(value.type).size === 2
+  if (nullableNumber) {
+    if (Object.keys(value).some((key) => !['type', 'description', 'minimum', 'maximum'].includes(key))) return false
+    if (value.description !== undefined && (typeof value.description !== 'string' || value.description.length > 1024)) return false
+    const min = value.minimum ?? Number.NEGATIVE_INFINITY, max = value.maximum ?? Number.POSITIVE_INFINITY
+    return (min === Number.NEGATIVE_INFINITY || (typeof min === 'number' && Number.isFinite(min))) &&
+      (max === Number.POSITIVE_INFINITY || (typeof max === 'number' && Number.isFinite(max))) && Number(min) <= Number(max)
+  }
+  if (typeof value.type !== 'string' || !TOOL_ARGUMENT_TYPES.has(value.type)) return false
   if (Object.keys(value).some((key) => !PROPERTY_SCHEMA_KEYS.has(key))) return false
   if (value.description !== undefined && (typeof value.description !== 'string' || value.description.length > 1024)) return false
   if (value.enum !== undefined) {
@@ -54,7 +66,7 @@ function validPropertySchema(value: unknown, depth = 0): value is Record<string,
   if (value.type === 'string') {
     if (Object.keys(value).some((key) => !['type', 'description', 'enum', 'minLength', 'maxLength'].includes(key))) return false
     const min = value.minLength ?? 0, max = value.maxLength ?? 16_384
-    return Number.isSafeInteger(min) && Number(min) >= 0 && Number.isSafeInteger(max) && Number(max) <= 16_384 && Number(min) <= Number(max)
+    return Number.isSafeInteger(min) && Number(min) >= 0 && Number.isSafeInteger(max) && Number(max) <= TOOL_STRING_MAX_LENGTH && Number(min) <= Number(max)
   }
   if (value.type === 'number' || value.type === 'integer') {
     if (Object.keys(value).some((key) => !['type', 'description', 'enum', 'minimum', 'maximum'].includes(key))) return false
@@ -129,6 +141,11 @@ function validateToolOptions(options: AgentProviderToolOptions): void {
 
 function valueMatchesSchema(value: unknown, schema: Record<string, unknown>): boolean {
   if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => Object.is(candidate, value))) return false
+  if (Array.isArray(schema.type)) {
+    return schema.type.length === 2 && schema.type.includes('number') && schema.type.includes('null') &&
+      new Set(schema.type).size === 2 && (value === null || (typeof value === 'number' && Number.isFinite(value) &&
+        value >= Number(schema.minimum ?? Number.NEGATIVE_INFINITY) && value <= Number(schema.maximum ?? Number.POSITIVE_INFINITY)))
+  }
   switch (schema.type) {
     case 'string': return typeof value === 'string'
     case 'number': return typeof value === 'number' && Number.isFinite(value)

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentCompletedToolCall, type AgentHistoryItem, type AgentMessage, type AgentMessageStatus, type AgentOutboundPreview, type AgentPreviewInput, type AgentProfile, type AgentSession, type AgentSessionInput, type AgentSessionSummary, type AgentTarget, type AgentTargetGrant, type AgentRequestIdentity, type AgentCapabilityStatus } from '../../shared/agent-types'
+import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentCompletedToolCall, type AgentHistoryItem, type AgentMessage, type AgentMessageStatus, type AgentOutboundPreview, type AgentPreviewInput, type AgentPreviewMessage, type AgentProfile, type AgentSession, type AgentSessionInput, type AgentSessionSummary, type AgentTarget, type AgentTargetGrant, type AgentRequestIdentity, type AgentCapabilityStatus } from '../../shared/agent-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { AgentContextService, parseContextSelection } from './agent-context-service'
 import { AGENT_MAX_MESSAGE_LENGTH, AgentSessionRepository, agentRecord, assertAgentMessageText, assertAgentSessionId, parseSessionInput } from './agent-session-repository'
@@ -87,6 +87,18 @@ export class AgentConversationService {
   private readonly capabilityStatuses = new WeakMap<AgentOutboundPreview, AgentCapabilityStatus>()
   private readonly userMessageIds = new WeakMap<AgentOutboundPreview, string>()
   private readonly grantSetIds = new WeakMap<AgentOutboundPreview, string>()
+  private readonly continuationRequestIds = new WeakMap<AgentOutboundPreview, string>()
+  private readonly requestTargetAuthorizations = new Map<string, { setId: string; refs: string[] }>()
+  private readonly requestBaseSnapshots = new Map<string, {
+    messages: AgentOutboundPreview['messages']
+    history: AgentOutboundPreview['history']
+    contexts: AgentOutboundPreview['contexts']
+    target: AgentOutboundPreview['target']
+    message: string
+    tools?: AgentOutboundPreview['tools']
+    toolChoice?: AgentOutboundPreview['toolChoice']
+    userMessageId: string
+  }>()
   private queue = Promise.resolve()
   private readonly now: () => number
   private readonly credentialRevision: (id: string) => Promise<number>
@@ -174,6 +186,66 @@ export class AgentConversationService {
       return structuredClone(preview)
     })
   }
+  /** Main-only provenance used by the operation executor; never accepts renderer/provider IDs. */
+  async getRequestOperationContext(sessionId: string, requestId: string): Promise<{ userMessageId: string; targetSetId?: string; targetRefs: string[] }> {
+    assertAgentSessionId(sessionId); assertAgentSessionId(requestId)
+    const session = await this.sessions.read(sessionId)
+    if (!session.requests.some((request) => request.id === requestId)) throw new TraceError(ERR.PATH_NOT_FOUND, '请求溯源记录不存在')
+    const users = session.messages.filter((message) => message.requestId === requestId && message.role === 'user' && message.status === 'complete')
+    if (users.length !== 1) throw new TraceError(ERR.STATE_MACHINE, '当前请求缺少唯一的已提交用户消息')
+    const authorization = this.requestTargetAuthorizations.get(requestId)
+    return { userMessageId: users[0].id, ...(authorization ? { targetSetId: authorization.setId } : {}), targetRefs: authorization ? [...authorization.refs] : [] }
+  }
+  /** Build a fresh exact provider snapshot after operation receipts; does not create a new user turn. */
+  createContinuationPreview(payload: unknown): Promise<AgentOutboundPreview> {
+    return this.serial(async () => {
+      if (!agentRecord(payload) || Reflect.ownKeys(payload).length !== 2 || typeof payload.sessionId !== 'string' || typeof payload.requestId !== 'string') {
+        throw new TraceError(ERR.VALIDATION, '续轮预览无效')
+      }
+      assertAgentSessionId(payload.sessionId); assertAgentSessionId(payload.requestId)
+      const session = await this.sessions.read(payload.sessionId)
+      if (session.messages.some((item) => item.status === 'streaming')) throw new TraceError(ERR.STATE_MACHINE, '请先停止当前生成')
+      const request = session.requests.find((item) => item.id === payload.requestId)
+      const base = this.requestBaseSnapshots.get(payload.requestId)
+      if (!request || !base) throw new TraceError(ERR.STATE_MACHINE, '该请求不能在当前进程中继续')
+      const profile = await this.profile(session.profileId)
+      if (profile.capability.status !== 'passed') throw new TraceError(ERR.CONFIRMATION_REQUIRED, '模型能力未通过测试，不能继续计划操作')
+      const tail: AgentPreviewMessage[] = []
+      for (const message of session.messages) {
+        if (message.requestId !== payload.requestId || message.role === 'user') continue
+        if (message.role === 'assistant') {
+          tail.push({ role: 'assistant', content: message.content || null, ...(message.toolCalls?.length ? { tool_calls: message.toolCalls } : {}) })
+        } else {
+          tail.push({ role: 'tool', content: message.content, tool_call_id: message.toolCallId! })
+        }
+      }
+      const messages = [...structuredClone(base.messages), ...tail]
+      const credentialRevision = await this.credentialRevision(session.profileId)
+      const toolDefinitions = profile.capability.status === 'passed' ? structuredClone([...this.toolDefinitions()]) : []
+      const toolChoice = toolDefinitions.length ? 'auto' as const : undefined
+      try { serializeAgentChatRequest(profile.model, messages, toolChoice ? { tools: toolDefinitions, toolChoice } : undefined) } catch (error) {
+        if (error instanceof AgentStreamError && error.category === 'limit') throw new TraceError(ERR.VALIDATION, '本次续轮内容过长，请减少会话历史')
+        throw error
+      }
+      const preview: AgentOutboundPreview = deepFreeze({
+        token: randomUUID(), sessionId: session.id, sessionRevision: session.revision,
+        expiresAt: new Date(this.now() + AGENT_PREVIEW_TTL_MS).toISOString(), target: target(profile),
+        message: base.message, history: [...structuredClone(base.history), ...tail.map((item, index) => ({
+          messageId: session.messages.filter((message) => message.requestId === payload.requestId && message.role !== 'user')[index]?.id ?? randomUUID(),
+          kind: 'message' as const, ...item
+        }))], contexts: structuredClone(base.contexts), messages,
+        ...(toolChoice ? { tools: toolDefinitions, toolChoice } : {})
+      })
+      for (const [token, item] of this.previews) if (Date.parse(item.expiresAt) <= this.now()) this.previews.delete(token)
+      if (this.previews.size >= MAX_PREVIEWS) throw new TraceError(ERR.STATE_MACHINE, '待确认预览过多，请先取消旧预览')
+      this.previews.set(preview.token, preview)
+      this.credentialRevisions.set(preview, credentialRevision)
+      this.capabilityStatuses.set(preview, profile.capability.status)
+      this.grantSetIds.set(preview, '')
+      this.continuationRequestIds.set(preview, payload.requestId)
+      return structuredClone(preview)
+    })
+  }
   cancelPreview(token: unknown): void { assertAgentSessionId(token); this.previews.delete(token) }
   private async verifySnapshot(preview: AgentOutboundPreview, currentProfile?: AgentProfile, revision = preview.sessionRevision): Promise<void> {
     if (Date.parse(preview.expiresAt) <= this.now()) throw new TraceError(ERR.CONFLICT, '预览已过期，请重新预览')
@@ -234,24 +306,26 @@ export class AgentConversationService {
   /** Main-only continuation seam: retain the committed user-message identity for retries and tool rounds. */
   beginAssistantContinuation(sessionId: string, requestId: string): Promise<{ assistantId: string; userMessageId: string; toolRounds: number; toolCallCount: number; toolsAllowed: boolean }> {
     assertAgentSessionId(sessionId); assertAgentSessionId(requestId)
-    return this.serial(async () => {
-      let continuation: { assistantId: string; userMessageId: string; toolRounds: number; toolCallCount: number; toolsAllowed: boolean } | undefined
-      await this.sessions.mutate(sessionId, (session) => {
-        const request = session.requests.find((item) => item.id === requestId)
-        const userMessages = session.messages.filter((message) => message.requestId === requestId && message.role === 'user')
-        if (!request || userMessages.length !== 1 || userMessages[0].status !== 'complete' || session.messages.some((message) => message.status === 'streaming')) throw new TraceError(ERR.STATE_MACHINE, '当前请求无法继续')
-        const requestCalls = session.messages.filter((message) => message.requestId === requestId && message.role === 'assistant' && message.toolCalls?.length)
-        const results = new Set(session.messages.filter((message) => message.requestId === requestId && message.role === 'tool').map((message) => message.toolCallId))
-        if (requestCalls.some((message) => message.toolCalls?.some((call) => !results.has(call.id)))) throw new TraceError(ERR.STATE_MACHINE, '工具结果尚未全部持久化')
-        const toolRounds = request.toolRounds ?? 0, toolCallCount = request.toolCallCount ?? 0
-        if (toolRounds >= AGENT_MAX_TOOL_ROUNDS_PER_REQUEST || toolCallCount >= AGENT_MAX_TOOL_CALLS_PER_REQUEST) throw new AgentStreamError('limit')
-        const assistantId = randomUUID()
-        session.messages.push({ id: assistantId, requestId, role: 'assistant', content: '', status: 'streaming', createdAt: new Date(this.now()).toISOString() })
-        continuation = { assistantId, userMessageId: userMessages[0].id, toolRounds, toolCallCount, toolsAllowed: toolRounds < AGENT_MAX_TOOL_ROUNDS_PER_REQUEST && toolCallCount < AGENT_MAX_TOOL_CALLS_PER_REQUEST }
-      })
-      if (!continuation) throw new TraceError(ERR.STATE_MACHINE, '当前请求无法继续')
-      return continuation
+    return this.serial(() => this.beginAssistantContinuationNow(sessionId, requestId))
+  }
+
+  private async beginAssistantContinuationNow(sessionId: string, requestId: string): Promise<{ assistantId: string; userMessageId: string; toolRounds: number; toolCallCount: number; toolsAllowed: boolean }> {
+    let continuation: { assistantId: string; userMessageId: string; toolRounds: number; toolCallCount: number; toolsAllowed: boolean } | undefined
+    await this.sessions.mutate(sessionId, (session) => {
+      const request = session.requests.find((item) => item.id === requestId)
+      const userMessages = session.messages.filter((message) => message.requestId === requestId && message.role === 'user')
+      if (!request || userMessages.length !== 1 || userMessages[0].status !== 'complete' || session.messages.some((message) => message.status === 'streaming')) throw new TraceError(ERR.STATE_MACHINE, '当前请求无法继续')
+      const requestCalls = session.messages.filter((message) => message.requestId === requestId && message.role === 'assistant' && message.toolCalls?.length)
+      const results = new Set(session.messages.filter((message) => message.requestId === requestId && message.role === 'tool').map((message) => message.toolCallId))
+      if (requestCalls.some((message) => message.toolCalls?.some((call) => !results.has(call.id)))) throw new TraceError(ERR.STATE_MACHINE, '工具结果尚未全部持久化')
+      const toolRounds = request.toolRounds ?? 0, toolCallCount = request.toolCallCount ?? 0
+      if (toolRounds >= AGENT_MAX_TOOL_ROUNDS_PER_REQUEST || toolCallCount >= AGENT_MAX_TOOL_CALLS_PER_REQUEST) throw new AgentStreamError('limit')
+      const assistantId = randomUUID()
+      session.messages.push({ id: assistantId, requestId, role: 'assistant', content: '', status: 'streaming', createdAt: new Date(this.now()).toISOString() })
+      continuation = { assistantId, userMessageId: userMessages[0].id, toolRounds, toolCallCount, toolsAllowed: toolRounds < AGENT_MAX_TOOL_ROUNDS_PER_REQUEST && toolCallCount < AGENT_MAX_TOOL_CALLS_PER_REQUEST }
     })
+    if (!continuation) throw new TraceError(ERR.STATE_MACHINE, '当前请求无法继续')
+    return continuation
   }
   // Keep session update/delete serialized through the actual network dispatch. Profile
   // mutations are held by authorize while the last source/session reads run.
@@ -262,16 +336,30 @@ export class AgentConversationService {
       await this.verifySnapshot(preview)
       return authorize(this.credentialRevisions.get(preview)!, async (profile, key) => {
         await this.verifySnapshot(preview, profile)
-        const turn = await this.createTurn(preview)
-        const { userMessage, ...turnIdentity } = turn
-        const identity = { sessionId: preview.sessionId, ...turnIdentity }
+        const continuationRequestId = this.continuationRequestIds.get(preview)
+        const turn = continuationRequestId
+          ? await this.beginAssistantContinuationNow(preview.sessionId, continuationRequestId)
+          : await this.createTurn(preview)
+        const isContinuation = 'userMessageId' in turn
+        const identity: AgentRequestIdentity = isContinuation
+          ? { sessionId: preview.sessionId, requestId: continuationRequestId!, assistantId: turn.assistantId }
+          : { sessionId: preview.sessionId, requestId: turn.requestId, assistantId: turn.assistantId }
         try {
           const grantSetId = this.grantSetIds.get(preview)
-          if (grantSetId) {
+          if (grantSetId && !isContinuation) {
             if (!this.targets) throw new TraceError(ERR.CONFLICT, '计划操作授权已失效，请重新选择')
             const confirmedRefs = preview.targets?.map((item) => item.ref) ?? []
-            await this.targets.bindGrantSetToUserMessage(grantSetId, userMessage, confirmedRefs)
+            if (!('userMessage' in turn)) throw new TraceError(ERR.INTERNAL, '用户消息身份无效')
+            await this.targets.bindGrantSetToUserMessage(grantSetId, turn.userMessage, confirmedRefs)
+            this.requestTargetAuthorizations.set(identity.requestId, { setId: grantSetId, refs: [...confirmedRefs] })
           }
+          const userMessageId = isContinuation ? turn.userMessageId : turn.userMessage.id
+          if (!isContinuation) this.requestBaseSnapshots.set(identity.requestId, {
+            messages: structuredClone(preview.messages), history: structuredClone(preview.history),
+            contexts: structuredClone(preview.contexts), target: structuredClone(preview.target),
+            message: preview.message, ...(preview.tools ? { tools: structuredClone(preview.tools) } : {}),
+            ...(preview.toolChoice ? { toolChoice: preview.toolChoice } : {}), userMessageId
+          })
           await this.verifySnapshot(preview, profile, preview.sessionRevision + 1)
           start(identity, key)
           return identity

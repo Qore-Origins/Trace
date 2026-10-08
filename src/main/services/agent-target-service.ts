@@ -6,8 +6,8 @@ import type {
   AgentTargetSelection, AgentTargetValidationInput
 } from '../../shared/agent-types'
 import type { AgentMessage } from '../../shared/agent-types'
-import type { PlanLibraryMeta } from '../../shared/plan-types'
-import type { TrashEntry, TrashOperation, TrashOperationPreview } from '../../shared/trash-types'
+import { DIARY_DIR, type PlanLibraryMeta } from '../../shared/plan-types'
+import type { TrashEntry, TrashOperation, TrashOperationPreview, TrashRestoreDestination } from '../../shared/trash-types'
 import { isUuid32 } from '../../shared/validation'
 import { ERR, TraceError } from '../../shared/errors'
 import { agentRecord, assertAgentSessionId } from './agent-session-repository'
@@ -23,6 +23,21 @@ interface LibraryState {
   rootHash: string
   libraryId: string
   rootGeneration: number
+}
+
+/** Main-process-only identity snapshot for root-scoped Agent operations. */
+export interface AgentActiveLibrarySnapshot {
+  rootHash: string
+  libraryId: string
+  rootGeneration: number
+}
+
+export interface AgentAuditedTargetSnapshot {
+  kind: 'plan' | 'folder'
+  path: string
+  directoryIdentity: string
+  planId: string | null
+  updatedAt?: string
 }
 
 interface TargetIdentityBase extends LibraryState {
@@ -63,10 +78,12 @@ type TargetGrantRecord = CapturedTarget & {
   expiresAtMs: number
   boundMessageId?: string
   confirmedMessageId?: string
+  boundCapability?: 'read'
 }
 
 interface AgentTargetResolutionBase extends AgentTargetGrant {
   setId: string
+  capability: 'read'
   root: string
   rootHash: string
   libraryId: string
@@ -118,6 +135,12 @@ function opaqueId(): string {
 
 function pathKey(path: string): string {
   return process.platform === 'win32' ? path.toLowerCase() : path
+}
+
+function assertPlanOperationPath(path: string): void {
+  if (path.split('/')[0].toLowerCase() === DIARY_DIR.toLowerCase()) {
+    throw new TraceError(ERR.PATH_UNSAFE, '日记不能作为计划或文件夹操作目标')
+  }
 }
 
 function pathWithinRoot(root: string, target: string): string {
@@ -187,6 +210,15 @@ function revisionFor(snapshot: CapturedTarget): string {
   return `sha256:${createHash('sha256').update(JSON.stringify(fields)).digest('hex')}`
 }
 
+export function validateAgentAuditedPath(path: string): string {
+  const normalized = normalizeRelSafe(path)
+  if (!normalized || normalized !== path || normalized.split('/').some((part) => part.startsWith('.') || part.length === 0)) {
+    throw new TraceError(ERR.PATH_UNSAFE, '操作结果路径无效')
+  }
+  assertPlanOperationPath(normalized)
+  return normalized
+}
+
 export class AgentTargetService {
   private rootGeneration = 0
   private readonly grants = new Map<string, TargetGrantRecord>()
@@ -199,6 +231,135 @@ export class AgentTargetService {
   invalidateRoot(): void {
     this.rootGeneration += 1
     this.grants.clear()
+  }
+
+  async captureActiveLibrarySnapshot(): Promise<AgentActiveLibrarySnapshot> {
+    const library = await this.readLibraryState()
+    return {
+      rootHash: library.rootHash,
+      libraryId: library.libraryId,
+      rootGeneration: library.rootGeneration
+    }
+  }
+
+  async assertActiveLibrarySnapshot(snapshot: AgentActiveLibrarySnapshot): Promise<void> {
+    if (!exactRecord(snapshot, ['rootHash', 'libraryId', 'rootGeneration']) ||
+      typeof snapshot.rootHash !== 'string' || !/^[a-f0-9]{64}$/.test(snapshot.rootHash) ||
+      typeof snapshot.libraryId !== 'string' || !isUuid32(snapshot.libraryId) ||
+      typeof snapshot.rootGeneration !== 'number' || !Number.isSafeInteger(snapshot.rootGeneration) || snapshot.rootGeneration < 0) {
+      throw new TraceError(ERR.VALIDATION, '活动计划库快照无效')
+    }
+    const current = await this.readLibraryState()
+    if (snapshot.rootHash !== current.rootHash || snapshot.libraryId !== current.libraryId ||
+      snapshot.rootGeneration !== current.rootGeneration) {
+      throw new TraceError(ERR.CONFLICT, '活动计划库已变化，请重新预检')
+    }
+  }
+
+  /**
+   * Captures a main-owned operation result by its exact relative path. This is
+   * used only to bind local undo provenance to an object created by a completed
+   * operation; it does not issue or expand an @ grant.
+   */
+  async captureAuditedTarget(snapshot: AgentActiveLibrarySnapshot, path: string, kind: 'plan' | 'folder'): Promise<AgentAuditedTargetSnapshot> {
+    await this.assertActiveLibrarySnapshot(snapshot)
+    const normalized = validateAgentAuditedPath(path)
+    const library = await this.readLibraryState()
+    if (library.rootHash !== snapshot.rootHash || library.libraryId !== snapshot.libraryId ||
+      library.rootGeneration !== snapshot.rootGeneration) throw new TraceError(ERR.CONFLICT, '活动计划库已变化，请重新预检')
+    const expiresAtMs = Number.MAX_SAFE_INTEGER
+    if (kind === 'plan') {
+      const captured = await this.capturePlan(library, normalized, expiresAtMs)
+      this.assertLibraryUnchanged(library)
+      return { kind: 'plan', path: captured.relativePath, directoryIdentity: captured.directoryIdentity,
+        planId: captured.planId, updatedAt: captured.updatedAt }
+    }
+    const captured = await this.captureFolder(library, normalized, expiresAtMs)
+    this.assertLibraryUnchanged(library)
+    return { kind: 'folder', path: captured.relativePath, directoryIdentity: captured.directoryIdentity, planId: null }
+  }
+
+  /**
+   * Re-resolves only the exact path recorded by a successful rename/move,
+   * requiring the same original message-bound grant and physical identity.
+   * The returned location is not written back to the grant or exposed to the
+   * renderer/provider as a newly authorized target.
+   */
+  async resolveAuditedRelocationForMessage(input: unknown, messageId: string,
+    snapshot: AgentActiveLibrarySnapshot): Promise<AgentTargetResolution> {
+    assertAgentSessionId(messageId)
+    if (!agentRecord(input) || (input.kind !== 'plan' && input.kind !== 'folder') ||
+      typeof input.setId !== 'string' || typeof input.ref !== 'string' || typeof input.path !== 'string' ||
+      typeof input.directoryIdentity !== 'string' || input.directoryIdentity.length > 128 ||
+      (input.planId !== undefined && input.planId !== null && (typeof input.planId !== 'string' || !isUuid32(input.planId)))) {
+      throw new TraceError(ERR.VALIDATION, '操作审计目标无效')
+    }
+    const record = this.grants.get(input.ref)
+    if (!record || record.setId !== input.setId || record.kind === 'trash') {
+      throw new TraceError(ERR.PATH_NOT_FOUND, '原始操作目标授权不存在')
+    }
+    assertPlanOperationPath(record.relativePath)
+    if (record.boundMessageId !== messageId || record.confirmedMessageId !== messageId || record.boundCapability !== 'read') {
+      throw new TraceError(ERR.CONFLICT, '原始操作目标未包含在用户确认范围内')
+    }
+    if (this.now() >= record.expiresAtMs) throw new TraceError(ERR.CONFLICT, '原始操作目标授权已过期')
+    await this.assertActiveLibrarySnapshot(snapshot)
+    const library = await this.readLibraryState()
+    if (record.rootHash !== snapshot.rootHash || record.libraryId !== snapshot.libraryId ||
+      record.rootGeneration !== snapshot.rootGeneration || record.configuredRoot !== library.configuredRoot ||
+      record.canonicalRoot !== library.canonicalRoot) throw new TraceError(ERR.CONFLICT, '原始计划库身份已变化')
+    const normalized = validateAgentAuditedPath(input.path)
+    if (input.kind === 'plan') {
+      if (record.kind !== 'plan') throw new TraceError(ERR.PATH_NOT_FOUND, '原始操作目标授权不存在')
+      const current = await this.capturePlan(library, normalized, record.expiresAtMs)
+      if (current.directoryIdentity !== record.directoryIdentity || current.directoryIdentity !== input.directoryIdentity ||
+        current.planId !== record.planId || current.planId !== (input.planId ?? null)) {
+        throw new TraceError(ERR.CONFLICT, '操作审计目标身份已变化')
+      }
+      const resolved: TargetGrantRecord = {
+        ...current, setId: record.setId, ref: record.ref, revision: '', expiresAtMs: record.expiresAtMs,
+        boundMessageId: record.boundMessageId, confirmedMessageId: record.confirmedMessageId, boundCapability: record.boundCapability
+      }
+      resolved.revision = revisionFor(resolved)
+      this.assertLibraryUnchanged(library)
+      return this.toResolution(resolved)
+    }
+    if (record.kind !== 'folder') throw new TraceError(ERR.PATH_NOT_FOUND, '原始操作目标授权不存在')
+    const current = await this.captureFolder(library, normalized, record.expiresAtMs)
+    if (current.directoryIdentity !== record.directoryIdentity || current.directoryIdentity !== input.directoryIdentity) {
+      throw new TraceError(ERR.CONFLICT, '操作审计目标身份已变化')
+    }
+    const resolved: TargetGrantRecord = {
+      ...current, setId: record.setId, ref: record.ref, revision: '', expiresAtMs: record.expiresAtMs,
+      boundMessageId: record.boundMessageId, confirmedMessageId: record.confirmedMessageId, boundCapability: record.boundCapability
+    }
+    resolved.revision = revisionFor(resolved)
+    this.assertLibraryUnchanged(library)
+    return this.toResolution(resolved)
+  }
+
+  /** Validates the original frozen authorization after that exact target was trashed. */
+  async assertGrantBindingForMessage(input: unknown, messageId: string, snapshot: AgentActiveLibrarySnapshot,
+    expected: { kind: 'plan' | 'folder'; directoryIdentity: string; planId?: string | null }): Promise<void> {
+    assertAgentSessionId(messageId)
+    const { setId, ref } = parseValidationInput(input)
+    const record = this.grants.get(ref)
+    if (!record || record.setId !== setId || record.kind === 'trash' || record.boundCapability !== 'read' ||
+      record.boundMessageId !== messageId || record.confirmedMessageId !== messageId || this.now() >= record.expiresAtMs) {
+      throw new TraceError(ERR.CONFLICT, '原始目标未处于当前用户消息的有效确认范围')
+    }
+    if (expected.kind !== record.kind) throw new TraceError(ERR.CONFLICT, '原始目标类型已变化')
+    assertPlanOperationPath(record.relativePath)
+    await this.assertActiveLibrarySnapshot(snapshot)
+    const library = await this.readLibraryState()
+    const libraryIdentityChanged = record.rootHash !== snapshot.rootHash || record.libraryId !== snapshot.libraryId ||
+      record.rootGeneration !== snapshot.rootGeneration || record.configuredRoot !== library.configuredRoot ||
+      record.canonicalRoot !== library.canonicalRoot
+    const targetIdentityChanged = expected.kind === 'plan'
+      ? record.kind !== 'plan' || record.directoryIdentity !== expected.directoryIdentity || record.planId !== (expected.planId ?? null)
+      : record.kind !== 'folder' || record.directoryIdentity !== expected.directoryIdentity
+    if (libraryIdentityChanged || targetIdentityChanged) throw new TraceError(ERR.CONFLICT, '原始目标身份或计划库已变化')
+    this.assertLibraryUnchanged(library)
   }
 
   async grant(input: unknown): Promise<AgentTargetGrantSet> {
@@ -269,7 +430,11 @@ export class AgentTargetService {
     }
 
     for (const record of records) record.boundMessageId = messageId
-    for (const ref of confirmedRefs) recordsByRef.get(ref)!.confirmedMessageId = messageId
+    for (const ref of confirmedRefs) {
+      const record = recordsByRef.get(ref)!
+      record.confirmedMessageId = messageId
+      record.boundCapability = 'read'
+    }
   }
 
   async validate(input: unknown): Promise<AgentTargetGrant> {
@@ -302,30 +467,92 @@ export class AgentTargetService {
     const { setId, ref } = parseValidationInput(input)
     const record = this.grants.get(ref)
     if (!record || record.setId !== setId) throw new TraceError(ERR.PATH_NOT_FOUND, '目标授权不存在或已失效')
-    if (record.boundMessageId !== messageId || record.confirmedMessageId !== messageId) throw new TraceError(ERR.CONFLICT, '目标授权未包含在当前用户消息确认范围内')
+    if (record.boundMessageId !== messageId || record.confirmedMessageId !== messageId || record.boundCapability !== 'read') {
+      throw new TraceError(ERR.CONFLICT, '目标授权未包含在当前用户消息确认范围内')
+    }
     await this.validate({ setId, ref })
     const currentRecord = this.grants.get(ref)
     if (!currentRecord || currentRecord.boundMessageId !== messageId || currentRecord.confirmedMessageId !== messageId) {
       throw new TraceError(ERR.CONFLICT, '目标授权未绑定到当前用户消息')
     }
-    const resolvedRecord = currentRecord
-    const resolution = {
-      ...this.toDto(resolvedRecord), setId: resolvedRecord.setId, root: resolvedRecord.configuredRoot,
-      rootHash: resolvedRecord.rootHash, libraryId: resolvedRecord.libraryId,
-      rootGeneration: resolvedRecord.rootGeneration
+    return this.toResolution(currentRecord)
+  }
+
+  /**
+   * Main-only same-ref refresh for a retry/continue attempt. It may advance a
+   * plan revision, but never changes the original message, grant set, ref,
+   * library generation, path, plan identity, or folder identity.
+   */
+  async refreshGrantForMessage(input: unknown, messageId: string, snapshot: AgentActiveLibrarySnapshot): Promise<AgentTargetResolution> {
+    assertAgentSessionId(messageId)
+    const { setId, ref } = parseValidationInput(input)
+    const record = this.grants.get(ref)
+    if (!record || record.setId !== setId) throw new TraceError(ERR.PATH_NOT_FOUND, '目标授权不存在或已失效')
+    if (record.boundMessageId !== messageId || record.confirmedMessageId !== messageId || record.boundCapability !== 'read') {
+      throw new TraceError(ERR.CONFLICT, '目标授权未包含在原用户消息确认范围内')
     }
-    return resolvedRecord.kind === 'plan'
-      ? { ...resolution, kind: 'plan', path: resolvedRecord.relativePath, directoryIdentity: resolvedRecord.directoryIdentity, planId: resolvedRecord.planId, updatedAt: resolvedRecord.updatedAt }
-      : resolvedRecord.kind === 'folder'
-        ? { ...resolution, kind: 'folder', path: resolvedRecord.relativePath, directoryIdentity: resolvedRecord.directoryIdentity }
+    if (this.now() >= record.expiresAtMs) throw new TraceError(ERR.CONFLICT, '目标授权已过期，请重新选择')
+
+    await this.assertActiveLibrarySnapshot(snapshot)
+    const library = await this.readLibraryState()
+    if (record.rootHash !== snapshot.rootHash || record.libraryId !== snapshot.libraryId ||
+      record.rootGeneration !== snapshot.rootGeneration || record.configuredRoot !== library.configuredRoot ||
+      record.canonicalRoot !== library.canonicalRoot) {
+      throw new TraceError(ERR.CONFLICT, '原授权计划库身份已变化，请重新选择')
+    }
+
+    const current = record.kind === 'plan'
+      ? await this.capturePlan(library, record.relativePath, record.expiresAtMs)
+      : record.kind === 'folder'
+        ? await this.captureFolder(library, record.relativePath, record.expiresAtMs)
+        : await this.readTrashTarget(library, record.entryId, record.trashEntryToken, record.tokenExpiresAtMs, record.expiresAtMs)
+    if (record.kind === 'plan' && current.kind === 'plan') {
+      if (record.relativePath !== current.relativePath || record.directoryIdentity !== current.directoryIdentity || record.planId !== current.planId) {
+        throw new TraceError(ERR.CONFLICT, '原授权计划身份已变化，请重新选择')
+      }
+    } else if (record.kind === 'folder' && current.kind === 'folder') {
+      if (record.relativePath !== current.relativePath || record.directoryIdentity !== current.directoryIdentity) {
+        throw new TraceError(ERR.CONFLICT, '原授权文件夹身份已变化，请重新选择')
+      }
+    } else if (record.kind === 'trash' && current.kind === 'trash') {
+      if (record.entryId !== current.entryId || record.manifestRevision !== current.manifestRevision ||
+        record.status !== current.status || record.canRestore !== current.canRestore || record.canPurge !== current.canPurge) {
+        throw new TraceError(ERR.CONFLICT, '原授权回收站条目已变化，请重新选择')
+      }
+    } else {
+      throw new TraceError(ERR.CONFLICT, '原授权目标类型已变化，请重新选择')
+    }
+
+    const refreshed: TargetGrantRecord = {
+      ...current, setId: record.setId, ref: record.ref, revision: '', expiresAtMs: record.expiresAtMs,
+      boundMessageId: record.boundMessageId, confirmedMessageId: record.confirmedMessageId, boundCapability: record.boundCapability
+    }
+    refreshed.revision = revisionFor(refreshed)
+    this.assertLibraryUnchanged(library)
+    this.grants.set(refreshed.ref, refreshed)
+    return this.toResolution(refreshed)
+  }
+
+  private toResolution(record: TargetGrantRecord): AgentTargetResolution {
+    if (record.boundCapability !== 'read') throw new TraceError(ERR.CONFLICT, '目标授权未绑定只读能力')
+    const resolution = {
+      ...this.toDto(record), setId: record.setId, capability: record.boundCapability, root: record.configuredRoot,
+      rootHash: record.rootHash, libraryId: record.libraryId,
+      rootGeneration: record.rootGeneration
+    }
+    return record.kind === 'plan'
+      ? { ...resolution, kind: 'plan', path: record.relativePath, directoryIdentity: record.directoryIdentity, planId: record.planId, updatedAt: record.updatedAt }
+      : record.kind === 'folder'
+        ? { ...resolution, kind: 'folder', path: record.relativePath, directoryIdentity: record.directoryIdentity }
         : {
-          ...resolution, kind: 'trash', path: null, entryId: resolvedRecord.entryId,
-          manifestRevision: resolvedRecord.manifestRevision, status: resolvedRecord.status,
-          trashEntryToken: resolvedRecord.trashEntryToken
+          ...resolution, kind: 'trash', path: null, entryId: record.entryId,
+          manifestRevision: record.manifestRevision, status: record.status,
+          trashEntryToken: record.trashEntryToken
         }
   }
 
-  async previewTrashOperation(input: unknown, operation: TrashOperation, messageId: string): Promise<TrashOperationPreview> {
+  async previewTrashOperation(input: unknown, operation: TrashOperation, messageId: string,
+    destination?: TrashRestoreDestination): Promise<TrashOperationPreview> {
     if (operation !== 'restore' && operation !== 'purge') throw new TraceError(ERR.VALIDATION, '回收站操作无效')
     const resolution = await this.resolveGrantForMessage(input, messageId)
     if (resolution.kind !== 'trash') throw new TraceError(ERR.VALIDATION, '该授权不是回收站条目')
@@ -337,7 +564,7 @@ export class AgentTargetService {
 
     this.grants.delete(record.ref)
     return operation === 'restore'
-      ? this.storage.previewTrashRestore(record.entryId, undefined, record.trashEntryToken)
+      ? this.storage.previewTrashRestore(record.entryId, destination, record.trashEntryToken)
       : this.storage.previewTrashPurge(record.entryId, record.trashEntryToken)
   }
 
@@ -436,12 +663,14 @@ export class AgentTargetService {
   }
 
   private async captureDirectory(library: LibraryState, relativePath: string): Promise<DirectorySnapshot> {
+    assertPlanOperationPath(relativePath)
     const resolved = resolveWithin(library.configuredRoot, relativePath)
     await assertRealPathWithinRoot(library.canonicalRoot, resolved.abs)
     const stat = await fs.lstat(resolved.abs, { bigint: true })
     if (stat.isSymbolicLink() || !stat.isDirectory()) throw new TraceError(ERR.PATH_UNSAFE, '目标目录身份不安全')
     const realDirectory = await fs.realpath(resolved.abs)
     const canonicalRelativePath = pathWithinRoot(library.canonicalRoot, realDirectory)
+    assertPlanOperationPath(canonicalRelativePath)
     if (pathKey(canonicalRelativePath) !== pathKey(relativePath)) throw new TraceError(ERR.PATH_UNSAFE, '目标路径不是规范相对路径')
     const idStat = await fs.lstat(resolved.abs, { bigint: true })
     const identity = directoryIdentity(stat)
@@ -454,7 +683,7 @@ export class AgentTargetService {
     }
   }
 
-  private async capturePlan(library: LibraryState, relativePath: string, expiresAtMs: number): Promise<TargetGrantRecord> {
+  private async capturePlan(library: LibraryState, relativePath: string, expiresAtMs: number): Promise<Extract<TargetGrantRecord, { kind: 'plan' }>> {
     const directory = await this.captureDirectory(library, relativePath)
 
     const planFile = resolveWithin(library.configuredRoot, `${directory.relativePath}/plan.json`).abs
@@ -488,7 +717,7 @@ export class AgentTargetService {
     }
   }
 
-  private async captureFolder(library: LibraryState, relativePath: string, expiresAtMs: number): Promise<TargetGrantRecord> {
+  private async captureFolder(library: LibraryState, relativePath: string, expiresAtMs: number): Promise<Extract<TargetGrantRecord, { kind: 'folder' }>> {
     const directory = await this.captureDirectory(library, relativePath)
     const planFile = resolveWithin(library.configuredRoot, `${directory.relativePath}/plan.json`).abs
     try {
@@ -505,7 +734,7 @@ export class AgentTargetService {
     }
   }
 
-  private async captureTrash(library: LibraryState, entryId: string, expiresAtMs: number): Promise<TargetGrantRecord> {
+  private async captureTrash(library: LibraryState, entryId: string, expiresAtMs: number): Promise<Extract<TargetGrantRecord, { kind: 'trash' }>> {
     const entry = await this.readTrashEntry(entryId)
     if (entry.status !== 'trashed' && entry.status !== 'purge_interrupted') {
       throw new TraceError(ERR.CONFLICT, '回收站条目当前不可操作')
@@ -526,10 +755,7 @@ export class AgentTargetService {
   }
 
   private async readTrashEntry(entryId: string): Promise<TrashEntry> {
-    const entries = await this.storage.listTrashEntries()
-    const entry = entries.find((candidate) => candidate.id === entryId)
-    if (!entry) throw new TraceError(ERR.PATH_NOT_FOUND, '回收站条目不存在或已失效')
-    return entry
+    return this.storage.readTrashEntry(entryId)
   }
 
   private async readTrashTarget(

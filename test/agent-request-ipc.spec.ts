@@ -34,12 +34,16 @@ vi.mock('electron', () => electron)
 let directory: string, root: string, profileId: string
 let bridge: TraceBridge, server: Server, storage: StorageService, agentTargets: AgentTargetService, profiles: AgentProfileService
 let dispose: () => void
+let registerServices: (agentToolDefinitions?: () => readonly AgentProviderTool[]) => () => void
 let events: AgentRequestEvent[], bodies: string[], responses: ServerResponse[]
 let respond: (response: ServerResponse) => void
 let logs: ReturnType<typeof vi.fn>
 let approvalSnapshots: AgentApprovalRequestSnapshot[]
 let approveOutbound: (snapshot: AgentApprovalRequestSnapshot) => Promise<boolean>
-const planReadTool: AgentProviderTool = { type: 'function', function: { name: 'plan.read', description: 'Read an explicitly granted plan.', parameters: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'], additionalProperties: false } } }
+const planRenameTool: AgentProviderTool = { type: 'function', function: { name: 'plan.rename', description: 'Rename an explicitly granted plan.', parameters: { type: 'object', properties: {
+  target_ref: { type: 'string', minLength: 32, maxLength: 128 }, expected_revision: { type: 'string', minLength: 71, maxLength: 71 },
+  new_name: { type: 'string', minLength: 1, maxLength: 255 }
+}, required: ['target_ref', 'expected_revision', 'new_name'], additionalProperties: false } } }
 const chunk = (text: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] })}\n\n`
 const end = 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
 function data<T>(result: TraceResult<T>): T { if (!result.ok) throw new Error(result.message); return result.data }
@@ -55,9 +59,75 @@ async function terminal(identity: AgentRequestIdentity) {
   await until(() => events.some((event) => event.type === 'terminal' && event.requestId === identity.requestId))
   return events.find((event) => event.type === 'terminal' && event.requestId === identity.requestId)!
 }
+async function terminalForAssistant(identity: AgentRequestIdentity) {
+  await until(() => events.some((event) => event.type === 'terminal' && event.requestId === identity.requestId && event.assistantId === identity.assistantId))
+  return events.find((event) => event.type === 'terminal' && event.requestId === identity.requestId && event.assistantId === identity.assistantId)!
+}
 async function plan(content: string) {
   await fs.mkdir(join(root, 'one'), { recursive: true })
   await fs.writeFile(join(root, 'one', 'plan.json'), JSON.stringify({ format_version: '1', created_at: '2026-10-02T00:00:00Z', updated_at: '2026-10-02T00:00:00Z', components: [{ id: 'note', type: 'note', payload: { content, created_at: '2026-10-02T00:00:00Z' } }] }))
+}
+async function createToolBatch(options: { policyMode?: 'confirm' | 'unrestricted'; expectedRevision?: string; waitForAutomaticApproval?: boolean; leavePendingConfirmation?: boolean } = {}) {
+  await profiles.recordCapability(profileId, { status: 'passed', testedAt: new Date().toISOString(), errorCategory: null })
+  approvalSnapshots = []
+  await plan('A local plan used only by this test')
+  data(await bridge.invoke('agent:policy:set', { mode: options.policyMode ?? 'unrestricted' }))
+  const targetSet = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
+  const target = targetSet.targets[0]
+  const toolArguments = JSON.stringify({ target_ref: target.ref, expected_revision: options.expectedRevision ?? target.revision, new_name: 'renamed' })
+  const toolCallEvent = JSON.stringify({ choices: [{ delta: { tool_calls: [{
+    index: 0, id: 'call_1', type: 'function', function: { name: 'plan.rename', arguments: toolArguments }
+  }] }, finish_reason: 'tool_calls' }] })
+  let providerRequestCount = 0
+  respond = (response) => {
+    providerRequestCount += 1
+    response.end(providerRequestCount === 1 ? `data: ${toolCallEvent}\n\ndata: [DONE]\n\n` : chunk('续轮完成') + end)
+  }
+  let enterAutomaticApproval!: () => void
+  const automaticApprovalEntered = new Promise<void>((resolve) => { enterAutomaticApproval = resolve })
+  let releaseAutomaticApproval!: (approved: boolean) => void
+  approveOutbound = async (snapshot) => {
+    approvalSnapshots.push(snapshot)
+    if (approvalSnapshots.length === 1) return true
+    if (options.waitForAutomaticApproval) {
+      enterAutomaticApproval()
+      return new Promise<boolean>((resolve) => { releaseAutomaticApproval = resolve })
+    }
+    return false
+  }
+  const session = data(await bridge.invoke('agent:session:create', { title: '续轮测试', profileId }))
+  const preview = data(await bridge.invoke('agent:preview:create', {
+    sessionId: session.id, message: '@one rename the plan', selections: [], targetGrantSetId: targetSet.id, targetRefs: [target.ref]
+  }))
+  const identity = await send(preview)
+  await terminal(identity)
+  let batch = data(await bridge.invoke('agent:session:read', { id: session.id })).operationBatches.at(-1)
+  if (!batch) throw new Error('operation batch missing')
+  let confirmationPromise: Promise<TraceResult<unknown>> | undefined
+  if (batch.status === 'pending-confirmation' && !options.leavePendingConfirmation) {
+    data(await bridge.invoke('agent:operation:read', { sessionId: session.id, batchId: batch.id }))
+    confirmationPromise = bridge.invoke('agent:operation:confirm', {
+      sessionId: session.id, batchId: batch.id, decisions: [{ callId: 'call_1', renameAction: 'keep' }]
+    })
+    if (options.waitForAutomaticApproval) await automaticApprovalEntered
+    else data(await confirmationPromise)
+    if (!options.waitForAutomaticApproval) {
+      batch = data(await bridge.invoke('agent:session:read', { id: session.id })).operationBatches.at(-1)
+      if (!batch) throw new Error('operation batch missing after confirmation')
+    }
+  }
+  return {
+    sessionId: session.id, requestId: identity.requestId, assistantId: identity.assistantId,
+    batchId: batch.id, batch, identity,
+    completeAutomaticApproval: async (approved: boolean) => {
+      releaseAutomaticApproval?.(approved)
+      if (confirmationPromise) data(await confirmationPromise)
+    }
+  }
+}
+function continueRequest(payload: unknown): Promise<TraceResult<AgentRequestIdentity>> {
+  const raw = bridge as unknown as { invoke(channel: string, value: unknown): Promise<TraceResult<AgentRequestIdentity>> }
+  return raw.invoke('agent:request:continue', payload)
 }
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks(); electron.handlers.clear(); electron.listeners.clear()
@@ -77,13 +147,30 @@ beforeEach(async () => {
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('loopback port missing')
   directory = await fs.mkdtemp(join(tmpdir(), 'trace-agent-request-')); root = join(directory, 'library'); await fs.mkdir(root)
-  const [{ registerIpc }, { StorageService }, { PlanRepository }, { AgentTargetService }, { AgentProfileService }] = await Promise.all([import('../src/main/ipc/register'), import('../src/main/services/storage-service'), import('../src/main/services/plan-repository'), import('../src/main/services/agent-target-service'), import('../src/main/services/agent-profile-service')])
+  const [{ registerIpc }, { StorageService }, { PlanRepository }, { AgentTargetService }, { AgentProfileService },
+    { PlanReferenceService }, { PlanNameTemplateService }] = await Promise.all([
+    import('../src/main/ipc/register'), import('../src/main/services/storage-service'), import('../src/main/services/plan-repository'),
+    import('../src/main/services/agent-target-service'), import('../src/main/services/agent-profile-service'),
+    import('../src/main/services/plan-reference-service'), import('../src/main/services/plan-name-template-service')
+  ])
   const repository = new PlanRepository()
   await repository.ensureLibraryRoot(root)
   storage = new StorageService(repository); storage.setRoot(root)
   agentTargets = new AgentTargetService(storage)
   profiles = new AgentProfileService(directory)
-  dispose = registerIpc({ storage, agentUserDataDir: directory, agentProfiles: profiles, agentTargetService: agentTargets, agentToolDefinitions: () => [planReadTool], requestAgentApproval: (snapshot: AgentApprovalRequestSnapshot) => approveOutbound(snapshot), getWindow: () => ({ webContents: { isDestroyed: () => false, send: (name: string, payload: unknown) => electron.listeners.get(name)?.forEach((listener) => listener({}, payload)) } }), log: logs } as unknown as Parameters<typeof registerIpc>[0])
+  const planReferences = new PlanReferenceService(repository, () => root)
+  planReferences.activateRoot(root)
+  const planNameTemplates = new PlanNameTemplateService(repository)
+  registerServices = (agentToolDefinitions = () => [planRenameTool]) => registerIpc({
+      storage, agentUserDataDir: directory, agentProfiles: profiles, agentTargetService: agentTargets,
+      planReferences, planNameTemplates, agentToolDefinitions,
+      requestAgentApproval: (snapshot: AgentApprovalRequestSnapshot) => approveOutbound(snapshot),
+      requestTrustedOperationConfirmation: async (_snapshot: unknown, accept: () => Promise<unknown>) => { await accept() },
+      getWindow: () => ({ isDestroyed: () => false,
+        webContents: { isDestroyed: () => false, send: (name: string, payload: unknown) => electron.listeners.get(name)?.forEach((listener) => listener({}, payload)) } }),
+      log: logs
+    } as unknown as Parameters<typeof registerIpc>[0])
+  dispose = registerServices()
   await import('../src/preload/index'); bridge = window.trace
   bridge.on('trace:agent-request', (event) => events.push(event))
   profileId = data(await bridge.invoke('agent:profile:create', { name: '本机服务', endpoint: `http://127.0.0.1:${address.port}/v1`, model: 'test-model' })).id
@@ -96,6 +183,20 @@ afterEach(async () => {
 })
 
 describe('agent request public IPC and loopback SSE', () => {
+  it('wires the production tool registry into the main IPC composition', () => {
+    const mainSource = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
+    expect(mainSource).toMatch(/import\s*\{\s*getAgentToolDefinitions\s*\}\s*from\s*['"]\.\/services\/agent-tool-registry['"]/)
+    expect(mainSource).toMatch(/agentToolDefinitions:\s*getAgentToolDefinitions/)
+  })
+  it('includes the production plan creation tool in an approved-capability outbound preview', async () => {
+    dispose()
+    const { getAgentToolDefinitions } = await import('../src/main/services/agent-tool-registry')
+    dispose = registerServices(getAgentToolDefinitions)
+    await profiles.recordCapability(profileId, { status: 'passed', testedAt: new Date().toISOString(), errorCategory: null })
+    const preview = await createPreview()
+    expect(preview.tools?.some((tool) => tool.function.name === 'plan.create')).toBe(true)
+    expect(preview.toolChoice).toBe('auto')
+  })
   it('requires a separately confirmed outbound snapshot before direct send IPC can fetch', async () => {
     approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); return false }
     const preview = await createPreview()
@@ -168,9 +269,20 @@ describe('agent request public IPC and loopback SSE', () => {
   })
   it('sends native tools only after a passed capability and persists the complete call batch', async () => {
     await profiles.recordCapability(profileId, { status: 'passed', testedAt: new Date().toISOString(), errorCategory: null })
-    respond = (response) => response.end('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"plan.read","arguments":"{\\"ref\\":\\"r1\\"}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n')
-    const preview = await createPreview()
-    expect(preview.tools).toEqual([planReadTool])
+    await plan('A local plan used only by this test')
+    const targetSet = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
+    const target = targetSet.targets[0]
+    const toolArguments = JSON.stringify({ target_ref: target.ref, expected_revision: target.revision, new_name: 'renamed' })
+    const toolCallEvent = JSON.stringify({ choices: [{ delta: { tool_calls: [{
+      index: 0, id: 'call_1', type: 'function', function: { name: 'plan.rename', arguments: toolArguments }
+    }] }, finish_reason: 'tool_calls' }] })
+    respond = (response) => response.end(`data: ${toolCallEvent}\n\ndata: [DONE]\n\n`)
+    const session = data(await bridge.invoke('agent:session:create', { title: '工具批次', profileId }))
+    const preview = data(await bridge.invoke('agent:preview:create', {
+      sessionId: session.id, message: '@one rename the plan', selections: [],
+      targetGrantSetId: targetSet.id, targetRefs: [target.ref]
+    })) as AgentOutboundPreview
+    expect(preview.tools).toEqual([planRenameTool])
     expect(preview.toolChoice).toBe('auto')
     const expected = JSON.stringify({ model: preview.target.model, messages: preview.messages, stream: true, tools: preview.tools, tool_choice: 'auto' })
     const finalPreviewMessage = preview.messages.at(-1)
@@ -185,8 +297,9 @@ describe('agent request public IPC and loopback SSE', () => {
     expect(approvalSnapshots[0].serializedBody).not.toContain('loopback-test-key')
     expect(bodies[0]).not.toContain('userMessageId')
     const saved = data(await bridge.invoke('agent:session:read', { id: identity.sessionId }))
-    expect(saved.messages[1]).toMatchObject({ status: 'complete', toolCalls: [{ id: 'call_1', type: 'function', function: { name: 'plan.read', arguments: '{"ref":"r1"}' } }] })
+    expect(saved.messages[1]).toMatchObject({ status: 'complete', toolCalls: [{ id: 'call_1', type: 'function', function: { name: 'plan.rename', arguments: toolArguments } }] })
     expect(saved.requests[0]).toMatchObject({ toolRounds: 1, toolCallCount: 1 })
+    expect(saved.operationBatches[0]).toMatchObject({ status: 'pending-confirmation', operations: [{ operation: 'plan.rename', status: 'ready' }] })
   })
   it('rejects cancelled, malformed, missing and reused tokens with no additional HTTP dispatch', async () => {
     const cancelled = await createPreview(); data(await bridge.invoke('agent:preview:cancel', { token: cancelled.token }))
@@ -375,6 +488,126 @@ describe('agent request public IPC and loopback SSE', () => {
     const shown = events.filter((event) => event.type === 'delta').map((event) => event.type === 'delta' ? event.text : '').join('')
     expect(shown.length).toBe(AGENT_MAX_MESSAGE_LENGTH); expect(shown).not.toContain('crosses-boundary')
     expect(data(await bridge.invoke('agent:session:read', { id: identity.sessionId })).messages[1]).toMatchObject({ content: shown, status: 'error-interrupted' })
+  })
+  it('re-presents the exact frozen continuation after a declined approval without replaying tools or creating a user turn', async () => {
+    const batch = await createToolBatch()
+    expect(batch.batch.status).toBe('awaiting-outbound-preview')
+    expect(batch.batch.operations).toEqual([expect.objectContaining({ callId: 'call_1', status: 'succeeded' })])
+
+    let confirm!: (approved: boolean) => void
+    let entered!: () => void
+    const approvalPending = new Promise<void>((resolve) => { entered = resolve })
+    const approvalDecision = new Promise<boolean>((resolve) => { confirm = resolve })
+    approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); entered(); return approvalDecision }
+    const repreview = continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId })
+    await approvalPending
+
+    expect(bodies).toHaveLength(1)
+    expect(approvalSnapshots).toHaveLength(3)
+    expect(approvalSnapshots[2]).toEqual(approvalSnapshots[1])
+    confirm(true)
+    const resumedIdentity = data(await repreview)
+    expect(resumedIdentity).toMatchObject({ sessionId: batch.sessionId, requestId: batch.requestId })
+    await terminalForAssistant(resumedIdentity)
+
+    expect(bodies).toHaveLength(2)
+    expect(bodies[1]).toBe(approvalSnapshots[2].serializedBody)
+    const sentMessages = JSON.parse(bodies[1]).messages as Array<{ role: string; tool_call_id?: string }>
+    expect(sentMessages.filter((message) => message.role === 'tool')).toEqual([expect.objectContaining({ tool_call_id: 'call_1' })])
+    const saved = data(await bridge.invoke('agent:session:read', { id: batch.sessionId }))
+    expect(saved.messages.filter((message) => message.role === 'user')).toHaveLength(1)
+    expect(saved.requests).toHaveLength(1)
+    expect(saved.operationBatches).toHaveLength(1)
+    expect(saved.operationBatches[0]).toMatchObject({ id: batch.batchId, status: 'awaiting-outbound-preview', operations: [{ callId: 'call_1', status: 'succeeded' }] })
+  })
+  it('rejects malformed or cross-session batch identities without provider dispatch', async () => {
+    const batch = await createToolBatch()
+    const otherSession = data(await bridge.invoke('agent:session:create', { title: '另一个会话', profileId }))
+    const malformedInputs = [
+      null,
+      { sessionId: batch.sessionId, batchId: batch.batchId, requestId: batch.requestId },
+      { sessionId: otherSession.id, batchId: batch.batchId },
+      { sessionId: batch.sessionId, batchId: randomUUID() }
+    ]
+
+    for (const input of malformedInputs) expect(await continueRequest(input)).toMatchObject({ ok: false })
+    expect(bodies).toHaveLength(1)
+    expect(approvalSnapshots).toHaveLength(2)
+  })
+  it('rejects batches that are not awaiting outbound approval or do not have successful receipts', async () => {
+    const pending = await createToolBatch({ policyMode: 'confirm', leavePendingConfirmation: true })
+    expect(pending.batch.status).toBe('pending-confirmation')
+    expect(pending.batch.operations).toEqual([expect.objectContaining({ status: 'ready' })])
+    expect(await continueRequest({ sessionId: pending.sessionId, batchId: pending.batchId })).toMatchObject({ ok: false })
+    expect(bodies).toHaveLength(1)
+
+    const failed = await createToolBatch({ expectedRevision: `sha256:${'0'.repeat(64)}` })
+    expect(failed.batch.status).not.toBe('awaiting-outbound-preview')
+    expect(failed.batch.operations.some((operation) => operation.status !== 'succeeded')).toBe(true)
+    expect(await continueRequest({ sessionId: failed.sessionId, batchId: failed.batchId })).toMatchObject({ ok: false })
+    expect(bodies).toHaveLength(2)
+  })
+  it('rejects re-preview when a later assistant response already exists', async () => {
+    const batch = await createToolBatch()
+    approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); return true }
+    const preview = data(await bridge.invoke('agent:preview:create', { sessionId: batch.sessionId, message: 'later user turn', selections: [] }))
+    const laterIdentity = await send(preview)
+    await terminalForAssistant(laterIdentity)
+    const bodyCount = bodies.length
+
+    expect(await continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId })).toMatchObject({ ok: false })
+    expect(bodies).toHaveLength(bodyCount)
+  })
+  it('rejects re-preview while any assistant generation is streaming', async () => {
+    const batch = await createToolBatch()
+    respond = (response) => response.write(chunk('active later generation'))
+    approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); return true }
+    const preview = data(await bridge.invoke('agent:preview:create', { sessionId: batch.sessionId, message: 'later streaming turn', selections: [] }))
+    const streamingIdentity = await send(preview)
+    await until(() => events.some((event) => event.type === 'delta' && event.assistantId === streamingIdentity.assistantId))
+    const bodyCount = bodies.length
+
+    expect(await continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId })).toMatchObject({ ok: false })
+    expect(bodies).toHaveLength(bodyCount)
+    data(await bridge.invoke('agent:request:cancel', { sessionId: streamingIdentity.sessionId, requestId: streamingIdentity.requestId }))
+    await terminalForAssistant(streamingIdentity)
+  })
+  it('serializes explicit re-preview against automatic continuation and concurrent duplicate attempts', async () => {
+    const batch = await createToolBatch({ waitForAutomaticApproval: true })
+    expect(approvalSnapshots).toHaveLength(2)
+    expect(bodies).toHaveLength(1)
+    expect(await continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId })).toMatchObject({ ok: false })
+    expect(approvalSnapshots).toHaveLength(2)
+
+    await batch.completeAutomaticApproval(false)
+    let confirm!: (approved: boolean) => void
+    let entered!: () => void
+    const approvalPending = new Promise<void>((resolve) => { entered = resolve })
+    const approvalDecision = new Promise<boolean>((resolve) => { confirm = resolve })
+    approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); entered(); return approvalDecision }
+    const first = continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId })
+    await approvalPending
+    const second = await continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId })
+    expect(second).toMatchObject({ ok: false })
+    expect(approvalSnapshots).toHaveLength(3)
+    expect(bodies).toHaveLength(1)
+
+    confirm(true)
+    const resumedIdentity = data(await first)
+    await terminalForAssistant(resumedIdentity)
+    expect(bodies).toHaveLength(2)
+  })
+  it('fails closed after restart when the original frozen base snapshot is unavailable', async () => {
+    const batch = await createToolBatch()
+    dispose()
+    const { AgentProfileService } = await import('../src/main/services/agent-profile-service')
+    profiles = new AgentProfileService(directory)
+    dispose = registerServices()
+    const before = bodies.length
+
+    expect(await continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId })).toMatchObject({ ok: false })
+    expect(bodies).toHaveLength(before)
+    expect(approvalSnapshots).toHaveLength(2)
   })
   it('registers request IPC without decrypting credentials or invoking the provider during startup', async () => {
     expect(electron.handlers.has('agent:request:send')).toBe(true)

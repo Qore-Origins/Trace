@@ -81,12 +81,21 @@ async function createOutboundPreview({
   try {
     await cancelPreview()
     if (!isPreviewOperationCurrent(state, epoch)) return
+    const grant = state.targets.length
+      ? await invoke('agent:target:grant', { targets: state.targets })
+      : null
+    if (!isPreviewOperationCurrent(state, epoch)) {
+      if (grant) await invoke('agent:target:release', { setId: grant.id })
+      return
+    }
+    state.targetGrantSet.current = grant?.id ?? null
     const preview = await invoke('agent:preview:create', {
       sessionId,
       message: state.draft,
       selections: entries.map(({ kind, path }) => ({ kind, path })),
       includeHistory: history,
-      includePartialMessageIds: partials
+      includePartialMessageIds: partials,
+      ...(grant ? { targetGrantSetId: grant.id, targetRefs: grant.targets.map((target) => target.ref) } : {})
     })
     await applyPreviewResult({ state, epoch, sessionId, preview })
   } catch {
@@ -153,6 +162,7 @@ function confirmOutboundPreview({
   state.sending.current = true
   void operate(async () => {
     state.previewToken.current = null
+    state.targetGrantSet.current = null
     state.previewEpoch.current += 1
     await sendApprovedPreview({ state, preview, readSession, t })
   })
@@ -208,6 +218,8 @@ async function applyRequestIdentity({
   state.identities.current.set(identity.sessionId, identity)
   if (!state.live.current || state.activeId.current !== identity.sessionId) return
   state.setDraft('')
+  state.setSources([])
+  state.setTargets([])
   state.setPartialIds([])
   await readSession(identity.sessionId)
   if (state.live.current) state.setSessions(await invoke('agent:session:list'))

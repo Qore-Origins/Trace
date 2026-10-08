@@ -389,3 +389,114 @@
     transition: none;
   }
 }
+
+/* Approved fused workbench: the composer remains one grid row on every surface. */
+.agent-view { grid-template-columns: 180px minmax(0, 1fr); overflow: hidden; }
+.agent-workbench {
+  display: grid;
+  grid-template-columns: minmax(340px, 40fr) minmax(0, 60fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  min-width: 0;
+  gap: var(--agent-gap);
+  padding: 14px;
+}
+.agent-surface-switch { display: none; }
+.agent-workbench > .agent-conversation {
+  grid-column: 1;
+  grid-row: 1;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+.agent-workbench > .agent-composer {
+  grid-column: 1;
+  grid-row: 2;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--paper);
+}
+.agent-workbench .agent-composer textarea { height: 80px; min-height: 60px; max-height: 100px; resize: none; }
+.agent-composer .agent-hint { margin: 0; font-size: 0.75rem; }
+.agent-target-chips { display: flex; flex-wrap: wrap; gap: 6px; color: var(--text-3); font-size: 0.75rem; max-height: 64px; overflow: auto; }
+.agent-target-chips button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.agent-composer .agent-selected-sources { max-height: 72px; }
+.agent-work-content {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.agent-transcript { overscroll-behavior: contain; }
+.agent-operation-flow { min-width: 0; }
+.agent-stage-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.agent-stage-nav button,
+.agent-surface-switch button {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--paper-dim);
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+}
+.agent-stage-nav small { margin-right: 8px; color: var(--text-3); }
+.agent-stage-nav [aria-current="step"],
+.agent-surface-switch [aria-selected="true"] { color: var(--link); background: var(--trace-bg); }
+.agent-operation-batch { padding: 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--r-card); }
+.agent-operation-batch header { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.agent-operation-batch h2,
+.agent-operation-batch h3 { margin: 0; font-size: 0.875rem; font-weight: 500; }
+.agent-operation-batch p { font-size: 0.8125rem; overflow-wrap: anywhere; }
+.agent-operation-item { border-top: 1px solid var(--split); padding: 10px 0; font-size: 0.8125rem; overflow-wrap: anywhere; }
+.agent-operation-status { display: inline-block; margin-left: 8px; padding: 2px 6px; color: var(--text-2); background: var(--fill); border-radius: var(--r-card); }
+.agent-operation-status--failed, .agent-operation-status--outcome-unknown { color: var(--warn-text); background: var(--warn-bg); }
+.agent-operation-diff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.agent-operation-diff > strong { grid-column: 1 / -1; }
+.agent-operation-diff > div { padding: 8px; background: var(--code-bg); min-width: 0; }
+.agent-operation-diff pre { margin: 4px 0; }
+.agent-operation-batch details > summary { cursor: pointer; color: var(--link); }
+.agent-operation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-operation-actions > .agent-operation-item { width: 100%; }
+.agent-reference-decisions label,
+.agent-operation-actions label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 44px; font-size: 0.8125rem; }
+.agent-verification { color: var(--warn-text) !important; background: var(--warn-bg); padding: 10px; border: 1px solid var(--warn-text); border-radius: var(--r-card); }
+.agent-attempt-ledger { margin-top: 12px; border-top: 1px solid var(--split); padding-top: 12px; }
+.agent-attempt-ledger section { margin-top: 12px; }
+.agent-workbench input,
+.agent-target-picker input:not([type="checkbox"]) { font: inherit; max-width: 100%; color: var(--text-1); background: var(--paper); border: 1px solid var(--border); border-radius: var(--r-card); padding: 8px; }
+.agent-workbench input:focus-visible,
+.agent-workbench summary:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.agent-operation-actions button { min-height: 44px; }
+
+@media (max-width: 960px) {
+  .agent-view { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .agent-rail { max-height: 96px; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--split); }
+  .agent-rail header { flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .agent-rail nav { flex-direction: row; overflow: auto; }
+  .agent-session { flex: none; max-width: 200px; }
+  .agent-workbench { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; padding: 8px; gap: 8px; }
+  .agent-surface-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; grid-column: 1; grid-row: 1; }
+  .agent-workbench > .agent-conversation, .agent-work-content { grid-column: 1; grid-row: 2; padding: 10px; }
+  .agent-workbench > .agent-composer { grid-column: 1; grid-row: 3; padding: 8px 10px; }
+  .agent-workbench[data-agent-surface="work"] > .agent-conversation,
+  .agent-workbench[data-agent-surface="conversation"] > .agent-work-content { visibility: hidden; pointer-events: none; }
+  .agent-composer textarea { height: 64px !important; }
+  .agent-composer .agent-hint { display: none; }
+  .agent-operation-diff { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-height: 720px) {
+  .agent-workbench { padding-block: 6px; gap: 6px; }
+  .agent-workbench .agent-composer { gap: 5px; padding-block: 6px; }
+  .agent-workbench .agent-composer textarea { height: 56px; min-height: 48px; }
+  .agent-composer .agent-hint { display: none; }
+  .agent-work-content { overflow: auto; }
+}

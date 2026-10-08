@@ -23,6 +23,7 @@ let directory: string
 let root: string
 let bridge: TraceBridge
 let dispose: (() => void) | undefined
+let disposeReferences: (() => void) | undefined
 let repo: InstanceType<typeof import('../src/main/services/plan-repository').PlanRepository>
 let storage: InstanceType<typeof import('../src/main/services/storage-service').StorageService>
 
@@ -47,9 +48,10 @@ beforeEach(async () => {
   root = join(directory, 'library')
   await fs.mkdir(root)
 
-  const [{ PlanRepository }, { StorageService }, { registerIpc }] = await Promise.all([
+  const [{ PlanRepository }, { StorageService }, { PlanReferenceService }, { registerIpc }] = await Promise.all([
     import('../src/main/services/plan-repository'),
     import('../src/main/services/storage-service'),
+    import('../src/main/services/plan-reference-service'),
     import('../src/main/ipc/register')
   ])
   repo = new PlanRepository()
@@ -61,6 +63,9 @@ beforeEach(async () => {
   })
   storage = new StorageService(repo)
   storage.setRoot(root)
+  const planReferences = new PlanReferenceService(repo, () => storage.getRootAbs())
+  planReferences.activateRoot(root)
+  disposeReferences = () => planReferences.dispose()
   const startup = {
     waitForRootActivation: async () => undefined,
     waitForBootstrap: async () => undefined,
@@ -73,7 +78,7 @@ beforeEach(async () => {
       getAppInfo: vi.fn(), bootstrap: vi.fn(),
       setRootDir: vi.fn(async (nextRoot: string) => { storage.setRoot(nextRoot); return {} })
     },
-    storage, config: {}, transfer: {}, export: {}, search: {}, startup,
+    storage, config: {}, transfer: {}, export: {}, search: {}, startup, planReferences,
     agentUserDataDir: directory, getWindow: () => null, log: vi.fn()
   } as unknown as Parameters<typeof registerIpc>[0])
   await import('../src/preload/index')
@@ -83,10 +88,116 @@ beforeEach(async () => {
 afterEach(async () => {
   dispose?.()
   dispose = undefined
+  disposeReferences?.()
+  disposeReferences = undefined
   await fs.rm(directory, { recursive: true, force: true })
 })
 
 describe('agent target typed IPC', () => {
+  it.each(['Diary', 'diary', 'dIaRy', 'Diary/2026-10-05', 'DIARY/Archive/Entry', 'diary/Archive']
+    .flatMap((path) => (['plan', 'folder'] as const).map((kind) => ({ path, kind }))))
+    ('rejects Diary $kind operation grants for $path before issuing any target refs', async ({ path, kind }) => {
+      await fs.mkdir(join(root, path), { recursive: true })
+      if (kind === 'plan') await repo.writePlanAtomic(root, path, {
+        format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+        updated_at: '2026-10-04T00:00:00.000Z', components: []
+      })
+      const issued = await bridge.invoke('agent:target:grant', { targets: [{ kind, path }] })
+      expect(issued).toMatchObject({ ok: false, code: ERR.PATH_UNSAFE })
+      expect(JSON.stringify(issued)).not.toContain(root)
+    })
+
+  it('keeps ordinary targets usable and explicit single-entry Diary context read-only', async () => {
+    const diaryPath = 'Diary/2026-10-05'
+    await fs.mkdir(join(root, diaryPath), { recursive: true })
+    await repo.writePlanAtomic(root, diaryPath, {
+      format_version: '1', created_at: '2026-10-04T00:00:00.000Z',
+      updated_at: '2026-10-04T00:00:00.000Z', components: []
+    })
+    await fs.mkdir(join(root, 'DiaryNotes'))
+    await fs.mkdir(join(root, 'Ordinary', 'Diary'), { recursive: true })
+    const issued = await bridge.invoke('agent:target:grant', { targets: [
+      { kind: 'plan', path: 'Legacy' }, { kind: 'folder', path: 'DiaryNotes' },
+      { kind: 'folder', path: 'Ordinary/Diary' }
+    ] })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    for (const target of issued.data.targets) {
+      expect(await bridge.invoke('agent:target:validate', { setId: issued.data.id, ref: target.ref }))
+        .toMatchObject({ ok: true, data: { kind: target.kind, path: target.path } })
+    }
+    expect(await bridge.invoke('agent:context:read', { kind: 'diary', path: diaryPath }))
+      .toMatchObject({ ok: true, data: { kind: 'diary', path: diaryPath } })
+    expect(await bridge.invoke('agent:context:read', { kind: 'plan', path: diaryPath }))
+      .toMatchObject({ ok: false, code: ERR.VALIDATION })
+  })
+
+  it.each(['plan', 'folder'] as const)('rejects case-varied Diary audited capture and relocation for %s', async (kind) => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    const targets = new AgentTargetService(storage)
+    const originalPath = kind === 'plan' ? 'Legacy' : 'Ordinary'
+    if (kind === 'folder') await fs.mkdir(join(root, originalPath))
+    const grant = await targets.grant({ targets: [{ kind, path: originalPath }] })
+    const message = committedUserMessage('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    const ref = grant.targets[0].ref
+    await targets.bindGrantSetToUserMessage(grant.id, message, [ref])
+    const snapshot = await targets.captureActiveLibrarySnapshot()
+    const resolved = await targets.resolveGrantForMessage({ setId: grant.id, ref }, message.id)
+    if (resolved.kind === 'trash') throw new Error('Expected a filesystem target')
+    const relocatedPath = 'dIaRy/Relocated'
+    await fs.mkdir(join(root, 'dIaRy'), { recursive: true })
+    await fs.rename(join(root, originalPath), join(root, relocatedPath))
+
+    await expect(targets.captureAuditedTarget(snapshot, relocatedPath, kind))
+      .rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+    await expect(targets.resolveAuditedRelocationForMessage({
+      kind, setId: grant.id, ref, path: relocatedPath, directoryIdentity: resolved.directoryIdentity,
+      planId: resolved.kind === 'plan' ? resolved.planId : null
+    }, message.id, snapshot)).rejects.toMatchObject({ code: ERR.PATH_UNSAFE })
+    await expect(targets.validate({ setId: grant.id, ref })).rejects.toMatchObject({ code: ERR.CONFLICT })
+  })
+
+  it.each((['plan', 'folder'] as const).flatMap((kind) =>
+    (['validate', 'resolve', 'refresh', 'binding', 'relocation'] as const).map((operation) => ({ kind, operation }))))
+    ('rejects an existing Diary $kind grant during $operation', async ({ kind, operation }) => {
+      const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+      const targets = new AgentTargetService(storage)
+      const originalPath = kind === 'plan' ? 'Legacy' : 'Ordinary'
+      if (kind === 'folder') await fs.mkdir(join(root, originalPath))
+      const grant = await targets.grant({ targets: [{ kind, path: originalPath }] })
+      const message = committedUserMessage('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+      const ref = grant.targets[0].ref
+      const input = { setId: grant.id, ref }
+      await targets.bindGrantSetToUserMessage(grant.id, message, [ref])
+      const snapshot = await targets.captureActiveLibrarySnapshot()
+      const resolved = await targets.resolveGrantForMessage(input, message.id)
+      if (resolved.kind === 'trash') throw new Error('Expected a filesystem target')
+
+      const diaryPath = 'dIaRy/Existing'
+      await fs.mkdir(join(root, 'dIaRy'), { recursive: true })
+      await fs.rename(join(root, originalPath), join(root, diaryPath))
+      // Emulate a grant already held in main memory before the Diary policy;
+      // new public grants are rejected, so this fixture only seeds legacy state.
+      const records: unknown = Reflect.get(targets, 'grants')
+      if (!(records instanceof Map)) throw new Error('Expected the main-owned grant map')
+      const record: unknown = records.get(ref)
+      if (typeof record !== 'object' || record === null) throw new Error('Expected an existing grant')
+      Reflect.set(record, 'relativePath', diaryPath)
+
+      const identity = {
+        kind, directoryIdentity: resolved.directoryIdentity,
+        planId: resolved.kind === 'plan' ? resolved.planId : null
+      }
+      const attempt = operation === 'validate' ? targets.validate(input)
+        : operation === 'resolve' ? targets.resolveGrantForMessage(input, message.id)
+          : operation === 'refresh' ? targets.refreshGrantForMessage(input, message.id, snapshot)
+            : operation === 'binding' ? targets.assertGrantBindingForMessage(input, message.id, snapshot, identity)
+              : targets.resolveAuditedRelocationForMessage({ ...input, ...identity, path: originalPath }, message.id, snapshot)
+      await expect(attempt).rejects.toMatchObject({
+        code: operation === 'validate' || operation === 'resolve' ? ERR.CONFLICT : ERR.PATH_UNSAFE
+      })
+    })
+
   it('issues a read-only grant for a legacy plan and invalidates it when its snapshot changes', async () => {
     const planFile = join(root, 'Legacy', 'plan.json')
     const originalBytes = await fs.readFile(planFile)
@@ -268,6 +379,77 @@ describe('agent target typed IPC', () => {
     const second = await targets.resolveGrantForMessage({ setId: secondGrant.id, ref: secondGrant.targets[0].ref }, secondMessage.id)
     expect(second.libraryId).not.toBe(firstLibraryId)
     expect(second.rootHash).not.toBe(second.libraryId)
+  })
+
+  it('captures an internal active-library snapshot without exposing paths and rejects stale roots', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    const targets = new AgentTargetService(storage)
+    const snapshot = await targets.captureActiveLibrarySnapshot()
+
+    expect(snapshot).toMatchObject({
+      libraryId: expect.any(String),
+      rootHash: expect.any(String),
+      rootGeneration: 0
+    })
+    expect(JSON.stringify(snapshot)).not.toContain(root)
+    await expect(targets.assertActiveLibrarySnapshot(snapshot)).resolves.toBeUndefined()
+
+    const nextRoot = join(directory, 'snapshot-next-library')
+    await fs.mkdir(nextRoot)
+    await repo.ensureLibraryRoot(nextRoot)
+    storage.setRoot(nextRoot)
+    targets.invalidateRoot()
+
+    await expect(targets.assertActiveLibrarySnapshot(snapshot)).rejects.toMatchObject({ code: ERR.CONFLICT })
+  })
+
+  it('refreshes only the original message-bound plan ref when its stable identity and active library remain unchanged', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    const targets = new AgentTargetService(storage)
+    const grant = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
+    const message = committedUserMessage('cccccccc-cccc-4ccc-8ccc-cccccccccccc')
+    const ref = grant.targets[0].ref
+    await targets.bindGrantSetToUserMessage(grant.id, message, [ref])
+    const snapshot = await targets.captureActiveLibrarySnapshot()
+    const initial = await targets.resolveGrantForMessage({ setId: grant.id, ref }, message.id)
+    const planFile = join(root, 'Legacy', 'plan.json')
+    const plan = JSON.parse(await fs.readFile(planFile, 'utf8')) as Record<string, unknown>
+    plan.updated_at = '2026-10-04T00:00:01.000Z'
+    await fs.writeFile(planFile, JSON.stringify(plan))
+
+    const refreshed = await targets.refreshGrantForMessage({ setId: grant.id, ref }, message.id, snapshot)
+    expect(refreshed).toMatchObject({ kind: 'plan', ref, path: 'Legacy', updatedAt: '2026-10-04T00:00:01.000Z' })
+    expect(refreshed.planId).toBe(initial.planId)
+    expect(refreshed.directoryIdentity).toBe(initial.directoryIdentity)
+    expect(JSON.stringify(refreshed)).not.toContain(root)
+  })
+
+  it('freezes message-bound @ resolutions to read capability, including same-ref refresh', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    const targets = new AgentTargetService(storage)
+    const grant = await targets.grant({ targets: [{ kind: 'plan', path: 'Legacy' }] })
+    const message = committedUserMessage('dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+    const ref = grant.targets[0].ref
+    await targets.bindGrantSetToUserMessage(grant.id, message, [ref])
+
+    const resolved = await targets.resolveGrantForMessage({ setId: grant.id, ref }, message.id)
+    const refreshed = await targets.refreshGrantForMessage({ setId: grant.id, ref }, message.id,
+      await targets.captureActiveLibrarySnapshot())
+
+    expect(resolved.capability).toBe('read')
+    expect(refreshed.capability).toBe('read')
+  })
+
+  it('rejects an active-library snapshot after library metadata identity changes', async () => {
+    const { AgentTargetService } = await import('../src/main/services/agent-target-service')
+    const targets = new AgentTargetService(storage)
+    const snapshot = await targets.captureActiveLibrarySnapshot()
+    const metadataPath = join(root, '.trace', 'plan-library.json')
+    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8')) as Record<string, unknown>
+    metadata.library_id = '11111111111111111111111111111111'
+    await fs.writeFile(metadataPath, JSON.stringify(metadata))
+
+    await expect(targets.assertActiveLibrarySnapshot(snapshot)).rejects.toMatchObject({ code: ERR.CONFLICT })
   })
 
   it('invalidates a stable plan grant if its plan ID changes without a timestamp change', async () => {

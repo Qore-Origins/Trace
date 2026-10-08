@@ -308,7 +308,12 @@ describe('reference impact workflow', () => {
       return result
     })
     await expect(references.commitImpact({ library_id: libraryId, preview, rename_action: 'update' }, storage))
-      .rejects.toMatchObject({ code: ERR.SAVE_FAILED })
+      .rejects.toMatchObject({
+        code: ERR.CONFLICT,
+        message: expect.stringContaining('此前完成的关联更新已保留')
+      })
+    expect((await repo.readPlan(root, 'SourceA')).components[0].payload)
+      .toMatchObject({ target_name_snapshot: 'New title' })
     expect((await repo.readPlan(root, 'Target')).components[0].payload).toMatchObject({ title: 'Old title' })
   })
 
@@ -336,9 +341,15 @@ describe('reference impact workflow', () => {
         source_path: item.source_path, source_component_id: item.source_component_id,
         action: 'replace' as const, replacement: { path: 'Replacement', component_id: REPLACEMENT_ID }
       }))
-    }, storage)).rejects.toMatchObject({ code: ERR.SAVE_FAILED })
+    }, storage)).rejects.toMatchObject({
+      code: ERR.CONFLICT,
+      message: expect.stringContaining('此前完成的关联更新已保留')
+    })
 
     expect(await repo.readPlan(root, 'Target')).toEqual(targetBefore)
+    expect((await repo.readPlan(root, 'SourceA')).components[0].payload).toMatchObject({
+      target_plan_id: SOURCE_ID, target_component_id: REPLACEMENT_ID, target_path_snapshot: 'Replacement'
+    })
     expect((await repo.readPlan(root, 'Late')).components[0].payload).toMatchObject({
       target_plan_id: TARGET_ID, target_component_id: COMPONENT_ID
     })

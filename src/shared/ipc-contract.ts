@@ -5,7 +5,8 @@ import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
 import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
 import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
-import type { AgentRequestSendInput, AgentRequestCancelInput, AgentRequestIdentity } from './agent-types'
+import type { AgentRequestSendInput, AgentRequestCancelInput, AgentContinuationPreviewInput, AgentRequestIdentity } from './agent-types'
+import type { AgentOperationBatch, AgentOperationBatchReadInput, AgentOperationBatchConfirmInput, AgentOperationBatchCancelInput, AgentOperationResumeInput, AgentOperationUndoInput } from './agent-types'
 import type { AgentTargetGrantInput, AgentTargetGrantSet, AgentTargetValidationInput, AgentTargetGrantReleaseInput, AgentTargetGrant, AgentTargetChildrenInput, AgentTargetChild } from './agent-types'
 import type { AgentPermissionPolicy, AgentApprovalRequestSnapshot } from './agent-types'
 import type { WorkspaceTabsState } from './workspace-tabs-types'
@@ -144,6 +145,13 @@ export interface Channels {
   'agent:preview:cancel': { req: { token: string }; res: null }
   'agent:request:send': { req: AgentRequestSendInput; res: AgentRequestIdentity }
   'agent:request:cancel': { req: AgentRequestCancelInput; res: null }
+  'agent:request:continue': { req: AgentContinuationPreviewInput; res: AgentRequestIdentity }
+  'agent:operation:read': { req: AgentOperationBatchReadInput; res: AgentOperationBatch }
+  'agent:operation:confirm': { req: AgentOperationBatchConfirmInput; res: AgentOperationBatch }
+  'agent:operation:cancel': { req: AgentOperationBatchCancelInput; res: null }
+  'agent:operation:retry': { req: AgentOperationResumeInput; res: AgentOperationBatch }
+  'agent:operation:continue': { req: AgentOperationResumeInput; res: AgentOperationBatch }
+  'agent:operation:undo': { req: AgentOperationUndoInput; res: AgentOperationBatch }
   // app
   'app:getAppInfo': { req: void; res: AppInfo }
   'app:bootstrap': { req: void; res: BootstrapInfo }

@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { WorkspaceTabsState } from '../src/shared/workspace-tabs-types'
-import { createWorkspaceTabsStore, type WorkspaceTabsPort } from '../src/renderer/src/stores/workspace-tabs-store'
+import {
+  createWorkspaceTabsStore,
+  registerWorkspaceTabPlanActions,
+  useWorkspaceTabsStore,
+  type WorkspaceTabPlanActions,
+  type WorkspaceTabsPort
+} from '../src/renderer/src/stores/workspace-tabs-store'
+
+vi.mock('../src/renderer/src/ipc-client', () => ({
+  invoke: vi.fn(async () => undefined)
+}))
 
 function setup(initial?: Partial<WorkspaceTabsState>) {
   const persisted: WorkspaceTabsState = {
@@ -274,5 +284,45 @@ describe('workspace tabs store', () => {
     await remapping
     expect(store.getState().open_paths).toEqual([{ path: 'Moved/X' }, { path: 'B' }])
     expect(store.getState().active_path).toBe('B')
+  })
+
+  it('生产标签 store 通过注册端口委托计划 flush、open、close 和 currentPath', async () => {
+    const previous = useWorkspaceTabsStore.getState()
+    const actions: WorkspaceTabPlanActions = {
+      flushPlan: vi.fn(async () => true),
+      openPlan: vi.fn(async () => true),
+      closePlan: vi.fn(),
+      currentPlanPath: vi.fn(() => 'Moved/X')
+    }
+
+    registerWorkspaceTabPlanActions(actions)
+    useWorkspaceTabsStore.setState({
+      rootKey: 'test-root',
+      restoreStatus: 'ready',
+      library_id: 'test-library',
+      open_paths: [],
+      active_path: null
+    })
+
+    try {
+      expect(await useWorkspaceTabsStore.getState().openPlan('First')).toBe(true)
+      expect(actions.flushPlan).toHaveBeenCalledTimes(1)
+      expect(actions.openPlan).toHaveBeenCalledWith('First')
+
+      useWorkspaceTabsStore.setState({
+        open_paths: [{ path: 'Folder/X' }],
+        active_path: 'Folder/X'
+      })
+      expect(await useWorkspaceTabsStore.getState().remapPrefix('Folder', 'Moved')).toBe(true)
+      expect(actions.currentPlanPath).toHaveBeenCalledTimes(1)
+      expect(actions.flushPlan).toHaveBeenCalledTimes(1)
+      expect(actions.openPlan).toHaveBeenCalledTimes(1)
+
+      expect(await useWorkspaceTabsStore.getState().closeTab('Moved/X')).toBe(true)
+      expect(actions.closePlan).toHaveBeenCalledTimes(1)
+    } finally {
+      registerWorkspaceTabPlanActions(null)
+      useWorkspaceTabsStore.setState(previous, true)
+    }
   })
 })

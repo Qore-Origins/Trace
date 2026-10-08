@@ -9,7 +9,7 @@ import type {
   TrashManifest, TrashManifestPhase, TrashOperation, TrashOperationCommitResult,
   TrashOperationPreview, TrashPlanSnapshot, TrashReferenceImpactSummary, TrashRestoreDestination
 } from '../../shared/trash-types'
-import { PlanRepository } from './plan-repository'
+import { PlanRepository, type AgentLibraryMutationGuard } from './plan-repository'
 import { assertRealPathWithinRoot, resolveWithin } from './path-safety'
 
 const TRASH_RELATIVE_ROOT = '.trace/trash'
@@ -31,6 +31,17 @@ export interface TrashReferenceImpactReader {
 export interface TrashChange {
   path: string
   plan_ids: string[]
+}
+
+export interface TrashPurgeConfirmationSnapshot {
+  entry_id: string
+  kind: TrashEntryKind
+  name: string
+  original_relative_path: string
+  plan_count: number
+  reference_count: number
+  status: 'trashed' | 'purge_interrupted'
+  expires_at: string
 }
 
 export interface TrashListResult {
@@ -174,11 +185,23 @@ export class TrashService {
     return { entries: rows, changes }
   }
 
+  /** Reads one actionable trash entry by its opaque ID without scanning siblings. */
+  async readEntryById(context: TrashLibraryContext, entryId: string): Promise<TrashEntry> {
+    await this.assertLibraryContext(context)
+    const manifest = await this.readActionableManifest(context, entryId, ['trashed', 'purging'])
+    const status = await this.statusForManifest(context, manifest)
+    if (status !== 'trashed' && status !== 'purge_interrupted') {
+      throw new TraceError(ERR.CONFLICT, '回收站条目当前不可读取')
+    }
+    return entryFromManifest(manifest, status, status === 'purge_interrupted' ? 'purge_interrupted' : undefined)
+  }
+
   async trashPlan(
     context: TrashLibraryContext,
     relativePath: string,
     expectedUpdatedAt?: string,
-    expectedDirectoryIdentity?: string
+    expectedDirectoryIdentity?: string,
+    mutationGuard?: AgentLibraryMutationGuard
   ): Promise<TrashMutationResult> {
     await this.assertLibraryContext(context)
     const relative = this.assertActivePlanPath(context.root, relativePath)
@@ -205,9 +228,16 @@ export class TrashService {
     const entryRelative = `${TRASH_RELATIVE_ROOT}/${entryId}`
     const entryDirectory = resolveWithin(context.root, entryRelative).abs
     const payload = join(entryDirectory, PAYLOAD_NAME)
-    await this.trashRoot(context, true)
+    const journalMutationGuard = mutationGuard ? {
+      rootDirectoryIdentity: mutationGuard.rootDirectoryIdentity,
+      rootGeneration: mutationGuard.rootGeneration,
+      assertCurrent: () => mutationGuard.assertCurrent()
+    } : undefined
+    await this.trashRoot(context, true, journalMutationGuard)
     this.repo.markInternalWrite(entryDirectory)
+    await journalMutationGuard?.assertCurrent()
     await fs.mkdir(entryDirectory)
+    await journalMutationGuard?.assertCurrent()
     const manifest: TrashManifest = {
       schema_version: 1,
       revision: 1,
@@ -225,17 +255,43 @@ export class TrashService {
     }
 
     try {
-      await this.writeManifest(entryDirectory, manifest)
+      await this.writeManifest(entryDirectory, manifest, journalMutationGuard)
+      await journalMutationGuard?.assertCurrent()
     } catch (error) {
-      this.repo.markInternalWrite(entryDirectory)
-      await fs.rmdir(entryDirectory).catch(() => undefined)
+      try {
+        await journalMutationGuard?.assertCurrent()
+        this.repo.markInternalWrite(entryDirectory)
+        await fs.rmdir(entryDirectory)
+      } catch {
+        // A failed identity check must not clean a same-path replacement library.
+      }
       throw error
     }
 
+    const frozenDirectoryIdentity = expectedDirectoryIdentity ?? directoryIdentityKey(snapshot.directory_identity)
+    let sourceMoveStarted = false
+    const sourceMutationGuard = mutationGuard ? {
+      ...journalMutationGuard!,
+      assertBeforeMutation: async () => {
+        await mutationGuard.assertBeforeMutation?.()
+        const currentIdentity = await this.readDirectoryIdentity(sourceAbs)
+        if (directoryIdentityKey(currentIdentity) !== frozenDirectoryIdentity) {
+          throw new TraceError(ERR.CONFLICT, '目标文件夹已变化，请重新预览确认')
+        }
+        sourceMoveStarted = true
+      }
+    } : undefined
     try {
-      await this.repo.moveDirAtomic(sourceAbs, payload)
+      await this.repo.moveDirAtomic(sourceAbs, payload, sourceMutationGuard)
+      await journalMutationGuard?.assertCurrent()
     } catch (error) {
-      const recovered = await this.recoverEntry(context, manifest).catch(() => null)
+      const sourceExists = await pathExists(sourceAbs).catch(() => false)
+      const payloadExists = await pathExists(payload).catch(() => false)
+      if (!sourceMoveStarted && sourceExists && !payloadExists) {
+        await this.removeEntryMetadataOrRecover(context.root, entryDirectory, journalMutationGuard).catch(() => false)
+        throw error
+      }
+      const recovered = await this.recoverEntry(context, manifest, journalMutationGuard).catch(() => null)
       if (recovered?.changes.length || recovered?.entry?.status === 'needs_attention') {
         return {
           entry: recovered.entry ?? entryFromManifest(manifest, 'needs_attention', 'entry_incomplete'),
@@ -255,8 +311,9 @@ export class TrashService {
 
     let trashedManifest: TrashManifest
     try {
-      trashedManifest = await this.writeNextManifest(entryDirectory, manifest, { phase: 'trashed' })
-    } catch {
+      trashedManifest = await this.writeNextManifest(entryDirectory, manifest, { phase: 'trashed' }, journalMutationGuard)
+    } catch (error) {
+      if (mutationGuard) throw error
       // The staging manifest plus verified payload is an explicitly recoverable crash state.
       // Report the completed disk move so caches/indexes do not keep the removed source visible.
       return {
@@ -301,19 +358,22 @@ export class TrashService {
     const manifest = await this.readActionableManifest(context, entryId, ['trashed'])
     if (entryTargetToken) this.consumeEntryTarget(context, entryId, manifest, entryTargetToken)
     const target = await this.resolveRestoreTarget(context.root, manifest, destination)
+    const payloadStateDigest = await this.payloadStateDigest(context.root, manifest)
     const referenceImpact = await this.referenceImpactReader(context.library_id, collectPlanIds(manifest))
     const previewDigest = digestJson({
       operation: 'restore', entry_id: entryId, manifest_revision: manifest.revision,
       manifest_digest: digestJson(manifest), library_id: context.library_id,
       root_generation: context.root_generation, restore_relative_path: target.relative_path,
-      restore_parent_identity: target.parent_identity, reference_impact_signature: referenceImpact.signature
+      restore_parent_identity: target.parent_identity, reference_impact_signature: referenceImpact.signature,
+      payload_state_digest: payloadStateDigest
     })
-    return this.issueConfirmation(context, manifest, 'restore', previewDigest, referenceImpact, target)
+    return this.issueConfirmation(context, manifest, 'restore', previewDigest, referenceImpact, target, payloadStateDigest)
   }
 
   async commitRestore(
     context: TrashLibraryContext,
-    confirmationToken: string
+    confirmationToken: string,
+    mutationGuard?: AgentLibraryMutationGuard
   ): Promise<TrashOperationCommitResult> {
     await this.assertLibraryContext(context)
     const confirmation = this.consumeConfirmation(context, confirmationToken, 'restore')
@@ -323,6 +383,10 @@ export class TrashService {
     }
     if (!confirmation.restore_relative_path || !confirmation.restore_parent_identity) {
       throw new TraceError(ERR.CONFIRMATION_REQUIRED, '恢复确认已失效，请重新预览')
+    }
+    const payloadStateDigest = await this.payloadStateDigest(context.root, manifest)
+    if (!confirmation.payload_state_digest || payloadStateDigest !== confirmation.payload_state_digest) {
+      throw new TraceError(ERR.CONFLICT, '恢复内容已变化，请重新预览确认')
     }
     const target = await this.resolveRestoreTarget(context.root, manifest, {
       parent_path: dirname(confirmation.restore_relative_path).replace(/\\/g, '/') === '.'
@@ -344,7 +408,8 @@ export class TrashService {
       library_id: context.library_id, root_generation: context.root_generation,
       restore_relative_path: target.relative_path,
       restore_parent_identity: target.parent_identity,
-      reference_impact_signature: referenceImpact.signature
+      reference_impact_signature: referenceImpact.signature,
+      payload_state_digest: payloadStateDigest
     })
     if (expectedPreviewDigest !== confirmation.preview_digest) {
       throw new TraceError(ERR.CONFLICT, '恢复预览已变化，请重新预览确认')
@@ -352,30 +417,40 @@ export class TrashService {
 
     const entryDirectory = this.entryDirectory(context.root, confirmation.entry_id)
     const payload = join(entryDirectory, PAYLOAD_NAME)
+    const rootMutationGuard = await this.createContextMutationGuard(context, mutationGuard)
+    const finalMoveGuard = this.withTargetMutationGuard(rootMutationGuard, async () => {
+      await this.assertFrozenRestoreTarget(context, target, confirmation.restore_parent_identity!, manifest,
+        confirmation.payload_state_digest!)
+    })
     const restoring = await this.writeNextManifest(entryDirectory, manifest, {
       phase: 'restoring',
       restore_relative_path: target.relative_path,
       restore_parent_identity: target.parent_identity
-    })
+    }, finalMoveGuard)
+    await finalMoveGuard.assertCurrent()
     try {
-      await this.repo.moveDirAtomic(payload, target.absolute_path)
+      await this.repo.moveDirAtomic(payload, target.absolute_path, finalMoveGuard)
     } catch (error) {
-      const recovered = await this.recoverEntry(context, restoring).catch(() => null)
+      const recovered = await this.recoverEntry(context, restoring, rootMutationGuard).catch((recoveryError) => {
+        if (mutationGuard) throw recoveryError
+        return null
+      })
       if (recovered?.changes.some((change) => change.path === target.relative_path)) {
         return { path: target.relative_path, changed_plan_ids: collectPlanIds(manifest) }
       }
-      if (await pathExists(target.absolute_path).catch(() => false) &&
+      if (!mutationGuard && await pathExists(target.absolute_path).catch(() => false) &&
         !(await pathExists(payload).catch(() => true))) {
         return { path: target.relative_path, changed_plan_ids: collectPlanIds(manifest) }
       }
       throw error
     }
 
+    await rootMutationGuard.assertCurrent()
     const restoredSnapshot = await this.captureDirectorySnapshot(context.root, target.relative_path).catch(() => null)
     if (!restoredSnapshot || !sameSnapshotFromManifest(restoring, restoredSnapshot)) {
       return { path: target.relative_path, changed_plan_ids: collectPlanIds(manifest) }
     }
-    await this.removeEntryMetadata(context.root, entryDirectory).catch(() => undefined)
+    await this.removeEntryMetadataOrRecover(context.root, entryDirectory, mutationGuard)
     return { path: target.relative_path, changed_plan_ids: collectPlanIds(manifest) }
   }
 
@@ -403,52 +478,49 @@ export class TrashService {
     return this.issueConfirmation(context, manifest, 'purge', previewDigest, referenceImpact, undefined, payloadStateDigest)
   }
 
+  async getPurgeConfirmationSnapshot(context: TrashLibraryContext, confirmationToken: string): Promise<TrashPurgeConfirmationSnapshot> {
+    await this.assertLibraryContext(context)
+    const confirmation = this.peekConfirmation(context, confirmationToken, 'purge')
+    const validated = await this.validatePurgeConfirmation(context, confirmation)
+    return {
+      entry_id: validated.manifest.entry_id,
+      kind: validated.manifest.kind,
+      name: validated.manifest.name,
+      original_relative_path: validated.manifest.original_relative_path,
+      plan_count: validated.manifest.plans.length,
+      reference_count: validated.referenceCount,
+      status: validated.status,
+      expires_at: new Date(confirmation.expires_at_ms).toISOString()
+    }
+  }
+
   async commitPurge(
     context: TrashLibraryContext,
-    confirmationToken: string
+    confirmationToken: string,
+    mutationGuard?: AgentLibraryMutationGuard
   ): Promise<TrashOperationCommitResult> {
     await this.assertLibraryContext(context)
     const confirmation = this.consumeConfirmation(context, confirmationToken, 'purge')
-    const manifest = await this.readActionableManifest(context, confirmation.entry_id, ['trashed', 'purging'])
-    if (manifest.revision !== confirmation.manifest_revision || digestJson(manifest) !== confirmation.manifest_digest) {
-      throw new TraceError(ERR.CONFLICT, '回收站条目已变化，请重新预览确认')
-    }
-    const status = await this.statusForManifest(context, manifest)
-    if (status !== 'trashed' && status !== 'purge_interrupted') {
-      throw new TraceError(ERR.CONFLICT, '此回收站条目不可清除')
-    }
-    const payloadStateDigest = await this.payloadStateDigest(context.root, manifest)
-    if (!confirmation.payload_state_digest || payloadStateDigest !== confirmation.payload_state_digest) {
-      throw new TraceError(ERR.CONFLICT, '待清除内容已变化，请重新预览确认')
-    }
-    const referenceImpact = await this.referenceImpactReader(context.library_id, collectPlanIds(manifest))
-    if (referenceImpact.signature !== confirmation.reference_impact_signature) {
-      throw new TraceError(ERR.CONFLICT, '计划关联影响已变化，请重新预览确认')
-    }
-    const expectedPreviewDigest = digestJson({
-      operation: 'purge', entry_id: confirmation.entry_id,
-      manifest_revision: manifest.revision, manifest_digest: digestJson(manifest),
-      library_id: context.library_id, root_generation: context.root_generation,
-      reference_impact_signature: referenceImpact.signature,
-      reference_count: referenceImpact.reference_count, status,
-      payload_state_digest: payloadStateDigest
-    })
-    if (expectedPreviewDigest !== confirmation.preview_digest) {
-      throw new TraceError(ERR.CONFLICT, '清除预览已变化，请重新预览确认')
-    }
+    const { manifest } = await this.validatePurgeConfirmation(context, confirmation)
 
     const entryDirectory = this.entryDirectory(context.root, confirmation.entry_id)
+    const rootMutationGuard = await this.createContextMutationGuard(context, mutationGuard)
+    const finalDeleteGuard = this.withTargetMutationGuard(rootMutationGuard, async () => {
+      await this.assertFrozenPayloadDigest(context.root, manifest, confirmation.payload_state_digest)
+    })
     await this.writeNextManifest(entryDirectory, manifest, {
       phase: 'purging', restore_relative_path: undefined, restore_parent_identity: undefined
-    })
+    }, rootMutationGuard)
+    await rootMutationGuard.assertCurrent()
     const payloadRel = `${TRASH_RELATIVE_ROOT}/${confirmation.entry_id}/${PAYLOAD_NAME}`
     await this.assertNoSymlinkPath(context.root, payloadRel)
     const payloadStat = await fs.lstat(resolveWithin(context.root, payloadRel).abs)
     if (!payloadStat.isDirectory() || payloadStat.isSymbolicLink()) {
       throw new TraceError(ERR.PATH_UNSAFE, '回收站内容路径不安全')
     }
-    await this.repo.rmRecursive(context.root, payloadRel)
-    await this.removeEntryMetadata(context.root, entryDirectory).catch(() => undefined)
+    await this.repo.rmRecursive(context.root, payloadRel, finalDeleteGuard)
+    await rootMutationGuard.assertCurrent()
+    await this.removeEntryMetadataOrRecover(context.root, entryDirectory, mutationGuard)
     return { changed_plan_ids: collectPlanIds(manifest) }
   }
 
@@ -498,6 +570,77 @@ export class TrashService {
     }
   }
 
+  private async createContextMutationGuard(
+    context: TrashLibraryContext,
+    mutationGuard?: AgentLibraryMutationGuard
+  ): Promise<AgentLibraryMutationGuard> {
+    const rootIdentity = directoryIdentityKey(await this.readDirectoryIdentity(context.root))
+    const assertCurrent = async (): Promise<void> => {
+      await mutationGuard?.assertCurrent()
+      await this.assertLibraryContext(context)
+      const currentRootIdentity = directoryIdentityKey(await this.readDirectoryIdentity(context.root))
+      if (currentRootIdentity !== rootIdentity) {
+        throw new TraceError(ERR.CONFLICT, '计划库目录身份已变化，请重新预览确认')
+      }
+    }
+    return {
+      rootDirectoryIdentity: mutationGuard?.rootDirectoryIdentity ?? rootIdentity,
+      rootGeneration: mutationGuard?.rootGeneration ?? context.root_generation,
+      assertCurrent,
+      assertBeforeMutation: async () => {
+        await assertCurrent()
+        await mutationGuard?.assertBeforeMutation?.()
+      }
+    }
+  }
+
+  private withTargetMutationGuard(
+    mutationGuard: AgentLibraryMutationGuard,
+    assertTarget: () => Promise<void>
+  ): AgentLibraryMutationGuard {
+    return {
+      ...mutationGuard,
+      assertBeforeMutation: async () => {
+        await mutationGuard.assertBeforeMutation?.()
+        await assertTarget()
+      }
+    }
+  }
+
+  private async assertFrozenRestoreTarget(
+    context: TrashLibraryContext,
+    target: { relative_path: string; absolute_path: string },
+    parentIdentity: TrashDirectoryIdentity,
+    manifest: TrashManifest,
+    expectedPayloadDigest: string
+  ): Promise<void> {
+    try {
+      if (!(await this.restoreParentMatches(context.root, target.relative_path, parentIdentity))) {
+        throw new TraceError(ERR.CONFLICT, '恢复目标文件夹已变化，请重新预览确认')
+      }
+      await this.assertNoSymlinkPath(context.root, target.relative_path, true)
+      if (await pathExists(target.absolute_path)) {
+        throw new TraceError(ERR.CONFLICT, '恢复位置已有同名内容，请重新预览确认')
+      }
+      await this.assertFrozenPayloadDigest(context.root, manifest, expectedPayloadDigest)
+    } catch (error) {
+      if (error instanceof TraceError && error.code === ERR.CONFLICT) throw error
+      throw new TraceError(ERR.CONFLICT, '恢复目标或内容已变化，请重新预览确认')
+    }
+  }
+
+  private async assertFrozenPayloadDigest(root: string, manifest: TrashManifest, expectedDigest?: string): Promise<void> {
+    try {
+      const currentDigest = await this.payloadStateDigest(root, manifest)
+      if (!expectedDigest || currentDigest !== expectedDigest) {
+        throw new TraceError(ERR.CONFLICT, '回收站内容已变化，请重新预览确认')
+      }
+    } catch (error) {
+      if (error instanceof TraceError && error.code === ERR.CONFLICT) throw error
+      throw new TraceError(ERR.CONFLICT, '回收站内容已变化，请重新预览确认')
+    }
+  }
+
   private consumeConfirmation(context: TrashLibraryContext, token: string, operation: TrashOperation): ConfirmationRecord {
     const record = this.confirmations.get(token)
     this.confirmations.delete(token)
@@ -507,6 +650,45 @@ export class TrashService {
       throw new TraceError(ERR.CONFIRMATION_REQUIRED, '确认已失效，请重新预览')
     }
     return record
+  }
+
+  private peekConfirmation(context: TrashLibraryContext, token: string, operation: TrashOperation): ConfirmationRecord {
+    const record = this.confirmations.get(token)
+    if (!record || record.operation !== operation || record.issued_at_ms > this.now() || record.expires_at_ms <= this.now() ||
+      record.root !== context.root || record.library_id !== context.library_id || record.root_generation !== context.root_generation) {
+      throw new TraceError(ERR.CONFIRMATION_REQUIRED, '确认已失效，请重新预览')
+    }
+    return record
+  }
+
+  private async validatePurgeConfirmation(
+    context: TrashLibraryContext,
+    confirmation: ConfirmationRecord
+  ): Promise<{ manifest: TrashManifest; status: 'trashed' | 'purge_interrupted'; referenceCount: number }> {
+    const manifest = await this.readActionableManifest(context, confirmation.entry_id, ['trashed', 'purging'])
+    if (manifest.revision !== confirmation.manifest_revision || digestJson(manifest) !== confirmation.manifest_digest) {
+      throw new TraceError(ERR.CONFLICT, '回收站条目已变化，请重新预览确认')
+    }
+    const status = await this.statusForManifest(context, manifest)
+    if (status !== 'trashed' && status !== 'purge_interrupted') throw new TraceError(ERR.CONFLICT, '此回收站条目不可清除')
+    const payloadStateDigest = await this.payloadStateDigest(context.root, manifest)
+    if (!confirmation.payload_state_digest || payloadStateDigest !== confirmation.payload_state_digest) {
+      throw new TraceError(ERR.CONFLICT, '待清除内容已变化，请重新预览确认')
+    }
+    const referenceImpact = await this.referenceImpactReader(context.library_id, collectPlanIds(manifest))
+    if (referenceImpact.signature !== confirmation.reference_impact_signature) {
+      throw new TraceError(ERR.CONFLICT, '计划关联影响已变化，请重新预览确认')
+    }
+    const expectedPreviewDigest = digestJson({
+      operation: 'purge', entry_id: confirmation.entry_id,
+      manifest_revision: manifest.revision, manifest_digest: digestJson(manifest),
+      library_id: context.library_id, root_generation: context.root_generation,
+      reference_impact_signature: referenceImpact.signature,
+      reference_count: referenceImpact.reference_count, status,
+      payload_state_digest: payloadStateDigest
+    })
+    if (expectedPreviewDigest !== confirmation.preview_digest) throw new TraceError(ERR.CONFLICT, '清除预览已变化，请重新预览确认')
+    return { manifest, status, referenceCount: referenceImpact.reference_count }
   }
 
   private consumeEntryTarget(
@@ -536,17 +718,20 @@ export class TrashService {
     if (library.library_id !== context.library_id) throw new TraceError(ERR.CONFLICT, '计划库已切换，请重试')
   }
 
-  private async trashRoot(context: TrashLibraryContext, create: boolean): Promise<string | null> {
+  private async trashRoot(context: TrashLibraryContext, create: boolean,
+    mutationGuard?: AgentLibraryMutationGuard): Promise<string | null> {
     const traceDirectory = resolveWithin(context.root, '.trace').abs
     await this.assertNoSymlinkPath(context.root, '.trace')
     if (create) {
       const root = resolveWithin(context.root, TRASH_RELATIVE_ROOT).abs
       this.repo.markInternalWrite(root)
+      await mutationGuard?.assertCurrent()
       await fs.mkdir(root).catch(async (error: unknown) => {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
         const existing = await fs.lstat(root)
         if (existing.isSymbolicLink() || !existing.isDirectory()) throw new TraceError(ERR.PATH_UNSAFE, '回收站目录不安全')
       })
+      await mutationGuard?.assertCurrent()
     }
     const trashRoot = join(traceDirectory, 'trash')
     try {
@@ -588,21 +773,23 @@ export class TrashService {
     return value
   }
 
-  private async writeManifest(entryDirectory: string, manifest: TrashManifest): Promise<void> {
-    await this.repo.writeJsonAtomic(join(entryDirectory, MANIFEST_NAME), manifest)
+  private async writeManifest(entryDirectory: string, manifest: TrashManifest,
+    mutationGuard?: AgentLibraryMutationGuard): Promise<void> {
+    await this.repo.writeJsonAtomic(join(entryDirectory, MANIFEST_NAME), manifest, mutationGuard)
   }
 
   private async writeNextManifest(
     entryDirectory: string,
     current: TrashManifest,
-    patch: Partial<Pick<TrashManifest, 'phase' | 'restore_relative_path' | 'restore_parent_identity'>>
+    patch: Partial<Pick<TrashManifest, 'phase' | 'restore_relative_path' | 'restore_parent_identity'>>,
+    mutationGuard?: AgentLibraryMutationGuard
   ): Promise<TrashManifest> {
     const next: TrashManifest = {
       ...current,
       revision: current.revision + 1,
       ...patch
     }
-    await this.writeManifest(entryDirectory, next)
+    await this.writeManifest(entryDirectory, next, mutationGuard)
     return next
   }
 
@@ -646,7 +833,8 @@ export class TrashService {
     }
   }
 
-  private async recoverEntry(context: TrashLibraryContext, manifest: TrashManifest): Promise<RecoveryResult> {
+  private async recoverEntry(context: TrashLibraryContext, manifest: TrashManifest,
+    mutationGuard?: AgentLibraryMutationGuard): Promise<RecoveryResult> {
     const entryDirectory = this.entryDirectory(context.root, manifest.entry_id)
     const payload = join(entryDirectory, PAYLOAD_NAME)
     const payloadExists = await pathExists(payload)
@@ -654,17 +842,18 @@ export class TrashService {
 
     if (manifest.phase === 'staging') {
       if (sourceExists && !payloadExists && await this.snapshotMatches(context.root, manifest.original_relative_path, manifest)) {
-        const removed = await this.removeEntryMetadata(context.root, entryDirectory).catch(() => false)
+        const removed = await this.removeEntryMetadataOrRecover(context.root, entryDirectory, mutationGuard)
         return { entry: removed ? null : entryFromManifest(manifest, 'needs_attention', 'entry_incomplete'), changes: [] }
       }
       if (!sourceExists && payloadExists && await this.payloadMatches(context.root, manifest)) {
         try {
-          const trashed = await this.writeNextManifest(entryDirectory, manifest, { phase: 'trashed' })
+          const trashed = await this.writeNextManifest(entryDirectory, manifest, { phase: 'trashed' }, mutationGuard)
           return {
             entry: entryFromManifest(trashed, 'trashed'),
             changes: [{ path: manifest.original_relative_path, plan_ids: collectPlanIds(manifest) }]
           }
-        } catch {
+        } catch (error) {
+          if (mutationGuard) throw error
           return { entry: entryFromManifest(manifest, 'needs_attention', 'entry_incomplete'), changes: [] }
         }
       }
@@ -682,20 +871,20 @@ export class TrashService {
       const target = manifest.restore_relative_path as string
       const targetAbs = resolveWithin(context.root, target).abs
       const targetExists = await pathExists(targetAbs)
-      if (!targetExists && payloadExists && await this.payloadMatches(context.root, manifest) &&
-        await this.restoreParentMatches(context.root, target, manifest.restore_parent_identity as TrashDirectoryIdentity)) {
+      if (!targetExists && payloadExists && await this.payloadMatches(context.root, manifest)) {
         try {
           const trashed = await this.writeNextManifest(entryDirectory, manifest, {
             phase: 'trashed', restore_relative_path: undefined, restore_parent_identity: undefined
-          })
+          }, mutationGuard)
           return { entry: entryFromManifest(trashed, 'trashed'), changes: [] }
-        } catch {
+        } catch (error) {
+          if (mutationGuard) throw error
           return { entry: entryFromManifest(manifest, 'needs_attention', 'entry_incomplete'), changes: [] }
         }
       }
       if (targetExists && !payloadExists && await this.snapshotMatches(context.root, target, manifest) &&
         await this.restoreParentMatches(context.root, target, manifest.restore_parent_identity as TrashDirectoryIdentity)) {
-        const removed = await this.removeEntryMetadata(context.root, entryDirectory).catch(() => false)
+        const removed = await this.removeEntryMetadataOrRecover(context.root, entryDirectory, mutationGuard)
         return {
           entry: removed ? null : entryFromManifest(manifest, 'needs_attention', 'entry_incomplete'),
           changes: [{ path: target, plan_ids: collectPlanIds(manifest) }]
@@ -706,8 +895,11 @@ export class TrashService {
 
     if (manifest.phase === 'purging') {
       if (!payloadExists) {
-        const removed = await this.removeEntryMetadata(context.root, entryDirectory).catch(() => false)
+        const removed = await this.removeEntryMetadataOrRecover(context.root, entryDirectory, mutationGuard)
         return { entry: removed ? null : entryFromManifest(manifest, 'needs_attention', 'entry_incomplete'), changes: [] }
+      }
+      if (!(await this.payloadRootIdentityMatches(context.root, manifest))) {
+        return { entry: entryFromManifest(manifest, 'needs_attention', 'identity_mismatch'), changes: [] }
       }
       return { entry: entryFromManifest(manifest, 'purge_interrupted', 'purge_interrupted'), changes: [] }
     }
@@ -716,9 +908,22 @@ export class TrashService {
   }
 
   private async statusForManifest(context: TrashLibraryContext, manifest: TrashManifest): Promise<TrashEntry['status']> {
-    if (manifest.phase === 'purging') return 'purge_interrupted'
+    if (manifest.phase === 'purging') {
+      return await this.payloadRootIdentityMatches(context.root, manifest) ? 'purge_interrupted' : 'needs_attention'
+    }
     if (manifest.phase !== 'trashed' || !(await this.payloadMatches(context.root, manifest))) return 'needs_attention'
     return 'trashed'
+  }
+
+  private async payloadRootIdentityMatches(root: string, manifest: TrashManifest): Promise<boolean> {
+    const payloadRelative = `${TRASH_RELATIVE_ROOT}/${manifest.entry_id}/${PAYLOAD_NAME}`
+    try {
+      await this.assertNoSymlinkPath(root, payloadRelative)
+      const current = await this.readDirectoryIdentity(resolveWithin(root, payloadRelative).abs)
+      return directoryIdentityKey(current) === directoryIdentityKey(manifest.directory_identity)
+    } catch {
+      return false
+    }
   }
 
   private async resolveRestoreTarget(
@@ -965,7 +1170,8 @@ export class TrashService {
     return first === '.trace' || first === DIARY_DIR.toLocaleLowerCase('en-US')
   }
 
-  private async removeEntryMetadata(root: string, entryDirectory: string): Promise<boolean> {
+  private async removeEntryMetadata(root: string, entryDirectory: string,
+    mutationGuard?: AgentLibraryMutationGuard): Promise<boolean> {
     const entryId = basename(entryDirectory)
     await this.assertNoSymlinkPath(root, `${TRASH_RELATIVE_ROOT}/${entryId}`)
     const directoryStat = await fs.lstat(entryDirectory)
@@ -975,9 +1181,21 @@ export class TrashService {
       return false
     }
     this.repo.markInternalWrite(entryDirectory)
+    await mutationGuard?.assertCurrent()
     await fs.unlink(join(entryDirectory, MANIFEST_NAME))
+    await mutationGuard?.assertCurrent()
     await fs.rmdir(entryDirectory)
     return true
+  }
+
+  private async removeEntryMetadataOrRecover(root: string, entryDirectory: string,
+    mutationGuard?: AgentLibraryMutationGuard): Promise<boolean> {
+    try {
+      return await this.removeEntryMetadata(root, entryDirectory, mutationGuard)
+    } catch (error) {
+      if (mutationGuard) throw error
+      return false
+    }
   }
 }
 

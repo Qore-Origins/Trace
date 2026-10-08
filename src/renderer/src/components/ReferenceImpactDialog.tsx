@@ -131,12 +131,13 @@ export function requestReferenceImpactDecision(
       content: <ReferenceImpactChoices preview={preview} libraryId={libraryId} onChange={(value) => { choice = value }} />,
       okText: i18n.t('references.impactConfirm'), cancelText: i18n.t('common.cancel'),
       autoFocusButton: 'cancel',
-      onOk: () => {
+      onOk: (close: () => void) => {
         if (!choice) {
           getMessage().warning(i18n.t('references.impactChooseAll'))
-          return Promise.reject(new Error('incomplete reference choices'))
+          return
         }
         finish(choice)
+        close()
       },
       onCancel: () => finish(null),
       afterClose: () => finish(null)

@@ -1,6 +1,6 @@
 // 事件通道类型（主进程 → 渲染器；接口设计文档 §2.4）
 import type { PlantUmlStatusDto } from './plantuml-types'
-import type { AgentRequestEvent } from './agent-types'
+import type { AgentOperationEvent, AgentRequestEvent } from './agent-types'
 
 // 仅传状态，错误细节可能含正文/本机路径，统一由 renderer 提供本地化文案。
 export type DiaryAutomationStatus =
@@ -17,4 +17,5 @@ export interface TraceEventsContract {
   'trace:plantuml-status': PlantUmlStatusDto
   'trace:diary-automation-status': DiaryAutomationStatus
   'trace:agent-request': AgentRequestEvent
+  'trace:agent-operation': AgentOperationEvent
 }

@@ -9,6 +9,7 @@ import { AppService } from './services/app-service'
 import { WatchService } from './services/watch-service'
 import { TransferService } from './services/transfer-service'
 import { SearchService } from './services/search-service'
+import { getAgentToolDefinitions } from './services/agent-tool-registry'
 import { PlanNameTemplateService } from './services/plan-name-template-service'
 import { WorkspaceTabsService } from './services/workspace-tabs-service'
 import { PlanReferenceService } from './services/plan-reference-service'
@@ -224,6 +225,7 @@ if (!app.requestSingleInstanceLock()) {
       agentApprovalWindowService,
       workspaceTabs,
       planReferences,
+      agentToolDefinitions: getAgentToolDefinitions,
       plantuml: plantumlService,
       startup,
       captureDiaryRootGuard: (root) => diaryAutomation.captureRootGuard(root),

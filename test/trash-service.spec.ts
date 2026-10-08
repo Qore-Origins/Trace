@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { ERR } from '../src/shared/errors'
+import { ERR, TraceError } from '../src/shared/errors'
 import type { PlanDocument } from '../src/shared/plan-types'
 import type { TrashLibraryContext, TrashService } from '../src/main/services/trash-service'
-import { PlanRepository } from '../src/main/services/plan-repository'
+import { PlanRepository, type AgentLibraryMutationGuard } from '../src/main/services/plan-repository'
 
 let root: string
 let outside: string
@@ -63,7 +63,161 @@ async function moveIntoTrash(path: string): Promise<string> {
   return (await trash.trashPlan(context, path)).entry.id
 }
 
+async function replaceRootAtSamePath(displacedRoot: string): Promise<void> {
+  await fs.rename(root, displacedRoot)
+  await fs.mkdir(root)
+  for (const entry of await fs.readdir(displacedRoot)) {
+    await fs.rename(join(displacedRoot, entry), join(root, entry))
+  }
+}
+
+function rootDirectoryIdentity(stat: Awaited<ReturnType<typeof fs.lstat>>): string {
+  return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`
+}
+
+describe('readEntryById', () => {
+  it('reads only the requested entry without invoking full trash enumeration', async () => {
+    const first = await createPlan('First')
+    const second = await createPlan('Second')
+    const firstEntry = (await trash.trashPlan(context, 'First', first.updated_at)).entry
+    await trash.trashPlan(context, 'Second', second.updated_at)
+    vi.spyOn(trash, 'list').mockRejectedValue(new Error('full trash enumeration must not run'))
+
+    await expect(trash.readEntryById(context, firstEntry.id)).resolves.toMatchObject({
+      id: firstEntry.id, name: 'First', original_relative_path: 'First', status: 'trashed', can_purge: true
+    })
+  })
+})
+
 describe('trashPlan and restore/purge confirmations', () => {
+  it.each(['restore', 'purge'] as const)(
+    'revalidates the frozen Agent root between %s manifest and payload mutations', async (operation) => {
+      const displacedRoot = `${root}-displaced`
+      const frozenRootStat = await fs.lstat(root)
+      const frozenRootIdentity = rootDirectoryIdentity(frozenRootStat)
+      const guard: AgentLibraryMutationGuard = {
+        rootDirectoryIdentity: frozenRootIdentity,
+        rootGeneration: 17,
+        async assertCurrent() {
+          const current = await fs.lstat(root)
+          if (rootDirectoryIdentity(current) !== frozenRootIdentity) {
+            throw new TraceError(ERR.CONFLICT, 'frozen library identity changed')
+          }
+        }
+      }
+      let swapAfterManifestWrite = false
+      let swapped = false
+      let expectedManifest = ''
+      const injectedRepository = new PlanRepository({
+        renameFn: async (from, to) => {
+          await fs.rename(from, to)
+          if (swapAfterManifestWrite && to === expectedManifest && !swapped) {
+            swapped = true
+            await replaceRootAtSamePath(displacedRoot)
+          }
+        }
+      })
+      await injectedRepository.ensureLibraryRoot(root)
+      repo = injectedRepository
+      libraryId = (await repo.readLibraryMeta(root)).library_id
+      trash = new (await import('../src/main/services/trash-service')).TrashService(repo)
+      context = { root, library_id: libraryId, root_generation: 1 }
+      await createPlan('Target')
+      const entry = await trash.trashPlan(context, 'Target')
+      const entryId = entry.entry.id
+      expectedManifest = await manifestPath(entryId)
+      const preview = operation === 'restore'
+        ? await trash.previewRestore(context, entryId)
+        : await trash.previewPurge(context, entryId)
+      swapAfterManifestWrite = true
+
+      try {
+        const commit = operation === 'restore'
+          ? trash.commitRestore(context, preview.confirmation_token, guard)
+          : trash.commitPurge(context, preview.confirmation_token, guard)
+        await expect(commit).rejects.toMatchObject({ code: ERR.CONFLICT })
+        expect(swapped).toBe(true)
+        if (operation === 'restore') {
+          await expect(fs.access(join(root, '.trace', 'trash', entryId, 'payload'))).resolves.toBeUndefined()
+          await expect(fs.access(join(root, 'Target'))).rejects.toMatchObject({ code: 'ENOENT' })
+        } else {
+          await expect(fs.access(join(root, '.trace', 'trash', entryId, 'payload'))).resolves.toBeUndefined()
+        }
+      } finally {
+        await fs.rm(displacedRoot, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it('rechecks the frozen restore parent identity at the final move seam and keeps payload safely restorable', async () => {
+    await createPlan('Parent/Source')
+    const entryId = await moveIntoTrash('Parent/Source')
+    const preview = await trash.previewRestore(context, entryId)
+    const parent = join(root, 'Parent')
+    const displacedParent = join(outside, 'displaced-parent')
+    await fs.writeFile(join(outside, 'outside-marker.txt'), 'must remain outside')
+    const moveDirAtomic = repo.moveDirAtomic.bind(repo)
+    let barrierHit = false
+    vi.spyOn(repo, 'moveDirAtomic').mockImplementationOnce(async (from, to, mutationGuard) => {
+      barrierHit = true
+      await fs.rename(parent, displacedParent)
+      await fs.symlink(outside, parent, 'junction')
+      return moveDirAtomic(from, to, mutationGuard)
+    })
+
+    await expect(trash.commitRestore(context, preview.confirmation_token)).rejects.toMatchObject({ code: ERR.CONFLICT })
+
+    expect(barrierHit).toBe(true)
+    await expect(fs.access(join(root, '.trace', 'trash', entryId, 'payload', 'plan.json'))).resolves.toBeUndefined()
+    await expect(fs.access(join(outside, 'Source'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(fs.readFile(join(outside, 'outside-marker.txt'), 'utf8')).resolves.toBe('must remain outside')
+    await expect(readManifest(entryId)).resolves.toMatchObject({ phase: 'trashed' })
+    await fs.unlink(parent)
+  })
+
+  it('rechecks frozen restore payload identity and digest immediately before moving it', async () => {
+    await createPlan('Source')
+    const entryId = await moveIntoTrash('Source')
+    const preview = await trash.previewRestore(context, entryId)
+    const payload = join(root, '.trace', 'trash', entryId, 'payload')
+    const displacedPayload = join(outside, 'displaced-restore-payload')
+    const moveDirAtomic = repo.moveDirAtomic.bind(repo)
+    let barrierHit = false
+    vi.spyOn(repo, 'moveDirAtomic').mockImplementationOnce(async (from, to, mutationGuard) => {
+      barrierHit = true
+      await fs.rename(payload, displacedPayload)
+      await fs.mkdir(payload)
+      await fs.writeFile(join(payload, 'replacement.txt'), 'not reviewed')
+      return moveDirAtomic(from, to, mutationGuard)
+    })
+
+    await expect(trash.commitRestore(context, preview.confirmation_token)).rejects.toMatchObject({ code: ERR.CONFLICT })
+
+    expect(barrierHit).toBe(true)
+    await expect(fs.readFile(join(payload, 'replacement.txt'), 'utf8')).resolves.toBe('not reviewed')
+    await expect(fs.readFile(join(displacedPayload, 'plan.json'), 'utf8')).resolves.toContain('content:Source')
+    await expect(fs.access(join(root, 'Source'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readManifest(entryId)).resolves.toMatchObject({ phase: 'restoring' })
+  })
+
+  it('exposes a validated purge summary without consuming the confirmation token', async () => {
+    const plan = await createPlan('Trusted purge summary')
+    const entry = await trash.trashPlan(context, 'Trusted purge summary', plan.updated_at)
+    const preview = await trash.previewPurge(context, entry.entry.id)
+
+    await expect(trash.getPurgeConfirmationSnapshot(context, preview.confirmation_token)).resolves.toEqual({
+      entry_id: entry.entry.id,
+      kind: 'plan',
+      name: 'Trusted purge summary',
+      original_relative_path: 'Trusted purge summary',
+      plan_count: 1,
+      reference_count: 0,
+      status: 'trashed',
+      expires_at: preview.expires_at
+    })
+    await expect(trash.commitPurge(context, preview.confirmation_token)).resolves.toHaveProperty('changed_plan_ids')
+  })
+
   it('soft-deletes a complete plan subtree and restores stable IDs and exact plan documents', async () => {
     const parent = await createPlan('Parent', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
     const child = await createPlan('Parent/Child', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
@@ -288,6 +442,31 @@ describe('manifest recovery matrix', () => {
     await expect(trash.commitPurge(context, preview.confirmation_token)).rejects.toMatchObject({ code: ERR.CONFLICT })
     await expect(fs.readFile(join(payload, 'replacement.txt'), 'utf8')).resolves.toBe('not reviewed')
     await expect(fs.readFile(join(displacedPayload, 'plan.json'), 'utf8')).resolves.toContain('content:Source')
+  })
+
+  it('rechecks the frozen payload digest at the final recursive purge seam and never deletes a replacement', async () => {
+    await createPlan('Source')
+    const entryId = await moveIntoTrash('Source')
+    const preview = await trash.previewPurge(context, entryId)
+    const payload = join(root, '.trace', 'trash', entryId, 'payload')
+    const displacedPayload = join(outside, 'displaced-purge-payload')
+    const rmRecursive = repo.rmRecursive.bind(repo)
+    let recursiveDeleteBarrierHit = false
+    vi.spyOn(repo, 'rmRecursive').mockImplementationOnce(async (rootAbs, relativePath, mutationGuard) => {
+      recursiveDeleteBarrierHit = true
+      await fs.rename(payload, displacedPayload)
+      await fs.mkdir(payload)
+      await fs.writeFile(join(payload, 'replacement.txt'), 'not approved for deletion')
+      return rmRecursive(rootAbs, relativePath, mutationGuard)
+    })
+
+    await expect(trash.commitPurge(context, preview.confirmation_token)).rejects.toMatchObject({ code: ERR.CONFLICT })
+
+    expect(recursiveDeleteBarrierHit).toBe(true)
+    await expect(fs.readFile(join(payload, 'replacement.txt'), 'utf8')).resolves.toBe('not approved for deletion')
+    await expect(fs.readFile(join(displacedPayload, 'plan.json'), 'utf8')).resolves.toContain('content:Source')
+    await expect(readManifest(entryId)).resolves.toMatchObject({ phase: 'purging' })
+    await expect(trash.list(context)).resolves.toMatchObject({ entries: [{ id: entryId, status: 'needs_attention' }] })
   })
 
   it('allows a fresh interrupted-purge preview to clear a partially removed payload', async () => {

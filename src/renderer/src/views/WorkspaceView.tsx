@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Drawer, Grid } from 'antd'
 import { MenuOutlined } from '@ant-design/icons'
 import PlanTreePanel from '../components/PlanTreePanel'
+import TrashDialog from '../components/TrashDialog'
 import ContentArea from '../components/ContentArea'
 import TreeResizer from '../components/TreeResizer'
 import { useTreeStore } from '../stores/tree-store'
@@ -31,6 +32,8 @@ export default function WorkspaceView(): React.JSX.Element {
 
   const { selectedPath, selectedKind } = useTreeStore()
   const openNameDialog = useUiStore((s) => s.openNameDialog)
+  const trashOpen = useUiStore((s) => s.trashOpen)
+  const setTrashOpen = useUiStore((s) => s.setTrashOpen)
   const treeWidth = usePrefStore((s) => s.treeWidth)
   const treeBoxRef = useRef<HTMLDivElement | null>(null)
 
@@ -55,8 +58,8 @@ export default function WorkspaceView(): React.JSX.Element {
 
   const tree = <PlanTreePanel />
 
-  return (
-    narrow ? (
+  return <>
+    {narrow ? (
       <div className="ws-main">
         <div style={{ padding: 8 }}>
           <button
@@ -82,6 +85,7 @@ export default function WorkspaceView(): React.JSX.Element {
         </div>
         <ContentArea />
       </div>
-    )
-  )
+    )}
+    <TrashDialog open={trashOpen} onClose={() => setTrashOpen(false)} />
+  </>
 }

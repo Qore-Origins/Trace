@@ -21,7 +21,8 @@ describe('renderer style boundaries', () => {
       'agent-settings.css',
       'agent-view.css',
       'plan-tabs.css',
-      'plan-reference.css'
+      'plan-reference.css',
+      'trash.css'
     ]
 
     for (const file of expectedImports) {
@@ -40,7 +41,7 @@ describe('renderer selector ownership', () => {
   it('places representative selectors in their owned domains', () => {
     const selectorsByFile: Record<string, string[]> = {
       'shell.css': ['.ws-top', '.ws-main', '.ws-status', '.onboard'],
-      'tree.css': ['.ws-tree', '.tree-row', '.slot'],
+      'tree.css': ['.ws-tree', '.tree-row', '.slot', '.tree-trash-entry'],
       'cards.css': ['.export-root', '.ws-content', '.card', '.note-md', '.folder-grid'],
       'search.css': ['.search-mask', '.search-overlay'],
       'diary.css': ['.diary-main', '.diary-layout', '@media (max-width: 959px)'],
@@ -48,7 +49,8 @@ describe('renderer selector ownership', () => {
       'plan-name-templates.css': ['.plan-name-template-settings', '.name-dialog-template__preview'],
       'agent-settings.css': ['.agent-settings', '.agent-settings-actions', '.agent-settings-hint'],
       'agent-view.css': ['.agent-view', '.agent-context-picker', '.agent-preview'],
-      'plan-tabs.css': ['.plan-tabs', '.plan-tabs__item', '.plan-tabs__select', '.plan-tabs__close']
+      'plan-tabs.css': ['.plan-tabs', '.plan-tabs__item', '.plan-tabs__select', '.plan-tabs__close'],
+      'trash.css': ['.trash-entries', '.trash-entry', '.trash-restore-form', '.trash-purge-confirmation']
     }
 
     for (const [file, selectors] of Object.entries(selectorsByFile)) {

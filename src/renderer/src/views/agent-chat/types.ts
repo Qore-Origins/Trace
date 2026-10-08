@@ -7,7 +7,8 @@ import type {
   AgentRequestEvent,
   AgentRequestIdentity,
   AgentSession,
-  AgentSessionSummary
+  AgentSessionSummary,
+  AgentTargetSelection
 } from '@shared/agent-types'
 
 export type StateSetter<T> = Dispatch<SetStateAction<T>>
@@ -29,6 +30,11 @@ export interface AgentSessionState {
   setDraft: StateSetter<string>
   sources: AgentContextEntry[]
   setSources: StateSetter<AgentContextEntry[]>
+  targets: AgentTargetSelection[]
+  setTargets: StateSetter<AgentTargetSelection[]>
+  targetPickerOpen: boolean
+  setTargetPickerOpen: StateSetter<boolean>
+  targetGrantSet: MutableRefObject<string | null>
   activeId: MutableRefObject<string | null>
   readEpoch: MutableRefObject<number>
   refreshEpoch: MutableRefObject<number>

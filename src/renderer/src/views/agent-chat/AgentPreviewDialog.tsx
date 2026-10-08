@@ -150,6 +150,9 @@ function OutboundPreviewContent({
   return (
     <>
       <PreviewTarget preview={preview} />
+      <h3>{t('agentChat.targets')}</h3>
+      {!preview.targets?.length && <p>{t('agentChat.noTargets')}</p>}
+      {preview.targets?.map((target) => <p key={target.ref}>{target.name} · {target.path ?? t('agentChat.trash')} · {t('agentChat.version')}: {target.revision}</p>)}
       <h3>{t('agentChat.userText')}</h3>
       <pre>{preview.message}</pre>
       <PreviewHistory preview={preview} />
