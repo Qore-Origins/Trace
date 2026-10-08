@@ -20,6 +20,7 @@
 ## 复审前已记录状态（2026-10-08 23:59 +08:00；以下结论已被上方独立复审更新）
 
 - **Task 8D3 已通过（D3-only runner PASS）+ 全量门槛全绿（2026-10-08 23:59 +08:00）。** Claude 的 runner 最小修正（根展开）三轮迭代生效：D3-only 运行 PASS——三入口（Context/EditMenu/DeleteKey）× 取消零写入/软删除/真实 keep-replace 决策/缺失替代拒绝/IPC-only 恢复全部通过；隔离完好、provider 0 请求、临时 fixture 退出清理。修正链诊断实证三次迭代：① 根展开缺失 ② antd 两字按钮插空格致「取消」失配 ③ 菜单项快捷键 extra 致 startsWith 需求。断言语义修正记录在案（order 派生值改比名字序列；Context 业务拒绝单列正向断言）。全量门槛实测：typecheck 0 错、test 48 文件 512 用例全绿（此前 2 个 transfer 失败未复现）、build 通过。**Task 8 剩余：独立最终复审（本批为 Claude 自查，无第二 reviewer）、原生键鼠/IME/DPI/读屏人工验收边界、交接清单**——详细恢复结果见 Task8-Current-Status-2026-10-08.md「恢复执行结果」节。runner 修正未提交（工作区含 Codex 未提交内容，提交决策留用户/Codex）。
+- **已知 flaky 登记（2026-10-08 23:59，移交 Codex 定位）：`test/agent-target-picker.spec.tsx` it.each 双语言用例轮换挂**——@ 目标选择后 sessionReads 不启动（diagnostic dump 已入失败信息：UI 停在初始态、responseCount 0）。已做稳定性缓解（until deadline 4s→15s、agent-operation afterEach rm 重试），仍偶发。需 Codex 以组件/测试时序上下文定位（疑 it.each 用例间状态泄漏或 target picker 异步链）。挂账期间不豁免、不跳过（如实计入全量结果）。
 
 ## 当前执行状态（2026-10-08 23:30 +08:00）
 
