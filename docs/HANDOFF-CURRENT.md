@@ -22,7 +22,11 @@
 - **Task 8D3 已通过（D3-only runner PASS）+ 全量门槛全绿（2026-10-08 23:59 +08:00）。** Claude 的 runner 最小修正（根展开）三轮迭代生效：D3-only 运行 PASS——三入口（Context/EditMenu/DeleteKey）× 取消零写入/软删除/真实 keep-replace 决策/缺失替代拒绝/IPC-only 恢复全部通过；隔离完好、provider 0 请求、临时 fixture 退出清理。修正链诊断实证三次迭代：① 根展开缺失 ② antd 两字按钮插空格致「取消」失配 ③ 菜单项快捷键 extra 致 startsWith 需求。断言语义修正记录在案（order 派生值改比名字序列；Context 业务拒绝单列正向断言）。全量门槛实测：typecheck 0 错、test 48 文件 512 用例全绿（此前 2 个 transfer 失败未复现）、build 通过。**Task 8 剩余：独立最终复审（本批为 Claude 自查，无第二 reviewer）、原生键鼠/IME/DPI/读屏人工验收边界、交接清单**——详细恢复结果见 Task8-Current-Status-2026-10-08.md「恢复执行结果」节。runner 修正未提交（工作区含 Codex 未提交内容，提交决策留用户/Codex）。
 - **已知 flaky 登记（2026-10-08 23:59，移交 Codex 定位）：`test/agent-target-picker.spec.tsx` it.each 双语言用例轮换挂**——@ 目标选择后 sessionReads 不启动（diagnostic dump 已入失败信息：UI 停在初始态、responseCount 0）。已做稳定性缓解（until deadline 4s→15s、agent-operation afterEach rm 重试），仍偶发。需 Codex 以组件/测试时序上下文定位（疑 it.each 用例间状态泄漏或 target picker 异步链）。挂账期间不豁免、不跳过（如实计入全量结果）。
 
-## 当前执行状态（2026-10-08 23:30 +08:00）
+## 当前执行状态（2026-10-09 07:40 +08:00）
+
+- **Task 8 自动化验收与自查全部完成，状态更新为「已完成（待人工验收边界与 Codex 交叉复审）」（2026-10-09 07:40 +08:00）。** 收官交接清单见 `docs/Plan/Future_Plan/Qore/Trace/Plan-261003-01-小沅计划操作与统一回收站/Task8-Final-Handoff.md`：全量门槛实测全绿（typecheck 0 错、worktree test 全绿、build 通过）、D3 三入口 PASS、8A 韧性修复落地（renameWithRetry 可注入禁用）。剩余：① Codex 交叉复审三处（runner 修正链/renameWithRetry 语义/Context 拒绝 throw 改不逃逸）② 用户人工验收边界（原生键鼠/IME/DPI/读屏/真实安装包）。合并 worktree 分支回 main 的冲突面预估在 plan-repository.ts/register.ts。Claude 转入待命；F4 年热力基础设施已先行入库（buildYearHeatmap + diary:year 通道，年视图 UI 待后续批次）。
+
+
 
 - **Task 8D3 单次运行完成：根展开修正生效（首次进入真实删除确认交互），新失败点=首次软删除确认「取消」后确认框未关闭（2026-10-08 23:30 +08:00）。** Claude 实施的 expandLibraryRootThroughTreeUi（真实树 UI 点击根 switcher 展开 + 等待目标行可见）验证有效：本轮突破此前全部 D3 运行卡死的 selectTreeFixture，实际进入 Context 入口的右键菜单→删除项→软删除确认弹窗；失败点推进到 clickReactConfirmation(firstTitle, 取消) 的关闭等待超时（runId 866b2eaec2e50d946173242a678f12ab，result: FAIL，provider 0 请求、renderer exception 0）。按授权边界（单次、失败保留 fixture 停止不重试）已停止；新 fixture C:/Users/aaa/AppData/Local/Temp/trace-agent-phase2-isolated-e2e-97izxM 保留未触碰。runner 已含修正（未提交——工作区混有 Codex 未提交内容，提交决策留用户/Codex）。owner 释放；Task 8 仍 in_progress；下一轮需先诊断「取消点击未生效/确认框不关闭」。
 
