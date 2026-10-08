@@ -184,6 +184,23 @@
       "platform": "win32-x64",
       "verificationPassed": true,
       "verification": "npm run typecheck passed; npm run test 40 files/398 tests; npm run build renderer 7156 modules; npm run build:win passed; installer ProductVersion/FileVersion 0.18.1 and archived size/SHA-256 match; app.asar has required production entries and excludes project QA roots; all 149 packaged PlantUML files match prepared runtime; packaged Java rendered offline SVG; SANDBOX/loopback/statistics/process-exit smoke passed; isolated packaged Electron smoke passed first-run empty-library onboarding, test-library activation, full-text search and source-note backtrace pulse. NSIS installer UI was not separately installed. Installer is unsigned. Size delta from v0.18.0: -4317 bytes."
+    },
+    {
+      "version": "1.0.0",
+      "status": "stable",
+      "statusLabel": "正式版",
+      "date": "20261009",
+      "sequence": 1,
+      "filename": "Trace_1.0.0_stable_20261009_01.exe",
+      "timestamp": "2026-10-09T05:09:47+08:00",
+      "fileSize": 210738662,
+      "fileSizeFormatted": "200.98 MiB",
+      "sha256": "76ED2D64F0313D0D9FDBE3333BDC306D6C10E839513BBE27D0328BDF1EA8157E",
+      "sourcePath": "release/溯源 Trace-1.0.0-setup.exe (isolated release worktree: codex/release-v1.0.0)",
+      "targetPath": "D:\\Code\\Project\\Qore\\Trace\\builds\\windows\\Trace_1.0.0_stable_20261009_01.exe",
+      "platform": "win32-x64",
+      "verificationPassed": false,
+      "verification": "npm run typecheck passed; npm run build passed; npm run build:win passed; PE ProductVersion 1.0.0.0 and FileVersion 1.0.0; source/archive size and SHA-256 match; packaged PlantUML runtime 149 paths and hashes match; app.asar has 28017 entries and no project QA paths. Full suite was 85 files/1190 tests, 1187 passed/3 failed; user approved skipping the three failures, so full suite is not green. NSIS install/uninstall and user-side keyboard/IME/DPI/narrow-window/screen-reader acceptance remain pending. Installer is unsigned."
     }
   ]
 }

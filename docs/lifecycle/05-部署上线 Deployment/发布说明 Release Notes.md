@@ -4,39 +4,41 @@
 
 | 项目 | 内容 |
 |------|------|
-| 版本 | v0.18.1 公测版 Beta 7 修订 |
-| 日期 | 2026-09-27 |
-| 类型 | 功能批次 / Beta |
-| 升级兼容 | 计划文件格式和数据目录不变 |
+| 版本 | v1.0.0 正式版 |
+| 日期 | 2026-10-09 |
+| 类型 | 正式版 / Stable |
+| 升级兼容 | 计划 Markdown 与既有数据根目录保持兼容；新增计划引用与小沅会话数据 |
 | 版本唯一真源 | `package.json`；版本史见 `docs/changelog/CHANGELOG.md` |
 
 ## 版本概述
 
-本次相对 v0.18.0 修复任务卡片逾期标签的布局跳动。计划文件格式和数据目录不变。
+这是溯源 Trace 的首个正式版。相较 v0.18.1，集中交付日记自动补建、计划名称模板、计划标签页与跨计划引用，以及本地优先的小沅 Agent 与可追溯计划操作。
 
 ## 新增与改进
 
-- **逾期标签布局**：取消已完成任务的勾选时，逾期标记不再通过宽度动画入场或短暂折行；任务详情和任务列表的内容位置保持稳定。
-- **状态与无障碍**：已过截止日期的已完成任务保留标签布局槽位，但标签透明且从无障碍树隐藏；未逾期任务不预留槽位。
-- **兼容性**：计划 Markdown 格式、数据目录和 IPC 合约不变。
+- **日记自动补建**：激活计划库后在后台补齐缺失的空白日记；保留已有内容并使用 checkpoint，避免重启后重建已删除日期。新日记心情初始为空。
+- **计划名称模板**：按目标文件夹配置命名规则，新建时自动填入日期与前缀，用户只需补充自定义名称。
+- **计划标签页与引用**：支持工作区计划标签页、跨计划链接和只读嵌入；重命名、删除等引用目标变更可预览影响并选择是否同步更新。
+- **小沅 Agent**：用户自配模型服务、端点和 API Key；通过 `@` 指定计划/文件夹，选择并预览上下文和外发内容；计划操作按批次预览、授权、执行并保留本地溯源。
+- **回收站与隐私**：计划/文件夹统一支持恢复与永久清除；不默认上传整库，API Key 不进入会话记录。
+- **兼容性**：既有计划 Markdown 和数据根目录保持兼容；新增引用与 Agent 会话数据由应用本地管理。
 
 ## 已知验收边界
 
-- `npm run typecheck`、`npm run test`（40 个测试文件 / 398 项）、`npm run build`（renderer 7,156 模块）和 `npm run build:win` 均通过。此前逾期标签浏览器逐帧回归覆盖 1200px 亮色、720px 暗色及减少动态效果，共 6/6 场景。
-- Windows x64 安装包 `Trace_0.18.1_beta_20260927_01.exe`：210,580,598 字节 / 200.83 MiB；SHA-256 `36679588F921F338B8DC27FA229B968F00D11387B2843C2F5DB9B7828BF94654`。包内 FileVersion/ProductVersion 均为 0.18.1；归档哈希一致，`app.asar` 不含项目 QA 目录。
-- 随包 PlantUML 149 个文件哈希逐项匹配；打包目录 Java 实际离线渲染 SVG。SANDBOX、本机回环、关闭统计及服务退出释放端口的 smoke 通过。
-- 隔离配置下启动打包版 Electron，首启空库引导、选择测试计划库、全文搜索和回溯到源注释组件均通过；未单独执行 NSIS 安装交互。
-- 安装包未数字签名，Windows 可能显示 SmartScreen/未知发布者提示。
+- `npm run typecheck` 与 `npm run build` 通过；Windows x64 `npm run build:win` 完成。用户决定跳过合入后全量测试 3 个失败项：85 个文件 / 1190 项，1187 通过、3 失败；不得视为全量全绿。两个 DST 用例在 `TZ=America/New_York` 下与 SearchService spec 定向复跑共 22/22 通过；一次 `SAVE_FAILED` 未复现，原因未明。
+- 安装包 `Trace_1.0.0_stable_20261009_01.exe`：210,738,662 字节 / 200.98 MiB；SHA-256 `76ED2D64F0313D0D9FDBE3333BDC306D6C10E839513BBE27D0328BDF1EA8157E`。归档文件与构建输出的大小及哈希一致；产品版本 1.0.0.0，文件版本 1.0.0。
+- 随包 PlantUML runtime 149 个文件的路径和哈希与准备目录一致；`app.asar` 共 28,017 项，未发现项目 QA 路径。NSIS 安装/卸载交互及用户侧键鼠、IME、DPI、窄窗口、屏幕阅读器验收尚未完成。
+- 安装包未数字签名，Windows 可能显示 SmartScreen 或未知发布者提示。
 
 ## 安装与升级
 
-- Windows x64 使用 GitHub Release 提供的安装包。Gitee Release 仅发布本说明并链接 GitHub 下载，不上传超过 100 MB 的安装包。
-- 升级前建议按个人习惯备份计划库；应用不改变既有计划文件格式或数据根目录。
-- 本次不改变 v0.17.0 引入的 PlantUML 本地服务配置和旧自定义地址迁移行为。
+- Windows x64 安装包归档于 `builds/windows/Trace_1.0.0_stable_20261009_01.exe`；GitHub Release 提供安装包，Gitee Release 仅发布说明并链接 GitHub 下载，不上传超过 100 MB 的安装包。
+- 升级前建议按个人习惯备份计划库。既有计划 Markdown 与数据根目录兼容；新增的会话、操作审计和引用数据由本地存储管理。
+- v0.17.0 起的完全离线 PlantUML 行为保持不变。
 
-详细版本说明与发布资产以 `builds/release_notes/release_notes_v0.18.1.md` 和 `builds/release_history.json` 为准。
+详细版本说明与发布资产以 `builds/release_notes/release_notes_v1.0.0.md`、`builds/build_history.json` 和 `builds/release_history.json` 为准。
 
 ## 已发布渠道
 
-- GitHub Release（Windows x64 安装包）：<https://github.com/Qore-Origins/Trace/releases/tag/v0.18.1>；远端 digest 与本地 SHA-256 一致。
-- Gitee Release（仅说明，无安装包）：<https://gitee.com/Qore/trace/releases/v0.18.1>；公开页面与正文已核验。
+- GitHub Release（Windows x64 安装包）：发布后补充 URL 与远端 digest 核验结果。
+- Gitee Release（仅说明，无安装包）：发布后补充公开页面、正文与 HTTP 状态核验结果。
