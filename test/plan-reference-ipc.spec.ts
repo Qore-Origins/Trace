@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// 全量并发负载下 IPC/bootstrap 可能超默认 5s——放宽至 20s（负载型超时 flaky）
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 })
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
