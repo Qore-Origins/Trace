@@ -12,7 +12,7 @@ import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
 import type { PlanNameTemplateService } from '../services/plan-name-template-service'
-import { DIARY_DIR, ensureDiaryRoot, ensureTodayPageWithResult, listMemories, listMonthEntries, readDaySummary } from '../services/diary-service'
+import { DIARY_DIR, ensureDiaryRoot, ensureTodayPageWithResult, listMemories, listMonthEntries, listYearEntries, readDaySummary } from '../services/diary-service'
 import { todayDateStr } from '../../shared/validation'
 import { bus } from '../services/event-bus'
 import type { PlantumlService } from '../services/plantuml-service'
@@ -279,6 +279,7 @@ export function registerIpc(deps: Deps): () => void {
     return null
   })
   reg('diary:month', async (p) => ({ entries: await listMonthEntries(diaryRoot(), p.year, p.month) }))
+  reg('diary:year', async (p) => ({ entries: await listYearEntries(diaryRoot(), p.year) }))
   reg('diary:day', async (p) => readDaySummary(diaryRoot(), p.date))
   reg('diary:memories', async () => listMemories(diaryRoot()))
 

@@ -460,3 +460,36 @@ function firstLine(text: string): string {
   const idx = text.indexOf('\n')
   return idx === -1 ? text : text.slice(0, idx)
 }
+
+// 年枚举聚合（F4 年视图热力）：枚举 Diary/ 全目录按年份过滤（聚合口径与 listMonthEntries 一致）
+export async function listYearEntries(planRoot: string, year: number): Promise<DiaryMonthEntry[]> {
+  if (!Number.isInteger(year)) throw new TraceError(ERR.VALIDATION, '年份无效')
+  const { abs: diaryAbs } = resolveWithin(planRoot, DIARY_DIR)
+  let dirents: Dirent[]
+  try {
+    dirents = await fs.readdir(diaryAbs, { withFileTypes: true })
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw e
+  }
+  const days = dirents
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .filter((name) => {
+      const m = DATE_RE.exec(name)
+      return m !== null && Number(m[1]) === year
+    })
+    .sort()
+
+  const entries: DiaryMonthEntry[] = []
+  for (const name of days) {
+    let doc: PlanDocument
+    try {
+      doc = await repo.readPlan(planRoot, `${DIARY_DIR}/${name}`)
+    } catch {
+      continue
+    }
+    entries.push(aggregateDay(name, doc))
+  }
+  return entries
+}

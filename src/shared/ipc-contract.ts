@@ -141,6 +141,7 @@ export interface Channels {
   // diary（日记深化 2026-09-10；月历/日摘要取数——renderer 不供给路径，根由 main 自解析）
   'diary:ensure': { req: {}; res: null }
   'diary:month': { req: { year: number; month: number }; res: { entries: DiaryMonthEntry[] } }
+  'diary:year': { req: { year: number }; res: { entries: DiaryMonthEntry[] } }
   'diary:day': { req: { date: string }; res: DiaryDaySummary }
   'diary:memories': {
     req: {}

@@ -2,7 +2,7 @@
 // 日历事实为硬编码定值（UTC 推算验证过），不复用实现逻辑，避免测试与实现同源互证
 import { describe, expect, it } from 'vitest'
 import type { DiaryMonthEntry } from '../src/shared/ipc-contract'
-import { aggregateStats, buildMonthGrid } from '../src/renderer/src/views/diary-view-utils'
+import { aggregateStats, buildMonthGrid, buildYearHeatmap } from '../src/renderer/src/views/diary-view-utils'
 
 function entry(date: string, score: number | null, compCount: number): DiaryMonthEntry {
   return { date, score, notePreview: '', compCount }
@@ -103,3 +103,22 @@ describe('aggregateStats', () => {
   })
 })
 
+
+describe('buildYearHeatmap（F4 年视图热力）', () => {
+  it('2026 年：365 天 → 53 列；首列为周四起（3 个 {date:null} 前导占位）', () => {
+    const cols = buildYearHeatmap(2026)
+    expect(cols).toHaveLength(53)
+    expect(cols[0]).toEqual([{ date: null }, { date: null }, { date: null }, { date: '2026-01-01' }, { date: '2026-01-02' }, { date: '2026-01-03' }, { date: '2026-01-04' }])
+    const all = cols.flat().filter((c) => c.date !== null)
+    expect(all).toHaveLength(365)
+    expect(all[0].date).toBe('2026-01-01')
+    expect(all[all.length - 1].date).toBe('2026-12-31')
+  })
+
+  it('闰年 2024：366 天全覆盖', () => {
+    const cols = buildYearHeatmap(2024)
+    const all = cols.flat().filter((c): c is { date: string } => c !== null)
+    expect(all).toHaveLength(366)
+    expect(all[all.length - 1].date).toBe('2024-12-31')
+  })
+})

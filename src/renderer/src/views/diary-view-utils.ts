@@ -50,3 +50,40 @@ export function aggregateStats(entries: DiaryMonthEntry[]): DiaryStats {
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   return { avg, daysCount: scored.length, compCount, trend }
 }
+
+/** 年热力格子：date 为当日 'YYYY-MM-DD'；null 为前导占位（年首之前） */
+export interface YearHeatmapCell {
+  date: string | null
+}
+
+/** 年热力列（GitHub contributions 式）：每列一个自然周（周一起始），行 = 星期一…星期日 */
+export type YearHeatmapColumn = YearHeatmapCell[]
+
+function isoDate(d: Date): string {
+  const q = (x: number): string => String(x).padStart(2, '0')
+  return `${d.getFullYear()}-${q(d.getMonth() + 1)}-${q(d.getDate())}`
+}
+
+/**
+ * 年热力网格（周一起首，与月历同口径）：
+ * 外层数组 = 自然周列（含年首前导 null 补位），内层 = 该周 7 格（周一起始）；
+ * 无记录日也是合法格（渲染层按 entries 查询着色）。UTC 构造避免时区/夏令时影响。
+ */
+export function buildYearHeatmap(year: number): YearHeatmapColumn[] {
+  const start = new Date(Date.UTC(year, 0, 1))
+  const lead = (start.getUTCDay() + 6) % 7 // 周一=0 … 周日=6
+  const end = new Date(Date.UTC(year + 1, 0, 0)) // 12-31
+  const totalDays = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1
+  const columns: YearHeatmapColumn[] = []
+  let column: YearHeatmapCell[] = Array.from({ length: lead }, () => ({ date: null }))
+  for (let offset = 0; offset < totalDays; offset++) {
+    const d = new Date(Date.UTC(year, 0, 1 + offset))
+    column.push({ date: isoDate(d) })
+    if (column.length === 7) {
+      columns.push(column)
+      column = []
+    }
+  }
+  if (column.length > 0) columns.push(column)
+  return columns
+}
