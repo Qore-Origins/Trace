@@ -31,7 +31,7 @@
 - 发布提交 `f8e495f6f30980037e929375046d4b7ef0663646`，annotated tag `v1.1.0` 的 tag object `287bb94cf65158d51037c773becb5b074f43d135`；GitHub 与 Gitee 远端 `main` 均指向发布提交，tag object 一致。
 - [GitHub Release](https://github.com/Qore-Origins/Trace/releases/tag/v1.1.0) ID `411471717`，正式版、非草稿、非预发布；唯一安装包 210,786,164 字节，远端 digest `sha256:d12dabe620873454b43efb5260010b748ad9392f60162f6f780a793278f798e0` 与本地一致。
 - [Gitee Release](https://gitee.com/Qore/trace/releases/tag/v1.1.0) ID `1202454`，页面显示最新版与发布提交 `f8e495f`；正文为本地完整说明的精简版，含 GitHub 安装包链接、大小、SHA-256 和已知边界，仅有平台自动生成源码归档，未重复上传 EXE。
-- 本次发布账本提交是发布后的记录更新，不改变 `v1.1.0` tag 指向的源码提交。
+- 发布账本提交 `9b6c7046609e6a90c925db6d2407ad70fcac7c50` 是发布后的记录更新，不改变 `v1.1.0` tag 指向的源码提交。
 
 ## 下一步 / 等待 / 剩余
 
