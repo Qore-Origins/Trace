@@ -1,6 +1,6 @@
 # Trace v1.1.0 构建与发布计划
 
-> 状态：最终候选包与发布门槛验证完成，准备固化版本并公开发布（2026-10-13）。用户已确认版本 v1.1.0，并选择先定位、修复全量测试失败；上一正式发布为 v1.0.0。
+> 状态：已发布（2026-10-13）。用户已确认版本 v1.1.0，并选择先定位、修复全量测试失败；上一正式发布为 v1.0.0。
 
 ## 范围
 
@@ -13,9 +13,9 @@
 - [x] 更新 package/lock、CHANGELOG、发行说明及构建账本草稿。
 - [x] 构建 Windows x64 NSIS 候选安装包，核验版本、大小、SHA-256 和随包资源。
 - [x] 定位并修复全量测试失败；重新构建最终候选包并核验。
-- [ ] 固化发布源代码与 tag，推送 GitHub/Gitee 并核验远端引用。
-- [ ] 发布并核验 GitHub/Gitee Release、安装包与下载说明。
-- [ ] 回填 build/release 账本、共享计划和 HANDOFF。
+- [x] 固化发布源代码与 tag，推送 GitHub/Gitee 并核验远端引用。
+- [x] 发布并核验 GitHub/Gitee Release、安装包与下载说明。
+- [x] 回填 build/release 账本、共享计划和 HANDOFF。
 
 ## 当前验证
 
@@ -26,6 +26,13 @@
 - `node scripts/trace-workflow-isolated-smoke.cjs`：exit 0；正式版生产 bundle 的隔离 Electron 实窗首启引导、全文搜索回溯到源组件、目录预设匹配、可编辑预览、周日 1+7、跨周交接和同日冲突确认通过。NSIS 安装/卸载和真实个人计划库尚未验收。
 - 原始 PML 与聚焦合成路径 CSV 留在本机忽略目录，未上传。完整 CSV/XML 导出清理被自动审批策略拒绝，原文件仍在本机；未更改 Defender 或系统排除项。
 
+## 发布核验
+
+- 发布提交 `f8e495f6f30980037e929375046d4b7ef0663646`，annotated tag `v1.1.0` 的 tag object `287bb94cf65158d51037c773becb5b074f43d135`；GitHub 与 Gitee 远端 `main` 均指向发布提交，tag object 一致。
+- [GitHub Release](https://github.com/Qore-Origins/Trace/releases/tag/v1.1.0) ID `411471717`，正式版、非草稿、非预发布；唯一安装包 210,786,164 字节，远端 digest `sha256:d12dabe620873454b43efb5260010b748ad9392f60162f6f780a793278f798e0` 与本地一致。
+- [Gitee Release](https://gitee.com/Qore/trace/releases/tag/v1.1.0) ID `1202454`，页面显示最新版与发布提交 `f8e495f`；正文为本地完整说明的精简版，含 GitHub 安装包链接、大小、SHA-256 和已知边界，仅有平台自动生成源码归档，未重复上传 EXE。
+- 本次发布账本提交是发布后的记录更新，不改变 `v1.1.0` tag 指向的源码提交。
+
 ## 下一步 / 等待 / 剩余
 
-下一步固化发布源代码与 tag、推送双端并核验 Release。无需等待用户输入。Windows 拒绝重命名的底层主体仍未知；已采取有限缓解并保留问题记录。当前候选包不是已发布版本，双端代码、tag 与 Release 均未推送。
+下一步由用户按需安装或升级，并在真实计划库中验收周日批量创建与保存；无需等待用户输入才能完成本次发布。Windows 拒绝重命名的底层主体仍未知，已采取有限缓解并保留问题记录。NSIS 安装/卸载、真实模型行为与用户侧界面体验仍待后续验收。

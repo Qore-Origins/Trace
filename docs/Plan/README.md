@@ -2,7 +2,7 @@
 
 ## v1.1.0 构建与发布（2026-10-13）
 
-用户已确认 v1.1.0。发布前测试、安装包构建、GitHub/Gitee 发布和账本核验按[共享发布计划](./Future_Plan/Qore/Trace/Plan-261013-03-v1.1.0正式版发布/Trace-v1.1.0-Release-Plan.md)记录；目前全量测试连续两轮 1283/1283 通过，最终候选包与隔离 Electron 实窗主路径已核验，待固化代码并公开发布。Windows 间歇性 `rename EPERM` 的拒绝主体仍未知，现有有限重试增加一次退避，见问题记录。
+v1.1.0 已发布至 [GitHub](https://github.com/Qore-Origins/Trace/releases/tag/v1.1.0) 与 [Gitee](https://gitee.com/Qore/trace/releases/tag/v1.1.0)。发布前全量测试连续两轮各 1283/1283 通过，最终安装包与隔离 Electron 实窗主路径已核验；构建、标签、下载摘要和待验收边界见[共享发布计划](./Future_Plan/Qore/Trace/Plan-261013-03-v1.1.0正式版发布/Trace-v1.1.0-Release-Plan.md)。Windows 间歇性 `rename EPERM` 的拒绝主体仍未知，现有有限重试增加一次退避，见问题记录。
 
 ## 工作流设置入口与名称编辑（2026-10-13）
 
