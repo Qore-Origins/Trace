@@ -22,7 +22,8 @@ describe('renderer style boundaries', () => {
       'agent-view.css',
       'plan-tabs.css',
       'plan-reference.css',
-      'trash.css'
+      'trash.css',
+      'settings.css'
     ]
 
     for (const file of expectedImports) {
@@ -49,6 +50,7 @@ describe('renderer selector ownership', () => {
       'plan-name-templates.css': ['.plan-name-template-settings', '.name-dialog-template__preview'],
       'agent-settings.css': ['.agent-settings', '.agent-settings-actions', '.agent-settings-hint'],
       'agent-view.css': ['.agent-view', '.agent-context-picker', '.agent-preview'],
+      'settings.css': ['.trace-settings-modal', '.trace-settings-layout', '.trace-settings-nav', '.trace-settings-main'],
       'plan-tabs.css': ['.plan-tabs', '.plan-tabs__item', '.plan-tabs__select', '.plan-tabs__close'],
       'trash.css': ['.trash-entries', '.trash-entry', '.trash-restore-form', '.trash-purge-confirmation']
     }
@@ -76,5 +78,18 @@ describe('renderer selector ownership', () => {
     expect(planTabs).toContain('@media (prefers-reduced-motion: reduce)')
     expect(planTabs).toContain('transition: none;')
     expect(planTabs).not.toMatch(/#[\da-f]{3,8}\b|rgba?\(/i)
+  })
+
+  it('preserves modal motion completion events when reduced motion is enabled', () => {
+    const trash = readFileSync(resolve(stylesRoot, 'trash.css'), 'utf8')
+    const reducedMotion = trash.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/)?.[1]
+
+    expect(reducedMotion).toBeTruthy()
+    expect(reducedMotion).toMatch(/\.trash-dialog\s*,/)
+    expect(reducedMotion).toContain('transition-duration: 0.01ms !important;')
+    expect(reducedMotion).toContain('transition-delay: 0s !important;')
+    expect(reducedMotion).toContain('animation-duration: 0.01ms !important;')
+    expect(reducedMotion).toContain('animation-delay: 0s !important;')
+    expect(reducedMotion).not.toMatch(/(?:transition|animation):\s*none\s*!important/)
   })
 })

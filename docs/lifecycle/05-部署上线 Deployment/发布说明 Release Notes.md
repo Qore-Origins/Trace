@@ -1,5 +1,13 @@
 # 发布说明 Release Notes
 
+## v1.1.0 发布准备（2026-10-13）
+
+`package.json` 已升至 1.1.0。本版增加按目录匹配的可配置计划工作流、周日 1+7 联动、可修改创建预览、工作流设置概览与名称编辑，以及不常见设置的使用说明；小沅计划操作与请求诊断同步更新。详细范围、兼容性和已知边界见 `builds/release_notes/release_notes_v1.1.0.md`。
+
+发布门槛核验：`npm run typecheck` 通过，默认环境完整 `npm run test` 连续两轮各 98 文件 / 1283 项通过，`npm run build:win` 通过。最终候选 `builds/windows/Trace_1.1.0_stable_20261013_02.exe` 为 210,786,164 字节，SHA-256 `D12DABE620873454B43EFB5260010B748AD9392F60162F6F780A793278F798E0`，PE 与 app.asar 版本均为 1.1.0。隔离 Electron 生产 bundle 实窗检查覆盖首次建库引导、全文搜索回溯与工作流创建。安装包未签名，NSIS 安装/卸载和真实个人计划库尚未验收。
+
+Windows 对已有 `plan.json` 原子覆盖的间歇性 `EPERM` 拒绝主体仍未知。限定 ProcMon 捕获中 `MsMpEng.exe` 映射同一临时文件的事件晚于首次拒绝，不能证明 Defender 导致锁文件；本版仅增加一次有界退避机会，并保留失败时的编辑草稿。公开发布状态以 GitHub/Gitee Release 页面及发布账本为准。
+
 ## 当前版本 Current Release
 
 | 项目 | 内容 |

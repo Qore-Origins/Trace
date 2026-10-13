@@ -8,6 +8,7 @@ import {
 import type { Component, ComponentPayload, ComponentType, PlanDocument, TaskItem } from '../../shared/plan-types'
 import type { ReferenceImpactDecision, ReferenceImpactPreview } from '../../shared/plan-reference-types'
 import type { TrashRestoreDestination } from '../../shared/trash-types'
+import type { WorkflowDraftInput, WorkflowPeriod } from '../../shared/plan-workflow-types'
 import { formatPlanNameTemplate } from '../../shared/plan-name-templates'
 import { applyStatusChange } from '../../shared/task-state'
 import { ERR, TraceError } from '../../shared/errors'
@@ -19,6 +20,8 @@ import { AgentSessionRepository, AGENT_MAX_AUDIT_FIELD_BYTES, AGENT_MAX_MESSAGE_
 import { AgentToolName, parseAgentToolCalls } from './agent-tool-registry'
 import { PlanNameTemplateService } from './plan-name-template-service'
 import { PlanReferenceService } from './plan-reference-service'
+import type { PlanWorkflowService } from './plan-workflow-service'
+import type { PlanWorkflowBatchService } from './plan-workflow-batch-service'
 import { StorageService } from './storage-service'
 
 const PREVIEW_TTL_MS = 5 * 60 * 1000
@@ -61,8 +64,14 @@ type JsonRecord = Record<string, unknown>
 interface RequestContext { userMessageId: string; targetSetId?: string; targetRefs: string[] }
 type AgentWriteRootSnapshot = AgentActiveLibrarySnapshot & { rootDirectoryIdentity: string }
 interface StagedPlan { initialUpdatedAt: string; document: PlanDocument }
+interface InitialTaskListComponent {
+  id: string
+  type: 'task_list'
+  payload: { title: string; items: TaskItem[] }
+}
 interface ExecutionResult {
   content: string
+  partial?: true
   afterUpdatedAt?: string
   undoStatus?: AgentOperationAuditItem['undoStatus']
   targetKind?: AgentOperationAuditItem['targetKind']
@@ -283,6 +292,30 @@ function strictName(value: unknown): string {
   return value
 }
 
+function initialTaskListComponent(value: unknown): InitialTaskListComponent | undefined {
+  if (value === undefined) return undefined
+  if (!agentRecord(value) || !Array.isArray(value.tasks) ||
+    (value.title !== undefined && typeof value.title !== 'string')) {
+    throw new TraceError(ERR.VALIDATION, '新计划的初始任务列表无效')
+  }
+  const items: TaskItem[] = value.tasks.map((task) => {
+    if (!agentRecord(task) || typeof task.title !== 'string' ||
+      (task.planned_at !== undefined && typeof task.planned_at !== 'string') ||
+      (task.note !== undefined && typeof task.note !== 'string')) {
+      throw new TraceError(ERR.VALIDATION, '新计划的初始任务列表无效')
+    }
+    return {
+      id: uuid32(), title: task.title, status: 'not_started',
+      ...(typeof task.planned_at === 'string' ? { planned_at: task.planned_at } : {}),
+      ...(typeof task.note === 'string' ? { note: task.note } : {})
+    }
+  })
+  return {
+    id: uuid32(), type: 'task_list',
+    payload: { title: typeof value.title === 'string' ? value.title : '任务列表', items }
+  }
+}
+
 function pathWithNewName(path: string, name: string): string {
   const separator = path.lastIndexOf('/')
   const parent = separator >= 0 ? path.slice(0, separator) : ''
@@ -291,10 +324,11 @@ function pathWithNewName(path: string, name: string): string {
 
 function referencesFromArgs(args: JsonRecord): string[] {
   const keys = ['plan_ref', 'folder_ref', 'target_ref', 'parent_ref', 'trash_entry_ref', 'destination_parent_ref']
-  return keys.flatMap((key) => typeof args[key] === 'string' ? [args[key] as string] : [])
+  return [...keys.flatMap((key) => typeof args[key] === 'string' ? [args[key] as string] : []),
+    ...(Array.isArray(args.destination_refs) ? args.destination_refs.filter((ref): ref is string => typeof ref === 'string') : [])]
 }
 
-const READ_ONLY_AGENT_TOOLS = new Set<string>(['plan.read', 'plan.list_children', 'trash.list'])
+const READ_ONLY_AGENT_TOOLS = new Set<string>(['plan.read', 'plan.list_children', 'trash.list', 'plan.workflow.preview'])
 
 function ensureSameLibrary(snapshot: AgentActiveLibrarySnapshot, target: AgentTargetResolution): void {
   if (snapshot.rootHash !== target.rootHash || snapshot.libraryId !== target.libraryId || snapshot.rootGeneration !== target.rootGeneration) {
@@ -457,7 +491,9 @@ export class AgentOperationService {
     private readonly storage: StorageService,
     private readonly references: PlanReferenceService,
     private readonly templates: PlanNameTemplateService,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly workflows?: PlanWorkflowService,
+    private readonly workflowBatches?: PlanWorkflowBatchService
   ) {}
 
   retryBatch(payload: unknown): Promise<AgentOperationBatch> {
@@ -578,13 +614,15 @@ export class AgentOperationService {
       () => this.targets.assertActiveLibrarySnapshot(rootSnapshot))
 
     if (['plan.create', 'folder.create', 'plan.rename', 'folder.rename', 'plan.move', 'folder.move', 'plan.trash', 'folder.trash'].includes(name)) {
-      return this.prepareStructuralUndo(input, source, sourceOperation, name, args, context, rootSnapshot, writeRootSnapshot, session.operationBatches)
+      return this.prepareStructuralUndo(input, source, sourceOperation, name, args, rootSnapshot, writeRootSnapshot, session.operationBatches)
     }
-    if (typeof args.plan_ref !== 'string' || !context.targetSetId) throw new TraceError(ERR.CONFLICT, '原始计划授权信息不可用')
-
-    const resolution = await this.targets.refreshGrantForMessage({ setId: context.targetSetId, ref: args.plan_ref }, context.userMessageId, rootSnapshot)
-    const stableId = resolution.kind === 'plan' ? resolution.planId ?? `path:${resolution.path}` : undefined
-    if (resolution.kind !== 'plan' || stableId !== sourceOperation.targetStableId ||
+    if (sourceOperation.targetKind !== 'plan' || !sourceOperation.targetPath || !sourceOperation.targetDirectoryIdentity) {
+      throw new TraceError(ERR.CONFLICT, '原操作缺少稳定计划身份，不能撤销')
+    }
+    const resolution = await this.targets.captureAuditedTarget(rootSnapshot, sourceOperation.targetPath, 'plan')
+    const stableId = resolution.planId ?? `path:${resolution.path}`
+    if (stableId !== sourceOperation.targetStableId || resolution.directoryIdentity !== sourceOperation.targetDirectoryIdentity ||
+      resolution.planId !== (sourceOperation.targetPlanId ?? null) ||
       resolution.updatedAt !== sourceOperation.afterUpdatedAt || !sourceOperation.afterUpdatedAt) {
       await this.markUndoStale(input.sessionId, source.id, input.callId)
       throw new TraceError(ERR.CONFLICT, '原计划版本已变化，不能撤销')
@@ -666,8 +704,9 @@ export class AgentOperationService {
       call, audit: auditItem, needsConfirmation: true,
       execute: async () => {
         await this.targets.assertActiveLibrarySnapshot(rootSnapshot)
-        const fresh = await this.targets.refreshGrantForMessage({ setId: context.targetSetId!, ref: args.plan_ref as string }, context.userMessageId, rootSnapshot)
-        if (fresh.kind !== 'plan' || fresh.planId !== resolution.planId || fresh.path !== resolution.path) {
+        const fresh = await this.targets.captureAuditedTarget(rootSnapshot, resolution.path, 'plan')
+        if (fresh.kind !== 'plan' || fresh.planId !== resolution.planId || fresh.path !== resolution.path ||
+          fresh.directoryIdentity !== sourceOperation.targetDirectoryIdentity) {
           throw new TraceError(ERR.CONFLICT, '原计划版本已变化，请重新预览撤销')
         }
         const current = await this.storage.readPlan(fresh.path)
@@ -701,7 +740,7 @@ export class AgentOperationService {
 
   private async prepareStructuralUndo(input: AgentOperationUndoInput, source: AgentOperationBatchAudit,
     sourceOperation: AgentOperationAuditItem, name: AgentToolName, args: JsonRecord,
-    context: RequestContext, rootSnapshot: AgentActiveLibrarySnapshot, writeRootSnapshot: AgentWriteRootSnapshot,
+    rootSnapshot: AgentActiveLibrarySnapshot, writeRootSnapshot: AgentWriteRootSnapshot,
     batches: readonly AgentOperationBatchAudit[]): Promise<AgentOperationBatch> {
     const rootCommitBinding = {
       rootSnapshot: writeRootSnapshot,
@@ -757,11 +796,9 @@ export class AgentOperationService {
       } else if (isTrash) {
         targetPath = sourceOperation.targetPath ?? ''
         const trashId = sourceOperation.trashEntryId
-        if (!trashId || !/^[0-9a-f]{32}$/.test(trashId) || !context.targetSetId || typeof args.target_ref !== 'string') {
+        if (!trashId || !/^[0-9a-f]{32}$/.test(trashId)) {
           throw new TraceError(ERR.CONFLICT, '原删除操作缺少精确回收站溯源')
         }
-        await this.targets.assertGrantBindingForMessage({ setId: context.targetSetId, ref: args.target_ref }, context.userMessageId,
-          rootSnapshot, { kind, directoryIdentity: identity, planId })
         let entry
         try {
           entry = await this.storage.readTrashEntry(trashId)
@@ -785,11 +822,7 @@ export class AgentOperationService {
         beforePath = auditPath('path', 'before')
         afterPath = auditPath('path', 'after')
         targetPath = afterPath
-        if (!context.targetSetId || typeof args.target_ref !== 'string') throw new TraceError(ERR.CONFLICT, '原结构操作授权不可用')
-        const resolvedTarget = await this.targets.resolveAuditedRelocationForMessage({
-          setId: context.targetSetId, ref: args.target_ref, kind, path: afterPath,
-          directoryIdentity: identity, ...(kind === 'plan' ? { planId } : {})
-        }, context.userMessageId, rootSnapshot)
+        const resolvedTarget = await this.targets.captureAuditedTarget(rootSnapshot, afterPath, kind)
         const targetChanged = kind === 'plan'
           ? resolvedTarget.kind !== 'plan' || resolvedTarget.directoryIdentity !== identity ||
             resolvedTarget.planId !== planId || resolvedTarget.updatedAt !== sourceOperation.afterUpdatedAt
@@ -874,22 +907,27 @@ export class AgentOperationService {
           }
           let resultPath = beforePath!
           if (name === 'plan.rename') {
-            const fresh = await this.targets.resolveAuditedRelocationForMessage({ setId: context.targetSetId!, ref: args.target_ref as string,
-              kind, path: afterPath!, directoryIdentity: identity, planId }, context.userMessageId, rootSnapshot)
-            if (fresh.kind !== 'plan' || fresh.updatedAt !== sourceOperation.afterUpdatedAt) throw new TraceError(ERR.CONFLICT, '计划版本已变化，请重新预览撤销')
+            const fresh = await this.targets.captureAuditedTarget(rootSnapshot, afterPath!, kind)
+            if (fresh.kind !== 'plan' || fresh.path !== afterPath || fresh.directoryIdentity !== identity ||
+              fresh.planId !== planId || fresh.updatedAt !== sourceOperation.afterUpdatedAt) {
+              throw new TraceError(ERR.CONFLICT, '计划身份或版本已变化，请重新预览撤销')
+            }
             const rename = await this.references.commitAgentImpact({ library_id: rootSnapshot.libraryId, preview: referencePreview!, rename_action: decision?.renameAction }, this.storage,
               { ...rootCommitBinding,
                 target: { path: afterPath!, directoryIdentity: identity, planId, updatedAt: sourceOperation.afterUpdatedAt! } })
             resultPath = rename.path ?? beforePath!
           } else if (name === 'folder.rename') {
-            await this.targets.resolveAuditedRelocationForMessage({ setId: context.targetSetId!, ref: args.target_ref as string,
-              kind, path: afterPath!, directoryIdentity: identity }, context.userMessageId, rootSnapshot)
+            const fresh = await this.targets.captureAuditedTarget(rootSnapshot, afterPath!, kind)
+            if (fresh.kind !== 'folder' || fresh.directoryIdentity !== identity) throw new TraceError(ERR.CONFLICT, '文件夹身份已变化，请重新预览撤销')
             const renamed = await this.references.commitAgentFolderOperation({ token: folderPreview!.token,
               rename_action: decision?.renameAction }, this.storage, rootCommitBinding)
             resultPath = renamed.path ?? beforePath!
           } else {
-            await this.targets.resolveAuditedRelocationForMessage({ setId: context.targetSetId!, ref: args.target_ref as string,
-              kind, path: afterPath!, directoryIdentity: identity, ...(kind === 'plan' ? { planId } : {}) }, context.userMessageId, rootSnapshot)
+            const fresh = await this.targets.captureAuditedTarget(rootSnapshot, afterPath!, kind)
+            const unchanged = kind === 'plan'
+              ? fresh.kind === 'plan' && fresh.directoryIdentity === identity && fresh.planId === planId && fresh.updatedAt === sourceOperation.afterUpdatedAt
+              : fresh.kind === 'folder' && fresh.directoryIdentity === identity
+            if (!unchanged) throw new TraceError(ERR.CONFLICT, '移动对象身份已变化，请重新预览撤销')
             const moved = await this.references.commitAgentMove(movePreview!.token, this.storage, rootCommitBinding)
             resultPath = moved.path
           }
@@ -1000,6 +1038,9 @@ export class AgentOperationService {
     const stagedPlans = new Map<string, StagedPlan>()
     const committedPlanRevisions = new Map<string, string>()
     const prepared: PreparedOperation[] = []
+    if (!preflightError && parsed.length > 1 && parsed.some((call) => call.name === 'plan.workflow.create')) {
+      preflightError = { index: parsed.findIndex((call) => call.name === 'plan.workflow.create'), category: 'conflict' }
+    }
     if (!preflightError) {
       for (const [index, call] of parsed.entries()) {
         try {
@@ -1037,14 +1078,6 @@ export class AgentOperationService {
         operation.needsConfirmation = true
         operation.audit.requiredConfirmation = true
       }
-    }
-    for (const operation of prepared) {
-      if (READ_ONLY_AGENT_TOOLS.has(operation.call.name)) continue
-      const writesThroughReadGrant = referencesFromArgs(operation.call.arguments)
-        .some((ref) => resolutions.get(ref)?.capability === 'read')
-      if (!writesThroughReadGrant) continue
-      operation.needsConfirmation = true
-      operation.audit.requiredConfirmation = true
     }
     const requiredConfirmation = options.forceConfirmation === true || prepared.some((item) => item.needsConfirmation)
     const confirmationSource = requiredConfirmation ? 'none' : 'policy'
@@ -1204,7 +1237,7 @@ export class AgentOperationService {
   }
 
   private auditItem(call: AgentCompletedToolCall, snapshot: AgentActiveLibrarySnapshot, createdAt: string, mode: 'confirm' | 'restricted' | 'unrestricted', batchSize: number): AgentOperationAuditItem {
-    const name = /^[a-z_]+(?:\.[a-z_]+)?$/.test(call.name) ? call.name : 'unknown'
+    const name = /^[a-z_]+(?:\.[a-z_]+)*$/.test(call.name) ? call.name : 'unknown'
     return {
       callId: call.id, operation: name, status: 'ready', libraryId: snapshot.libraryId, rootHash: snapshot.rootHash,
       rootGeneration: snapshot.rootGeneration, changes: [],
@@ -1427,12 +1460,12 @@ export class AgentOperationService {
     })
 
     if (name === 'trash.list') {
-      const resolution = target('trash_entry_ref')
-      if (resolution.kind !== 'trash') throw new TraceError(ERR.VALIDATION, '目标不是回收站条目')
-      const entry = await this.references.readTrashEntry(this.storage, resolution.entryId, resolution.manifestRevision)
-      const result = { entries: [entry] }
+      await this.targets.assertActiveLibrarySnapshot(rootSnapshot)
+      const entries = await this.storage.listTrashEntries()
+      await this.targets.assertActiveLibrarySnapshot(rootSnapshot)
+      const result = { entries }
       const content = serialized({ ok: true, ...result })
-      return prepared(async () => ({ content }), [change('result', null, result)], resolution, false)
+      return prepared(async () => ({ content }), [], undefined, false)
     }
     if (name === 'plan.list_children') {
       const folder = target('folder_ref')
@@ -1450,10 +1483,72 @@ export class AgentOperationService {
       const content = serialized({ ok: true, plan: result })
       return prepared(async () => ({ content }), [change('result', null, result)], resolution, false)
     }
+    if (name === 'plan.workflow.preview' || name === 'plan.workflow.create') {
+      if (!this.workflows || !this.workflowBatches) throw new TraceError(ERR.INTERNAL, '工作流工具依赖未初始化')
+      const parent = target('parent_ref')
+      if (!isFolderResolution(parent)) throw new TraceError(ERR.VALIDATION, '工作流所选目标必须是文件夹')
+      const destinationRefs = args.destination_refs as string[]
+      const destinations = destinationRefs.map((ref) => {
+        const resolution = resolutions.get(ref)
+        if (!resolution || !isFolderResolution(resolution)) throw new TraceError(ERR.CONFLICT, '工作流目标文件夹未授权')
+        ensureSameLibrary(rootSnapshot, resolution)
+        return resolution
+      })
+      const assigned = Array.isArray(args.tasks) ? args.tasks as Array<{ title: string; target_date?: string }> : []
+      const draft: WorkflowDraftInput = {
+        selected_path: parent.path, title: args.title as string,
+        ...(typeof args.preset_id === 'string' ? { preset_id: args.preset_id } : {}),
+        ...(typeof args.target_date === 'string' ? { target_date: args.target_date } : {}),
+        ...(args.period ? { period: args.period as WorkflowPeriod } : {}),
+        tasks: assigned.map((task, index) => ({ id: `agent-${index + 1}`, title: task.title,
+          ...(task.target_date ? { target_date: task.target_date } : {}) }))
+      }
+      const preview = await this.workflows.preview({ library_id: rootSnapshot.libraryId, draft })
+      if (preview.outputs.some((output) => !destinations.some((destination) => destination.path === output.destination_path))) {
+        throw new TraceError(ERR.CONFLICT, '工作流包含未授权的目标文件夹')
+      }
+      if (name === 'plan.workflow.preview') {
+        return prepared(async () => ({ content: serialized({ ok: true, preview }) }),
+          [change('workflow_preview', null, preview.outputs.map((output) => ({ path: output.relative_path,
+            components: output.components.map((component) => component.type), task_count: output.assigned_tasks.length,
+            conflicts: output.conflicts.map((conflict) => conflict.code) })))], parent, false)
+      }
+      if (preview.state !== 'ready' || preview.revision_token !== args.preview_token ||
+        preview.outputs.length < 1 || preview.outputs.some((output) => output.conflicts.length > 0 || !output.relative_path)) {
+        throw new TraceError(ERR.CONFLICT, '工作流预览已过期或存在未解决冲突')
+      }
+      if (preview.outputs.length === 1 && preview.outputs[0].workflow_kind === 'week') {
+        throw new TraceError(ERR.VALIDATION, '周计划必须与七份日计划一起创建')
+      }
+      const planned = preview.outputs.map((output) => ({ path: output.relative_path!, kind: output.workflow_kind,
+        components: output.components.map((component) => component.type), task_count: output.assigned_tasks.length }))
+      return prepared(async () => {
+        await this.targets.assertActiveLibrarySnapshot(rootSnapshot)
+        for (const grant of [parent, ...destinations]) {
+          const refreshed = await this.targets.refreshGrantForMessage({ setId: grant.setId, ref: grant.ref }, userMessageId, rootSnapshot)
+          if (!isFolderResolution(refreshed) || refreshed.path !== grant.path ||
+            refreshed.directoryIdentity !== grant.directoryIdentity || refreshed.libraryId !== grant.libraryId) {
+            throw new TraceError(ERR.CONFLICT, '工作流目标文件夹授权已变化')
+          }
+        }
+        if (preview.outputs.length === 1) {
+          const node = await this.workflows!.commit({ library_id: rootSnapshot.libraryId, draft,
+            revision_token: preview.revision_token })
+          return { content: serialized({ ok: true, status: 'complete', items: [{ path: node.path, status: 'created' }] }),
+            targetKind: 'plan', targetPath: node.path }
+        }
+        const result = await this.workflowBatches!.commit({ library_id: rootSnapshot.libraryId, draft,
+          revision_token: preview.revision_token, confirmations: [] })
+        return { content: serialized({ ok: result.status === 'complete', ...result }),
+          ...(result.status === 'partial' ? { partial: true as const } : {}) }
+      }, planned.map((output) => change('workflow_output', null, output)), parent, true)
+    }
     if (name === 'plan.create' || name === 'folder.create') {
       const parent = typeof args.parent_ref === 'string' ? target('parent_ref') : undefined
       if (parent && !isFolderResolution(parent)) throw new TraceError(ERR.VALIDATION, '新建父级必须是文件夹')
       const parentPath = parent?.path ?? ''
+      const initialTaskList = name === 'plan.create' ? initialTaskListComponent(args.task_list) : undefined
+      const initialComponents = initialTaskList ? [initialTaskList] : undefined
       const root = this.storage.getRootAbs()
       if (!root) throw new TraceError(ERR.INTERNAL, '计划库根目录未初始化')
       let createdName = name === 'folder.create' ? strictName(args.name) : strictName(args.name_part)
@@ -1483,18 +1578,24 @@ export class AgentOperationService {
         }
         const node = await this.references.createAgentNode(this.storage, {
           kind: name === 'plan.create' ? 'plan' : 'folder', parentPath, name: resolvedName,
-          ...(parent ? { parentDirectoryIdentity: parent.directoryIdentity } : {})
+          ...(parent ? { parentDirectoryIdentity: parent.directoryIdentity } : {}),
+          ...(initialComponents ? { initialComponents } : {})
         }, writeRootSnapshot, () => this.targets.assertActiveLibrarySnapshot(rootSnapshot))
         const createdTarget = await verifyCommittedSideEffect(() => this.targets.captureAuditedTarget(rootSnapshot, node.path, node.kind))
         return {
-          content: serialized({ ok: true, path: node.path, kind: node.kind }),
+          content: serialized({ ok: true, path: node.path, kind: node.kind,
+            ...(initialTaskList ? { task_count: initialTaskList.payload.items.length } : {}) }),
           ...(createdTarget.updatedAt ? { afterUpdatedAt: createdTarget.updatedAt } : {}),
           undoStatus: 'available', targetKind: createdTarget.kind, targetPath: createdTarget.path,
           targetStableId: createdTarget.planId ?? `directory:${createdTarget.directoryIdentity}`,
           targetDirectoryIdentity: createdTarget.directoryIdentity,
           ...(createdTarget.planId ? { targetPlanId: createdTarget.planId } : {})
         }
-      }, [change('created_path', null, createdPath)], parent, permissionRequiresConfirmation(policyMode, name as AgentToolName, batchSize))
+      }, [
+        change('created_path', null, createdPath),
+        ...(initialTaskList ? [change('created_task_list', null, initialTaskList.payload)] : [])
+      ], parent, permissionRequiresConfirmation(policyMode, name as AgentToolName,
+        Math.max(batchSize, initialTaskList?.payload.items.length ?? batchSize)))
     }
 
     const planRef = typeof args.plan_ref === 'string' ? target('plan_ref') : undefined
@@ -1931,6 +2032,20 @@ export class AgentOperationService {
         break
       }
 
+      if (result.partial) {
+        failedIndex = index
+        const completedAt = new Date(this.now()).toISOString()
+        const failed = { ...operation.audit, status: 'failed' as const,
+          confirmationSource: operation.needsConfirmation ? confirmationSource : 'policy',
+          errorCategory: 'conflict' as const, completedAt }
+        results.push({ ...failed, output: result.content })
+        latestAudit = await this.updateBatch(pending.sessionId, batchId, (batch) => {
+          batch.operations[index] = failed
+          batch.status = 'execution-failed'
+          batch.updatedAt = completedAt
+        })
+        break
+      }
       const completedAt = new Date(this.now()).toISOString()
       const completed = { ...operation.audit, status: 'succeeded' as const, confirmationSource: operation.needsConfirmation ? confirmationSource : 'policy',
         ...(result.afterUpdatedAt ? { afterUpdatedAt: result.afterUpdatedAt } : {}),

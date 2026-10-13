@@ -10,6 +10,7 @@ import { startTraceMeasure, traceNow } from '../../perf/marks'
 import { CardShell, type CardRenderProps } from './CardShell'
 
 function nextStatus(s: TaskItem['status']): TaskItem['status'] {
+  if (s === 'moved') return 'moved'
   // 状态机（shared/task-state）：唯一不可达 = not_started→done
   if (s === 'not_started') return 'in_progress'
   if (s === 'in_progress') return 'done'
@@ -63,10 +64,12 @@ export function TaskListCard({ comp, index, total, today }: CardRenderProps): Re
           const hasPastPlannedDate = isPastPlannedDate(item.planned_at, today)
           return (
             <div className={`task-row ${item.status}`} key={item.id}>
-              <button type="button" className="state-ring" aria-label="切换状态" onClick={() => patchItem(item.id, (it) => (it.status = nextStatus(it.status)))} />
+              <button type="button" className="state-ring" aria-label="切换状态" disabled={item.status === 'moved'}
+                onClick={() => patchItem(item.id, (it) => (it.status = nextStatus(it.status)))} />
               <div className="task-title">
                 <input
                   value={item.title}
+                  readOnly={item.status === 'moved'}
                   onChange={(e) => patchItem(item.id, (it) => (it.title = e.target.value))}
                 />
               </div>
@@ -74,12 +77,14 @@ export function TaskListCard({ comp, index, total, today }: CardRenderProps): Re
                 type="date"
                 className="task-date"
                 value={item.planned_at ?? ''}
+                disabled={item.status === 'moved'}
                 onChange={(e) => patchItem(item.id, (it) => (it.planned_at = e.target.value || undefined))}
               />
-              {hasPastPlannedDate && <span className="tag-overdue" aria-hidden={item.status === 'done'}>{t('cards.overdue')}</span>}
-              <ActionButton intent="quiet" danger className="task-del" label={t('cards.deleteRow')}
+              {item.status === 'moved' && <span className="task-moved-label">{t('cards.statusMoved')}</span>}
+              {hasPastPlannedDate && item.status !== 'moved' && <span className="tag-overdue" aria-hidden={item.status === 'done'}>{t('cards.overdue')}</span>}
+              {item.status !== 'moved' && <ActionButton intent="quiet" danger className="task-del" label={t('cards.deleteRow')}
                 aria-label={`${t('common.delete')} ${item.title || t('cards.addTask')}`}
-                onClick={() => removePlanRow(comp.id, 'task', item.id, item.title || t('cards.addTask'))} />
+                onClick={() => removePlanRow(comp.id, 'task', item.id, item.title || t('cards.addTask'))} />}
             </div>
           )
         })}

@@ -11,6 +11,11 @@ import { TransferService } from './services/transfer-service'
 import { SearchService } from './services/search-service'
 import { getAgentToolDefinitions } from './services/agent-tool-registry'
 import { PlanNameTemplateService } from './services/plan-name-template-service'
+import { PlanWorkflowConfigService } from './services/plan-workflow-config-service'
+import { PlanWorkflowResolver } from './services/plan-workflow-resolver'
+import { PlanWorkflowService } from './services/plan-workflow-service'
+import { PlanWorkflowBatchService } from './services/plan-workflow-batch-service'
+import { PlanWorkflowHandoffService } from './services/plan-workflow-handoff-service'
 import { WorkspaceTabsService } from './services/workspace-tabs-service'
 import { PlanReferenceService } from './services/plan-reference-service'
 import { DIARY_DIR, reconcileDiaryPages, setDiaryRepo } from './services/diary-service'
@@ -45,8 +50,13 @@ const storage = new StorageService(repo)
 const watch = new WatchService(storage.treeCache)
 watchRef = watch
 const planNameTemplates = new PlanNameTemplateService(repo)
+const planWorkflowConfigs = new PlanWorkflowConfigService(repo)
+const planWorkflowResolver = new PlanWorkflowResolver(repo, planWorkflowConfigs, planNameTemplates)
+const planWorkflows = new PlanWorkflowService(storage, repo, planWorkflowConfigs, planWorkflowResolver)
+const planWorkflowBatches = new PlanWorkflowBatchService(storage, repo, planWorkflowResolver)
 const workspaceTabs = new WorkspaceTabsService(repo, () => storage.getRootAbs())
 const planReferences = new PlanReferenceService(repo, () => storage.getRootAbs())
+const planWorkflowHandoffs = new PlanWorkflowHandoffService(storage, repo, planReferences)
 storage.setTrashReferenceImpactReader(async (libraryId, planIds) => {
   const references = (await Promise.all(planIds.map(async (planId) =>
     (await planReferences.inbound({ library_id: libraryId, plan_id: planId })).references
@@ -221,6 +231,9 @@ if (!app.requestSingleInstanceLock()) {
       export: exportService,
       search,
       planNameTemplates,
+      planWorkflows,
+      planWorkflowBatches,
+      planWorkflowHandoffs,
       agentUserDataDir: app.getPath('userData'),
       agentApprovalWindowService,
       workspaceTabs,

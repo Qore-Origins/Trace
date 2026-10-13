@@ -11,6 +11,10 @@ output/
 *.log
 logs/
 
+# 本机 ETW 跟踪产物（含潜在本机路径信息；不提交）
+temp/Trace-AtomicSave-Narrow-*/
+temp/Trace-WPR-AtomicSave-*/
+
 # 迁移脚本打包产物（源为 scripts/migrate-md-library.ts）
 scripts/migrate-md-library.mjs
 

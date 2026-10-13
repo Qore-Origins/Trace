@@ -1,10 +1,10 @@
-import type { AgentContinuationPreviewInput, AgentOperationBatch, AgentOperationEvent, AgentOutboundPreview, AgentRequestCancelInput, AgentRequestErrorCategory, AgentRequestEvent, AgentRequestIdentity, AgentRequestSendInput } from '../../shared/agent-types'
+import type { AgentContinuationPreviewInput, AgentOperationBatch, AgentOperationEvent, AgentOutboundPreview, AgentRequestCancelInput, AgentRequestDiagnostic, AgentRequestErrorCategory, AgentRequestEvent, AgentRequestIdentity, AgentRequestSendInput } from '../../shared/agent-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { AgentConversationService } from './agent-conversation-service'
 import { AgentProfileService } from './agent-profile-service'
 import { streamChatCompletion } from './agent-provider'
 import { agentRecord, AGENT_MAX_MESSAGE_LENGTH, assertAgentSessionId } from './agent-session-repository'
-import { AgentStreamError } from './agent-sse'
+import { AgentStreamError, type AgentStreamDiagnosticObserver } from './agent-sse'
 import { createAgentApprovalRequestSnapshot, type AgentOutboundApproval } from './agent-approval-window-service'
 import type { AgentOperationService } from './agent-operation-service'
 
@@ -17,6 +17,7 @@ interface ActiveRequest {
   persisted: string
   persistence: Promise<void>
   errorCategory: AgentRequestErrorCategory | null
+  diagnostic: AgentRequestDiagnostic | null
 }
 
 function requestErrorCategory(error: unknown): AgentRequestErrorCategory | null {
@@ -24,6 +25,13 @@ function requestErrorCategory(error: unknown): AgentRequestErrorCategory | null 
   if (error.category === 'cancelled') return 'network'
   if (error.category === 'unsupported') return 'protocol'
   return error.category
+}
+
+function requestDiagnostic(error: unknown): AgentRequestDiagnostic | null {
+  if (!(error instanceof AgentStreamError)) return null
+  const category = requestErrorCategory(error)
+  if (!category) return null
+  return { category, httpStatus: error.httpStatus ?? null, providerMessage: error.providerMessage ?? null }
 }
 
 
@@ -155,15 +163,18 @@ export class AgentRequestService {
       const snapshot = createAgentApprovalRequestSnapshot(approved.target.endpoint, approved.target.model, approved.messages, tools)
       if (!await this.approveOutbound(snapshot)) throw new TraceError(ERR.CONFIRMATION_REQUIRED, '工具结果外发未获批准')
       return this.profiles.dispatchAuthorized(approved.target.id, revision, dispatch)
-    }, (identity, key) => this.startProvider(identity, approved, key))
+    }, (identity, key) => this.startProvider(identity, approved, key, true))
   }
 
-  private startProvider(identity: AgentRequestIdentity, preview: Awaited<ReturnType<AgentConversationService['consumePreview']>>, key: string): void {
+  private startProvider(identity: AgentRequestIdentity, preview: Awaited<ReturnType<AgentConversationService['consumePreview']>>, key: string, continuation = false): void {
     if (this.disposed) throw new TraceError(ERR.STATE_MACHINE, '请求服务已关闭')
-    const active: ActiveRequest = { identity, controller: new AbortController(), userStopped: false, acceptingText: true, accepted: '', persisted: '', persistence: Promise.resolve(), errorCategory: null }
+    const active: ActiveRequest = { identity, controller: new AbortController(), userStopped: false, acceptingText: true, accepted: '', persisted: '', persistence: Promise.resolve(), errorCategory: null, diagnostic: null }
     this.active.set(identity.requestId, active)
+    const onDiagnostic: AgentStreamDiagnosticObserver | undefined = continuation && process.env.ELECTRON_RENDERER_URL
+      ? (diagnostic) => console.info('[trace][agent-continuation]', JSON.stringify({ requestId: identity.requestId, ...diagnostic }))
+      : undefined
     const provider = streamChatCompletion(
-      { endpoint: preview.target.endpoint, model: preview.target.model, apiKey: key, messages: preview.messages, signal: active.controller.signal, onText: (text) => this.acceptText(active, text) },
+      { endpoint: preview.target.endpoint, model: preview.target.model, apiKey: key, messages: preview.messages, signal: active.controller.signal, onText: (text) => this.acceptText(active, text), onDiagnostic },
       preview.tools?.length ? { tools: preview.tools, toolChoice: preview.toolChoice ?? 'auto' } : undefined
     )
     void this.finish(active, provider)
@@ -202,7 +213,10 @@ export class AgentRequestService {
   private async finish(active: ActiveRequest, provider: ReturnType<typeof streamChatCompletion>): Promise<void> {
     let toolCalls: Awaited<ReturnType<typeof streamChatCompletion>>['toolCalls'] = []
     try { toolCalls = (await provider).toolCalls } catch (error) {
-      if (!active.errorCategory && !active.userStopped) active.errorCategory = requestErrorCategory(error) ?? 'network'
+      if (!active.errorCategory && !active.userStopped) {
+        active.errorCategory = requestErrorCategory(error) ?? 'network'
+        active.diagnostic = requestDiagnostic(error)
+      }
     }
     // Claim finalization synchronously: cancellation cannot be accepted while the
     // already settled provider's incremental or terminal persistence is pending.
@@ -216,7 +230,7 @@ export class AgentRequestService {
         active.errorCategory = 'protocol'
         await this.conversations.settleAssistant(active.identity.sessionId, active.identity.assistantId, active.persisted, status)
       } else {
-        await this.conversations.settleAssistant(active.identity.sessionId, active.identity.assistantId, active.persisted, status, status === 'complete' ? toolCalls : [])
+        await this.conversations.settleAssistant(active.identity.sessionId, active.identity.assistantId, active.persisted, status, status === 'complete' ? toolCalls : [], status === 'error-interrupted' ? active.diagnostic ?? undefined : undefined)
       }
     } catch (error) {
       status = 'error-interrupted'

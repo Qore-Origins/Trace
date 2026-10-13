@@ -144,8 +144,12 @@ export async function click(label: string, scope: ParentNode = document): Promis
 }
 
 export async function startConversation(label = '新建会话'): Promise<void> {
-  await render(); await click(label)
-  await until(() => !!host.querySelector('textarea'))
+  await render()
+  const createdBefore = electron.calls.filter(({ name }) => name === 'agent:session:create').length
+  await click(label)
+  await until(() => electron.calls.filter(({ name }) => name === 'agent:session:create').length > createdBefore
+    && !!host.querySelector('textarea') && !button(i18n.t('agentChat.targets'), host).disabled,
+  'the new conversation to accept target selection')
 }
 
 export async function enterPreview(message: string): Promise<void> { await compose(message); await openPreview() }

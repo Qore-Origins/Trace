@@ -12,6 +12,9 @@ import { TransferService } from '../services/transfer-service'
 import { ExportService } from '../services/export-service'
 import { SearchService } from '../services/search-service'
 import type { PlanNameTemplateService } from '../services/plan-name-template-service'
+import type { PlanWorkflowService } from '../services/plan-workflow-service'
+import type { PlanWorkflowBatchService } from '../services/plan-workflow-batch-service'
+import type { PlanWorkflowHandoffService } from '../services/plan-workflow-handoff-service'
 import type { WorkspaceTabsService } from '../services/workspace-tabs-service'
 import type { PlanReferenceService } from '../services/plan-reference-service'
 import { DIARY_DIR, ensureDiaryRoot, ensureTodayPageWithResult, listMemories, listMonthEntries, listYearEntries, readDaySummary } from '../services/diary-service'
@@ -45,6 +48,9 @@ interface Deps {
   export: ExportService
   search: SearchService
   planNameTemplates?: PlanNameTemplateService
+  planWorkflows?: PlanWorkflowService
+  planWorkflowBatches?: PlanWorkflowBatchService
+  planWorkflowHandoffs?: PlanWorkflowHandoffService
   workspaceTabs?: WorkspaceTabsService
   planReferences?: PlanReferenceService
   plantuml?: PlantumlService
@@ -61,7 +67,7 @@ interface Deps {
   agentApprovalWindowService?: AgentApprovalWindowService
   /** Main-process test seam. Production must provide the isolated window service. */
   requestAgentApproval?: AgentOutboundApproval
-  /** Main-process-only test seam. Production renders the trusted isolated confirmation window. */
+  /** Main-process-only test seam for simulating the in-card confirmation decision. */
   requestTrustedOperationConfirmation?: AgentOperationTrustedConfirmationPresenter
   /** Main-process-only test seam. Production renders the trusted isolated confirmation window. */
   requestTrustedTrashPurgeConfirmation?: (
@@ -357,7 +363,8 @@ export function registerIpc(deps: Deps): () => void {
   let agentOperations: AgentOperationService | undefined
   const operations = (): AgentOperationService => {
     if (!deps.planReferences || !deps.planNameTemplates) throw new TraceError(ERR.INTERNAL, '智能体计划操作依赖未初始化')
-    agentOperations ??= new AgentOperationService(conversation(), agentTargets, policy(), storage, deps.planReferences, deps.planNameTemplates)
+    agentOperations ??= new AgentOperationService(conversation(), agentTargets, policy(), storage, deps.planReferences,
+      deps.planNameTemplates, Date.now, deps.planWorkflows, deps.planWorkflowBatches)
     return agentOperations
   }
   let agentRequests: AgentRequestService | undefined
@@ -385,8 +392,7 @@ export function registerIpc(deps: Deps): () => void {
       await deps.requestTrustedOperationConfirmation(snapshot, accept)
       return
     }
-    await showTrustedLocalConfirmation(owner, { kind: 'agent-operation', snapshot }, accept,
-      () => !owner.isDestroyed() && !owner.webContents.isDestroyed() && getWindow() === owner)
+    await accept()
   }
   const presentTrashPurgeConfirmation = async (
     snapshot: Readonly<TrashPurgeConfirmationSnapshot>,
@@ -518,6 +524,36 @@ export function registerIpc(deps: Deps): () => void {
   regRootState('plan-template:get', () => templateService().get(activePlanRoot()))
   regRootState('plan-template:set', (p) => templateService().set(activePlanRoot(), p.parent_path, p.template))
   regRootState('plan-template:remove', (p) => templateService().remove(activePlanRoot(), p.parent_path))
+
+  const workflowService = (): PlanWorkflowService => {
+    if (!deps.planWorkflows) throw new TraceError(ERR.INTERNAL, '计划工作流服务未初始化')
+    return deps.planWorkflows
+  }
+  regRootState('plan-workflow:list', () => workflowService().list())
+  regRootState('plan-workflow:save', (p) => {
+    if (!p || typeof p !== 'object') throw new TraceError(ERR.VALIDATION, '工作流保存请求无效')
+    return workflowService().save(p.library_id, p.config)
+  })
+  regRootState('plan-workflow:remove', (p) => {
+    if (!p || typeof p !== 'object') throw new TraceError(ERR.VALIDATION, '工作流删除请求无效')
+    return workflowService().remove(p.library_id, p.preset_id)
+  })
+  regRootState('plan-workflow:preview', (p) => workflowService().preview(p))
+  regRootState('plan-workflow:suggestPeriod', (p) => workflowService().suggestPeriod(p))
+  regRootState('plan-workflow:commit', (p) => workflowService().commit(p))
+  const batchService = (): PlanWorkflowBatchService => {
+    if (!deps.planWorkflowBatches) throw new TraceError(ERR.INTERNAL, '周日批次服务未初始化')
+    return deps.planWorkflowBatches
+  }
+  regRootState('plan-workflow:commitBatch', (p) => batchService().commit(p))
+  regRootState('plan-workflow:resumeBatch', (p) => batchService().resume(p))
+  regRootState('plan-workflow:listBatches', (p) => batchService().listPending(p.library_id))
+  const handoffService = (): PlanWorkflowHandoffService => {
+    if (!deps.planWorkflowHandoffs) throw new TraceError(ERR.INTERNAL, '跨周交接服务未初始化')
+    return deps.planWorkflowHandoffs
+  }
+  regRootState('plan-workflow:previewHandoff', (p) => handoffService().preview(p))
+  regRootState('plan-workflow:moveTask', (p) => handoffService().move(p))
 
   const workspaceTabsService = (): WorkspaceTabsService => {
     if (!deps.workspaceTabs) throw new TraceError(ERR.INTERNAL, '计划标签服务未初始化')

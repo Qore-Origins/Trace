@@ -1,0 +1,21 @@
+{
+  "format_version": "1",
+  "created_at": "2026-10-13T02:50:00.000Z",
+  "updated_at": "2026-10-13T02:50:00.000Z",
+  "components": [
+    { "id": "9e246ec37af94193a7c773fed925005f", "type": "heading", "payload": { "title": "工作流设置入口与名称编辑", "size": 2 } },
+    {
+      "id": "9eb84181d3a641b2b72daf6ffea38155",
+      "type": "task_list",
+      "payload": {
+        "title": "实施任务",
+        "items": [
+          { "id": "da7494f242264db4b88a3a55c8969fb8", "title": "核对问题范围与登记所有权", "status": "done", "completed_at": "2026-10-13T02:50:00.000Z" },
+          { "id": "cece9532987b4c85a24320d25c88e13d", "title": "工作流概览与显式编辑入口", "status": "done", "completed_at": "2026-10-13T02:50:00.000Z" },
+          { "id": "848df3bde3cf48cba1c061a4103521c5", "title": "名称编辑与定向界面验证", "status": "done", "completed_at": "2026-10-13T02:50:00.000Z" },
+          { "id": "5652f62c0cab48b8b82d0235f66c2c1b", "title": "构建、全量测试与最终交接（全量未通过）", "status": "done", "completed_at": "2026-10-13T02:55:00.000Z" }
+        ]
+      }
+    }
+  ]
+}

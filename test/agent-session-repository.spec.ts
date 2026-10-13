@@ -56,6 +56,26 @@ describe('agent session tool transcript persistence', () => {
     expect(reopened.requests[0]).toMatchObject({ toolRounds: 0, toolCallCount: 0 })
   })
 
+  it('persists bounded error diagnostics only on interrupted assistant messages', async () => {
+    const session = await repository.create({ title: 'Request diagnostics', profileId })
+    const requestId = randomUUID()
+    const assistantId = randomUUID()
+    await repository.mutate(session.id, (current) => {
+      current.requests.push({ id: requestId, profileId, profileName: 'Local', presetId: null, model: 'synthetic', requestedAt: timestamp, sources: [] })
+      current.messages.push({ id: assistantId, requestId, role: 'assistant', content: '', status: 'error-interrupted', createdAt: timestamp,
+        diagnostic: { category: 'http', httpStatus: 429, providerMessage: 'Rate limit reached.' } })
+    })
+    await expect(new AgentSessionRepository(directory).read(session.id)).resolves.toMatchObject({
+      messages: [{ diagnostic: { category: 'http', httpStatus: 429, providerMessage: 'Rate limit reached.' } }]
+    })
+
+    const file = join(directory, 'agent-sessions', `${session.id}.json`)
+    const stored = JSON.parse(await fs.readFile(file, 'utf8'))
+    stored.messages[0].diagnostic = { category: 'http', httpStatus: 99, providerMessage: 'unexpected' }
+    await fs.writeFile(file, JSON.stringify(stored))
+    await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+  })
+
   it('rejects incomplete or out-of-order tool results but accepts a pending result group', async () => {
     const session = await repository.create({ title: 'Ordered tool transcript', profileId })
     const requestId = randomUUID()
@@ -170,6 +190,46 @@ describe('agent session tool transcript persistence', () => {
     }]
     await fs.writeFile(file, JSON.stringify(persisted))
     await expect(new AgentSessionRepository(directory).read(session.id)).rejects.toMatchObject({ code: 14 })
+  })
+
+  it('cancels unconfirmed operation batches on restart and completes the tool transcript without executing writes', async () => {
+    const session = await repository.create({ title: 'Interrupted confirmation', profileId })
+    const requestId = randomUUID()
+    const assistantMessageId = randomUUID()
+    const batchId = randomUUID()
+    await repository.mutate(session.id, (current) => {
+      current.requests.push({ id: requestId, profileId, profileName: 'Local', presetId: null, model: 'synthetic', requestedAt: timestamp, sources: [], toolRounds: 1, toolCallCount: 1 })
+      current.messages.push(
+        { id: randomUUID(), requestId, role: 'user', content: 'Update the selected plan.', status: 'complete', createdAt: timestamp },
+        { id: assistantMessageId, requestId, role: 'assistant', content: '', status: 'complete', createdAt: timestamp,
+          toolCalls: [{ id: 'pending_component_update', type: 'function', function: { name: 'component.update', arguments: '{}' } }] }
+      )
+      current.operationBatches.push({
+        id: batchId, requestId, assistantMessageId,
+        userMessageId: current.messages[0].id, createdAt: timestamp, updatedAt: timestamp,
+        policyMode: 'confirm', status: 'pending-confirmation', confirmationSource: 'none', requiredConfirmation: true,
+        operations: [{
+          callId: 'pending_component_update', operation: 'component.update', status: 'ready',
+          libraryId: 'a'.repeat(32), rootHash: 'b'.repeat(64), rootGeneration: 0,
+          changes: [], requiredConfirmation: true, confirmationSource: 'none', reversible: true,
+          undoStatus: 'unavailable', createdAt: timestamp
+        }]
+      })
+    })
+
+    const reopened = await new AgentSessionRepository(directory).read(session.id)
+    expect(reopened.operationBatches[0]).toMatchObject({
+      status: 'cancelled', confirmationSource: 'none', operations: [{ status: 'cancelled', confirmationSource: 'none', undoStatus: 'unavailable' }]
+    })
+    expect(reopened.messages.slice(-1)[0]).toMatchObject({
+      role: 'tool', toolCallId: 'pending_component_update', status: 'complete'
+    })
+    expect(JSON.parse(reopened.messages.slice(-1)[0].content)).toEqual({
+      ok: false, outcome: 'not-executed', reason: 'application-restarted-before-confirmation'
+    })
+    await expect(new AgentSessionRepository(directory).read(session.id)).resolves.toMatchObject({
+      operationBatches: [{ status: 'cancelled' }]
+    })
   })
 
   it('rejects malformed operation lifecycle enums, attempt lineage, and undo availability', async () => {

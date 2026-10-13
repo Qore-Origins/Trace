@@ -5,7 +5,21 @@ import type { PlanReferencePayload } from './plan-reference-types'
 
 export type ComponentType = 'single_plan' | 'multi_plan' | 'task_list' | 'task_detail' | 'note' | 'mood' | 'heading' | 'custom' | 'plan_reference'
 
-export type TaskStatus = 'not_started' | 'in_progress' | 'done'
+export type TaskStatus = 'not_started' | 'in_progress' | 'done' | 'moved'
+
+export type PlanWorkflowMetadata =
+  | {
+      kind: 'week'
+      status: 'draft' | 'active' | 'closed'
+      start_date: string
+      end_date: string
+      day_plan_ids: Record<string, string>
+    }
+  | {
+      kind: 'day'
+      target_date: string
+      week_plan_id?: string
+    }
 
 export interface PlanDocument {
   format_version: '1'
@@ -14,6 +28,7 @@ export interface PlanDocument {
   updated_at: string // 每次原子写更新；savePlan CAS 锚点
   components: Component[] // 渲染顺序 = 数组顺序
   due_date?: string // 'YYYY-MM-DD'；undefined=未设置（旧文档缺键即未设置）
+  workflow?: PlanWorkflowMetadata // 仅新工作流创建的计划写入；旧文档缺键仍按普通计划读取
 }
 
 export interface PlanLibraryMeta {
@@ -60,6 +75,10 @@ export interface TaskItem {
   planned_at?: string // YYYY-MM-DD
   completed_at?: string
   note?: string
+  moved_to_plan_id?: string
+  moved_to_task_id?: string
+  source_plan_id?: string
+  source_task_id?: string
 }
 
 export interface TaskListPayload {

@@ -5,6 +5,7 @@ import { ERR } from '@shared/errors'
 import { ClientError, invoke } from '../ipc-client'
 import { getMessage, getModal } from '../antd-host'
 import { useTranslation } from '../i18n'
+import SettingHelp from './ui/SettingHelp'
 
 const EMPTY_LIST: AgentProfileList = { profiles: [], defaultProfileId: null }
 const EMPTY_DRAFT: AgentProfileInput = { name: '', endpoint: '', model: '', presetId: null }
@@ -121,6 +122,7 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
         {list.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}{profile.id === list.defaultProfileId ? ` (${t('agentSettings.default')})` : ''}</option>)}
       </select></label>
       <Button onClick={() => selectProfile()}>{t('agentSettings.newProfile')}</Button>
+      {!current && <p className="agent-settings-hint">{t('agentSettings.keySetupHint')}</p>}
       <label>{t('agentSettings.preset')}<select aria-label={t('agentSettings.preset')} value={draft.presetId ?? ''} onChange={(event) => {
         const preset = providers.find((provider) => provider.id === event.target.value)
         setDraft(preset ? { name: preset.name, endpoint: preset.endpoint, model: preset.model, presetId: preset.id } : { ...EMPTY_DRAFT })
@@ -152,6 +154,7 @@ export default function AgentSettingsSection({ active = true }: { active?: boole
           {!uncertainStatus && safeCategory && <span> · {t(`agentSettings.errors.${knownCategories.includes(safeCategory) ? safeCategory : 'internal'}`)}</span>}
         </div>
         <Button disabled={uncertainStatus || !savedConfiguration} onClick={testCapability}>{t('agentSettings.test')}</Button>
+        <SettingHelp topic="agentCapability" />
         <p className="agent-settings-hint">{t(savedConfiguration ? 'agentSettings.chatHint' : 'agentSettings.saveFirst')}</p>
       </>}
     </fieldset>

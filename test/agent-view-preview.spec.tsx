@@ -38,6 +38,52 @@ it.each(['http', 'truncated'])(
   expect(bodies).toHaveLength(1)
 })
 
+it('reveals a safe provider error and copies only the visible diagnostic details', async () => {
+  await i18n.changeLanguage('zh-CN')
+  setProfileId(await profile())
+  setRespond((response) => {
+    response.writeHead(429, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ error: { message: '调用频率已达上限，凭据 synthetic-ui-key 请稍后重试。' }, raw: 'RAW_BODY_PRIVATE' }))
+  })
+  let copied = ''
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async (value: string) => { copied = value } }
+  })
+  try {
+    await startConversation()
+    await previewDraft('请解释失败原因')
+    await click('确认发送')
+    await until(() => host.textContent!.includes('【异常中断】'))
+    expect(host.textContent).not.toContain('synthetic-ui-key')
+    const details = host.querySelector<HTMLDetailsElement>('.agent-error-diagnostic')!
+    expect(details).not.toBeNull()
+    await act(async () => details.querySelector('summary')!.click())
+    expect(details.textContent).toContain('429')
+    expect(details.textContent).toContain('调用频率已达上限')
+    expect(details.textContent).toContain('[已脱敏]')
+    expect(details.textContent).not.toContain('RAW_BODY_PRIVATE')
+    await click('复制诊断信息', details)
+    expect(copied).toContain('429')
+    expect(copied).toContain('调用频率已达上限')
+    expect(copied).toContain('本机服务')
+    expect(copied).toContain('ui-model')
+    expect(copied).not.toContain('synthetic-ui-key')
+    expect(copied).not.toContain('RAW_BODY_PRIVATE')
+    expect(copied).not.toContain('请解释失败原因')
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => { throw new Error('clipboard unavailable') } }
+    })
+    await click('复制诊断信息', details)
+    expect(details.textContent).toContain('复制失败')
+  } finally {
+    if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard)
+    else Reflect.deleteProperty(navigator, 'clipboard')
+  }
+})
+
 it('cancels a preview that finishes after the user closes it and never dispatches its stale token', async () => {
   setProfileId(await profile())
   await startConversation()

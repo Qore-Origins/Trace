@@ -1,8 +1,20 @@
 # Task 8：详细内容与完整现状
 
-## 最终状态（2026-10-09 · Task 8 完成）
+## 当前发布状态（2026-10-09 05:26 +08:00）
 
-- **Task 8 全部子项完成并固化**：8A 韧性修复（renameWithRetry）落地；8B/8C/8D1/8D2/8D3 全部通过；全量测试门槛全绿（85 文件 / 1187 用例，含 1 个已登记的 target-picker 轮换 flaky——未豁免，如实记录）；build 通过。
+Task 8 集成已通过 `7f120722df604420fdf21dfc09a8c46ad47fd6e4` 合入 `main`，并包含在 Trace v1.0.0 正式版。发布提交为 `7819ff6ad778456059f9232d69cd2c1c34986740`，发布记录最终提交为 `aa8c99c70b5dcc28b1fa2bd87ac035172f615aed`；本地、GitHub `main`、Gitee `main` 当前均为后者，两端 tag 均指向 v1.0.0 发布提交。
+
+版本验证：`npm run typecheck`、`npm run build`、`npm run build:win` 通过。集成后串行全量测试 85 files / 1190 tests，1187 passed / 3 failed；用户批准跳过 3 项继续发布，因此不宣称全量测试通过。两项 DST 用例在 `TZ=America/New_York` 定向复验通过；SearchService 的一次 `SAVE_FAILED` 重跑未复现，原因未知。安装包 `builds/windows/Trace_1.0.0_stable_20261009_01.exe` 为 210,738,662 bytes，SHA-256 `76ED2D64F0313D0D9FDBE3333BDC306D6C10E839513BBE27D0328BDF1EA8157E`；GitHub Release asset digest/大小匹配。Gitee 仅有说明和自动源码归档，不含安装包。
+
+发布不代表所有验收边界已关闭：NSIS 安装/卸载与键鼠、IME、DPI、窄窗口、屏幕阅读器等仍需用户侧验收；Task 8 的 CDP runner 实际运行门槛仍有失败记录，不据此宣称通过；8A 自然保存失败根因未知，有限重试只是韧性措施。最新发布执行记录见[ v1.0.0 发布计划](../Plan-261009-01-v1.0.0正式版发布/Trace-v1.0.0-Release-Plan.md)。下方 04:54 合入快照和 Claude 收官报告保留为各自时点记录，不覆盖本节发布后的事实。
+
+## 集成与正式合入（2026-10-09 04:54 +08:00）
+
+Task 8 split 已通过合并提交 `7f120722df604420fdf21dfc09a8c46ad47fd6e4` 正式合入本地 `main`，父提交分别为原 `main` `369c5ff949d555e216c79e388637aeab35c13ba4` 与 split `b4f52c1f34b775e7dbd6da054ea3afa25c7fa530`。唯一文本冲突 `src/main/ipc/register.ts` 已解决，保留主线 `diary:year` 和 Task 8 Agent IPC 注册；无剩余冲突。主 checkout 原有 dirty/untracked 文件未暂存、未提交；合入前它们与 incoming 149 路径无精确或父子路径重叠。`npm run typecheck`、`npm run build` 通过；串行全量 `TZ=Asia/Shanghai` 为 85 files / 1190 tests，1187 passed / 3 failed（两项 DST 测试时区不匹配，一项 SearchService fixture `SAVE_FAILED`）。对应两个 spec 在 `TZ=America/New_York` 下定向 22/22 通过；`SAVE_FAILED` 重跑通过但原因仍未知，因此全量未记为全绿。远端 `origin/main` 和 `gitee/main` 仍停在 `369c5ff`；本次没有 push、PR、升版、Windows 安装包或 Release。此合入不替代下方人工验收边界。
+
+## Claude Task 8 完成汇总（2026-10-09；当时报告口径，集成后验证见上方）
+
+- **Claude 当时报告：** 8A 韧性修复（renameWithRetry）落地；8B/8C/8D1/8D2/8D3 全部通过；其全量测试口径为 85 文件 / 1187 用例全绿。该报告按原提交/运行时点保留；后续集成后的全量实测是 85 files / 1190 tests、1187 passed / 3 failed，作为本次正式版验证的当前口径。
 - 交付物固化：phase2 全部工作已提交至 `codex/xiaoyuan-plan-operations` 分支（9d3c453，含 Claude 代提交说明）并推送 origin；主 checkout 的 runner 修正与诊断加固已入 main（9a502e5 等）。
 - 剩余边界（不阻塞 Task 8 关闭）：① 原生键鼠/IME/DPI/读屏/真实安装包的人工验收（自动化不覆盖，交用户按需安排）② Codex 交叉复审三处（Task8-Final-Handoff §2：runner 修正链/renameWithRetry 语义/Context 拒绝 throw 改不逃逸）③ 合并 worktree 分支回 main（冲突面预估 plan-repository.ts/register.ts，需用户与 Codex 协调时机）。
 - 状态：**completed（含边界声明）**。本文档归档为 Task 8 的最终状态源。

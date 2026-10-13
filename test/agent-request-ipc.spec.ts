@@ -480,6 +480,50 @@ describe('agent request public IPC and loopback SSE', () => {
     expect(bodies).toHaveLength(1)
     expect(JSON.parse(bodies[0])).not.toHaveProperty('tools')
   })
+  it('persists only a bounded, credential-redacted provider error summary for HTTP failures', async () => {
+    const providerMessage = `Quota exceeded for key loopback-test-key; retry shortly.`
+    respond = (response) => {
+      response.writeHead(429, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: { code: 'rate_limited', message: providerMessage }, raw: 'RAW_PROVIDER_BODY_MUST_NOT_PERSIST' }))
+    }
+    const identity = await send(await createPreview())
+    expect(await terminal(identity)).toMatchObject({ status: 'error-interrupted', errorCategory: 'http' })
+    const session = data(await bridge.invoke('agent:session:read', { id: identity.sessionId }))
+    const stored = session.messages[1]
+    expect(stored).toMatchObject({ diagnostic: {
+      category: 'http', httpStatus: 429,
+      providerMessage: 'Quota exceeded for key [已脱敏]; retry shortly.'
+    } })
+    expect(JSON.stringify(stored) + JSON.stringify(events)).not.toMatch(/loopback-test-key|RAW_PROVIDER_BODY_MUST_NOT_PERSIST/)
+    expect(stored.diagnostic.providerMessage.length).toBeLessThanOrEqual(512)
+  })
+  it('persists a credential-redacted HTTP 200 SSE error summary without the raw event', async () => {
+    respond = (response) => {
+      response.write(chunk('partial reply'))
+      response.end(`data: ${JSON.stringify({ error: { code: 'account_disabled', message: 'Rejected loopback-test-key; authorization Bearer private-token' }, raw: 'RAW_PROVIDER_EVENT_MUST_NOT_PERSIST' })}\n\n`)
+    }
+    const identity = await send(await createPreview())
+    expect(await terminal(identity)).toMatchObject({ status: 'error-interrupted', errorCategory: 'provider' })
+    const stored = data(await bridge.invoke('agent:session:read', { id: identity.sessionId })).messages[1]
+    expect(stored).toMatchObject({
+      status: 'error-interrupted', content: 'partial reply',
+      diagnostic: {
+        category: 'provider', httpStatus: 200,
+        providerMessage: 'Rejected [已脱敏]; authorization Bearer [已脱敏]'
+      }
+    })
+    expect(JSON.stringify(stored) + JSON.stringify(events)).not.toMatch(/loopback-test-key|private-token|RAW_PROVIDER_EVENT_MUST_NOT_PERSIST/)
+  })
+  it('caps a provider error message before saving it to the local session', async () => {
+    respond = (response) => {
+      response.writeHead(500, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: { message: 'x'.repeat(1000) } }))
+    }
+    const identity = await send(await createPreview())
+    expect(await terminal(identity)).toMatchObject({ status: 'error-interrupted', errorCategory: 'http' })
+    const stored = data(await bridge.invoke('agent:session:read', { id: identity.sessionId })).messages[1]
+    expect(stored.diagnostic.providerMessage).toBe('x'.repeat(512))
+  })
   it('never emits a fragment crossing the persisted UTF-16 limit and retains the bounded prefix', async () => {
     const fragment = 'x'.repeat(32 * 1024), count = AGENT_MAX_MESSAGE_LENGTH / fragment.length
     respond = (response) => response.end(Array.from({ length: count }, () => chunk(fragment)).join('') + chunk('crosses-boundary') + end)
@@ -519,6 +563,48 @@ describe('agent request public IPC and loopback SSE', () => {
     expect(saved.requests).toHaveLength(1)
     expect(saved.operationBatches).toHaveLength(1)
     expect(saved.operationBatches[0]).toMatchObject({ id: batch.batchId, status: 'awaiting-outbound-preview', operations: [{ callId: 'call_1', status: 'succeeded' }] })
+  })
+  it('logs bounded sanitized diagnostics for a failed continuation only in development', async () => {
+    const originalRendererUrl = process.env.ELECTRON_RENDERER_URL
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5174/'
+    const diagnosticLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      const batch = await createToolBatch()
+      expect(diagnosticLog).not.toHaveBeenCalled()
+
+      respond = (response) => response.end('data: RAW_PRIVATE_PROVIDER_EVENT\n\n')
+      approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); return true }
+      const identity = data(await continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId }))
+      expect(await terminalForAssistant(identity)).toMatchObject({ status: 'error-interrupted', errorCategory: 'protocol' })
+
+      const continuationLogs = diagnosticLog.mock.calls.filter(([prefix]) => prefix === '[trace][agent-continuation]')
+      expect(continuationLogs.length).toBeGreaterThan(0)
+      const serialized = JSON.stringify(continuationLogs)
+      expect(serialized).toContain('sse.invalid_json')
+        expect(serialized).not.toContain('RAW_PRIVATE_PROVIDER_EVENT')
+      expect(serialized).not.toContain('loopback-test-key')
+      expect(serialized).not.toContain('已批准的问题')
+      expect(serialized).not.toContain('http://127.0.0.1:')
+    } finally {
+      if (originalRendererUrl === undefined) delete process.env.ELECTRON_RENDERER_URL
+      else process.env.ELECTRON_RENDERER_URL = originalRendererUrl
+    }
+  })
+  it('does not log continuation diagnostics outside Electron development mode', async () => {
+    const originalRendererUrl = process.env.ELECTRON_RENDERER_URL
+    delete process.env.ELECTRON_RENDERER_URL
+    const diagnosticLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      const batch = await createToolBatch()
+      respond = (response) => response.end('data: RAW_PRIVATE_PROVIDER_EVENT\n\n')
+      approveOutbound = async (snapshot) => { approvalSnapshots.push(snapshot); return true }
+      const identity = data(await continueRequest({ sessionId: batch.sessionId, batchId: batch.batchId }))
+      expect(await terminalForAssistant(identity)).toMatchObject({ status: 'error-interrupted', errorCategory: 'protocol' })
+      expect(diagnosticLog).not.toHaveBeenCalled()
+    } finally {
+      if (originalRendererUrl === undefined) delete process.env.ELECTRON_RENDERER_URL
+      else process.env.ELECTRON_RENDERER_URL = originalRendererUrl
+    }
   })
   it('rejects malformed or cross-session batch identities without provider dispatch', async () => {
     const batch = await createToolBatch()

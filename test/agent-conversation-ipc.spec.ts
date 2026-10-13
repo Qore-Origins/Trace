@@ -139,6 +139,10 @@ describe('agent conversation typed IPC', () => {
     expect(outbound).not.toHaveProperty('userMessageId')
     expect(outbound).not.toHaveProperty('targetGrantSetId')
     expect(outbound.targets?.map((item) => item.ref)).toEqual([refA])
+    const targetInstructions = outbound.messages.find((item) => item.role === 'system' && item.content?.includes('用户本轮标注的计划操作目标'))
+    expect(targetInstructions?.content).toContain('不构成写入授权或外发授权')
+    expect(targetInstructions?.content).toContain('主进程仍须完成全部预检')
+    expect(targetInstructions?.content).toContain('不得递归读取或修改子树')
     // The object returned to the renderer is a clone; authorization must be derived from main's frozen snapshot.
     outbound.targets?.push(grantSet.targets[1])
     const confirmed = await service.consumePreview(outbound.token)

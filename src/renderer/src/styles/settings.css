@@ -1,0 +1,634 @@
+.trace-settings-modal .ant-modal-content {
+  display: flex;
+  height: min(760px, calc(100vh - 64px));
+  max-height: calc(100vh - 32px);
+  min-height: min(480px, calc(100vh - 48px));
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.plan-workflow-settings {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.plan-workflow-settings > section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.plan-workflow-settings h3,
+.plan-workflow-settings h4 {
+  margin: 0;
+}
+
+.plan-workflow-settings__overview-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-workflow-settings__overview-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.plan-workflow-settings__overview-info,
+.plan-workflow-settings__overview-actions {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.plan-workflow-settings__overview-info strong,
+.plan-workflow-settings__editor-heading strong {
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.plan-workflow-settings__overview-info span,
+.plan-workflow-settings__overview-actions span,
+.plan-workflow-settings__overview-section span {
+  color: var(--text-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.plan-workflow-settings__overview-actions {
+  justify-items: end;
+}
+
+.plan-workflow-settings > .plan-workflow-settings__overview-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.plan-workflow-settings__editor-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 0;
+  background: var(--paper-dim);
+}
+
+.plan-workflow-settings__editor-heading > .ant-btn-primary {
+  margin-left: auto;
+}
+
+.plan-workflow-settings__editor-heading > [role='status'] {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.plan-workflow-settings__card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.plan-workflow-settings__field-row,
+.plan-workflow-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-workflow-settings__field-row > label,
+.plan-workflow-settings__card > label {
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 160px);
+}
+
+.plan-workflow-settings__field-row > .ant-input,
+.plan-workflow-settings__field-row > .ant-select,
+.plan-workflow-settings__select {
+  flex: 1 1 170px;
+  min-width: 140px;
+}
+
+.plan-workflow-settings__error {
+  color: var(--error, #b42318);
+}
+
+.plan-workflow-create {
+  display: grid;
+  gap: 14px;
+  max-height: min(680px, calc(100vh - 190px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.plan-workflow-create__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.plan-workflow-create label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.plan-workflow-create section {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-workflow-create h3 {
+  margin: 0;
+}
+
+.plan-workflow-create__task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px auto;
+  gap: 8px;
+}
+
+.plan-workflow-create__component {
+  display: grid;
+  gap: 6px;
+}
+
+.plan-workflow-create__output {
+  display: grid;
+  gap: 5px;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.plan-workflow-create__confirm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.plan-workflow-create__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .plan-workflow-create__fields,
+  .plan-workflow-create__task {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.trace-settings-modal .ant-modal-header {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.trace-settings-modal .ant-modal-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.trace-settings-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: 208px minmax(0, 1fr);
+}
+
+.trace-settings-nav {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 12px;
+  border-right: 1px solid var(--border);
+  background: var(--paper-dim);
+  overscroll-behavior: contain;
+}
+
+.trace-settings-nav-list {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.trace-settings-modal .trace-settings-nav-item.ant-btn {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  height: auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--r-card);
+  color: var(--text-2);
+  text-align: left;
+  white-space: normal;
+  transition: background-color var(--t-ui), color var(--t-ui);
+}
+
+.trace-settings-modal .trace-settings-nav-item.ant-btn:hover {
+  color: var(--text-1);
+  background: var(--hover-active);
+}
+
+.trace-settings-modal .trace-settings-nav-item.ant-btn.is-active {
+  color: var(--text-1);
+  background: var(--hover-active);
+  font-weight: 600;
+}
+
+.trace-settings-modal .trace-settings-nav-item.ant-btn.is-active::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--trace-500);
+  content: '';
+}
+
+.trace-settings-modal .trace-settings-nav-item.ant-btn:focus-visible {
+  outline: 2px solid var(--trace-500);
+  outline-offset: 2px;
+}
+
+.trace-settings-nav-icon {
+  display: inline-flex;
+  width: 18px;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.trace-settings-nav-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.trace-settings-main {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 30px clamp(20px, 4vw, 48px) 40px;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+
+.trace-settings-panel {
+  width: min(100%, 820px);
+  margin: 0 auto;
+}
+
+.trace-settings-panel[hidden] {
+  display: none;
+}
+
+.trace-settings-panel > h2 {
+  margin: 0 0 24px;
+  color: var(--text-1);
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.trace-settings-panel > h3 {
+  margin: 28px 0 12px;
+  color: var(--text-1);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.trace-settings-panel-description {
+  margin: -14px 0 20px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.trace-settings-card {
+  min-width: 0;
+  padding: 4px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--paper-dim);
+}
+
+.trace-settings-card--content {
+  padding: 16px;
+}
+
+.trace-settings-row {
+  display: grid;
+  min-width: 0;
+  min-height: 64px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--split);
+}
+
+.trace-settings-row:last-child {
+  border-bottom: 0;
+}
+
+.trace-settings-field-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.trace-settings-field-label {
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.trace-settings-field-description,
+.trace-settings-error-description {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.setting-help {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.setting-help summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--trace-500);
+  font-weight: 600;
+}
+
+.setting-help summary:focus-visible {
+  outline: 2px solid var(--trace-500);
+  outline-offset: 3px;
+}
+
+.setting-help dl {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--paper-dim);
+}
+
+.setting-help dl > div {
+  min-width: 0;
+}
+
+.setting-help dt {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.setting-help dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.trace-settings-panel > .setting-help {
+  margin: -12px 0 18px;
+}
+
+.trace-settings-row .ant-radio-group {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.trace-settings-subsection {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 12px 14px;
+  border-left: 2px solid var(--border);
+}
+
+.trace-settings-subsection--input {
+  padding-top: 12px;
+}
+
+.trace-settings-subsection .trace-settings-row {
+  min-height: 54px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.trace-settings-subsection > .ant-input,
+.trace-settings-subsection .ant-input {
+  width: min(100%, 440px);
+}
+
+.trace-settings-status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.trace-settings-library-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.trace-settings-root-path {
+  max-width: min(420px, 32vw);
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.trace-settings-shortcuts {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.trace-settings-shortcut-row {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--split);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.trace-settings-shortcut-row:last-child {
+  border-bottom: 0;
+}
+
+.trace-settings-shortcut-row kbd {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--fill);
+  color: var(--text-1);
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .trace-settings-modal .ant-modal-content {
+    height: min(760px, calc(100vh - 32px));
+    max-height: calc(100vh - 24px);
+    min-height: min(420px, calc(100vh - 24px));
+  }
+
+  .trace-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .trace-settings-nav {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .trace-settings-nav-list {
+    display: flex;
+    width: max-content;
+    min-width: 100%;
+    gap: 6px;
+  }
+
+  .trace-settings-modal .trace-settings-nav-item.ant-btn {
+    width: auto;
+    min-height: 38px;
+    padding: 7px 10px;
+    white-space: nowrap;
+  }
+
+  .trace-settings-modal .trace-settings-nav-item.ant-btn.is-active::before {
+    top: auto;
+    right: 10px;
+    bottom: 0;
+    left: 10px;
+    width: auto;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .trace-settings-main {
+    padding: 22px 20px 30px;
+  }
+}
+
+@media (max-width: 520px) {
+  .trace-settings-modal .ant-modal-header {
+    padding-right: 56px;
+    padding-left: 16px;
+  }
+
+  .trace-settings-nav {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .trace-settings-nav-icon {
+    display: none;
+  }
+
+  .trace-settings-main {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .trace-settings-panel > h2 {
+    margin-bottom: 16px;
+    font-size: 20px;
+  }
+
+  .trace-settings-card {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .trace-settings-card--content {
+    padding: 12px;
+  }
+
+  .trace-settings-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+  }
+
+  .trace-settings-row .ant-radio-group {
+    justify-content: flex-start;
+  }
+
+  .trace-settings-library-control {
+    justify-content: space-between;
+  }
+
+  .trace-settings-root-path {
+    max-width: calc(100% - 92px);
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trace-settings-modal .trace-settings-nav-item.ant-btn {
+    transition: none;
+  }
+}

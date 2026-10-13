@@ -1,7 +1,7 @@
 # 小沅智能体基础层设计规格
 
 - 日期：2026-10-02
-- 状态：待用户评审
+- 状态：已批准并完成 Phase 1 验收（Phase 2 `@` 规则以后续用户确认的规格为准）
 - 阶段：智能体 Phase 1（基础层）
 - 依赖：Trace 现有 Electron 主进程、IPC 合约与计划/日记读取服务
 - 相关研究：[工具调用模式研究](../../research/2026-10-02-agent-tool-calling-patterns.md)、[国内模型 API 兼容性调研](../../research/2026-10-02-domestic-llm-api-compatibility.md)
@@ -125,7 +125,7 @@
 
 ## 9. 后续阶段依赖
 
-- **Phase 2：计划操作智能体**。复用本阶段 profile、stream、conversation、context preview 和 provenance 底座；另行规格定义 `@` 单目标、计划/文件夹工具白名单、权限模式、CAS、影响预览、确认/撤销、序列化执行与循环上限。不得把本阶段的能力测试等同于计划工具授权。
+- **Phase 2：计划操作智能体**。复用本阶段 profile、stream、conversation、context preview 和 provenance 底座；另行规格定义 `@` 多目标、计划/文件夹工具白名单、权限模式、CAS、影响预览、确认/撤销、序列化执行与循环上限。不得把本阶段的能力测试等同于计划工具授权。Phase 2 的现行行为见 `2026-10-03-agent-plan-operations-design.md`。
 - **Phase 3：个人化**。另行规格定义经用户审核后保存的偏好候选、逐次外发预览中的偏好授权、日记润色强度、差异比较及用户明确采用后写回。
 
 ## 10. 实施前留白

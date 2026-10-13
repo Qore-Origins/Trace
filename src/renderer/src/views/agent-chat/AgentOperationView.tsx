@@ -197,6 +197,8 @@ function OperationBatch({ chat, audit, attempts, stage, inheritedUncertainty = f
   return <article className="agent-operation-batch" data-agent-batch={audit.id}>
     <header><h2>{t('agentChat.batch')} · {audit.createdAt}</h2><span role="status" aria-live="polite" aria-atomic="true">{t(`agentChat.batchStatus.${batch.status}`)}</span></header>
     <p className="agent-hint">{t('agentChat.permission')}: {t(`agentChat.permissionMode.${batch.policyMode}`)}</p>
+    {batch.status === 'cancelled' && batch.confirmationSource === 'none' &&
+      <p className="agent-hint">{t('agentChat.confirmationInterrupted')}</p>}
     {uncertain && <p className="agent-verification" role="alert">{t('agentChat.manualVerification')}</p>}
     {error && <p role="alert">{error}</p>}
     {stage !== 'recovery' && <>

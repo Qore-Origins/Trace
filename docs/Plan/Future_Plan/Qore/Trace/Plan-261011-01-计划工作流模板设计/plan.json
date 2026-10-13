@@ -1,0 +1,64 @@
+{
+  "format_version": "1",
+  "created_at": "2026-10-11T05:37:25Z",
+  "updated_at": "2026-10-11T07:03:54.000Z",
+  "components": [
+    {
+      "id": "e9a56a847c564e24a72b8cdf5e45a417",
+      "type": "heading",
+      "payload": {
+        "title": "计划工作流与模板设计",
+        "size": 2
+      }
+    },
+    {
+      "id": "82cbb3f8af96467bb1395899ad385b14",
+      "type": "task_list",
+      "payload": {
+        "title": "设计阶段任务",
+        "items": [
+          {
+            "id": "7d055a73b2814bc4bc0f7e168a605e99",
+            "title": "检查真实计划库的目录与命名习惯",
+            "status": "done",
+            "planned_at": "2026-10-11",
+            "completed_at": "2026-10-11T05:37:25Z"
+          },
+          {
+            "id": "a1585d70ef884e33a8cf8e7117dd618e",
+            "title": "检查现有命名模板、计划文档与小沅能力",
+            "status": "done",
+            "planned_at": "2026-10-11",
+            "completed_at": "2026-10-11T05:37:25Z"
+          },
+          {
+            "id": "ddcbe2f4d6504e97bb2a1457bdbfac2a",
+            "title": "完成工作流设计草案",
+            "status": "done",
+            "planned_at": "2026-10-11",
+            "completed_at": "2026-10-11T05:37:25Z"
+          },
+          {
+            "id": "75bc98a4c1504d579aa0450c33d99457",
+            "title": "确认方案 B 与文件树自动匹配预览",
+            "status": "done",
+            "planned_at": "2026-10-11",
+            "completed_at": "2026-10-11T06:20:49Z"
+          },
+          {
+            "id": "58ae0addf4ed4a95aaf7634ea4f63082",
+            "title": "用户审阅并反馈设计草案",
+            "status": "done",
+            "completed_at": "2026-10-11T07:03:54.000Z"
+          },
+          {
+            "id": "cd70700bad234e39989f55b760da25c5",
+            "title": "确认设计后制定分阶段实施计划",
+            "status": "done",
+            "completed_at": "2026-10-11T07:03:54.000Z"
+          }
+        ]
+      }
+    }
+  ]
+}

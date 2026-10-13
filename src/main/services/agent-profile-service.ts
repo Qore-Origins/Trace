@@ -6,12 +6,18 @@ import { AGENT_PROVIDER_PRESETS } from '../../shared/agent-provider-catalog'
 import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from '../../shared/agent-types'
 import { AgentCredentialStore, assertAgentProfileId } from './agent-credential-store'
 import { createAgentCapabilityRequest, runAgentToolCapabilityTest } from './agent-capability-test'
+import type { AgentStreamDiagnosticObserver } from './agent-sse'
 import type { AgentOutboundApproval } from './agent-approval-window-service'
 
 type SavedProfile = Omit<AgentProfile, 'keyStatus'>
 interface SavedProfiles { version: 1; defaultProfileId: string | null; profiles: SavedProfile[] }
 const INITIAL: SavedProfiles = { version: 1, defaultProfileId: null, profiles: [] }
 const UNTESTED: AgentCapability = { status: 'untested', testedAt: null, errorCategory: null }
+
+function developmentCapabilityDiagnosticObserver(): AgentStreamDiagnosticObserver | undefined {
+  if (!process.env.ELECTRON_RENDERER_URL) return undefined
+  return (diagnostic) => console.info(`[trace][agent-capability] ${JSON.stringify(diagnostic)}`)
+}
 
 function plainRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
@@ -231,7 +237,10 @@ export class AgentProfileService {
           (this.capabilityRevisions.get(id) ?? 0) !== snapshot.revision) {
           throw new TraceError(ERR.CONFLICT, '服务配置已变化，请重新测试')
         }
-        const result = runAgentToolCapabilityTest({ endpoint: profile.endpoint, model: profile.model, apiKey: key }, request)
+        const result = runAgentToolCapabilityTest({
+          endpoint: profile.endpoint, model: profile.model, apiKey: key,
+          onDiagnostic: developmentCapabilityDiagnosticObserver()
+        }, request)
         return Promise.resolve({ result })
       })
       capability = await started.result

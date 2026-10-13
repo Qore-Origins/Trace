@@ -1,0 +1,83 @@
+{
+  "format_version": "1",
+  "created_at": "2026-10-11T07:03:54Z",
+  "updated_at": "2026-10-12T11:50:00.000Z",
+  "components": [
+    {
+      "id": "d9b3fca6b76843f4968a19252d46b91f",
+      "type": "heading",
+      "payload": {
+        "title": "可配置计划工作流实施",
+        "size": 2
+      }
+    },
+    {
+      "id": "23d507cd0bf64c5b9eb5b670155071c1",
+      "type": "task_list",
+      "payload": {
+        "title": "实施任务",
+        "items": [
+          {
+            "id": "7385b2d97df54ee58311b8d67d0450e1",
+            "title": "目标日期与父目录命名变量",
+            "status": "done",
+            "completed_at": "2026-10-11T14:41:14Z"
+          },
+          {
+            "id": "4464e334515d4de3b90d00a5f5a4d65f",
+            "title": "预设配置、作用域匹配与新旧规则合成",
+            "status": "done",
+            "completed_at": "2026-10-11T14:47:02Z"
+          },
+          {
+            "id": "6e82dc86fb884889b22a8f641677c3a7",
+            "title": "只读预览、冲突报告与修订标识",
+            "status": "done",
+            "completed_at": "2026-10-11T14:53:19Z"
+          },
+          {
+            "id": "65a624ab641b484d82e1640c5d5c6355",
+            "title": "内容模板、工作流元数据与单计划写入",
+            "status": "done",
+            "completed_at": "2026-10-11T14:58:19.000Z"
+          },
+          {
+            "id": "2cf66d750185422ba9345b3edac16be8",
+            "title": "设置、IPC 与文件树可编辑预览",
+            "status": "done",
+            "completed_at": "2026-10-12T11:50:00.000Z"
+          },
+          {
+            "id": "9fe258bfc71c489b8d5c9ed4df5ed9f9",
+            "title": "周日批量创建、操作记录与安全续做",
+            "status": "done",
+            "completed_at": "2026-10-12T11:50:00.000Z"
+          },
+          {
+            "id": "ff391433345b45819496961f0e3dc449",
+            "title": "周视图、草稿与跨周任务交接",
+            "status": "done",
+            "completed_at": "2026-10-12T11:50:00.000Z"
+          },
+          {
+            "id": "bb6cd98011c343399846718d593c2183",
+            "title": "导入导出与稳定 ID 关联",
+            "status": "done",
+            "completed_at": "2026-10-12T11:50:00.000Z"
+          },
+          {
+            "id": "60072651246340ee8c8792a8418abcdd",
+            "title": "小沅共用工作流入口与权限确认",
+            "status": "done",
+            "completed_at": "2026-10-12T11:50:00.000Z"
+          },
+          {
+            "id": "d00eca0a6a6c460a8e85c30d94a61e22",
+            "title": "隔离库用户视角验收与收尾",
+            "status": "in_progress"
+          }
+        ]
+      }
+    }
+  ]
+}

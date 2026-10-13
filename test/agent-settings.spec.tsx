@@ -93,6 +93,19 @@ describe('model service settings interactions', () => {
     await render(); await settle()
     return profile.data.id
   }
+  it('explains when the API Key field becomes available for a new service', async () => {
+    await render(); await settle()
+    expect(host.textContent).toContain('先保存服务配置，随后即可设置 API Key。')
+    expect(host.querySelector('input[aria-label="API Key"]')).toBeNull()
+
+    await input('服务名称', '测试服务')
+    await input('服务地址', 'https://provider.example/v1')
+    await input('模型', 'test-model')
+    await click('保存服务')
+
+    expect(field('API Key').type).toBe('password')
+    expect(host.textContent).toContain('未配置密钥')
+  })
   it.each([
     { language: 'zh-CN', deleteButton: '删除服务', confirmButton: '删除', warning: '密钥恢复失败', guidance: '重新配置密钥并重测工具能力', missing: '未配置密钥', retest: '需重测', passed: '测试通过', saved: '密钥已保存', unknown: '当前状态无法确认', refreshError: '无法刷新当前服务状态', retry: '重试刷新状态' },
     { language: 'en-US', deleteButton: 'Delete service', confirmButton: 'Delete', warning: 'Credential recovery failed', guidance: 'configure the credential again and retest tool support', missing: 'Credential missing', retest: 'Needs retest', passed: 'Test passed', saved: 'Credential saved', unknown: 'Current status unknown', refreshError: 'Unable to refresh the service status', retry: 'Retry status refresh' }

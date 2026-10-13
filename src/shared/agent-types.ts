@@ -50,6 +50,12 @@ export interface AgentApprovalRequestSnapshot {
 }
 
 export type AgentMessageStatus = 'complete' | 'streaming' | 'user-interrupted' | 'error-interrupted'
+export type AgentRequestErrorCategory = 'validation' | 'authentication' | 'http' | 'provider' | 'protocol' | 'limit' | 'timeout' | 'network' | 'storage'
+export interface AgentRequestDiagnostic {
+  category: AgentRequestErrorCategory
+  httpStatus: number | null
+  providerMessage: string | null
+}
 export interface AgentChatToolCall {
   id: string
   type: 'function'
@@ -65,6 +71,7 @@ export interface AgentMessage {
   status: AgentMessageStatus
   createdAt: string
   requestId: string
+  diagnostic?: AgentRequestDiagnostic
 }
 export interface AgentContextSelection { kind: 'plan' | 'diary'; path: string }
 export interface AgentContextSource extends AgentContextSelection {
@@ -284,7 +291,6 @@ export const AGENT_MAX_TOOL_CALLS_PER_REQUEST = 20
 export interface AgentRequestSendInput { token: string; sessionId: string }
 export interface AgentRequestCancelInput { sessionId: string; requestId: string }
 export interface AgentRequestIdentity extends AgentRequestCancelInput { assistantId: string }
-export type AgentRequestErrorCategory = 'validation' | 'authentication' | 'http' | 'protocol' | 'limit' | 'timeout' | 'network' | 'storage'
 // Compatibility re-export: the private IPC bridge contract itself lives in ipc-contract.ts.
 export type { AgentApprovalBridge } from './ipc-contract'
 export type AgentRequestEvent = AgentRequestIdentity & (

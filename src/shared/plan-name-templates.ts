@@ -1,6 +1,16 @@
 import { ERR, TraceError } from './errors'
 import { validatePlanName, validateTitle } from './validation'
 
+export {
+  renderWorkflowName,
+  validateWorkflowNameTemplate
+} from './plan-workflow-naming'
+export type {
+  WorkflowNameContext,
+  WorkflowNameToken,
+  TemplateValidationResult
+} from './plan-workflow-naming'
+
 export interface PlanNameTemplateDefinition {
   parent_path: string
   template: string

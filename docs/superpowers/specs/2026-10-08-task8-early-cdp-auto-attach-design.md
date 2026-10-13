@@ -1,6 +1,6 @@
 # Task 8：早期 CDP 自动附着 renderer 异常监测设计
 
-状态：用户已同意按推荐架构编写本设计；本文件完成自审后等待用户审阅。本文是 QA runner 的设计规格，不代表实现或验证已完成。
+状态：用户已批准本设计规格及后续 FD 3/FD 4 pre-main transport 修订。实施计划见 [Task8-Early-CDP-Auto-Attach-Implementation-Plan.md](../../Plan/Future_Plan/Qore/Trace/Plan-261008-01-Task8早期CDP自动附着/Task8-Early-CDP-Auto-Attach-Implementation-Plan.md)。本文仍是 QA runner 的设计规格，不代表 Browser CDP smoke、实现或验证已完成。
 
 ## 1. 背景与目标
 
@@ -21,7 +21,7 @@
 非目标：
 
 - 不修改生产 renderer、preload、BrowserWindow 生命周期或应用功能。
-- 不在本设计阶段修改 runner/bootstrap、编写实现计划、运行协议 smoke、运行 D3 或完整 Electron runner。
+- 不修改生产 runner/bootstrap、运行 D3 或完整 Electron runner；当前授权仅覆盖新增独立协议 smoke 与其后述验证。
 - 不覆盖 iframe/Worker 异常，也不把 CDP 结果扩张为对原生输入法、DPI、读屏或真实安装包体验的证明。
 - 不连接真实计划库、真实模型服务或外部网络；协议通信只通过本轮唯一隔离 Electron 的 loopback 调试端口。
 
@@ -29,9 +29,11 @@
 
 ### A. 隔离 bootstrap 的 pre-main gate
 
-保留现有的路径与配置隔离核验：run root、userData、sessionData、日志目录、crash dump 目录及 disposable library 均须通过 realpath/symlink 检查，config root 必须精确指向本轮 disposable library，生产 main bundle 必须存在。只有这些检查全部通过后，bootstrap 才发送带本轮随机 nonce 的 `isolation-ready` 消息，并暂停在 `require(mainBundlePath)` 之前。
+保留现有的路径与配置隔离核验：run root、userData、sessionData、日志目录、crash dump 目录及 disposable library 均须通过 realpath/symlink 检查，config root 必须精确指向本轮 disposable library，生产 main bundle 必须存在。Electron 子进程由 parent 设置两个额外继承的匿名管道：child FD 3 只向 parent 输出协议事件，child FD 4 只从 parent 接收控制；parent 的 `stdio` 索引分别为 3（可读）和 4（可写）。stdin 不参与握手，stdout/stderr 仅作诊断，不得解析为协议。
 
-runner 与 Electron 子进程使用已连接的 stdin/stdout pipe 完成一次性握手。runner 只在收到 nonce 匹配的 ready 消息、验证浏览器调试 endpoint、连上 Browser WebSocket 且 page-only auto-attach 命令成功后，才发送匹配 nonce 的 `continue`。bootstrap 对错误 nonce、重复消息、握手超时、runner 退出均 fail closed，不载入 main bundle；父进程随后只终止本轮可识别的隔离 Electron process tree，并保留已有 owner-marker 清理门禁。
+所有隔离检查通过且 FD 3/FD 4 可用后，bootstrap 发送带本轮随机 nonce 的 JSONL `isolation-ready` 事件，并在 `require(mainBundlePath)` 之前异步等待 FD 4 控制帧。等待必须保持 Electron 主事件循环可运行；不得用同步 `readSync` 阻塞 CDP server 或 `app.whenReady()` 初始化。parent 收到匹配 nonce 的 ready 后，验证本轮浏览器调试 endpoint、连接 Browser WebSocket 并成功安装 page-only auto-attach，随后才通过 FD 4 发送匹配 nonce 的 `continue`。
+
+协议帧为 UTF-8 JSONL，单帧最大 4096 字节；每条控制帧与事件都带本轮 nonce 和明确类型，解析器拒绝空帧、超长帧、非法 JSON、未知类型与 nonce 不匹配。bootstrap 立即接受第一个匹配 nonce 的 `continue` 并且只释放一次；错误 nonce、格式/类型错误、释放前重复输入、握手超时、FD 4 过早 EOF 或首次合法 continue 前 runner 退出均 fail closed，不载入 main bundle。合法 continue 一经接受不能撤销；之后到达的重复控制输入或 FD 4 EOF 是协议故障，必须使 QA smoke/run 失败且不得再次释放，但不能保证已由第一次合法放行启动的页面被回滚或仍为零页面。不得为等待潜在重复消息而加入任意 grace period。父进程随后只终止本轮可识别的隔离 Electron process tree，并保留已有 owner-marker 清理门禁。FD 缺失、方向错误或不可读写时立即停止，不自动回退到 stdin、TCP 或 named pipe。
 
 nonce 仅用于区分本轮握手，不是安全认证机制；调试端口仍必须绑定 127.0.0.1 且只服务本轮隔离进程。
 
@@ -62,18 +64,19 @@ CDP 的 TargetFilter 按顺序匹配，第一个匹配项决定是否包含；�
 
 ## 4. 故障与清理语义
 
-- 隔离检查未通过、ready nonce 不匹配、Browser endpoint 校验失败或 auto-attach 安装失败：不放行 bootstrap，不载入 main bundle，报告 QA 失败并清理本轮子进程。
+- 隔离检查未通过、FD 3/FD 4 不可用、ready nonce 不匹配、Browser endpoint 校验失败或 auto-attach 安装失败：不放行 bootstrap，不载入 main bundle，报告 QA 失败并清理本轮子进程；没有备用传输降级。
+- 第一个合法 continue 接受后若再收到重复控制输入：报告协议故障并使 QA run 失败，确保不发生第二次释放；第一次合法释放不可撤回，因此不得声称 late duplicate 场景保证没有页面。
 - 单个 target 的 Runtime 启用失败：该 run 失败；对已经暂停的 target 做一次有界的 best-effort resume，若不能确认恢复，则终止本轮隔离进程树，不能让测试悬挂，也不能将该窗口当作无异常跳过。
 - `Runtime.runIfWaitingForDebugger` 超时/失败、CDP 连接意外关闭、目标窗口关闭超时或事件路由状态不一致：run 失败并进入统一 finally 清理；不再用固定短延迟推断事件已排空。
 - 错误输出只保留现有必要的脱敏诊断、target 类别、CDP 方法/错误码和计数，不输出调试 endpoint 中的 token/标识符、注释正文、计划内容或原始完整异常栈。
 
 ## 5. 验收门槛
 
-实现前须单独通过真实 Electron 44.2.0 的协议 smoke。smoke 使用全新、一次性、带 owner marker 的本机 Temp，不读取用户配置/计划库、不启动 provider、不复用失败 fixture；新建隔离结束后按现有清理守卫验证处置。该 smoke 是后续设计阶段的测试计划，不是本轮已执行工作。
+实现前须单独通过真实 Electron 44.2.0 的协议 smoke。smoke 使用全新、一次性、带 owner marker 的本机 Temp，parent-child 握手与控制仅使用继承 FD 3/FD 4；不得将此前通过的 FD app-mode 兼容性 probe 当作 Browser CDP 通过证据。不读取用户配置/计划库、不启动 provider、不复用失败 fixture；新建隔离结束后按现有清理守卫验证处置。当前已授权的工作是实现并验证此独立 smoke；正式 runner/bootstrap 仍未授权修改。
 
 协议 smoke 至少证明：
 
-1. bootstrap 在隔离核验后确实暂停于 main bundle 前；没有有效 nonce 的继续命令不能放行，正确 nonce 只放行一次。
+1. bootstrap 在隔离核验后确实暂停于 main bundle 前；在合法放行前没有有效 nonce 的命令不能放行且不创建页面；第一个正确 nonce 立即放行一次。另发一条延迟重复 continue 时 smoke 必须失败、release 计数仍为 1；由于第一次合法放行不可撤销，该 late-duplicate 场景不要求页面计数为零，也不得加入等待窗口来伪造“零页面”。
 2. Browser `/json/version` endpoint、Browser WebSocket、Target.setAutoAttach 确切参数在 Electron 44.2.0 可用；附着事件带有效 flattened session，并报告 target 正处于等待 debugger 状态。
 3. 在 page 首脚本放置同步 throw，runner 先收到 `Runtime.exceptionThrown`，然后页面后续标记/加载事件才发生；异常必须进入计数，证明不是 attach 后补听。
 4. 已恢复的 page 可以执行脚本并关闭；异常事件在 detach 前可完整计入，目标关闭后 session 不残留。
@@ -106,5 +109,6 @@ smoke 通过后，方可在独立授权与文件所有权登记下实现 runner/
 - 关键时序一致：bootstrap gate → Browser CDP auto-attach 就绪 → nonce 放行 → page Runtime.enable → resume → 自动化/关闭与聚合。
 - 未验证协议事实被标为 smoke 前置条件；公开 TargetFilter 过滤器顺序单独写明。
 - 失败分支均 fail closed；不能静默降级到 attach-later 路径。
+- 2026-10-08 20:20 +08:00：用户批准采用 FD 3（child→parent events）与 FD 4（parent→child controls）的继承匿名管道承载独立 Browser CDP smoke 的 pre-main gate；stdin/stdout 不作为协议，bootstrap gate 必须异步以保持 Electron 主事件循环，失败不 fallback。
 - 用户已确认的窗口范围、非目标、重新授权 D3 条件无互相矛盾。
-- 未发现占位符或未完成段落；设计仍需用户审阅后才能进入实施计划。
+- 未发现占位符或未完成段落；核心 CDP 设计与当前 transport 修订均已获用户批准。协议 smoke 尚未实现或运行。

@@ -7,11 +7,13 @@ import type { PlanDocument, PlanLibraryMeta } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { uuid32 } from '../../shared/validation'
 import { isPlanId } from '../../shared/plan-reference-validation'
+import { validatePlanWorkflowMetadata } from '../../shared/plan-workflow-validation'
 import { assertRealPathWithinRoot, resolveWithin } from './path-safety'
 
 const LIB_DIR = '.trace'
 const LIB_FILE = 'plan-library.json'
 const PLAN_FILE = 'plan.json'
+const DEFAULT_RENAME_RETRY_BACKOFFS_MS = [50, 200, 500, 1000]
 
 type RenameFn = (from: string, to: string) => Promise<void>
 type LinkFn = (from: string, to: string) => Promise<void>
@@ -39,7 +41,7 @@ export interface RepoDeps {
   linkFn?: LinkFn
   /** 可注入临时 hard-link 清理，用于验证目标提交成功后的清理故障语义。 */
   unlinkFn?: UnlinkFn
-  /** rename EPERM/EBUSY 退避序列（毫秒；默认 [50,200,500]；注入 [] 禁用重试——8C 契约测试用） */
+  /** rename EPERM/EBUSY 退避序列（毫秒；默认允许四次有限重试；注入 [] 禁用重试——8C 契约测试用） */
   renameRetryBackoffs?: number[]
 }
 
@@ -56,7 +58,7 @@ export class PlanRepository {
   private rename: RenameFn
   private link: LinkFn
   private unlink: UnlinkFn
-  // rename EPERM/EBUSY 退避序列（毫秒；默认 [50,200,500]；注入 [] 禁用重试——8C 契约测试用）
+  // rename EPERM/EBUSY 退避序列；拒绝持续超过 750ms 时仍给一次有限机会。
   private readonly retryBackoffs: number[]
   // updated_at 单调性保障：CAS 锚点必须每次写都变化（同毫秒并发写时 +1ms）
   private lastWriteMs = 0
@@ -68,7 +70,7 @@ export class PlanRepository {
     this.rename = deps.renameFn ?? ((from, to) => fs.rename(from, to))
     this.link = deps.linkFn ?? ((from, to) => fs.link(from, to))
     this.unlink = deps.unlinkFn ?? ((path) => fs.unlink(path))
-    this.retryBackoffs = deps.renameRetryBackoffs ?? [50, 200, 500]
+    this.retryBackoffs = deps.renameRetryBackoffs ?? DEFAULT_RENAME_RETRY_BACKOFFS_MS
   }
 
   private notifyWrite(absPath: string): void {
@@ -147,6 +149,7 @@ export class PlanRepository {
         doc.components.some((component) => typeof component !== 'object' || component === null)) {
         throw new Error('shape')
       }
+      if (doc.workflow !== undefined) validatePlanWorkflowMetadata(doc.workflow)
       return doc
     } catch {
       throw new TraceError(ERR.FORMAT_INVALID, '内容格式异常，已降级显示')

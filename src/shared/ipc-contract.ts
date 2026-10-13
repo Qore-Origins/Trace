@@ -3,6 +3,7 @@
 import type { PlanDocument, Component, TaskItem } from './plan-types'
 import type { PlantUmlStatusDto } from './plantuml-types'
 import type { PlanNameTemplateSettings } from './plan-name-templates'
+import type { PlanWorkflowConfig, WorkflowBatchCommitRequest, WorkflowBatchResult, WorkflowBatchResumeRequest, WorkflowBatchSummary, WorkflowCommitRequest, WorkflowHandoffMoveRequest, WorkflowHandoffMoveResult, WorkflowHandoffPreview, WorkflowLibraryState, WorkflowPeriod, WorkflowPeriodSuggestionRequest, WorkflowPreview, WorkflowPreviewRequest } from './plan-workflow-types'
 import type { AgentCapability, AgentProfile, AgentProfileInput, AgentProfileList, AgentProviderPreset } from './agent-types'
 import type { AgentSession, AgentSessionInput, AgentSessionSummary, AgentContextEntry, AgentContextSelection, AgentPreviewInput, AgentOutboundPreview } from './agent-types'
 import type { AgentRequestSendInput, AgentRequestCancelInput, AgentContinuationPreviewInput, AgentRequestIdentity } from './agent-types'
@@ -183,6 +184,18 @@ export interface Channels {
   'plan-template:get': { req: void; res: PlanNameTemplateSettings }
   'plan-template:set': { req: { parent_path: string; template: string }; res: PlanNameTemplateSettings }
   'plan-template:remove': { req: { parent_path: string }; res: PlanNameTemplateSettings }
+  // Configurable plan workflows are always scoped to the active library in main.
+  'plan-workflow:list': { req: void; res: WorkflowLibraryState }
+  'plan-workflow:save': { req: { library_id: string; config: PlanWorkflowConfig }; res: PlanWorkflowConfig }
+  'plan-workflow:remove': { req: { library_id: string; preset_id: string }; res: PlanWorkflowConfig }
+  'plan-workflow:preview': { req: WorkflowPreviewRequest; res: WorkflowPreview }
+  'plan-workflow:suggestPeriod': { req: WorkflowPeriodSuggestionRequest; res: WorkflowPeriod | null }
+  'plan-workflow:commit': { req: WorkflowCommitRequest; res: PlanTreeNode }
+  'plan-workflow:commitBatch': { req: WorkflowBatchCommitRequest; res: WorkflowBatchResult }
+  'plan-workflow:resumeBatch': { req: WorkflowBatchResumeRequest; res: WorkflowBatchResult }
+  'plan-workflow:listBatches': { req: { library_id: string }; res: WorkflowBatchSummary[] }
+  'plan-workflow:previewHandoff': { req: { library_id: string; week_plan_id: string }; res: WorkflowHandoffPreview }
+  'plan-workflow:moveTask': { req: WorkflowHandoffMoveRequest; res: WorkflowHandoffMoveResult }
   // workspace tabs (the active library is selected in main)
   'workspace-tabs:get': { req: void; res: WorkspaceTabsState }
   'workspace-tabs:set': { req: { state: WorkspaceTabsState }; res: null }

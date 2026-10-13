@@ -1,0 +1,36 @@
+{
+  "format_version": "1",
+  "created_at": "2026-09-30T19:21:18+08:00",
+  "updated_at": "2026-10-01T00:57:28+08:00",
+  "components": [
+    {
+      "id": "26093001000000000000000000000001",
+      "type": "heading",
+      "payload": {
+        "title": "右侧计划标签栏",
+        "size": 25
+      }
+    },
+    {
+      "id": "26093001000000000000000000000002",
+      "type": "note",
+      "payload": {
+        "content": "Plan 01 complete. Task 1 commit 782dc85689322f9283522eff4bc720aed5260b67; review approved (0 Critical / 0 Important). Task 2 fixes commit 585350e0c23670b73c4fa579125edb25f08448ad; fresh scoped review approved; focused+budget 4 files / 36 tests, full 52 files / 543 tests, typecheck/build passed; entry 570,927 B and workspace-tabs chunk 10,022 B under unchanged 700 KiB budget. Task 2 startup-selection Minor remains non-blocking and manually recoverable. Task 3 commit 6cf131b6743d1c052bc09872034a2f56dd17d2a9; review approved; focused 2 files / 12 tests, full 53 files / 552 tests, typecheck/build/diff-check passed. Task 4 commit 76578c5d60d72dc4515678e36e82e6f643c574fa; focused 3 files / 36 tests, full 53 files / 559 tests, typecheck/build/diff-check passed. Fixed-range scoped review approved (0 Critical / 0 Important, 1 non-blocking async focus Minor). Real Electron QA passed: A/B/C, duplicate-open, Ctrl+F locate, close without delete, F2 rename, tree drag move with path remap, restart restore, per-library A/B isolation, and physical 720px window with 3-tab horizontal scroll and no content overflow. QA Temp tree was sent to Recycle Bin after exact-path/process/reparse-point checks; native-window screenshot is retained under .superpowers/sdd/Plan-Tabs-Implementation-Plan/qa-720-native-window.png. One initial unisolated Electron attempt hit the already-configured D:\\Desktop\\Plan root; setRootDir was confirmation-rejected, only user config window bounds were written on close, root remained unchanged, and metadata checks found no default-library diary or plan data writes. The temporary userData/sessionData shim and runner were removed. Next: Plan 02 cross-plan references; this plan excludes merge/release.",
+        "created_at": "2026-09-30T19:21:18+08:00"
+      }
+    },
+    {
+      "id": "26093001000000000000000000000003",
+      "type": "task_list",
+      "payload": {
+        "title": "实施与验收",
+        "items": [
+          { "id": "26093001000000000000000000000011", "title": "实现每库标签持久化服务与安全 IPC", "status": "completed" },
+          { "id": "26093001000000000000000000000012", "title": "建立标签状态机并统一计划打开入口", "status": "completed" },
+          { "id": "26093001000000000000000000000013", "title": "实现右侧响应式标签栏", "status": "completed" },
+          { "id": "26093001000000000000000000000014", "title": "验证恢复、结构变化与 Electron 用户路径", "status": "completed" }
+        ]
+      }
+    }
+  ]
+}

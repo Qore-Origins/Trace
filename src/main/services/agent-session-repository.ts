@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentContextSource, type AgentMessage, type AgentOperationBatchAudit, type AgentRequestProvenance, type AgentSession, type AgentSessionInput, type AgentSessionSummary } from '../../shared/agent-types'
+import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentContextSource, type AgentMessage, type AgentOperationBatchAudit, type AgentRequestDiagnostic, type AgentRequestProvenance, type AgentSession, type AgentSessionInput, type AgentSessionSummary } from '../../shared/agent-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { assertRealPathWithinRoot } from './path-safety'
 
@@ -13,6 +13,7 @@ const MAX_SESSION_TITLE_LENGTH = 120
 const MAX_SESSION_OPERATION_BATCHES = 2048
 const MAX_OPERATION_TARGET_RELATIVE_PATH_LENGTH = 4096
 const MAX_OPERATION_AUDIT_CHANGES_PER_ITEM = 64
+const MAX_PROVIDER_ERROR_MESSAGE_LENGTH = 512
 
 export function assertAgentSessionId(value: unknown): asserts value is string {
   if (typeof value !== 'string' || !ID_PATTERN.test(value)) throw new TraceError(ERR.VALIDATION, '会话标识无效')
@@ -32,6 +33,14 @@ function isMissing(error: unknown): boolean { return agentRecord(error) ? error.
 function timestamp(value: unknown): string {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) throw new Error('invalid timestamp')
   return value
+}
+function diagnostic(value: unknown): AgentRequestDiagnostic {
+  const categories = new Set(['validation', 'authentication', 'http', 'provider', 'protocol', 'limit', 'timeout', 'network', 'storage'])
+  if (!agentRecord(value) || typeof value.category !== 'string' || !categories.has(value.category)) throw new Error('invalid request diagnostic')
+  const validStatus = value.httpStatus === null || (Number.isSafeInteger(value.httpStatus) && Number(value.httpStatus) >= 100 && Number(value.httpStatus) <= 599)
+  const validMessage = value.providerMessage === null || (typeof value.providerMessage === 'string' && value.providerMessage.length <= MAX_PROVIDER_ERROR_MESSAGE_LENGTH && !/[\u0000-\u001f\u007f]/.test(value.providerMessage))
+  if (!validStatus || !validMessage) throw new Error('invalid request diagnostic')
+  return { category: value.category as AgentRequestDiagnostic['category'], httpStatus: value.httpStatus as number | null, providerMessage: value.providerMessage as string | null }
 }
 function source(value: unknown): AgentContextSource {
   if (!agentRecord(value) || (value.kind !== 'plan' && value.kind !== 'diary') || typeof value.path !== 'string' || typeof value.libraryId !== 'string' || typeof value.version !== 'string') throw new Error('invalid source')
@@ -81,7 +90,7 @@ function operationBatches(value: unknown): AgentOperationBatchAudit[] {
     const createdAt = timestamp(candidate.createdAt), updatedAt = timestamp(candidate.updatedAt)
     const operations = candidate.operations.map((entry: unknown) => {
       if (!agentRecord(entry) || typeof entry.callId !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(entry.callId) ||
-        typeof entry.operation !== 'string' || !/^[a-z_]+(?:\.[a-z_]+)?$/.test(entry.operation) ||
+        typeof entry.operation !== 'string' || !/^[a-z_]+(?:\.[a-z_]+)*$/.test(entry.operation) ||
         typeof entry.status !== 'string' || !itemStatuses.has(entry.status) || typeof entry.libraryId !== 'string' || !/^[0-9a-f]{32}$/.test(entry.libraryId) ||
         typeof entry.rootHash !== 'string' || !/^[0-9a-f]{64}$/.test(entry.rootHash) ||
         !Number.isSafeInteger(entry.rootGeneration) || Number(entry.rootGeneration) < 0 ||
@@ -260,6 +269,10 @@ function parseSession(value: unknown, id: string): AgentSession {
     assertAgentSessionId(item.id); assertAgentSessionId(item.requestId); assertAgentMessageText(item.content)
     if (!requests.some((request) => request.id === item.requestId) || (item.role !== 'assistant' && item.status !== 'complete')) throw new Error('invalid message request')
     const message: AgentMessage = { id: item.id, requestId: item.requestId, role: item.role as AgentMessage['role'], content: item.content, status: item.status as AgentMessage['status'], createdAt: timestamp(item.createdAt) }
+    if (item.diagnostic !== undefined) {
+      if (message.role !== 'assistant' || message.status !== 'error-interrupted') throw new Error('invalid request diagnostic state')
+      message.diagnostic = diagnostic(item.diagnostic)
+    }
     if (item.toolCalls !== undefined) {
       if (item.role !== 'assistant' || item.status !== 'complete') throw new Error('invalid executable tool call state')
       message.toolCalls = toolCalls(item.toolCalls)
@@ -383,6 +396,38 @@ export class AgentSessionRepository {
         repaired = true
       }
       for (const batch of session.operationBatches) {
+        if (batch.status === 'pending-confirmation') {
+          batch.status = 'cancelled'
+          batch.confirmationSource = 'none'
+          batch.updatedAt = repairedAt
+          batch.operations = batch.operations.map((operation) => ({
+            ...operation,
+            status: 'cancelled',
+            confirmationSource: 'none',
+            undoStatus: 'unavailable',
+            completedAt: repairedAt
+          }))
+          if (!batch.attemptOf) {
+            const assistantIndex = session.messages.findIndex((message) => message.id === batch.assistantMessageId &&
+              message.requestId === batch.requestId && message.role === 'assistant' && message.status === 'complete')
+            const assistant = assistantIndex >= 0 ? session.messages[assistantIndex] : undefined
+            if (assistant?.role === 'assistant' && assistant.toolCalls?.length) {
+              const existingResults = new Set(session.messages
+                .filter((message) => message.role === 'tool' && message.requestId === batch.requestId)
+                .map((message) => message.role === 'tool' ? message.toolCallId : undefined))
+              const results = assistant.toolCalls
+                .filter((call) => !existingResults.has(call.id))
+                .map((call): AgentMessage => ({
+                  id: randomUUID(), requestId: batch.requestId, role: 'tool', toolCallId: call.id,
+                  content: JSON.stringify({ ok: false, outcome: 'not-executed', reason: 'application-restarted-before-confirmation' }),
+                  status: 'complete', createdAt: repairedAt
+                }))
+              if (results.length) session.messages.splice(assistantIndex + 1, 0, ...results)
+            }
+          }
+          repaired = true
+          continue
+        }
         if (batch.status !== 'executing') continue
         const uncertainIndex = batch.operations.findIndex((operation) => operation.status === 'ready')
         if (uncertainIndex < 0) {

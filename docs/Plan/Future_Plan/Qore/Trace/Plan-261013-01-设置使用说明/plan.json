@@ -1,0 +1,25 @@
+{
+  "format_version": "1",
+  "created_at": "2026-10-13T02:33:50.000Z",
+  "updated_at": "2026-10-13T02:33:50.000Z",
+  "components": [
+    {
+      "id": "ac4a43eed5fb4963a4e239d054906c31",
+      "type": "heading",
+      "payload": { "title": "设置使用说明", "size": 2 }
+    },
+    {
+      "id": "c5d8160ab2444f16a20a0825c7f54ed4",
+      "type": "task_list",
+      "payload": {
+        "title": "实施任务",
+        "items": [
+          { "id": "2ef4daae82d04dc79b83763083624859", "title": "核对设置行为并登记所有权", "status": "done", "completed_at": "2026-10-13T02:33:50.000Z" },
+          { "id": "d1f31d3f82c141fdb3fbb94adba76676", "title": "接入说明组件与中英文文案", "status": "done", "completed_at": "2026-10-13T02:33:50.000Z" },
+          { "id": "907e886833fd4c819528068d285ded13", "title": "完成样式与定向验证", "status": "done", "completed_at": "2026-10-13T02:33:50.000Z" },
+          { "id": "e04205fa5bd048d4842f933d6b500ff0", "title": "运行全量验证并更新交接（全量测试未通过）", "status": "done", "completed_at": "2026-10-13T02:37:00.000Z" }
+        ]
+      }
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import { usePrefStore, type CustomPreset } from '../stores/pref-store'
 import { ComponentRenderer } from './cards'
 import { PlanReferencePicker, type PlanReferencePickerSource } from './PlanReferencePicker'
 import PlanTabs from './PlanTabs'
+import WeekPlanOverview from './WeekPlanOverview'
 import { uuid32 } from '@shared/validation'
 import { ERR, TraceError } from '@shared/errors'
 import { useTranslation } from '../i18n'
@@ -275,6 +276,7 @@ export default function ContentArea(): React.JSX.Element {
 
       {doc ? (
         <>
+          {doc.workflow?.kind === 'week' && libraryId && <WeekPlanOverview document={doc} libraryId={libraryId} />}
           <ComponentRenderer components={doc.components} today={today} />
           {referencePickerSource && (
             <PlanReferencePicker

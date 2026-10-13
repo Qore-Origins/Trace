@@ -201,6 +201,40 @@
       "platform": "win32-x64",
       "verificationPassed": false,
       "verification": "npm run typecheck passed; npm run build passed; npm run build:win passed; PE ProductVersion 1.0.0.0 and FileVersion 1.0.0; source/archive size and SHA-256 match; packaged PlantUML runtime 149 paths and hashes match; app.asar has 28017 entries and no project QA paths. Full suite was 85 files/1190 tests, 1187 passed/3 failed; user approved skipping the three failures, so full suite is not green. NSIS install/uninstall and user-side keyboard/IME/DPI/narrow-window/screen-reader acceptance remain pending. Installer is unsigned."
+    },
+    {
+      "version": "1.1.0",
+      "status": "stable",
+      "statusLabel": "正式版候选",
+      "date": "20261013",
+      "sequence": 1,
+      "filename": "Trace_1.1.0_stable_20261013_01.exe",
+      "timestamp": "2026-10-13T11:24:16+08:00",
+      "fileSize": 210786012,
+      "fileSizeFormatted": "201.02 MiB",
+      "sha256": "F7B1697C92B56769B0C5AE29BFE0BC6740A6572E65CB681534AE36121B36CE1A",
+      "sourcePath": "D:\\Code\\Project\\Qore\\Trace\\release\\溯源 Trace-1.1.0-setup.exe",
+      "targetPath": "D:\\Code\\Project\\Qore\\Trace\\builds\\windows\\Trace_1.1.0_stable_20261013_01.exe",
+      "platform": "win32-x64",
+      "verificationPassed": false,
+      "verification": "npm run typecheck and npm run build:win passed; source/archive SHA-256 and size matched at build time; PE ProductVersion/FileVersion 1.1.0; packaged PlantUML runtime 149 paths and hashes matched; app.asar 28017 entries with production entry points and no project QA roots; isolated workflow Electron smoke passed. Parallel full suite 1280/1281; serial full suite 1279/1281; failed specs passed focused reruns, but full suite was not green. Installer unsigned; NSIS install/uninstall and user-side UI acceptance pending. This candidate was superseded by sequence 2, not publicly released."
+    },
+    {
+      "version": "1.1.0",
+      "status": "stable",
+      "statusLabel": "正式版候选",
+      "date": "20261013",
+      "sequence": 2,
+      "filename": "Trace_1.1.0_stable_20261013_02.exe",
+      "timestamp": "2026-10-13T16:13:43+08:00",
+      "fileSize": 210786164,
+      "fileSizeFormatted": "201.02 MiB",
+      "sha256": "D12DABE620873454B43EFB5260010B748AD9392F60162F6F780A793278F798E0",
+      "sourcePath": "D:\\Code\\Project\\Qore\\Trace\\release\\溯源 Trace-1.1.0-setup.exe",
+      "targetPath": "D:\\Code\\Project\\Qore\\Trace\\builds\\windows\\Trace_1.1.0_stable_20261013_02.exe",
+      "platform": "win32-x64",
+      "verificationPassed": true,
+      "verification": "npm run typecheck passed; default-environment npm run test passed twice consecutively, 98 files/1283 tests each; npm run build:win passed; source/archive size and SHA-256 match; PE ProductVersion/FileVersion and app.asar version 1.1.0; app.asar has 28017 entries, required production entry points and no project QA roots; packaged PlantUML runtime 149 paths and hashes match; isolated production Electron smoke passed first-run onboarding, search backtrace to source heading, workflow UI, weekly/daily 1+7, handoff and same-date confirmation. Windows rename EPERM root cause is not attributed; one additional bounded retry mitigates a captured >750ms denial, with injected RED/GREEN regression. Installer unsigned; NSIS install/uninstall, real provider and user-library acceptance pending. Not publicly released at build time."
     }
   ]
 }

@@ -7,6 +7,11 @@ import type { DiaryAutomationStatus, TraceEventsContract } from '../shared/event
 const ALLOWED_PREFIXES = ['app:', 'storage:', 'config:', 'transfer:', 'window:', 'search:', 'diary:']
 const PLANTUML_CHANNELS = new Set<string>(['plantuml:configure', 'plantuml:getStatus', 'plantuml:retry'])
 const PLAN_TEMPLATE_CHANNELS = new Set<string>(['plan-template:get', 'plan-template:set', 'plan-template:remove'])
+const PLAN_WORKFLOW_CHANNELS = new Set<string>([
+  'plan-workflow:list', 'plan-workflow:save', 'plan-workflow:remove', 'plan-workflow:preview', 'plan-workflow:suggestPeriod', 'plan-workflow:commit',
+  'plan-workflow:commitBatch', 'plan-workflow:resumeBatch', 'plan-workflow:listBatches',
+  'plan-workflow:previewHandoff', 'plan-workflow:moveTask'
+])
 const AGENT_CHANNELS = new Set<string>(['agent:provider:list', 'agent:profile:list', 'agent:profile:create', 'agent:profile:update', 'agent:profile:delete', 'agent:profile:setDefault', 'agent:key:set', 'agent:key:remove'])
 for (const channel of ['agent:session:list', 'agent:session:create', 'agent:session:read', 'agent:session:update', 'agent:session:delete', 'agent:context:browse', 'agent:context:read', 'agent:preview:create', 'agent:preview:cancel']) AGENT_CHANNELS.add(channel)
 for (const channel of ['agent:request:send', 'agent:request:cancel', 'agent:request:continue']) AGENT_CHANNELS.add(channel)
@@ -52,6 +57,7 @@ const bridge = {
   ): Promise<TraceResult<Channels[K]['res']>> => {
     const isPlantumlChannel = typeof channel === 'string' && channel.startsWith('plantuml:')
     const isPlanTemplateChannel = typeof channel === 'string' && channel.startsWith('plan-template:')
+    const isPlanWorkflowChannel = typeof channel === 'string' && channel.startsWith('plan-workflow:')
     const isAgentChannel = typeof channel === 'string' && channel.startsWith('agent:')
     const isWorkspaceTabsChannel = typeof channel === 'string' && channel.startsWith('workspace-tabs:')
     const isPlanReferenceChannel = typeof channel === 'string' && channel.startsWith('plan-reference:')
@@ -64,6 +70,8 @@ const bridge = {
         ? !PLANTUML_CHANNELS.has(channel)
         : isPlanTemplateChannel
           ? !PLAN_TEMPLATE_CHANNELS.has(channel)
+          : isPlanWorkflowChannel
+            ? !PLAN_WORKFLOW_CHANNELS.has(channel)
           : isWorkspaceTabsChannel
             ? !WORKSPACE_TABS_CHANNELS.has(channel)
             : isPlanReferenceChannel

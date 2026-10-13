@@ -170,6 +170,55 @@
   color: var(--warn-text);
 }
 
+.agent-error-diagnostic {
+  margin-top: 8px;
+  padding: 8px 10px;
+  color: var(--text-2);
+  background: var(--fill);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  font-size: 0.8125rem;
+}
+
+.agent-error-diagnostic summary {
+  cursor: pointer;
+}
+
+.agent-error-diagnostic dl {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.agent-error-diagnostic dl > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.3fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.agent-error-diagnostic dt {
+  color: var(--text-3);
+}
+
+.agent-error-diagnostic dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.agent-error-diagnostic__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-error-diagnostic__actions [role="status"] {
+  color: var(--text-3);
+}
+
 .agent-provenance {
   margin-top: 10px;
   font-size: 0.75rem;

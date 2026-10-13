@@ -149,10 +149,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .trash-dialog,
   .trash-dialog *,
+  .trash-dialog::before,
+  .trash-dialog::after,
   .trash-dialog *::before,
   .trash-dialog *::after {
-    transition: none !important;
-    animation: none !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
   }
 }

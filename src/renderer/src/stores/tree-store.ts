@@ -23,6 +23,7 @@ interface TreeState {
   select: (path: string | null, kind?: 'plan' | 'folder' | null) => void
   setExpanded: (keys: string[]) => void
   createPlan: (parentPath: string, name: string) => Promise<void>
+  registerWorkflowCreated: (node: PlanTreeNode) => Promise<void>
   createFolder: (parentPath: string, name: string) => Promise<void>
   renamePlan: (path: string, newName: string) => Promise<void>
   removePlan: (path: string, beforeCommit?: () => Promise<void>) => Promise<void>
@@ -107,6 +108,14 @@ export const useTreeStore = create<TreeState>()((set, get) => ({
 
   createPlan: async (parentPath, name) => {
     const node = await invoke('storage:createPlan', { parent_path: parentPath, name })
+    if (parentPath !== '' && !get().expandedKeys.includes(parentPath)) {
+      set({ expandedKeys: [...get().expandedKeys, parentPath] })
+    }
+    await refreshAround(set, get, node.path)
+  },
+
+  registerWorkflowCreated: async (node) => {
+    const parentPath = parentRel(node.path)
     if (parentPath !== '' && !get().expandedKeys.includes(parentPath)) {
       set({ expandedKeys: [...get().expandedKeys, parentPath] })
     }

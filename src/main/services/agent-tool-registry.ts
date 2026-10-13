@@ -7,6 +7,7 @@ import type { AgentProviderTool } from './agent-provider'
 const MAX_ARGUMENT_BYTES = 128 * 1024
 const MAX_COMPONENT_TEXT = 20_000
 const MAX_TITLE = 200
+const MAX_INITIAL_TASKS = 50
 const MAX_REF_LENGTH = 128
 const MAX_CALL_ID_LENGTH = 256
 const TOOL_CALL_ID = /^[A-Za-z0-9_-]{1,256}$/
@@ -22,7 +23,7 @@ type JsonRecord = Record<string, unknown>
 type ComponentWriteType = Exclude<ComponentType, 'plan_reference'>
 
 export type AgentToolName =
-  | 'plan.list_children' | 'plan.read' | 'plan.create' | 'folder.create'
+  | 'plan.list_children' | 'plan.read' | 'plan.create' | 'plan.workflow.preview' | 'plan.workflow.create' | 'folder.create'
   | 'component.add' | 'component.update' | 'component.delete'
   | 'task.add' | 'task.update' | 'task.delete'
   | 'multi_option.add' | 'multi_option.update' | 'multi_option.delete'
@@ -50,6 +51,19 @@ const editablePayloadProperties: Record<string, Record<string, unknown>> = {
 }
 const componentPayloadSchema = objectSchema(editablePayloadProperties)
 const componentPatchSchema = objectSchema(editablePayloadProperties)
+const initialTaskSchema = objectSchema({
+  title: stringSchema(MAX_TITLE, 1), planned_at: dateSchema(), note: stringSchema(MAX_COMPONENT_TEXT)
+}, ['title'])
+const initialTaskListSchema = objectSchema({
+  title: stringSchema(MAX_TITLE, 1), tasks: arraySchema(initialTaskSchema, MAX_INITIAL_TASKS)
+}, ['tasks'])
+const workflowTaskSchema = objectSchema({ title: stringSchema(MAX_TITLE, 1), target_date: dateSchema() }, ['title'])
+const workflowPeriodSchema = objectSchema({ start_date: dateSchema(), end_date: dateSchema() }, ['start_date', 'end_date'])
+const workflowIntentSchema = {
+  parent_ref: refSchema(), destination_refs: arraySchema(refSchema(), 8),
+  preset_id: stringSchema(MAX_REF_LENGTH, 1), title: stringSchema(MAX_TITLE, 1),
+  target_date: dateSchema(), period: workflowPeriodSchema, tasks: arraySchema(workflowTaskSchema, MAX_INITIAL_TASKS)
+}
 const componentClearFields = ['summary', 'due_date', 'description', 'planned_at', 'note', 'source', 'remark'] as const
 const componentTypeValues = [...COMPONENT_TYPES]
 
@@ -60,7 +74,14 @@ function tool(name: AgentToolName, description: string, properties: Record<strin
 const TOOLS: readonly AgentProviderTool[] = [
   tool('plan.list_children', '列出用户已授权文件夹的直接子项，不递归。', { folder_ref: refSchema() }, ['folder_ref']),
   tool('plan.read', '读取用户已授权计划的结构化组件；未知旧组件只读保留。', { plan_ref: refSchema() }, ['plan_ref']),
-  tool('plan.create', '在根目录或指定文件夹创建计划；只提供名称后缀，完整名称由模板生成。', { parent_ref: refSchema(), name_part: stringSchema(MAX_TITLE, 1) }, ['name_part']),
+  tool('plan.create', '在根目录或指定文件夹创建计划；只提供名称后缀，完整名称由模板生成。用户要求新建计划并包含任务时，必须在同一次调用用 task_list.tasks 提供全部任务，不能先建空计划后再新建另一个计划。', {
+    parent_ref: refSchema(), name_part: stringSchema(MAX_TITLE, 1), task_list: initialTaskListSchema
+  }, ['name_part']),
+  tool('plan.workflow.preview', '预览已授权目录的工作流预设；必须提供目标日期或明确的周周期，以及每个输出目标文件夹的授权引用。返回目标路径、组件与冲突，不写计划。',
+    workflowIntentSchema, ['parent_ref', 'destination_refs', 'title']),
+  tool('plan.workflow.create', '按先前预览标识创建计划；所有目标目录必须已授权，并由用户确认生成文件清单。',
+    { ...workflowIntentSchema, preview_token: stringSchema(64, 64) },
+    ['parent_ref', 'destination_refs', 'title', 'preview_token']),
   tool('folder.create', '在根目录或指定文件夹创建空文件夹。', { parent_ref: refSchema(), name: stringSchema(MAX_TITLE, 1) }, ['name']),
   tool('component.add', '向计划追加一个支持的非引用组件；ID 与系统时间由 Trace 生成。', {
     plan_ref: refSchema(), expected_updated_at: stringSchema(64, 24), type: enumSchema(componentTypeValues),
@@ -110,7 +131,7 @@ const TOOLS: readonly AgentProviderTool[] = [
   }, ['target_ref', 'expected_revision', 'parent_ref']),
   tool('plan.trash', '将计划移入本库回收站；引用影响须逐条决定。', { target_ref: refSchema(), expected_revision: revisionSchema() }, ['target_ref', 'expected_revision']),
   tool('folder.trash', '将文件夹及其子树移入本库回收站；引用影响须逐条决定。', { target_ref: refSchema(), expected_revision: revisionSchema() }, ['target_ref', 'expected_revision']),
-  tool('trash.list', '只读返回本条消息明确授权的一个回收站条目；不会枚举整个回收站，也不授权恢复或清除。', { trash_entry_ref: refSchema() }, ['trash_entry_ref']),
+  tool('trash.list', '只读列出当前活动计划库的回收站条目；列表不会授权恢复或永久清除。', {}, []),
   tool('trash.restore', '恢复已显式授权的回收站条目；冲突时必须由用户指定新位置或名称。', {
     trash_entry_ref: refSchema(), manifest_revision: { type: 'integer', minimum: 1 },
     destination_parent_ref: refSchema(), new_name: stringSchema(255, 1)
@@ -234,7 +255,9 @@ function validateClearFields(value: unknown, allowed: readonly string[]): void {
 function validateArgs(name: AgentToolName, args: unknown): asserts args is JsonRecord {
   const keys: Record<AgentToolName, { required: string[]; optional?: string[] }> = {
     'plan.list_children': { required: ['folder_ref'] }, 'plan.read': { required: ['plan_ref'] },
-    'plan.create': { required: ['name_part'], optional: ['parent_ref'] }, 'folder.create': { required: ['name'], optional: ['parent_ref'] },
+    'plan.create': { required: ['name_part'], optional: ['parent_ref', 'task_list'] }, 'folder.create': { required: ['name'], optional: ['parent_ref'] },
+    'plan.workflow.preview': { required: ['parent_ref', 'destination_refs', 'title'], optional: ['preset_id', 'target_date', 'period', 'tasks'] },
+    'plan.workflow.create': { required: ['parent_ref', 'destination_refs', 'title', 'preview_token'], optional: ['preset_id', 'target_date', 'period', 'tasks'] },
     'component.add': { required: ['plan_ref', 'expected_updated_at', 'type', 'payload'], optional: ['remark'] },
     'component.update': { required: ['plan_ref', 'component_id', 'expected_updated_at'], optional: ['patch', 'clear_fields'] },
     'component.delete': { required: ['plan_ref', 'component_id', 'expected_updated_at'] },
@@ -249,7 +272,7 @@ function validateArgs(name: AgentToolName, args: unknown): asserts args is JsonR
     'plan.move': { required: ['target_ref', 'expected_revision', 'parent_ref'] },
     'folder.move': { required: ['target_ref', 'expected_revision', 'parent_ref'] },
     'plan.trash': { required: ['target_ref', 'expected_revision'] }, 'folder.trash': { required: ['target_ref', 'expected_revision'] },
-    'trash.list': { required: ['trash_entry_ref'] },
+    'trash.list': { required: [] },
     'trash.restore': { required: ['trash_entry_ref', 'manifest_revision'], optional: ['destination_parent_ref', 'new_name'] },
     'trash.purge': { required: ['trash_entry_ref', 'manifest_revision'] }
   }
@@ -268,6 +291,43 @@ function validateArgs(name: AgentToolName, args: unknown): asserts args is JsonR
 
   if (name === 'plan.create') {
     assertTitle(args.name_part)
+    if (Object.hasOwn(args, 'task_list')) {
+      assertExactKeys(args.task_list, ['tasks'], ['title'])
+      if (Object.hasOwn(args.task_list, 'title')) assertTitle(args.task_list.title)
+      if (!Array.isArray(args.task_list.tasks) || args.task_list.tasks.length < 1 || args.task_list.tasks.length > MAX_INITIAL_TASKS) {
+        throw invalidArguments()
+      }
+      for (const task of args.task_list.tasks) {
+        assertExactKeys(task, ['title'], ['planned_at', 'note'])
+        assertTitle(task.title)
+        if (Object.hasOwn(task, 'planned_at')) assertDate(task.planned_at)
+        if (Object.hasOwn(task, 'note')) assertText(task.note)
+      }
+    }
+  } else if (name === 'plan.workflow.preview' || name === 'plan.workflow.create') {
+    assertTitle(args.title)
+    if (Object.hasOwn(args, 'preset_id')) assertString(args.preset_id, MAX_REF_LENGTH, 1)
+    if (!Array.isArray(args.destination_refs) || args.destination_refs.length < 1 || args.destination_refs.length > 8) throw invalidArguments()
+    for (const ref of args.destination_refs) assertRef(ref)
+    if (new Set(args.destination_refs).size !== args.destination_refs.length) throw invalidArguments()
+    if (Object.hasOwn(args, 'target_date') === Object.hasOwn(args, 'period')) throw invalidArguments()
+    if (Object.hasOwn(args, 'target_date')) assertDate(args.target_date)
+    if (Object.hasOwn(args, 'period')) {
+      assertExactKeys(args.period, ['start_date', 'end_date'])
+      assertDate(args.period.start_date)
+      assertDate(args.period.end_date)
+    }
+    if (Object.hasOwn(args, 'tasks')) {
+      if (!Array.isArray(args.tasks) || args.tasks.length < 1 || args.tasks.length > MAX_INITIAL_TASKS) throw invalidArguments()
+      for (const task of args.tasks) {
+        assertExactKeys(task, ['title'], ['target_date'])
+        assertTitle(task.title)
+        if (Object.hasOwn(task, 'target_date')) assertDate(task.target_date)
+      }
+    }
+    if (name === 'plan.workflow.create' && (typeof args.preview_token !== 'string' || !/^[a-f0-9]{64}$/.test(args.preview_token))) {
+      throw invalidArguments()
+    }
   } else if (name === 'folder.create' || name === 'plan.rename' || name === 'folder.rename' || name === 'trash.restore' && Object.hasOwn(args, 'new_name')) {
     assertPlanName(name === 'folder.create' ? args.name : args.new_name ?? args.name)
   } else if (name === 'component.add') {

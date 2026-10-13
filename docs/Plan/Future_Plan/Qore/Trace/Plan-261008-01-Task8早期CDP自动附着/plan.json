@@ -1,0 +1,202 @@
+{
+  "format_version": "1",
+  "created_at": "2026-10-08T16:52:00+08:00",
+  "updated_at": "2026-10-09T02:48:00+08:00",
+  "components": [
+    {
+      "id": "26100801000000000000000000000001",
+      "type": "heading",
+      "payload": {
+        "title": "Task 8 早期 CDP 自动附着",
+        "size": 25
+      }
+    },
+    {
+      "id": "26100801000000000000000000000002",
+      "type": "note",
+      "payload": {
+        "content": "用户已批准早期 CDP 设计、实施计划与子代理驱动。Task 1 初始提交 67877f9611192665b96b1c0f2c31221a75281f2d，修复提交 f315ef4d602f4fed41ac2708ca12d96e2b77fc7b；后者仅修改 scripts/trace-phase2-cdp-auto-attach-smoke.cjs。隔离分支 codex/task8-cdp-auto-attach，基线 7ced10c1371004e53452074ef812747c6493b710，worktree clean。Electron 44.2.0 已核验。typecheck 与最终 node --check 通过；TZ=America/New_York 全量基线 512 passed、2 个 buildYearHeatmap 失败，同一 diary-view-utils spec 默认时区 14/14 通过，用户同意记录后继续。最终完整 smoke exit 1 / 4.18s：isolation-ready 后 stdin end，fail-closed 为 runner-disconnected；未发送 continue、未创建页面、未到达 CDP 协议/重复消息断言。两个无 CDP/无窗口的 Electron app-mode 探针也在 app.whenReady 前 stdin end，windowsHide true/false 相同；普通 Node 24.18.0 子进程在相同 overlapped stdin 控制探针中成功收发。问题定位到当前 Electron app-mode stdin 生命周期/本机启动路径，但内部根因未知，不能声称 CDP 不兼容或泛化所有 Electron。普通 pipe 与 overlapped 完整 smoke 结果相同。原 reviewer 三项 Important（进程清理身份、诊断脱敏、异常先计数）与一项 Minor（重复 continue）均经 scoped re-review 判为 addressed，无新 Critical/Important。用户明确一次性放行语义：首个正确 continue 立即只放行一次，后续重复使 smoke/run 失败但不回滚可能已启动页面、不增加等待窗口；该场景仍因前置 EOF 未运行。最终修复轮新增两个 smoke、此前五个 smoke 与两个 no-CDP 诊断失败 owner fixture 保留，清理后匹配 smoke/probe 前缀的 Electron 进程为 0。Task 1 仍 BLOCKED；需用户决定是否批准另行设计/验证本机 IPC；Task 2+ 保持停止；D3-only 仍需单独授权。",
+        "created_at": "2026-10-08T16:52:00+08:00"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000003",
+      "type": "task_list",
+      "payload": {
+        "title": "实施与验收",
+        "items": [
+          {
+            "id": "26100801000000000000000000000011",
+            "title": "建立 Electron 44.2.0 独立协议 smoke 并通过硬前置",
+            "status": "in_progress"
+          },
+          {
+            "id": "26100801000000000000000000000012",
+            "title": "实现可测的 pre-main nonce gate 与回归测试",
+            "status": "not_started"
+          },
+          {
+            "id": "26100801000000000000000000000013",
+            "title": "实现单 Browser WebSocket flattened session manager 与回归测试",
+            "status": "not_started"
+          },
+          {
+            "id": "26100801000000000000000000000014",
+            "title": "将 nonce gate 与 page sessions 接入隔离 runner/bootstrap",
+            "status": "not_started"
+          },
+          {
+            "id": "26100801000000000000000000000015",
+            "title": "完成 focused、全量验证、build 与独立复审",
+            "status": "not_started"
+          },
+          {
+            "id": "26100801000000000000000000000016",
+            "title": "请求并执行一次 D3-only 验收（需单独授权）",
+            "status": "not_started"
+          }
+        ]
+      }
+    },
+    {
+      "id": "26100801000000000000000000000004",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 18:19 +08:00：用户已批准仅在 Task 1 隔离 worktree 新增 scripts/trace-phase2-inherited-fd-smoke.cjs，验证 Electron 44.2.0 app-mode 的 FD 3/4 双向匿名管道；覆盖握手/分帧、EOF、超时、错 nonce、首次一次性放行、延迟重复失败与精确清理。无 CDP、无窗口、不加载产品 bundle；失败现场保留，不支持即停止且不自动 fallback。该新增脚本归单一子代理所有，独立复审后由主智能体运行。不得修改既有 CDP smoke、正式 runner/bootstrap、产品、测试或 package scripts；不进入 Task 2/D3。Task 1 协议 smoke 仍未通过。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000005",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 18:51 +08:00：首次 FD 3/4 隔离 smoke exit 1 / 9.84 秒；fragmented-continue 通过。duplicate-continue 收到 duplicate-control 拒绝且只 release/action 一次，进程最终以退出码 23 自然退出，但约 8.7 秒才关闭，超过 8 秒观察上限。两个 fixture 保留，匹配 Electron 进程数 0。用户授权仅在新增 smoke 脚本增加脱敏退出时序诊断、将观察上限改为具名 15 秒；修订后静态检查及 Spec/Standards 复审，再由主智能体完整重跑一次。不得使用 TCP/named-pipe fallback；失败仍保留现场并停止。Task 1 CDP smoke/Task 8 尚未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000006",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 18:56 +08:00：Spec/Standards 第三轮独立只读复审均无阻断，node --check exit 0。用户授权的唯一 FD 3/4 完整复跑 exit 1 / 约 17.3 秒；fragmented-continue 通过，duplicate-continue 正确拒绝且仅 release/action 一次。子进程自然以退出码 23 结束；app.exit(23) 到 exit/stdio-close 为 15,251 ms，父进程的 15,000 ms awaitExit 等待触发超时。wrong-nonce、FD4 EOF、gate-timeout 未运行。两个失败 fixture trace-inherited-fd-smoke-5lOUjk 与 trace-inherited-fd-smoke-EmYdml 保留，隔离 Electron 残留进程 0。授权已用尽，不再重跑、延长或换传输，除非用户新授权；Task 1 Browser CDP smoke 与 Task 8 未完成，Task 2+/D3 停止。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000007",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 19:10 +08:00：只读复核发现 duplicate 场景的 runDuplicateScenario 在 gate-rejected 后直接 awaitExit，父端 controlStream 直到 awaitExit 超时进入 terminate 才 end；子端 FD4 ReadStream 设置 autoClose:true。fragmented 成功场景在 awaitExit 前 end 父端流，约 0.2 秒后退出；duplicate 两轮均在超时清理路径后自然退出。首要假设为 harness 持有 FD4 污染关闭计时，尚无 parent end/finish 与 child end/close 时间证明因果。Node v24 文档说明 ReadStream autoClose 会于 end 关闭 fd，Electron 文档说明 app.exit 立即退出。本轮未改代码/未运行。建议在新授权后 duplicate rejection 时先 end 父端 FD4，记录两端流事件，保持15秒上限和现有断言。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000008",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 19:16 +08:00：用户批准一次精确 FD4 生命周期验证：仅修改隔离 worktree 新增 scripts/trace-phase2-inherited-fd-smoke.cjs，在 duplicate rejection 后、awaitExit 前结束父端 controlStream，并记录 parent end/finish 与 child reader end/close 的脱敏相对时序。保留 15 秒退出上限、现有断言与失败 fixture 保留策略，不更换 transport、不运行第二次。唯一代码 owner /root/inherited_fd_smoke_implementer 只改该文件且不运行 Electron；主智能体复核、独立 Spec/Standards 审查后运行一次。失败保留现场并停止。隔离 HEAD f315ef4d602f4fed41ac2708ca12d96e2b77fc7b。本批尚未实施或运行；Task 1/Task 8 仍未完成，Task 2+/D3 停止。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000009",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 19:27 +08:00：FD4 follow-up 实施及精确增量 Spec/Standards 复审已完成。duplicate rejection reason 断言后、awaitExit 前关闭父端 FD4；记录 parent end-call/finish 与 child reader end/close 的 fixture-relative 毫秒，并在成功清理 fixture 前打印摘要。保留 15 秒上限、既有 app-exit 诊断和全部断言；不换传输、不重试。node --check exit 0，超 120 字符行/尾随空格行均为 0。隔离 HEAD f315ef4d602f4fed41ac2708ca12d96e2b77fc7b；脚本 SHA-256 9CC41432DD00642E406518DBA09A37F73DD61E521A33D9A4D54BA89435420D37。现在只待主智能体检查精确 Electron 进程为 0 后执行一次完整 smoke；失败保留现场并停止。Task 1/Task 8 仍未完成，Task 2+/D3 停止。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000010",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 19:30 +08:00：用户授权的唯一完整 FD3/4 smoke 已执行，整体 exit 1。fragmented-continue、duplicate-continue、wrong-nonce、control-eof 通过；control-timeout 在进程 exit/stdio close 等待中超时。Duplicate rejection +573 ms，父端 FD4 end-call/finish +602 ms，进程 exit/close +723 ms，release/action 恰好一次；child reader end/close 未观察。Timeout rejection/app.exit +1,913 ms，父端写流到 awaitExit 超时后的 cleanup 才 finish +16,965 ms，进程 exit/close +17,080 ms，未 kill。时序支持但未证明 FD4 因果假设。五个本轮 fixture trace-inherited-fd-smoke-yL4dcO、trace-inherited-fd-smoke-RuDK1x、trace-inherited-fd-smoke-BBwapw、trace-inherited-fd-smoke-sHnoQm、trace-inherited-fd-smoke-l0ZDLJ 保留；匹配 Electron 进程 0。唯一运行授权已用尽，不重跑或扩展；Task 1/Task 8 仍未完成，Task 2+/D3 停止。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000011",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 19:32 +08:00：后续需用户另行授权。建议如要继续，只在 runTimeoutScenario 的 control-timeout rejection 后、awaitExit 前结束父端 FD4，并最多再运行一次完整 smoke；以检验本轮 timeout rejection +1,913 ms、parent finish +16,965 ms、process exit +17,080 ms 的观察。未授权前不修改/运行。Task 1 Browser CDP 硬门槛未通过；Task 2+ 仍需前置条件，D3 另行授权，Task 8 人工验收/交接未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000012",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 19:36 +08:00：用户已授权精确 timeout-path follow-up：仅在隔离 worktree 新增 scripts/trace-phase2-inherited-fd-smoke.cjs 的 runTimeoutScenario 中，断言 control-timeout rejection 后、awaitExit 前结束父端 FD4。保留 15 秒上限、所有断言、匿名管道、诊断与失败现场；不改其它场景、runner/bootstrap、产品、测试或 package scripts，不使用 TCP/named-pipe fallback、不清理旧现场。唯一 owner /root/inherited_fd_smoke_implementer 只改此脚本且不运行 smoke；主智能体静态检查、Spec/Standards 独立复审、精确 Electron 进程预检后最多运行一次完整 smoke。失败保留全部现场并停止。隔离 HEAD f315ef4d602f4fed41ac2708ca12d96e2b77fc7b。Task 1 Browser CDP 门槛、Task 8、Task 2+/D3 与人工验收仍未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000013",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 19:40 +08:00：timeout-path 改动仅增加一行，位于 control-timeout reason 断言后、awaitExit 前调用 endControlStream(fixture, 'control-timeout-rejection')。协调者新验证 node --check exit 0、超长/尾随空白行 0、git diff --check 无错误；plan.json 12 个组件 ID 唯一。Spec 与 Standards 独立复审均 Ready。脚本 SHA-256 E831F71B3A911F7CA086058F91A937F3D1BDFE134CB71BA7C0966C3489FF913C。尚未启动 Electron 或运行 smoke；只待精确进程预检与一次授权完整 smoke，失败保留现场并停止。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000014",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 19:42 +08:00：执行前精确隔离 electron.exe 进程数 0；唯一授权的 node scripts/trace-phase2-inherited-fd-smoke.cjs exit 0 / 4.184 秒。fragmented-continue、duplicate-continue、wrong-nonce、control-eof、control-timeout 五场景全部 PASS，child exit code 0/23/23/23/23，stdio closed=true；成功路径fixture有界清理完成，运行后精确进程数 0。结果支持提前关闭 FD4 避免 timeout 退出等待污染的假设，但 stdout 未输出 timeout 场景逐事件时序，故非事件级因果证明。授权用尽，不重跑。该 FD 3/4 app-mode probe 通过不等于 Browser CDP Task 1 或 Task 8 完成；Task 2+/D3/人工验收仍未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000099",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 20:20 +08:00：用户批准将 Task 1 独立 Browser CDP smoke pre-main transport 改为继承匿名管道：child FD 3 → parent events，parent → child FD 4 controls；stdin 不参与，stdout/stderr 只作诊断；UTF-8 JSONL nonce/type 帧，最大 4096 字节；bootstrap gate 异步保持 Electron event loop；错误/EOF/超时/CDP 失败均 fail-closed，无 stdin/TCP/named-pipe/晚 attach fallback。唯一 owner /root/cdp_fd_smoke 仅修改隔离 worktree 已跟踪的 scripts/trace-phase2-cdp-auto-attach-smoke.cjs；正式 runner/bootstrap、产品、测试、package scripts、Task 2+ 与 D3 均不在本轮范围。Smoke 尚未实现或运行；此前 FD app-mode probe 通过不等于 CDP 通过。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000015",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 22:58 +08:00：首次 Browser CDP protocol smoke 失败后，用户授权只读检查精确保留 fixture；证据确认 FD3/FD4 通道形状、Browser endpoint/WebSocket、Target.setAutoAttach acknowledgement、continue 与四页创建均成功，但 Runtime.exceptionThrown 为 0，现有诊断未保存 Target/session 事件和逐页 Runtime 初始化阶段，根因仍未知。iframe localhost 连接拒绝发生在 teardown 开始约 2.46s 后，仅作为次要线索。用户现授权唯一代码 owner /root 在隔离 worktree 的 scripts/trace-phase2-cdp-auto-attach-smoke.cjs 增加有界脱敏的命令/事件/初始化/session-state 诊断，并于 node --check、静态敏感字段检查、精确 Electron 进程数为 0 后运行一次完整 CDP smoke。保留旧 fixture、不修改协议/正式 runner/产品/兼容探针；若失败则保留新现场、核验 Electron 进程归零并停止，不再重跑。当前尚未修改或复测；Task 1 与 Task 8 未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000016",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 23:03 +08:00：隔离 worktree 唯一登记脚本已加入不超过 128 条的脱敏 CDP trace、逐页初始化阶段/状态、失败时清理前 snapshot。记录限相对时间、协议方法、target 类型/paused 状态、归一化 role、异常/继续角色和计数、pending 方法与 socket 状态；不保存 URL/endpoint、sessionId、targetId 或异常正文。`node --check scripts/trace-phase2-cdp-auto-attach-smoke.cjs` exit 0；目标 `git diff --check` 无错误，tracked diff 仅目标脚本；本计划 JSON 可解析且 17 个组件 ID 唯一。未运行 Electron。下一步精确确认隔离 Electron executable 进程数 0 后，仅执行一次完整 Browser CDP smoke；失败保留现场、核验进程归零并停止。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000017",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 23:08 +08:00：用户授权的唯一完整 Browser CDP smoke 前精确确认隔离 electron.exe 进程数 0；运行 `node scripts/trace-phase2-cdp-auto-attach-smoke.cjs` 整体 exit 1，首个 protocol 场景超时，后续拒绝场景未运行。FD 3/4 形状、Browser WebSocket、Target.setAutoAttach 成功响应、continue 和 4 个 page target 创建均通过。新诊断显示四个 page session 均发送 Runtime.enable，4 个命令超时 snapshot 时仍 pending，无 CDP response；session 均停在 runtime-enable，未进入 Page.enable、脚本 guard 或 Runtime.runIfWaitingForDebugger，Runtime.exceptionThrown=0。Browser socket 为 OPEN、client failure 未置位；Electron 子进程清理后 exit 0 且 stdio closed。runner 后精确进程数 0。owner-marked fixture trace-cdp-auto-attach-smoke-HwhH2j 保留；旧 fixture trace-cdp-auto-attach-smoke-wDk01l 仍保留，均不覆盖/复用/清理。卡点收窄到首个 Runtime.enable 无响应，原因未知；官方 flattened-session 与 paused-target 契约不解释此响应缺失。单次 smoke 授权已用尽，不重跑、不改协议/产品；Task 1 与 Task 8 未完成，Task 2+/D3/人工验收仍未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000018",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-08 23:51 +08:00：单目标 Browser CDP 诊断 probe 已由唯一 owner `/root` 实施，仅新增隔离 worktree scripts/trace-phase2-cdp-single-target-diagnostic.cjs，SHA-256 DFFBF0A26708B9BEDFA5F45118F01AB807D4ADD9EA1675243245E1619AA6BA0C。原实施代理未落盘目标文件后已停止。node --check、尾随空白检查、独立 Spec/Standards 双轴复审均 Ready；诊断报告隐私扫描通过。管理员身份 True，执行前/后隔离 Electron executable 精确进程数均为 0。唯一获准运行 `node scripts/trace-phase2-cdp-single-target-diagnostic.cjs` exit 0 / 9.5 秒；单个 page target waitingForDebugger=true，flattened `Runtime.enable` 在 6001 ms 超时，而同一 Browser WebSocket 的 Browser 级 `Browser.getVersion` 在 20 ms 成功；Browser socket OPEN、Runtime.executionContextCreated=0、URL category=missing。Electron exit 0、stdio closed、FD3 EOF。fixture `trace-cdp-single-target-diagnostic-sDhrdy` owner marker 核验通过并保留。新旧 smoke 的 flattened 命令 envelope 与 auto-attach 参数静态对照一致；单页复现说明多页并发不是必要条件。官方资料未找到直接 issue 或根因；Electron 文档关于 pre-navigation `webContents.debugger.sendCommand()` 可能等到导航才完成，而本 probe 隐藏 BrowserWindow 未调用 `loadURL()`，构成值得验证但未证实的时序线索。因其 transport、命令和版本不同，不作根因归因。完整调查见 docs/research/2026-10-08-electron-flat-cdp-runtime-enable-hang.md。单次运行授权已用尽，不重跑或改协议。Task 1 硬门槛仍未通过。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000019",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-09 00:18 +08:00：用户确认授权一次新的单变量导航时序差分诊断；尚未实施/运行。对照为既有单目标 probe：无显式 loadURL，paused page 的 flattened Runtime.enable 超时。Treatment 保持 Electron 44.2.0、FD3/FD4、Browser WebSocket、page-only paused auto-attach 和 CDP 命令不变；只在唯一 page attach 且 Runtime.enable 确认 pending 后，由主进程对同一窗口调用一次 loadURL('about:blank')。只记录脱敏导航请求/开始/完成、Runtime 结果、执行上下文计数与 target/socket 生命周期相对时序；不恢复 paused target、不建第二页、不联网、不访问 Trace 数据，不留原始 URL/endpoint/targetId/sessionId/页面正文/凭据/异常栈。唯一代码 owner /root 只可在隔离 worktree 新增 scripts/trace-phase2-cdp-navigation-timing-diagnostic.cjs；其他脚本/产品/测试/runner/bootstrap/package scripts 与旧 fixture 均排除。静态检查、管理员身份 True、目标 Electron 进程数 0 后最多运行一次；失败留新 fixture、核验进程归零后停止；导航未开始/目标替换/多开/时序含糊记为不具判别力，不作根因结论。Task 1 硬门槛和 Task 8 未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000020",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-09 00:28 +08:00：导航时序差分诊断已按用户批准的单变量边界新增隔离脚本 scripts/trace-phase2-cdp-navigation-timing-diagnostic.cjs，owner `/root`，SHA-256 CCDE998D511A2FD4CE3A3E98D385B978BB16DF3FC6BA6D4B17D19AE8F2AE5601。唯一干预为唯一 page attach 且 Runtime.enable 已 pending 后，主进程对同一窗口显式调用一次 loadURL('about:blank')；不恢复 paused target、不改 CDP 参数/transport、不访问产品数据或外网。node --check 外层脚本通过，生成的 Electron fixture source 也通过 vm.Script 解析；尾随空白与超过 180 字符行均为 0；plan JSON 解析且 20 个 ID 唯一。用户确认以隔离 worktree HEAD f315ef4d602f4fed41ac2708ca12d96e2b77fc7b 为审查基线，只审新增脚本；规范/规格双轴只读审查进行中。当前尚未运行或创建 fixture。管理员身份 True，最近机器 Electron.exe 总进程数 0；运行前仍须重新精确预检，最多运行一次。Task 1/Task 8 未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000021",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-09 00:56 +08:00：导航时序差分诊断按用户批准只运行一次：隔离 worktree 执行 node scripts/trace-phase2-cdp-navigation-timing-diagnostic.cjs exit 1，category=runtime。报告 observation=null、Browser WebSocket 未连接、page attach=0；fixture isolation-ready 后清理 exit，导航控制/loadURL 干预未发生，故不具判别力且不能支持或反驳导航时序假设。Electron exit 0、stdio closed、FD3 EOF，运行前后目标 executable 精确进程数均为 0。唯一新 fixture trace-cdp-navigation-timing-diagnostic-PBO9GQ 的 owner kind/root 匹配并保留。报告未保存具体失败阶段或原始 stderr，仅记录其 100 字节长度，准确失败操作未知。脚本 SHA-256 DE5B7B2FB448C90547723593C4B895CB9F9A18183A008F18D7B951ECFA218D5B；Node/fixture/PowerShell AST、空白/长行、执行前 git diff --check 静态检查通过；独立 Spec 与 Standards/Security reviews Ready、0 unresolved blockers。main HEAD 7ced10c1371004e53452074ef812747c6493b710（ahead origin/main 1），isolated HEAD f315ef4d602f4fed41ac2708ca12d96e2b77fc7b；dirty/untracked 工作均保留。单次授权已用尽，不重跑、不清 fixture；Task 1 Browser CDP gate 和 Task 8 未完成。"
+      }
+    },
+    {
+      "id": "26100801000000000000000000000022",
+      "type": "note",
+      "payload": {
+        "content": "2026-10-09 02:48 +08:00：用户要求将当前问题及执行流程整理成工作流交给另一位智能体。Codex 本轮只新增 Task1-CDP-Diagnostic-Handoff-Workflow-2026-10-09.md 并同步 HANDOFF/README/Task8 状态/Task1 实施计划；不再运行 Electron 或修改诊断代码。工作流区分 full smoke 的 page Runtime.enable pending、单目标 Browser/page 命令差异、最近导航差分在 Browser WebSocket 前失败且未进入干预；准确失败阶段与根因未知。主 checkout main HEAD 7ced10c1371004e53452074ef812747c6493b710（ahead origin/main 1），隔离 worktree codex/task8-cdp-auto-attach HEAD f315ef4d602f4fed41ac2708ca12d96e2b77fc7b；既有 dirty/untracked 与 fixture trace-cdp-navigation-timing-diagnostic-PBO9GQ 均保留。之前单次运行授权已用尽，工作流不延续。Task 1 gate 未通过，Task 2-5、D3 单独授权、人工验收与 Task8 收官未完成；8A 偶发保存问题按用户决定暂缓归因。无产品改动、测试、typecheck/build、提交、合并、升级、打包、推送或发布。"
+      }
+    }
+  ]
+}

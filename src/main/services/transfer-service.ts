@@ -8,6 +8,7 @@ import { ERR, TraceError } from '../../shared/errors'
 import { isUuid32, validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
 import { normalizeRel } from '../../shared/path-utils'
 import { isPlanId, isPlanReferencePayload } from '../../shared/plan-reference-validation'
+import { validatePlanWorkflowMetadata } from '../../shared/plan-workflow-validation'
 import { assertRealPathWithinRoot, resolveWithin } from './path-safety'
 import type { PlanRepository } from './plan-repository'
 import type { TreeCache } from './tree-cache'
@@ -170,6 +171,17 @@ export class TransferService {
         if (component.type === 'plan_reference' && isPlanReferencePayload(component.payload)) {
           reservedIds.add(component.payload.target_plan_id)
         }
+        if (component.type === 'task_list') {
+          for (const task of (component.payload as { items: TaskItem[] }).items) {
+            if (task.source_plan_id) reservedIds.add(task.source_plan_id)
+            if (task.moved_to_plan_id) reservedIds.add(task.moved_to_plan_id)
+          }
+        }
+      }
+      if (document.workflow?.kind === 'week') {
+        for (const id of Object.values(document.workflow.day_plan_ids)) reservedIds.add(id)
+      } else if (document.workflow?.kind === 'day' && document.workflow.week_plan_id) {
+        reservedIds.add(document.workflow.week_plan_id)
       }
     }
     const idMapping = new Map<string, string>()
@@ -182,7 +194,20 @@ export class TransferService {
     }
     for (const document of importedDocuments.values()) {
       if (document.plan_id && idMapping.has(document.plan_id)) document.plan_id = idMapping.get(document.plan_id)
+      if (document.workflow?.kind === 'week') {
+        for (const [date, id] of Object.entries(document.workflow.day_plan_ids)) {
+          document.workflow.day_plan_ids[date] = idMapping.get(id) ?? id
+        }
+      } else if (document.workflow?.kind === 'day' && document.workflow.week_plan_id) {
+        document.workflow.week_plan_id = idMapping.get(document.workflow.week_plan_id) ?? document.workflow.week_plan_id
+      }
       for (const component of document.components) {
+        if (component.type === 'task_list') {
+          for (const task of (component.payload as { items: TaskItem[] }).items) {
+            if (task.source_plan_id) task.source_plan_id = idMapping.get(task.source_plan_id) ?? task.source_plan_id
+            if (task.moved_to_plan_id) task.moved_to_plan_id = idMapping.get(task.moved_to_plan_id) ?? task.moved_to_plan_id
+          }
+        }
         if (component.type !== 'plan_reference' || !isPlanReferencePayload(component.payload)) continue
         const mapped = idMapping.get(component.payload.target_plan_id)
         if (mapped) component.payload.target_plan_id = mapped
@@ -249,7 +274,10 @@ export class TransferService {
         await assertRealPathWithinRoot(root, file)
         // 损坏的计划不能用于证明一个导入身份没有冲突，导入前要求修复。
         const doc = await this.repo.readPlan(root, path)
-        if (doc.plan_id) ids.add(doc.plan_id)
+        if (doc.plan_id) {
+          if (ids.has(doc.plan_id)) throw new TraceError(ERR.CONFLICT, '计划库中存在重复计划标识，请先修复')
+          ids.add(doc.plan_id)
+        }
       }
       for (const child of await this.repo.listPlanDirs(root, path)) {
         pending.push(path ? `${path}/${child}` : child)
@@ -354,7 +382,18 @@ function parseImportedDocument(bytes: Uint8Array): PlanDocument {
       componentIds.add(component.id)
       if (component.type === 'plan_reference' && !isPlanReferencePayload(component.payload)) throw new Error('reference')
       if (component.type === 'task_list' && !Array.isArray((component.payload as { items?: unknown }).items)) throw new Error('tasks')
+      if (component.type === 'task_list') {
+        for (const task of (component.payload as { items: unknown[] }).items) {
+          if (typeof task !== 'object' || task === null || Array.isArray(task)) throw new Error('task')
+          const item = task as TaskItem
+          if ((item.source_plan_id && !isUuid32(item.source_plan_id)) ||
+            (item.moved_to_plan_id && !isUuid32(item.moved_to_plan_id)) ||
+            (item.source_task_id && !isUuid32(item.source_task_id)) ||
+            (item.moved_to_task_id && !isUuid32(item.moved_to_task_id))) throw new Error('task-reference')
+        }
+      }
     }
+    if (doc.workflow !== undefined) validatePlanWorkflowMetadata(doc.workflow)
     return doc
   } catch {
     throw new TraceError(ERR.FORMAT_INVALID, '包内计划文档或标识无效')

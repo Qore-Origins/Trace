@@ -1,0 +1,134 @@
+{
+  "format_version": "1",
+  "created_at": "2026-09-30T19:21:18+08:00",
+  "updated_at": "2026-10-03T14:38:00+08:00",
+  "components": [
+    {
+      "id": "26093002000000000000000000000001",
+      "type": "heading",
+      "payload": { "title": "跨计划引用", "size": 25 }
+    },
+    {
+      "id": "26093002000000000000000000000002",
+      "type": "note",
+      "payload": {
+        "content": "Task 1-2 complete and independently approved. Task 2 final `e0f45fa0`: focused 2 files / 10 tests, full 58 files / 595 tests, node/web typecheck and diff-check pass; review approved with 0 Critical/Important. Residual: if candidate root write applies then reports failure and rollback also fails, memory remains old while disk may retain attempted root. Task 3 initial implementation `d2e0b70f` and fix round 1 `3a97d8a8` add active-library picker, link navigation, read-only live embed, localization and stable-ID re-resolution after rename/move. Fix round 1 focused 31/31, full 60 files / 611 tests, typecheck and diff-check pass. Scoped re-review confirmed rename/move fix but found an Important E × P full-library scan fan-out on generic plan changes; round 2 commit `534fc46076166add54cb02eb1b0601d127f6c62c` added precise stable target-ID events and shared revision-keyed scans. Round 2 focused 5 files / 64 tests, full 60 files / 621 tests, typecheck and diff-check pass. Its independent review then found an Important: Markdown import can successfully write one plan, fail later in the same level, and skip the batched `trace:plan-changed`; atomic write echoes are suppressed so resolver cache remains stale. Fix round 3 commit `21caa6fe168a010e62a90eedb30c272c40e7d384` modifies only `transfer-service.ts` and its spec; per-level finally invalidates tree/reference caches once after an attempted write on success or failure. Regression verifies cached public search sees the first plan after an injected second-write failure. Round 3 focused 5 files / 65 tests, full 60 files / 622 tests, typecheck and diff-check pass. Awaiting independent scoped re-review. Two deferred Minors remain: unavailable/missing/conflict auto-retry; duplicate component IDs can highlight multiple picker options without wrong insertion. No manual Electron verification yet. No merge/release.",
+        "created_at": "2026-09-30T19:21:18+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000004",
+      "type": "note",
+      "payload": {
+        "content": "Progress update 2026-10-01: This update supersedes the earlier progress snapshot above. Task 3 fix round 3 `21caa6fe` is independently approved (0 Critical / 0 Important / 0 new Minor); reviewer reran focused 5 files / 65 tests, typecheck, and exact diff-check. Task 3 is complete. Task 4 rename/delete reference-impact workflow is in progress from clean baseline `21caa6fe`; exact implementation and test ownership is recorded in docs/HANDOFF-CURRENT.md. Deferred Task 3 Minors remain documented there."
+      }
+    },
+    {
+      "id": "26093002000000000000000000000005",
+      "type": "note",
+      "payload": {
+        "content": "Task 4 scope update 2026-10-01: add `test/name-dialog-template.spec.tsx` to the registered test boundary and focused command. Its plan-rename expectation must move from the old `storage:renamePlan` channel to the reference impact preview/commit workflow; no additional production file is authorized. See docs/HANDOFF-CURRENT.md."
+      }
+    },
+    {
+      "id": "26093002000000000000000000000006",
+      "type": "note",
+      "payload": {
+        "content": "Task 4 implementation committed as `0f530f9` (`feat(references): confirm inbound reference changes`). Final verification: focused 6 files / 55 tests, typecheck, full 64 files / 644 tests, and diff-check passed; worktree clean. Independent scoped review is in progress. Manual Electron interaction acceptance is deferred to Task 5."
+      }
+    },
+    {
+      "id": "26093002000000000000000000000007",
+      "type": "note",
+      "payload": {
+        "content": "Task 4 review update 2026-10-01: quality review found 3 Important + 1 Minor; security review found 3 Important (one overlaps the inbound-write race), no Critical. The first implementer ran out of usage after two fixes and an initial RED for the inbound race; its uncommitted changes were preserved. Fix round 1 is resumed by /root/task4_fix_round1_resume. Required regressions: preserve edits during delete animation; revert explicit rename cancel while retaining draft on CAS/save failure; recheck inbound refs before final target mutation; reject duplicate plan IDs for plan-level rename/subtree delete; prevent raw renderer storage:savePlan from structurally mutating referenced components while retaining ordinary content saves. An implementation-time IPC trace also found `transfer:importPlan` can write plan_reference data outside the impact queue; serialize it within the already registered PlanReferenceService/register/plan-reference-ipc boundary. Scope and exact ownership are in docs/HANDOFF-CURRENT.md and task-4-fix-1-brief.md. Minor tree focus after canceled plan deletion is deferred."
+      }
+    },
+    {
+      "id": "26093002000000000000000000000008",
+      "type": "note",
+      "payload": {
+        "content": "Task 4 fix round 1 completed at `1d09c2d85359c7b9f87fb3aba256c8d7634e0371`. Final validation: affected suites 27/27, `npm run typecheck` passed, full `npm run test` 64 files / 651 tests passed, diff-check passed; import queue regression observed RED then GREEN. Worktree clean and code boundary released. Independent quality and security scoped re-reviews are now in progress. Deferred Minor: canceling plan deletion may move tree focus. No merge or release.",
+        "created_at": "2026-10-01T21:44:47+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000009",
+      "type": "note",
+      "payload": {
+        "content": "User decision 2026-10-01: if `transfer:importPlan` is ordered after target deletion, keep external-to-import-subtree references to the now-missing target and render them as broken; do not block import solely because the external target is absent. If import is ordered before deletion, final inbound recheck must include it. Task 5 owns end-to-end import/remap and broken-state acceptance. This resolves the wording conflict in fix brief #6.",
+        "created_at": "2026-10-01T21:44:47+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000010",
+      "type": "note",
+      "payload": {
+        "content": "Task 4 fix round 1 is closed after independent review. Quality review APPROVED: 0 Critical / 0 Important / 2 Minor; reviewer reran relevant suites 80/80, full 64 files / 651 tests, node/web typecheck, and exact diff-check. Security review APPROVED: 0 Critical / 0 Important / 0 Minor; focused 5 files / 53 tests, typecheck and diff-check passed. Residuals: tree focus after canceled deletion, narrow independent-process filesystem TOCTOU; Electron focus/motion and import behavior remain Task 5. User directed agent-feature planning next. Task 5 and Component Markdown Remarks remain uncompleted.",
+        "created_at": "2026-10-01T21:47:10+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000016",
+      "type": "note",
+      "payload": {
+        "content": "Task 5 in progress (2026-10-03): isolated code worktree codex/cross-plan-references starts from clean base 1d09c2d85359c7b9f87fb3aba256c8d7634e0371. Scope: import collision remapping, reference snapshot regression coverage, complete automated gates, isolated real-window acceptance, and independent read-only review. User-approved import behavior keeps external-to-subtree references unchanged and allows a missing external target to render broken rather than blocking import. Exact ownership and protected main-worktree state are in docs/HANDOFF-CURRENT.md. No version, merge, push, or release work.",
+        "created_at": "2026-10-03T12:20:00+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000017",
+      "type": "note",
+      "payload": {
+        "content": "Task 5 scope clarification (2026-10-03): existing PlanReferenceCard exposes no repair action and PlanReferencePicker only appends. The registered boundary therefore includes PlanReferencePicker.tsx, both locale files, and its existing spec; missing/conflict refs can replace in place while preserving link/embed mode. Do not edit ContentArea.tsx without a new coordinator registration. Repeated non-empty plan_id values within the imported subtree are rejected before writes because their mapping is ambiguous; conflicts with IDs already in the active library are remapped.",
+        "created_at": "2026-10-03T12:28:00+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000018",
+      "type": "note",
+      "payload": {
+        "content": "Task 5 implementation committed 2026-10-03 as 54e9cacb7e40cf165ccf9e40873abe5e00398bc0; exact 9-file code/test boundary and clean worktree were verified. Implementer reports focused 4 files / 64 tests, node/web typecheck, full 64 files / 669 tests, build (55.06s), and diff-check passing. Independent read-only review and coordinator-owned real Electron acceptance remain pending; Task 5 is still in progress. Existing PlantUML localhost ECONNRESET and plan-store/workspace-tabs circular-chunk notices were recorded; no claim they were fixed.",
+        "created_at": "2026-10-03T12:42:00+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000019",
+      "type": "note",
+      "payload": {
+        "content": "Task 5 independent task review completed: Approved, spec compliant, no Critical/Important findings. Review report task-5-review.md notes two Minors: PlantUML localhost ECONNRESET test-output noise and the plan-store/workspace-tabs circular chunk warning; reviewer asks coordinator to exercise startup/navigation/repair picker. Review could not verify the coordinator-owned real Electron paths. First dev launch failed because the code worktree's Electron package binary was not downloaded; the primary checkout has matching Electron 44.2.0, and coordinator is retrying with ELECTRON_EXEC_PATH plus isolated APPDATA/user-data-dir. Real-window acceptance remains open.",
+        "created_at": "2026-10-03T12:44:00+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000020",
+      "type": "note",
+      "payload": {
+        "content": "Task 5 isolated Electron acceptance found a renderer race: after opening/switching plans, plan-reference cards remain in loading state; direct public plan-reference:resolve returns found, while the renderer resolution store is empty. Reproduced through the real tree and tab UI in disposable library qa-electron-20261003-1248; no user-library writes were observed. Registered a fix round for PlanReferenceCard.tsx plus its existing spec to handle the interval where PlanStore currentPath updates before workspace active_path. Implementer owns these two files; independent review follows before acceptance resumes.",
+        "created_at": "2026-10-03T13:35:00+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000021",
+      "type": "note",
+      "payload": {
+        "content": "Task 5 completed 2026-10-03. Fix `ca378166` closes the active-tab publication race in addition to import/remap implementation `54e9cac`. Automated gates: 64 files / 672 tests, typecheck, build, diff-check; cumulative independent review approved with 0 Critical / 0 Important, reviewer reran focused 67/67. Isolated Electron acceptance covered links/embeds, tab navigation, rename cancel/keep/update, per-reference delete choices, broken-reference repair, rename/move identity, and export/import ID collision with retained missing external reference. The exact QA directory/processes were cleaned up. Residual warnings: localhost PlantUML ECONNRESET noise and existing store circular-chunk warning; non-transactional cross-file writes and narrow local TOCTOU remain documented. No merge or release.",
+        "created_at": "2026-10-03T14:38:00+08:00"
+      }
+    },
+    {
+      "id": "26093002000000000000000000000003",
+      "type": "task_list",
+      "payload": {
+        "title": "实施与验收",
+        "items": [
+          { "id": "26093002000000000000000000000011", "title": "定义引用模型与旧计划兼容规则", "status": "completed" },
+          { "id": "26093002000000000000000000000012", "title": "实现按需计划身份与安全目标解析", "status": "completed" },
+          { "id": "26093002000000000000000000000013", "title": "实现普通关联与只读软链接卡片", "status": "completed" },
+          { "id": "26093002000000000000000000000014", "title": "实现重命名/删除影响确认与逐条替换", "status": "completed" },
+          { "id": "26093002000000000000000000000015", "title": "实现导入冲突重映射并完成验收", "status": "completed" }
+        ]
+      }
+    }
+  ]
+}

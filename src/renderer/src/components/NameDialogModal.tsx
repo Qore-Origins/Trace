@@ -5,6 +5,8 @@ import { Button, Input, Modal } from 'antd'
 import { ERR, TraceError } from '@shared/errors'
 import { formatPlanNameTemplate } from '@shared/plan-name-templates'
 import type { PlanNameTemplateSettings } from '@shared/plan-name-templates'
+import type { WorkflowDraftInput, WorkflowPreview, WorkflowPreset } from '@shared/plan-workflow-types'
+import PlanWorkflowCreateModal, { initialWorkflowDraft } from './PlanWorkflowCreateModal'
 import { useUiStore, type NameDialog } from '../stores/ui-store'
 import { useAppStore } from '../stores/app-store'
 import { useTreeStore } from '../stores/tree-store'
@@ -17,6 +19,17 @@ interface TemplateLoadState {
   status: 'loading' | 'ready' | 'error'
   template: string | null
   error: string | null
+}
+
+interface WorkflowLoadState {
+  dialog: NameDialog
+  rootDir: string | null
+  status: 'loading' | 'ready' | 'none' | 'error'
+  libraryId?: string
+  draft?: WorkflowDraftInput
+  preview?: WorkflowPreview
+  presets?: Pick<WorkflowPreset, 'id' | 'name'>[]
+  error?: string
 }
 
 function templateErrorText(error: unknown, t: (key: string) => string): string {
@@ -35,9 +48,11 @@ export default function NameDialogModal(): React.JSX.Element {
   const [value, setValue] = useState('')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [templateLoad, setTemplateLoad] = useState<TemplateLoadState | null>(null)
+  const [workflowLoad, setWorkflowLoad] = useState<WorkflowLoadState | null>(null)
   const [loadSequence, setLoadSequence] = useState(0)
   const [templateDate, setTemplateDate] = useState(() => new Date())
   const loadGenerationRef = useRef(0)
+  const workflowGenerationRef = useRef(0)
 
   // 每次打开新的 dialog 对象都从 initialName 起步；根目录变化则保留当前输入，只重载该库的模板。
   const [lastDialog, setLastDialog] = useState<NameDialog | null>(null)
@@ -51,6 +66,41 @@ export default function NameDialogModal(): React.JSX.Element {
     setValue('')
     setSubmitError(null)
   }
+
+  useEffect(() => {
+    const generation = ++workflowGenerationRef.current
+    if (dialog?.mode !== 'create-plan' || !rootDir) {
+      setWorkflowLoad(null)
+      return () => { if (workflowGenerationRef.current === generation) workflowGenerationRef.current += 1 }
+    }
+    const currentDialog = dialog
+    const currentRoot = rootDir
+    const isCurrent = (): boolean => workflowGenerationRef.current === generation &&
+      useUiStore.getState().nameDialog === currentDialog && useAppStore.getState().rootDir === currentRoot
+    const draft = initialWorkflowDraft(dialog.targetPath, dialog.initialName)
+    setWorkflowLoad({ dialog, rootDir, status: 'loading' })
+    void invoke('plan-workflow:list').then(async (settings) => {
+      let preview = await invoke('plan-workflow:preview', { library_id: settings.library_id, draft })
+      if (preview.outputs.some((output) => output.workflow_kind === 'week')) {
+        const suggested = await invoke('plan-workflow:suggestPeriod', {
+          library_id: settings.library_id, selected_path: draft.selected_path
+        })
+        if (suggested) {
+          draft.period = suggested
+          preview = await invoke('plan-workflow:preview', { library_id: settings.library_id, draft })
+        }
+      }
+      if (!isCurrent()) return
+      setWorkflowLoad({ dialog: currentDialog, rootDir: currentRoot, status: preview.state === 'none' ? 'none' : 'ready',
+        libraryId: settings.library_id, draft, preview,
+        presets: settings.config.presets.filter((preset) => preset.enabled).map(({ id, name }) => ({ id, name })) })
+    }).catch((error: unknown) => {
+      if (!isCurrent()) return
+      setWorkflowLoad({ dialog: currentDialog, rootDir: currentRoot, status: 'error',
+        error: error instanceof Error ? error.message : t('workflow.loadFailed') })
+    })
+    return () => { if (workflowGenerationRef.current === generation) workflowGenerationRef.current += 1 }
+  }, [dialog, rootDir, loadSequence, t])
 
   useEffect(() => {
     const generation = ++loadGenerationRef.current
@@ -221,6 +271,23 @@ export default function NameDialogModal(): React.JSX.Element {
       ? t('dialog.renameBtn')
       : t('dialog.createBtn')
 
+  const currentWorkflow = dialog?.mode === 'create-plan' && workflowLoad?.dialog === dialog && workflowLoad.rootDir === rootDir
+    ? workflowLoad : null
+  if (dialog?.mode === 'create-plan' && rootDir && (!currentWorkflow || currentWorkflow.status === 'loading')) {
+    return <Modal title={t('workflow.createTitle')} open onCancel={close} footer={null}><div role="status">{t('common.loading')}</div></Modal>
+  }
+  if (currentWorkflow?.status === 'error') {
+    return <Modal title={t('workflow.createTitle')} open onCancel={close} footer={null}>
+      <div role="alert">{currentWorkflow.error}</div>
+      <Button onClick={() => setLoadSequence((sequence) => sequence + 1)}>{t('dialog.templateRetry')}</Button>
+    </Modal>
+  }
+  if (currentWorkflow?.status === 'ready' && currentWorkflow.libraryId && currentWorkflow.draft && currentWorkflow.preview && rootDir) {
+    return <PlanWorkflowCreateModal key={`${currentWorkflow.libraryId}:${dialog?.targetPath ?? ''}`} rootDir={rootDir}
+      libraryId={currentWorkflow.libraryId} initialDraft={currentWorkflow.draft}
+      initialPreview={currentWorkflow.preview} availablePresets={currentWorkflow.presets ?? []} onClose={close} />
+  }
+
   return (
     <Modal
       title={title}
@@ -252,6 +319,10 @@ export default function NameDialogModal(): React.JSX.Element {
         </div>
       )}
       {submitError && <div role="alert" aria-live="assertive" className="name-dialog-template__error">{submitError}</div>}
+      {currentWorkflow?.status === 'none' && currentWorkflow.presets && currentWorkflow.presets.length > 0 && currentWorkflow.preview &&
+        <Button size="small" onClick={() => setWorkflowLoad({ ...currentWorkflow, status: 'ready', preview: {
+          ...currentWorkflow.preview!, state: 'candidates', candidates: currentWorkflow.presets, outputs: []
+        } })}>{t('workflow.choosePreset')}</Button>}
       {isPlanDialog && templateError && (
         <Button size="small" onClick={() => setLoadSequence((sequence) => sequence + 1)}>
           {t('dialog.templateRetry')}

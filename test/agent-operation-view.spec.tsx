@@ -52,6 +52,20 @@ it('sends failed-only retry and pending-only continuation, preserving successful
   spy.mockRestore()
 })
 
+it.each(['zh-CN', 'en-US'])('explains when restart cancelled an unconfirmed local operation in %s', async (language) => {
+  await i18n.changeLanguage(language)
+  const interrupted: AgentOperationBatch = {
+    ...batch, status: 'cancelled', confirmationSource: 'none',
+    operations: [
+      { ...batch.operations[0], status: 'cancelled', confirmationSource: 'none', undoStatus: 'unavailable', completedAt: '2026-10-09T00:00:00.000Z' }
+    ]
+  }
+  const spy = await mount(interrupted)
+  expect(host.textContent).toContain(i18n.t('agentChat.confirmationInterrupted'))
+  expect(host.textContent).not.toContain(i18n.t('agentChat.confirmOperations'))
+  spy.mockRestore()
+})
+
 it('locks all recovery actions when main reports uncertain outcomes', async () => {
   const spy = await mount({ ...batch, status: 'reconciliation-required', operations: batch.operations.map((item, index) => index === 1 ? { ...item, status: 'outcome-unknown' } : item) })
   await click('恢复')

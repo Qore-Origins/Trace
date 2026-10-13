@@ -1,5 +1,295 @@
 # Trace 当前协作状态
 
+## 当前所有权（2026-10-13，v1.1.0 构建与发布）
+
+- 用户要求构建并发布，已确认版本为 v1.1.0。`/root` 负责本轮发布元数据、构建、归档、GitHub/Gitee 发布与核验：`package.json`、`package-lock.json`、`docs/changelog/CHANGELOG.md`、`docs/lifecycle/05-部署上线 Deployment/发布说明 Release Notes.md`、`builds/{build_history,release_history}.json`、`builds/release_notes/release_notes_v1.1.0.md`、`scripts/trace-workflow-isolated-smoke.cjs` 与 `scripts/trace-phase2-isolated-electron-bootstrap.cjs` 的发布前主路径增量、本交接段落及 `docs/Plan/` 对应计划；源代码现有改动只读核验，不借发布任务覆盖其它人的工作。
+- **发布前状态：** 当前分支 `codex/plan-workflow-presets`，起点 HEAD `aa8c99c`，线上最新版 v1.0.0；工作区有大量既有未提交源代码和文档。`package.json` 与 lock 已升至 1.1.0。`npm run typecheck` 通过；默认环境 `npm run test` 连续两轮各 98/98 文件、1283/1283 项通过。此前小沅初始化竞态与工作流批次超时已修复，Windows 原子覆盖的底层拒绝主体仍未知。尚无提交、推送或公开发布。
+- **候选包核验：** `npm run build:win` exit 0；最终构建输出与 `builds/windows/Trace_1.1.0_stable_20261013_02.exe` 同为 210,786,164 字节，SHA-256 `D12DABE620873454B43EFB5260010B748AD9392F60162F6F780A793278F798E0`；PE 与 app.asar 版本均 1.1.0，149 个 PlantUML 路径及哈希一致，app.asar 28,017 项且无项目 QA 根目录。隔离生产 bundle Electron 实窗首启引导、搜索回溯与工作流烟测通过。`_01` 已被取代，不公开发布。安装包未签名，未做 NSIS 安装/卸载。
+- **排障所有权：** 用户明确选择先定位并修复全量失败，再公开发布。`/root` 负责调查 `src/main/services/plan-repository.ts` 的 Windows 原子保存 `EPERM`、`test/{search-service,plan-workflow-transfer,agent-target-picker}.spec.*` 及小沅测试支持层；必要时增量修改对应文件并补回归，保留其它改动。当前发现两处 `EPERM` 均发生于替换已有 `plan.json` 的 `rename`，但根因未确认。GitHub/Gitee 代码、tag 和 Release 均未发布 v1.1.0。
+- **本轮新增边界与对照：** `/root` 增量负责 `test/agent-view-test-support.ts`、`test/agent-target-picker.spec.tsx`。小沅测试辅助函数的“会话已可选目标”竞态已先 RED 后 GREEN，定向 5/5、typecheck 通过。全量 98 文件 / 1282 项：默认 C 盘 Temp 失败 2 项（原子覆盖 `EPERM` 与 5 秒超时）；改用 D 盘独立 Temp、默认 C 盘 Temp 下独立子目录时曾各通过 1282/1282。随后将每轮独立 Temp 固化到测试入口再次全量运行，2 项原子覆盖 `EPERM` 漂移至另外两个夹具，证伪“独立 Temp 能稳定解决”。该测试入口改动已撤回；完整日志留存。原始 `EPERM` 归因仍未知，不能靠更换目录后的偶然全绿发布。用户此前暂停系统级 ProcMon/ETW 追因的决定仍保留。
+- **限定捕获与后续所有权：** 用户已允许本轮限定 ProcMon 捕获；第一轮误用持久化过滤器，仅导出 2 条 git 事件，无归因价值。第二轮 `/NoFilter` 在合成测试库复现一次 `plan-workflow-transfer` 保存失败：同一临时文件 4 次 `SetRenameInformationFile ACCESS DENIED`，首次与末次相隔约 785ms；目标 `plan.json` 的 Node 读取句柄在首次失败约 9ms 前已见关闭。合成目录内进程只有 node、System、MsMpEng；MsMpEng 在首次失败约 2ms 后对该临时文件出现 `CreateFileMapping FILE LOCKED WITH ONLY READERS`，先后关系不能证明它导致拒绝。完整 PML 本地保留，CSV 仅本地解析。捕获负载让另两个批次用例超时且 bundle build 失败，不作为正常发布测试。`/root` 追加负责 `test/plan-repository.spec.ts` 与 `test/plan-workflow-batch.spec.ts`，评估已有有限重试对超过 750ms 的拒绝是否足够，并修复批次磁盘操作在全量负载下的 5 秒测试超时；不修改 Defender 或系统排除项。
+- **排障结论：** 限定捕获确认短时 `rename ACCESS DENIED` 持续约 786 毫秒；`MsMpEng.exe` 对同一临时文件的映射事件发生在首次拒绝之后，不能归因 Defender。现有有限重试延长一次，注入前四次 `EPERM`、第五次成功的回归先 RED 后 GREEN。原始 PML 留在本地；完整 CSV/XML 导出清理被自动审批策略拒绝，文件仍在忽略的诊断目录。未修改系统安全配置。
+- **下一步 / 等待 / 剩余：** 固化发布代码和 tag，推送 GitHub/Gitee 并核验 Release，再回填账本。无需等待用户输入；候选包不能视作已发布版本。底层拒绝主体仍待后续有证据时追踪，NSIS 安装/卸载与真实库验收未完成。
+
+## 当前所有权（2026-10-13，工作流设置入口与名称编辑）
+
+- 用户反馈设置页进入工作流分类后持续呈现编辑表单，难辨当前对象，并指出工作流名称不好编辑。已澄清“默认打开”指设置页面，**不是**文件树新建计划；本轮不改新建计划入口。`/root` 负责增量修改 `src/renderer/src/components/PlanWorkflowSettings.tsx`、`src/renderer/src/styles/settings.css`、`src/renderer/src/i18n/locales/{zh-CN,en-US}.ts`、`test/plan-workflow-ui.spec.tsx`，以及本交接段落和 `docs/Plan/README.md` 的本任务段落。原有未提交工作流/小沅修改保留，不覆盖其它文件。
+- **已实现：** 工作流分类默认只显示预设概览卡片，列出名称、匹配范围、启用/默认状态与生成项数；点“编辑”后才进入该预设表单，顶部粘性标题持续显示当前名称、未保存状态与保存按钮，可返回列表。编辑页名称输入可修改，保存后列表即时更新；新建与复制预设自动给出不重复名称。内容模板/命名规则管理由概览页显式进入。文件树新建计划流程和真实 `D:\Desktop\Plan` 配置未改。
+- **真实验证：** 最终 `npm run typecheck`、`npm run build` 均 exit 0；工作流 UI/设置导航/说明定向 3 文件 / 7 测试通过，新用例覆盖列表默认态、改名保存、返回列表和复制名称区分。最后一次全量 `npm run test` 为 96/98 文件、1279/1281 测试通过，失败为 `agent-target-picker` 中文 UI 等待超时和 `plan-reference-ipc` Windows `EPERM` 原子保存；两个失败文件合并复跑 2 文件 / 35 测试通过，全量仍未全绿。此前一次全量为 1280/1281，失败为同一小沅 UI 用例的英文路径。已检查 Electron 进程存在且窗口标题“溯源 Trace”，尚未进行原生窗口键鼠/窄宽/滚动位置验收。
+- **下一步 / 等待 / 剩余：** 下一步做真实界面体验并另行定位全量 UI 等待超时；无需等待用户输入。未暂存、提交、推送或发布，原有大量 dirty/untracked 文件保持原状。
+
+## 当前所有权（2026-10-13，真实计划库工作流配置）
+
+- 用户要求“给我配置一个工作流”。`/root` 本轮只负责增量修改 `D:\Desktop\Plan\.trace\plan-workflows.json`，在现有全局预设外新增 `Weekly_Plan` 分类的周日联动默认预设及其内容模板；不创建周/日计划，不改旧预设或真实计划正文。配置前已只读核对目录、原配置、代码校验器和交接状态；写入前保留原配置备份并验证文件身份。临时执行脚本 `scripts/configure-weekly-daily-workflow-once.cjs` 由 `/root` 独占，配置及复核完成后立即删除，不保留为正式功能。共享记录仅更新本段落和 `docs/Plan/README.md` 的本任务说明。
+- **已配置：** `D:\Desktop\Plan\.trace\plan-workflows.json` 新增启用且默认的分类预设 `weekly_daily_20261013`（`Weekly_Plan`），沿用内置“周与日联动”结构：周输出固定到 `Weekly_Plan`，名称 `{this.folder_name}_{week_start}-{week_end}`，一次；日输出固定到 `Daily_Plan`，名称 `{this.folder_name}_{date}`，周期内逐日。新增独立周/日内容模板；原有全局“新工作流”预设及原内容模板未改。周日实际日期、任务和七天分配仍在创建预览中填写，本次没有创建计划正文。
+- **真实验证：** 写前原配置 SHA-256 `307C5531398A7DFE5F59BAA4107F4BD4E13F6CC5AB7CB2191194F8EC86D26632`；先以 `COPYFILE_EXCL` 建立并校验精确备份 `D:\Desktop\Plan\.trace\plan-workflows.json.backup-20261013-307c5531`。调用 `PlanWorkflowConfigService.save` 完成现有 schema、目录和原子写路径校验，随后 `load` 复核 2 个预设、3 个内容模板，旧预设逐项不变；`resolveWorkflowPreset` 复核 `Weekly_Plan` 匹配新预设、`Future_Plan` 仍匹配原全局预设。磁盘再次读取为启用/默认，当前配置 SHA-256 `F91EC148BE3B8A18CCE4C94D773B50C0A3EFB1BB5DDD331DC1888724E16C3C38`。临时执行脚本已删除；未运行产品测试（本轮没有源代码变更）。
+- **下一步 / 等待 / 剩余：** 在文件树选 `Weekly_Plan` 后新建计划，填写七天周期与分配任务，检查可编辑预览再决定是否生成实际计划；无需等待用户输入。真实八文件创建和既有日计划复用尚未在此库执行；没有暂存、提交、推送或发布。
+
+## 当前所有权（2026-10-13，设置使用说明）
+
+- `/root` 负责本轮设置说明：新建 `src/renderer/src/components/ui/SettingHelp.tsx`，增量修改 `src/renderer/src/App.tsx`、`src/renderer/src/components/AgentSettingsSection.tsx`、`src/renderer/src/components/PlanWorkflowSettings.tsx`、`src/renderer/src/i18n/locales/{zh-CN,en-US}.ts`、`src/renderer/src/styles/settings.css`，并新增对应定向测试。共享记录仅修改本交接段落和 `docs/Plan/README.md` 的本任务入口。上述文件已有工作流或小沅未提交改动，本轮保留既有内容，不覆盖其它功能；其它 dirty/untracked 文件不属于本轮。
+- **已实现：** 新增原生 `details/summary` 说明组件；14 个主题均提供功能、目的、适用对象、设置效果的中英文文案，默认收起，展开后在当前设置项内阅读。入口覆盖树/心情动画、Markdown、PlantUML、目录命名、工作流和小沅服务/能力测试；保留现有设置行为。新建 `test/setting-help.spec.tsx` 和共享执行记录/镜像。
+- **真实验证：** `npm run typecheck` exit 0；设置说明、导航、小沅设置、工作流 UI 定向 4 文件 / 23 测试通过；`npm run build` exit 0。全量 `npm run test` 96/98 文件、1278/1280 测试通过，失败为 `agent-target-picker` UI 等待超时和 `search-service` Windows `EPERM` 保存失败。两文件复跑时前者 4/4、后者 7/8；搜索文件单独再跑仍为 7/8，失败用例发生漂移，全量未全绿。尚未进行原生 Electron 设置页的键鼠/窄窗口/读屏体验验收。
+- **下一步 / 等待 / 剩余：** 下一步做隔离应用界面检查，并调查重复 `EPERM`；无需等待用户输入。剩余为界面体验和全量失败根因。其它未提交文件及 `D:\Desktop\Plan` 未改动，无暂存、提交、推送或发布。
+
+## 当前所有权（2026-10-12，工作流隔离验收）
+
+- `/root` 负责本次工作流最终验证、新建 `scripts/trace-workflow-isolated-smoke.cjs`、修正周视图 CSS 所属文件，并同步本交接及 `docs/Plan/` 的工作流执行记录与镜像。现有其它未提交文件、真实 `D:\Desktop\Plan` 和用户资源目录不属于本次验收，不覆盖、不删除。脚本只操作新建的唯一 Temp 隔离库。
+- `/root` 已先阅读 `src/main/services/agent-sse.ts`、`test/agent-provider-http.spec.ts` 现有诊断改动，本次只负责工作流三段式工具名在 schema 错误诊断白名单的一处正则扩展，并新增对应定向断言；其余小沅 SSE 逻辑保持现有内容。
+- 已实测 HEAD `aa8c99c`，分支 `codex/plan-workflow-presets`。任务 1–9 代码已接通；任务 10 的九项用户视角验收仍进行中。首次全量 1274/1277，包含本任务周视图样式边界失败 1 项；样式已移入 `cards.css`。修正后 `npm run typecheck`、`npm run build` 均 exit 0；第二次全量 1275/1277、95/97 文件通过，失败为既有小沅 UI 等待超时和 Windows `EPERM` 原子写，两个失败文件单独复跑分别 4/4、1/1。全量未全绿，不以定向通过替代。
+- 隔离 Electron 生产构建 `node scripts/trace-workflow-isolated-smoke.cjs` exit 0：唯一 Temp 计划库、文件树点击匹配预设、修改标题/目标日期、刷新预览、UI 点击创建、树中出现目标文件；生产 IPC 跨年 1+7 批次完整，周文档关联 7 个日计划，日任务落到指定日期。成功现场在检查精确 Temp 父目录和唯一标记后删除。该验收未点击预设设置、候选切换、冲突、跨周交接、导入导出或小沅面板，真实 provider 与真实计划库未验证。
+- Electron 开发窗口已通过 TTY `npm run dev` 启动，`http://localhost:5173/` HTTP 200、主进程 `main ready`，窗口进程 PID 46940、标题“溯源 Trace”；当前会话保持运行。非 TTY 启动曾因 `process.stdout.clearLine is not a function` 在 preload 开发构建阶段退出，改为 TTY 后成功。
+- 隔离烟测脚本前两次按钮定位错误，保留 `C:\Users\aaa\AppData\Local\Temp\trace-workflow-qa-Boynla` 和 `C:\Users\aaa\AppData\Local\Temp\trace-workflow-qa-5bViuX` 两个失败现场；产品路径未运行到创建。精确路径清理命令被自动审批拒绝，未重试删除，需后续安全清理。无暂存、提交、推送、发布。下一步补齐任务 10 剩余界面路径和全量测试偶发失败的根因；目前无必须等待的用户输入。
+- 小沅 `plan.workflow.*` 三段式工具名在 SSE schema 错误诊断中已可识别，参数值仍不记录；Provider/工具/操作定向 3 files / 142 tests、`npm run typecheck` 通过。最后一次全量 `npm run test` 为 1276/1278，失败转为既有 `agent-target-picker` UI 等待超时与 `plan-reference-ipc` 的 Windows `EPERM`；两文件单独复跑 4/4、31/31。全量仍未全绿，且 `EPERM` 在不同用例间漂移。
+- 隔离生产 Electron 烟测扩充后再次 exit 0：第二周 8 文件批次、周期建议与重叠报告、上一周未完成任务显式交接（来源 `moved`、目标记录来源 ID）、同日旧计划无确认拒绝均实际经过 IPC 和磁盘文档核对。成功 Temp 库按身份清理。未走周视图按钮、设置页手动切换、导入导出 UI、真实模型选工具。
+- 最终源码已重新执行 `npm run build` exit 0，再对最新生产 bundle 重跑扩充烟测 exit 0；开发窗口仍在，标题“溯源 Trace”。`node --check scripts/trace-workflow-isolated-smoke.cjs` 与 `git diff --check` exit 0（仅已有换行符提示）。
+- 隔离 Electron 追加设置导航验收：`Ctrl+,` 打开设置，点击工作流导航，已保存的隔离库 `QA Workflow` 预设可见；随后完整烟测 exit 0。首次脚本用“节点不存在”判断 Ant Design 弹窗关闭，因隐藏节点仍在 DOM 而误报，留下第三个 Temp 现场 `C:\Users\aaa\AppData\Local\Temp\trace-workflow-qa-bZkeIq`；修正脚本后通过。前述精确路径清理自动审批已拒绝，本次也不尝试递归删除，三个失败现场待安全清理。
+
+## 当前所有权（2026-10-12，工作流实施任务 8/9）
+
+- `/root` 已完成任务 7 的周视图、显式逐项跨周交接和失败后幂等续做代码；负责新建 `src/main/services/plan-workflow-handoff-service.ts`、周视图及对应测试。任务 8 只增量修改 `src/main/services/transfer-service.ts` 和新增导入导出 spec，保留原有非冲突 ID 语义；周日与交接计划 ID 在发生冲突重映射时同步更新。定向任务 7 为 3 files / 20 tests，任务 8 为 2 files / 21 tests，`npm run typecheck` 通过。Electron 界面与全量测试尚未重新验收。
+- 任务 9 接下来由 `/root` 负责 `src/main/services/agent-tool-registry.ts`、`src/main/services/agent-operation-service.ts` 的工作流工具窄接入、`src/main/ipc/register.ts` 的依赖注入及对应测试。已先阅读上述两个小沅文件的现有 diff（包括初始任务列表、撤销与回收站行为），不得覆盖这些未提交修改。新增工具审计发现三段式操作名需放宽 `src/main/services/agent-session-repository.ts` 的审计名校验，已读该文件既有 diff，仅增量修改一处正则。工作流工具必须走已授权目标目录、同一解析/提交服务和现有确认面板。
+
+## 当前所有权（2026-10-12，工作流实施任务 7）
+
+- `/root` 在任务 5/6 已登记的工作流文件之外，开始负责 `src/shared/task-state.ts`、`src/shared/plan-types.ts`、新建 `src/renderer/src/components/WeekPlanOverview.tsx`、增量接入 `src/renderer/src/components/ContentArea.tsx`、`src/renderer/src/components/cards/TaskListCard.tsx`、`TaskDetailCard.tsx`、`PlanReferenceCard.tsx`、相应文案/样式与 `test/task-state.spec.ts`、新周视图 spec。实施前已读这些文件的现状；不改其他智能体的小沅文件。
+- **任务 6 当前结果：** 七日日计划先写、周草稿后写、逐项 journal 与失败续做已实现，旧日计划复用需要显式确认；既有周计划结束次日可作为默认起日，重叠区间会在预览报告。工作流批次/解析器定向测试 2 files / 10 tests 通过，`npm run typecheck` 通过。任务 6 的 Electron 隔离库界面操作尚未验收，不标记完成；失败时保留已创建项并报告/续做，未实施自动回收。
+
+## 当前所有权（2026-10-12，工作流实施任务 5 收尾与任务 6 开始）
+
+- `/root` 在 `codex/plan-workflow-presets` 继续拥有任务 5 的工作流服务、IPC、设置、新建弹窗与相应 UI/spec 文件；增量触及既有 `register.ts`、`App.tsx`、语言包、`NameDialogModal.tsx`、`tree-store.ts` 时已保留原有改动。任务 6 新增 `src/main/services/plan-workflow-batch-service.ts` 与 `test/plan-workflow-batch.spec.ts`，必要时扩展工作流类型、解析器、服务与 IPC；不接管其他小沅或资源文件。
+- **任务 5 已实现：** 主进程单计划提交重新解析并校验库身份、预览修订、冲突与路径；IPC/preload 白名单、设置中的预设/生成项/内容/命名规则编辑、文件树自动匹配与可编辑预览、旧入口回退、树立即刷新。预览可编辑目标目录、名称、组件与任务。仍缺一次性隔离库的 Electron 界面手工点击验收，因此任务 5 镜像保持 `in_progress`。
+- **真实验证：** 工作流 UI/IPC/解析器/旧命名弹窗等定向 4 files / 19 tests 通过，`npm run typecheck` 与 `npm run build` 通过。全量 `npm run test` 为 94 files 中 93 passed、1 failed，1260/1261；失败项仍是既有 `agent-target-picker` 的 UI 等待超时，全量未通过。`npm run dev` 已启动，renderer `http://localhost:5173/` 返回 HTTP 200，Electron 主进程输出 `main ready`，Windows 检测到标题为“溯源 Trace”的窗口；尚未在应用内手工点工作流，也未写真实 `D:\Desktop\Plan`。
+- **下一步 / 等待 / 剩余：** 当前无必须等待的用户信息。继续任务 6 的周日批量与安全续做；任务 5 的隔离应用验收及任务 7–10 仍待实施。未暂存、提交、推送或发布。
+
+## 当前所有权（2026-10-11，工作流实施任务 5）
+
+- `/root` 继续在 `codex/plan-workflow-presets` 分支负责 `src/main/services/plan-workflow-service.ts`、`src/renderer/src/components/PlanWorkflowSettings.tsx`、`src/renderer/src/components/PlanWorkflowCreateModal.tsx` 与工作流 IPC/renderer 接线文件。预计增量触及 `src/shared/ipc-contract.ts`、`src/main/ipc/register.ts`、`src/main/index.ts`、`src/preload/index.ts`、`src/preload/index.d.ts`、`src/renderer/src/ipc-client.ts`、`src/renderer/src/components/SettingsNavigation.tsx`、`src/renderer/src/App.tsx`、`src/renderer/src/components/NameDialogModal.tsx`、`src/renderer/src/stores/tree-store.ts`、中英文本/样式和新 spec。`register.ts`、`App.tsx`、语言包等已有未提交改动，本任务先读 diff，再局部接线，不覆盖原改动。共享计划和本交接段落随任务同步；其它脏文件不属于本任务。
+- **状态：** 任务 5 开始，尚未实现或验证；先主进程单计划预览/提交边界，再接 IPC 和界面。
+
+## 当前所有权与结论（2026-10-11，工作流实施任务 4）
+
+- `/root` 在 `codex/plan-workflow-presets` 分支负责 `src/shared/plan-types.ts`、新文件 `src/shared/plan-workflow-validation.ts` 与 `src/main/services/plan-workflow-content.ts`、`src/main/services/plan-repository.ts` 的可选元数据读取校验、`src/main/services/storage-service.ts` 的完整文档窄创建入口，以及 `test/plan-workflow-content.spec.ts` 和对应 `test/storage-service.spec.ts` 增量用例。共享计划、镜像、README 本计划段落与本交接段落同步。`storage-service.ts` 已有小沅初始任务列表的未提交改动，已读现有 diff；本任务只在其基础上增加方法，保留原校验和原子写逻辑。其它脏文件不属于本任务。
+- **已实现：** 内容模板编译、可选周／日元数据与校验、完整文档 create-only 存储入口；保留小沅初始任务列表单写行为。任务 4 文件所有权已释放。
+- **真实验证：** 内容/存储 2 files / 35 tests、旧小沅操作/工具注册 2 files / 87 tests、配置/预览 2 files / 12 tests 均通过；`npm run typecheck` 通过。默认全量 1252/1253，`agent-target-picker` 一项 UI 等待超时；未取得全绿。未做 Electron/真实库验收、未提交或发布。
+
+## 当前所有权与结论（2026-10-11，工作流实施任务 3）
+
+- `/root` 继续在 `codex/plan-workflow-presets` 分支负责新文件 `src/main/services/plan-workflow-resolver.ts` 与 `test/plan-workflow-resolver.spec.ts`；若解析接口需扩展 `src/shared/plan-workflow-types.ts`，仅作任务 3 范围内的增量修改。共享实施记录、镜像、README 本计划段落和本交接段落随任务同步。任务 2 文件所有权已释放；其他既有 dirty/untracked 文件不属于当前任务。
+- **已实现：** 只读预览解析器展开生成项，返回目标路径、规则来源、组件草稿、分配任务、同名和同日期候选冲突及修订标识；不写计划文档。任务 3 文件所有权已释放。
+- **真实验证：** 工作流和旧命名相关 5 files / 30 tests passed，`npm run typecheck` 通过。默认全量 1248/1249，既有计划引用 IPC 一项写入 `SAVE_FAILED`；该文件单独重跑 31/31 通过。全量未取得全绿；未做 Electron/真实库验收、未提交或发布。
+
+## 当前所有权与结论（2026-10-11，工作流实施任务 2）
+
+- `codex/plan-workflow-presets` 分支基于 `aa8c99c`，原有大量 dirty/untracked 文件仍在。`/root` 当前负责新文件 `src/shared/plan-workflow-types.ts`、`src/main/services/plan-workflow-config-service.ts`、`src/main/services/plan-workflow-rule-service.ts`、`test/plan-workflow-config.spec.ts`，以及必要时对干净的 `src/main/services/plan-name-template-service.ts` 作增量读取接线。共享实施记录、镜像、README 本计划段落和本交接段落随任务同步；其他既有脏文件不属于此任务。
+- **已实现：** 新增配置类型、按库持久化服务与规则服务；保存前检查已存在的作用域/目标目录，损坏配置原样保留；可编辑建议预设不自动写库；准确父路径规则仍从旧服务读取。任务 2 文件所有权已释放。
+- **真实验证：** 新旧定向 2 files / 12 tests passed，`npm run typecheck` 通过。默认全量 1241/1243，失败为 `agent-target-picker` 一项等待超时和 `storage-service` 一项 `SAVE_FAILED`；定向重跑两文件 34/35，UI 文件通过，存储服务另一条用例仍报 `SAVE_FAILED`。不声称全量通过；未做 Electron/真实库验收、未提交或发布。
+
+## 当前所有权与结论（2026-10-11，工作流实施任务 1）
+
+- 用户回复“继续”，本轮开始按可配置工作流实施计划顺序开发。已核对 `git status --short --branch` 与 `git log -1`；基线提交 `aa8c99c`。为避免在 `main` 直接开发，当前检出新分支 `codex/plan-workflow-presets`，原有未提交与未跟踪文件原样保留。
+- `/root` 先拥有 `src/shared/plan-name-templates.ts`、新文件 `src/shared/plan-workflow-naming.ts`、`test/plan-workflow-naming.spec.ts`，以及本实施计划的共享执行记录、`plan.json`、`docs/Plan/README.md` 本计划段落和本交接段落。其他源码和资源本阶段不改；后续任务接线前重新登记边界。
+- **已实现：** 新增目标日期、最终目标父目录、分类、周期、创建日和序号等白名单变量；旧 `formatPlanNameTemplate` 未改变语义。新增定向 spec。任务 1 的文件所有权已释放。
+- **真实验证：** RED 阶段新 spec 因模块不存在失败；GREEN 阶段新旧命名定向 2 files / 12 tests passed，`npm run typecheck` 通过。默认并行全量 1235/1237：两项 `agent-target-picker` 等待 UI 超时，单独重跑该文件 4/4 通过。串行全量 1235/1237：两项纽约 DST 用例在上海时区失败；`TZ=America/New_York` 单独跑该文件 14/14 通过。未取得全量全绿。`git diff --check` 对任务 1 跟踪文件 exit 0。未做 Electron/真实计划库验收、未提交或发布。
+
+
+## 当前所有权与结论（2026-10-11，工作流实施计划完成）
+
+- 用户已回复“可以，继续”，确认可配置工作流预设的完整设计并要求进入下一步。本轮仅编辑 `docs/superpowers/specs/2026-10-11-plan-workflow-templates-design.md` 的状态、`docs/superpowers/plans/2026-10-11-plan-workflow-presets-implementation.md`、`docs/Plan/Future_Plan/Qore/Trace/Plan-261011-01-计划工作流模板设计/` 的设计结论、`docs/Plan/Future_Plan/Qore/Trace/Plan-261011-02-可配置计划工作流实施/`、`docs/Plan/README.md` 本计划索引及本交接段落；其他既有脏文件与 `D:\Desktop\Plan` 不属于本轮。上述文档所有权现已释放。
+- **已核对：** `git status --short --branch`、既有设计规格和执行镜像、主进程命名／存储／IPC、preload 白名单、renderer 新建入口与小沅单计划创建边界。
+- **已形成计划：** 技术计划将开发分为命名与配置/只读预览、单计划内容与 UI、周日批次与交接、小沅接入和隔离验收四段，共十项任务；新建共享执行记录及 10 项未开始的 `plan.json` 镜像。设计阶段镜像 6/6 已完成，实施镜像 0/10 已开始。
+- **实际验证：** `git status --short --branch` 已核对；两个 `plan.json` 均解析成功，设计 6/6 done、实施 10/10 not_started；计划和规格的相对 Markdown 链接存在；`git diff --check -- docs/HANDOFF-CURRENT.md docs/Plan/README.md` exit 0，只有 HANDOFF 的既有 CRLF/LF 提示。仅改文档，未改代码、未运行产品测试或构建、未启动 Electron、未写 `D:\Desktop\Plan`，也未暂存、提交、推送或发布。
+- **下一步 / 等待 / 剩余：** 从实施任务 1 的命名上下文开始；目前无必须等待的用户信息。每项源码工作先重新核对 dirty 状态和 HANDOFF 所有权。十项实现与应用验收全部未开始，真实小沅模型及真实用户库效果不能据此声称通过。
+
+## 当前所有权与结论（2026-10-11，方案 B 与自动匹配已写入设计）
+
+- 用户已选择“B：可配置工作流预设”，并确认从文件树新建时自动匹配目录预设、先展示可修改预览。本轮只增量修改本文件新增段落、`docs/superpowers/specs/2026-10-11-plan-workflow-templates-design.md`、对应 `docs/Plan/Future_Plan/Qore/Trace/Plan-261011-01-计划工作流模板设计/` 和 `docs/Plan/README.md` 的本计划入口；其他既有脏文件与真实计划库均未触碰。文档所有权现已释放。
+- **已设计：** 写明预设匹配顺序、冲突时列出候选、手动切换仅作用本次；预设由可配置的生成项组合放置目录、名称模板、内容模板与单次／逐日生成。`{this.folder_name}` 在每个生成项按最终目标目录求值；周日联动是两个生成项的组合。以上仍是设计草案，不是产品实现。
+- **实际检查：** 执行 `git status --short --branch`、只读检查规格和执行记录；`plan.json` 解析成功，6 项任务中 4 项已完成、2 项待用户审阅与后续计划；`git diff --check -- docs/HANDOFF-CURRENT.md docs/Plan/README.md` exit 0，另有既有 CRLF/LF 提示。未运行产品测试或构建，本轮未改代码。
+- **下一步 / 等待 / 剩余：** 等待用户审阅整份设计，特别是预设生成项、命名变量和周日交接规则；方案 B 的选择不等于整份规格批准。确认后再写分阶段实施计划。产品实现、真实计划库迁移和应用验收尚未开始；本轮未暂存、提交、推送或发布。
+
+## 当前所有权与结论（2026-10-11，计划工作流与模板设计草案完成）
+
+- 基线：`main...origin/main`；工作树已有大量未提交及未跟踪文件。本轮只做设计，不修改产品代码或 `D:\Desktop\Plan` 真实计划库，也不覆盖、回退其他工作。
+- 本轮文档边界：`docs/superpowers/specs/2026-10-11-plan-workflow-templates-design.md`、`docs/Plan/Future_Plan/Qore/Trace/Plan-261011-01-计划工作流模板设计/`、`docs/Plan/README.md` 中本计划索引，以及本文件新增的本轮交接段落。其他文件不属于本轮；本轮所有权现已释放。
+- **已核对：** 用户明确先完成完整工作流设计，`{date}` 表示计划目标日期；`{this.folder_name}` 表示计划将放入的直接父文件夹名称。已只读检查实际计划库分类与命名、现有命名模板和计划操作契约。
+- **设计完成：** 规格涵盖目标目录及规则作用域、`this.folder_name` 等变量、目标日期、内容模板、周日批量创建、跨周交接、同日冲突和小沅共用预览。同步新增执行记录与 `plan.json` 镜像，README 已加入入口。上述均为设计草案，不是产品实现。
+- **实际检查：** 使用 `git status --short --branch`、`Get-ChildItem`、`Get-Content`、`rg` 只读核对目录及代码；设计镜像 JSON 解析成功（2 组件、5 任务，其中 3 已完成）；规格相对链接解析到现有文件；`git diff --check -- docs/HANDOFF-CURRENT.md docs/Plan/README.md` exit 0，另有既有 CRLF/LF 提示。未运行 typecheck、测试、构建或 Electron 验收，因为没有改产品代码。
+- **下一步 / 等待 / 剩余：** 等待用户审阅设计草案并指出需调整的个人习惯规则。确认后再写实施计划；产品实现、真实计划库迁移与应用验收均未开始。本轮未暂存、提交、推送或发布。
+
+## 当前所有权与结论（2026-10-10 00:22 +08:00，小沅 Phase 1/2 规格复核与自动化验证完成）
+
+- 基线：`main...origin/main`，HEAD `aa8c99c70b5dcc28b1fa2bd87ac035172f615aed`。开工时工作树已包含大量未提交与未跟踪内容，本轮仅在登记边界增量修改；未暂存、提交、推送、发布或清理其他改动。所有权现已释放。
+- 验收基线为 `docs/superpowers/specs/2026-10-02-agent-foundation-design.md` 与 `docs/superpowers/specs/2026-10-03-agent-plan-operations-design.md`；仅覆盖 Phase 1/2，不以历史交接状态代替规格验收。
+- 本轮审计及实施边界：`src/main/services/agent-tool-registry.ts`、`src/main/services/agent-operation-service.ts`、`src/main/services/agent-session-repository.ts`、`src/main/services/agent-conversation-service.ts`、`src/main/ipc/register.ts`、`src/renderer/src/views/agent-chat/AgentOperationView.tsx`、`src/renderer/src/components/TrashDialog.tsx`、`src/renderer/src/styles/trash.css`、Agent 中英文 locale；对应 Agent/Trash/样式 specs；隔离验收脚本 `scripts/trace-phase2-isolated-electron-runner.cjs` 与仅供 runner 使用的 bootstrap。
+- **已实现：** `trash.list` 无参数读取当前活动库全量回收站且不签发写授权；策略符合的普通小范围可撤销操作不因 `@` 目标读取而额外逐项确认；应用重启会取消悬而未决的确认、补齐未执行工具结果，并使结构操作 undo 重新校验持久化审计、库/对象身份与 CAS；普通操作只由会话卡确认，永久清空保留精确二次确认。修正 Trash reduced-motion CSS，使根节点和后代使用极短正时长以保留 Ant motion 生命周期。隔离 runner 已对齐当前仓库产物，并用 QA-only Chromium 开关保证后台窗口 rAF 推进；树行定位按可见状态展开。
+- **定向验证：** 7 files / 200 tests passed：`agent-tool-registry`、`agent-operation-ipc`、`agent-session-repository`、`agent-conversation-ipc`、`agent-operation-view`、`trash-dialog`、`style-boundaries`。
+- **类型与构建：** `npm run typecheck` 通过；`npm run build` 通过，7186 renderer modules transformed。`node --check` 对 runner 与 bootstrap 均通过；最终 `git diff --check` exit 0，仅有 CRLF/LF 转换提示。
+- **完整测试：** `TZ=Asia/Shanghai npm run test -- --pool=threads --maxWorkers=1 --no-file-parallelism`：87 files / 1231 tests，1229 passed、2 failed。仅 `test/diary-automation-coordinator.spec.ts` 两项午夜跨 DST 用例使用了非 `Asia/Shanghai` 的预期时区；该文件在 `TZ=America/New_York` 定向 14/14 通过，`TZ=Asia/Shanghai` 的 `test/diary-view-utils.spec.ts` 定向 14/14 通过。首次 5 项失败中的两项 fixture `SAVE_FAILED` 在最终全量运行未复现；最终结果仍不记为全绿。
+- **隔离 Electron runner：** `node scripts/trace-phase2-isolated-electron-runner.cjs` PASS；production main/preload/renderer 与一次性用户数据/计划库，loopback 合成 SSE 共 11 请求，覆盖外发预览、操作卡确认、只读 `trash.list`、回收站冲突恢复/命名清空/恢复、取消与接受清空、目标授权失效、按读结果取消外发、批次恢复，以及 Context / EditMenu / DeleteKey 三种删除入口与引用影响处理。renderer runtime exception 0；退出后仅删除本次标记确认的临时夹具。`--d3-delete-reference-diagnostic` 单独复跑也 PASS，0 provider 请求。
+- **失败运行夹具：** 之前的 8 个 runner 失败现场仍在 `%TEMP%\trace-agent-phase2-isolated-e2e-*`，后缀为 `D07I0A`、`3onVyd`、`ToLANw`、`j6Y2dM`、`ngvHcZ`、`ZOWIkp`、`RQHvX7`、`ZYE212`。已核验每个绝对路径位于 Temp 直接子目录、目标为普通目录且 owner marker 格式正确。PowerShell 递归删除被执行策略拒绝，故未删除；成功 runner 新建的夹具已按自身 marker 检查清理。
+- **用户侧边界：** 未连接真实 Provider/模型、未验证续轮真实 schema 适配、safeStorage 在最终安装环境、真实用户计划库、原生窗口键鼠/IME/DPI/读屏及主题/窄屏体验；隔离 runner 不替代这些验收。下一步是用户重启/打开更新后的 Trace 后按需检查实际模型隔离预览并亲自决定是否发送，以及验收原生界面。当前无实现所有权待办，等待用户侧验收。
+- **状态：** 实现与本地自动化验证完成；保留全量测试的 2 项时区依赖失败说明。未暂存、提交、升版、打包、推送或发布。
+
+## 当前所有权与结论（2026-10-09，计划创建与任务列表原子写入）
+
+- 基线为 `main...origin/main`，HEAD `aa8c99c70b5dcc28b1fa2bd87ac035172f615aed`。本轮代码边界为 `src/main/services/agent-tool-registry.ts`、`src/main/services/agent-operation-service.ts`、`src/main/services/plan-reference-service.ts`、`src/main/services/storage-service.ts`；测试边界为 `test/agent-tool-registry.spec.ts`、`test/agent-operation-ipc.spec.ts`。文档边界为 `docs/superpowers/specs/2026-10-03-agent-plan-operations-design.md`、`.issues/2026-10-09-agent-tool-continuation-protocol-interruption.md`、小沅请求诊断计划、`docs/Plan/README.md` 和本文件。以上实现与验证已完成，边界现释放；工作树其他既有 dirty/untracked 文件与用户资源均保留，未回退、暂存或提交。
+- **事实边界：** 用户此前的普通续轮成功创建了一个空计划，后续工具调用在 `completion.arguments_schema` 被拒绝，未执行。原脱敏诊断没有记录具体工具名和参数字段，因此原始模型调用的精确 schema 不匹配项仍未知。本轮代码审查另确认，旧 `plan.create` 契约本身不支持在同一次调用提交任务清单；创建后也不能绕过每条消息的 `@` 授权直接用 `task.add` 追加。此次改动解决“一个计划包含全部任务”的产品能力，不伪称已还原原始模型参数。
+- **已实现：** `plan.create` 允许一个严格封闭、最多 50 项的可选初始 `task_list`；主进程生成组件/任务 ID 并强制任务状态为未开始。计划及任务清单通过同一个 `plan.json` 原子创建；多任务计划进入批量确认，隔离预览显示完整任务差异，取消不产生磁盘副作用。未增加 renderer IPC、未放宽既有库根/父目录身份与路径保护、未修改此前已经创建的空计划，也未发送真实模型请求。
+- **验证：** 新增的 schema 与 typed IPC/loopback/temp-library 回归按 RED 后 GREEN。相关四个 spec 最终 **145/145 通过**；第一次相关套件中有一个既有 `plan-reference-ipc` fixture `SAVE_FAILED`，单例重跑通过，随后四 spec 全量重跑通过。`npm run typecheck` 通过；最终代码状态下 `npm run build` 通过（7186 renderer modules transformed）；`git diff --check` exit 0，仅有 HANDOFF 的 CRLF/LF 转换提示。计划镜像 JSON 解析成功且 15 个任务 ID 唯一。未跑全项目完整测试。
+- **下一步 / 等待 / 剩余：** 等待用户在 Electron 开发窗口中通过一条新消息验证实际模型是否按新 schema 发出单个带完整 `task_list` 的 `plan.create`，并由用户检查隔离预览后自行确认。不要重发此前原始消息，不要自动发送或回填现有空计划。当前会话未启动/重启 Electron、未发真实模型请求；模型实际是否会选择该工具与参数形状仍未验证。
+- **状态：** 代码实现与本地验证完成；未暂存、提交、打包或发布。上述文件所有权已释放。
+
+## 当前所有权与结论（2026-10-09 21:15 +08:00）
+
+- `/root` 继续负责小沅普通对话续轮诊断；本轮精确扩展代码/测试边界为 `src/main/services/agent-sse.ts`、`test/agent-provider-http.spec.ts`，保留文件内现有未提交改动并只增加参数 schema 失败的脱敏结构诊断；原 `src/main/services/agent-request-service.ts`、`test/agent-request-ipc.spec.ts` 开发续轮诊断改动继续保留。文档边界为本问题记录、本计划、`docs/Plan/README.md` 和本文件。其它 dirty/untracked 文件及用户资源不属于本轮。
+- **应用复现证据：** 用户在隔离预览中确认续轮外发后，开发终端记录到 HTTP 200 / `event-stream`；SSE 有一个名称在工具 allowlist 内、参数串长度 145 的工具调用，结束原因为 `tool_calls`，随后收到 `[DONE]`。正式累加器拒绝于静态阶段码 `completion.arguments_schema`。具体工具名、参数键和值均未记录；不能断言是哪项字段或 schema 约束不符。由此可确认此前的空终止帧兼容修复不是这次失败点。
+- **操作边界：** 首个计划创建操作已有成功回执；失败发生在后续 continuation 对模型返回工具参数的本地校验阶段，因此该工具调用未交给操作服务执行。截图仍显示等待外发预览；批次状态/错误提示应以最新回执为准。诊断期间不自动重试、不重新发送原始用户消息、不代用户确认外发。
+- **`code=21` 区分：** `ERR.STATE_MACHINE` 为 21，IPC 对 Agent 错误会隐藏内部消息并显示通用错误。日志另有多条 `agent:request:continue code=21`，它们不是 HTTP 状态或服务端错误；现有日志不足以判定每一条命中的是哪个状态门，也不据此推断用户点击次数或产生了额外工具写入。
+- **已实现：** `AgentSseAccumulator` 在 schema 校验拒绝前向现有开发 diagnostic observer 发出结构摘要：仅包含经语法约束的 allowlist 工具名、由本地 schema 导出的安全路径、失败类别、实际 JSON 类型、允许的预期类型，以及未知属性数量。普通续轮 observer 与能力测试 observer 都受 `ELECTRON_RENDERER_URL` 开发环境门控；参数值、未知属性名称、任意模型字段值仍不记录；校验接受/拒绝、错误类别和 `completion.arguments_schema` 静态阶段码保持不变。
+- **验证：** 两个 loopback HTTP SSE 隐私/结构测试先 RED（诊断没有 schema mismatch 事件）后 GREEN。`npm run test -- test/agent-provider-http.spec.ts test/agent-request-ipc.spec.ts`：2 files / 92 tests passed；`npm run typecheck`：通过；`npm run build`：通过；`git diff --check`：exit 0，仅有其它既有文件换行提示。未运行全量测试。
+- **本轮下一步：** 已有开发 Electron 窗口需重启以载入最新 main bundle。下一次实际定位需用户再检查并确认新的隔离续轮预览；本轮不代发、不自动重试，也不重新发送原始用户消息。预期新增日志会在 `completion.arguments_schema` 之前出现 `phase=schema-mismatch`，但这尚未经过真实应用验证。
+- **当前状态：** 实际失败已定位到本地工具参数 schema 校验；具体字段/约束待新脱敏诊断。此前的请求已由用户确认后实际发出，本轮没有再发请求。未暂存、提交、打包或发布。
+
+## 当前所有权与结论（2026-10-09 20:56 +08:00）
+
+- `/root` 当前仅负责普通对话续轮的开发模式脱敏诊断与 loopback 回归；源码/测试边界为 `src/main/services/agent-request-service.ts`、`test/agent-request-ipc.spec.ts`，文档边界为 `.issues/2026-10-09-agent-tool-continuation-protocol-interruption.md`、小沅请求诊断计划、`docs/Plan/README.md` 与本文件。两代码文件已有未提交错误诊断改动属于既有工作，本轮在其上增量修改，不覆盖或回退；其他工作树 dirty/untracked 文件、用户资源和设置 UI 改动均不属于本轮。
+- **现象证据：** 截图对应本机 session `c0c79f2a-4f08-4d31-8335-b1b4cf920b86`：初始 user/assistant 回合完成；随后 1 次计划工具操作成功（`created_path`），批次状态为 `awaiting-outbound-preview`；工具结果后的 assistant continuation 收到 HTTP 200，但持久化为 `error-interrupted` / `protocol`。本轮仅 1 次请求、1 次工具调用；截图中批次摘要和逐项回执是同一批次的两处呈现，不是重复创建。现有持久化诊断不含 SSE parser 阶段码，因此具体拒绝规则仍未知。
+- **本轮实施边界：** 仅在续轮 provider 请求上增加受 `ELECTRON_RENDERER_URL` 限定的开发模式结构观察；用现有 `AgentStreamDiagnostic` allowlist 输出 request ID、HTTP 状态/媒体类型、有限 SSE 结构摘要及静态阶段码到本机开发终端。不得记录 prompt、消息/计划正文、原始 SSE/body、字段任意值、URL、API Key/Bearer；不新增持久化字段、IPC、重试或解析容忍规则。初始普通请求不得启用这段观察。
+- **已实现：** 为 `AgentRequestService.dispatchContinuation` 增加仅续轮的 `AgentStreamDiagnostic` observer；仅在 `ELECTRON_RENDERER_URL` 存在时，将现有 allowlist 阶段摘要与 request ID 写入本机开发主进程终端。普通首轮不启用；不新增 IPC/持久化、不记录正文/raw SSE/URL/API Key/Bearer，不改变解析规则或重试行为。
+- **验证：** loopback RED 阶段开发模式用例因未观察到诊断而失败（预期）；生产模式不记录用例通过。接线后两个新用例 2/2 通过；`npm run test -- test/agent-request-ipc.spec.ts`：1 file / 43 tests passed；`npm run typecheck`：通过，exit 0；目标 `git diff --check`：通过（Git 对 HANDOFF 的 CRLF 有既有换行提示）。未运行全量测试或 build。
+- **当前进度：** 代码侧诊断已就绪。原 Electron 窗口曾运行旧 bundle；已优雅关闭并用 TTY 重启开发版，main/preload 均构建成功、`[trace] main ready`。Renderer 回退至 `http://localhost:5174/`（5173 被占用）。真实续轮日志尚未取得，具体拒绝阶段仍未知。用户可从原批次点击“再次预览续轮外发”，核对隔离预览内容并自行确认；本轮不代发真实请求、不自动重试。获得日志后再判断是此前已修复的空终止帧兼容问题，还是其他协议拒绝。问题记录见 `.issues/2026-10-09-agent-tool-continuation-protocol-interruption.md`。
+- **状态：** 该轮仍在诊断阶段；未修复或放宽 SSE 解析规则。未提交、未暂存、未打包、未升版、未推送或发布。
+
+## 当前所有权与结论（2026-10-09 20:42 +08:00）
+
+- `/root` 当前负责小沅能力测试 SSE 终止帧兼容的精确修复与应用复测；源码/测试边界为 `src/main/services/agent-sse.ts`、`test/agent-provider-http.spec.ts`，同步本计划、`docs/Plan/README.md`、`.issues/2026-10-09-agent-sse-empty-assistant-terminal-compat.md` 与本文件。保留工作树已有改动，不覆盖其它所有权。
+- **应用内根因证据：** 用户在 2026-10-09 20:36 左右触发了一次能力测试。主进程本机脱敏日志显示 HTTP 200、`event-stream`；第一事件有 1 个合法形态的工具调用（名称在 allowlist 内，ID/参数形态校验通过）并带 `finish_reason=tool_calls`；第二事件仍是同一结束原因，但 delta 字段是 `role` 与空字符串 `content`；随后有 `[DONE]`。旧累加器把第一帧立刻视为终止，第二帧因 delta 非空报 `sse.duplicate_terminal_mismatch`。日志没有记录 role 值、模型正文、API Key、URL 或请求正文；因此不能从诊断直接断言第二帧 role 的实际值。
+- **已实现：** 在终止后仅额外允许完全空 delta，或字段恰为 `{ role: 'assistant', content: '' }` 的空 assistant 延续帧，且 `finish_reason` 必须与已记录值相同。非空尾文、工具调用/其它 delta 字段、role 非 assistant、结束原因不同或结构不合法仍 fail-closed。开发模式结构诊断继续只由固定合成能力测试使用，主进程仅输出有限 allowlist 摘要，无 Renderer/IPC 变化、无持久化。
+- **验证：** 新 loopback 用例先 RED（真实结构被拒绝），精确兼容后 GREEN；另有非空重复终止内容拒绝回归。`npm run test -- test/agent-provider-http.spec.ts`：47/47；`npm run typecheck`：通过，exit 0；`git diff --check`：通过（仅既有文件换行格式警告）。未跑全量测试或生产 build。
+- **应用内复测：** 新 Electron main 终端随后出现两组完整的 capability `passed` 诊断序列（HTTP 200 event-stream、工具调用、相同 `tool_calls` 结束原因、空 assistant 延续、`[DONE]`）。不根据日志推断用户触发了几次；主进程仅记录结构摘要。只读核对 `C:\Users\aaa\AppData\Roaming\trace\agent-profiles.json` 中的非敏感能力字段，确认 profile `status=passed`，`testedAt=2026-10-09T12:39:19Z`，`errorCategory=null`。能力状态已写入。普通对话连续中断是否由同一个或其它原因引起仍未验证。
+- **运行态：** 代码变更后使用 TTY 重新启动 Electron dev；首次非 TTY 启动因 `process.stdout.clearLine is not a function` 未能完成 preload，改用 TTY 后 main/preload 构建成功且 `[trace] main ready`。当前 session `17502`，renderer `http://localhost:5174/`，Electron PID 53948/41684/2312/27216，均于 20:38:30 启动。Electron 窗口保持打开供用户查看。
+- **不做：** 不自动重试、不在本轮代用户发起其它真实模型请求，不记录 raw SSE/正文/凭据，不更改 IPC 或能力门控，不触碰普通连续中断的其它潜在原因。
+- **状态：** 能力测试应用内错误已定位并最小修复；定向测试、类型检查及真实应用保存状态均验证通过，Task 14 完成。一般对话偶发/连续中断仍是独立未结问题。未提交、推送、打包或发布。
+
+## 当前所有权与结论（2026-10-09 17:52 +08:00）
+
+- `/root` 本轮实现与测试所有权已释放：仅修改 `src/main/services/agent-sse.ts`、`test/agent-provider-http.spec.ts`，并同步本计划、`docs/Plan/README.md` 与本文件。未覆盖其他既有 dirty/untracked 工作。
+- **定位：** 单次固定合成 GLM-4-Flash 探针已通过 Trace 正式 `runAgentToolCapabilityTest → streamChatCompletion → AgentSseAccumulator`。HTTP 200 SSE 的第一个事件包含完整合法工具调用并带 `finish_reason=tool_calls`；随后服务又发一条相同结束原因、`delta:{}` 的空终止事件，再发 `[DONE]`。旧累加器在第一个终止事件后将 `finished=true`，因此把第二个合法空终止事件判为 `protocol`。
+- **最小修复：** 仅在已终止后接受结束原因与既有值相同、且 delta 没有任何自有字段的重复事件；结束原因不同、delta 包含文本/工具调用/任意字段，或事件结构不完整仍 fail-closed。没有放宽其他 SSE 校验。
+- **回归证据：** RED 阶段新能力测试按旧实现返回 `failed / protocol`；修复后重复终止接受、不同结束原因拒绝、终止后工具调用拒绝，以及既有终止后文本拒绝，共 4 个相关用例通过。`npm run test -- test/agent-provider-http.spec.ts`：1 file / 44 tests passed；`npm run typecheck` 通过；`npm run build` 通过；目标代码 `git diff --check` 通过。未运行全量测试。
+- **凭据与验收边界：** 实际探针只用进程环境变量 `GLM_TEST_261009` 一次，不重试、不含用户数据、不记录密钥/原始响应；其返回形态现在由正式解析器和 loopback 回归复现并通过。但隔离 Electron 主进程无法读取应用已保存密钥，故不能证明环境变量密钥与设置页已保存密钥一致。未再发真实模型请求，也未核实现有 Electron 窗口已加载新主进程代码。用户应在重启/热重载后的设置页重新点击“测试工具能力”；应用内 `passed` 才能证明保存凭据路径完成验证。
+- **未做：** 未跑全量测试、未构建安装包、未升版本、未提交、未推送或发布。下一步等待用户在当前开发窗口复测；若仍失败，需以新的诊断时间与脱敏诊断继续对照凭据/实际 profile。普通会话连续中断仍是独立未结问题。
+
+## 当前所有权（2026-10-09 17:41 +08:00）
+
+- `/root` 临时负责能力测试协议缺陷修复；源码/测试所有权仅为 `src/main/services/agent-sse.ts` 与 `test/agent-provider-http.spec.ts`，并同步本计划/HANDOFF。临时 harness 源 `temp/Trace-AgentCapability-Diagnostic-20261009.cjs`、bundle `temp/Trace-AgentCapability-Diagnostic-20261009.bundle.cjs`、脱敏报告 `temp/Trace-AgentCapability-Diagnostic-20261009.json`、`temp/Trace-AgentCapability-Diagnostic-20261009-02.json`、`temp/Trace-AgentCapability-Diagnostic-20261009-03.json` 与 Electron 隔离用户数据目录 `temp/Trace-AgentCapability-Diagnostic-profile-20261009/` 同属本轮，完成后仅清理这些精确目标。产品其它源码无所有权，不覆盖其它 dirty/untracked 内容。
+- 预检：默认服务元数据确认为 `open.bigmodel.cn / glm-4-flash`，凭据文件状态为 saved；独立 Electron 进程里的 `AgentCredentialStore.getForProvider` 无法读取明文，故未获得实际已保存密钥，且该轮 `requestCount=0`。不会继续尝试读写/迁移该凭据。系统环境变量可用，但当前进程未继承；通过机器级变量只读取值后，单次正式解析器探针返回 HTTP 200 / `text/event-stream`，能力分类仍为 `protocol`。请求使用固定合成提示/工具，无个人数据。用户截图时间为 2026-10-09 17:33 左右。
+- 根因已由结构证据定位：响应包含两条 JSON data 事件和 `[DONE]`。第一条含一个合法工具调用并带 `finish_reason: tool_calls`；第二条为 `delta:{}`，重复相同 `finish_reason: tool_calls`。工具索引、ID 字符、函数名、参数 JSON 与固定参数均符合预期。`AgentSseAccumulator` 在第一条置 `finished=true`，处理第二条时无条件报 `protocol`；此为已复现的解析缺口，而非模型没有工具调用。
+- 当前测试边界：用现有 loopback HTTP SSE 与公开 `runAgentToolCapabilityTest`/`createAgentCapabilityRequest` 验证：仅接受同一 terminal `finish_reason` 的空 delta 重复事件；终止后若出现文本、tool call、不同 finish reason 或结构错误仍拒绝。先单测 RED，再最小实现与 GREEN。此结果仍不能证明环境变量密钥等同于应用保存密钥；用户之前在应用中观察到的失败与同一服务协议形态相符。
+
+## 当前所有权（2026-10-09 17:04 +08:00）
+
+- `/root` 已完成单次 GLM-4-Flash 合成强制工具调用探针，现释放所有权；无产品源码所有权。请求使用进程环境变量 `GLM_TEST_261009`，最多一次、无重试。未读取或输出密钥值。
+- 结果：HTTP 200，Content-Type 为 `text/event-stream; charset=UTF-8`；2 个 data 事件，观察到 1 个 choice 与工具调用片段；工具名及唯一参数 `{value:"ready"}` 精确匹配；`finish_reason=tool_calls`，收到 `[DONE]`，无 provider error。本次独立脚本按已检查字段给出 `passed`。
+- 这证明该环境变量凭据、host、模型与合成工具 schema 的组合能够完成强制工具 SSE 调用；不证明它等同于 Trace 当前保存的 API Key，不会自动改写 Trace profile 的 capability 状态，也不能解释此前部分文本后的中断。未发送个人/计划/日记内容；响应仅保存在进程内用于解析，未写文件。未改源码、配置或用户数据。
+
+## 当前执行状态（2026-10-09 17:04 +08:00，探针完成；等待应用内复测）
+
+- 源码路径仍显示：正式会话仅在 profile 能力状态为 `passed` 时附带工具。独立 PowerShell 进程按 `createAgentCapabilityRequest` 的固定提示、工具 schema、forced tool choice 发起真实请求，并观察到 HTTP 200 SSE、预期工具名/参数、`tool_calls` 与 `[DONE]`。此处未把响应交给正式 `AgentSseAccumulator`；脚本没有核验其全部严格细节（例如工具调用 ID 格式），因此这不是 Trace 内能力测试通过的等价证据。该探针也未调用 Trace 的 OS 密钥解密、能力 IPC 或 profile 状态持久化。
+- **诊断结论：** 上游 GLM-4-Flash 对该强制工具调用 schema 的基础支持已验证，且测试环境变量所持凭据通过了本次请求。当前证据把剩余差异收敛至 Trace 设置中保存的服务凭据/实际 profile 状态，或 Trace 应用内能力测试路径；在核对前不能断定是哪一个，也不能直接把 capability 标记成通过。
+- **下一步：** 在 Trace「设置 → 小沅模型服务」选中 `glm-4-flash` 对应服务，确认其 API Key 是预期凭据后，点击“测试工具能力”。如果显示通过，重新发送原普通对话即可让会话携带工具；如果仍失败，提供应用内测试结果/诊断，再对比实际 profile 配置和应用请求路径。不要把 API Key 粘贴到对话。
+- **等待 / 剩余：** 用户在应用中的能力测试复测；本轮不再外发。连续请求中断仍是独立待查项，本次工具能力通过不代表该问题已解决。
+
+## 历史所有权快照（2026-10-09 14:52 +08:00）
+
+- `/root` 已完成用户授权的两项真实模型诊断并释放临时 harness 所有权；本轮最多两条实际 HTTP 请求，未重试。当前配置元数据为 `智谱glm-4 / glm-4.7-Flash`、host `open.bigmodel.cn`，OS 加密凭据存在；未读取或输出密钥明文。第一条连通性探针超时；第二条通过正式会话工作流收到 HTTP 429，细节见下方执行状态及共享计划。第二条按 Trace 现有本机会话流程保存为“小沅对话完整性测试”，会话 ID `23d3ea7c-0131-4f4b-9e4a-112f9f48a99a`，共 2 条消息；未携带历史、计划/日记上下文、`@` 目标或工具 schema。临时 harness 与结果文件已删除。产品代码无所有权。
+
+## 历史执行状态（2026-10-09 14:52 +08:00，两步真实模型诊断已完成）
+
+- **配置与入口：** Electron 无网络 dry-run 标记验证通过，且 Trace 用户数据目录匹配。默认服务 `智谱glm-4`、模型 `glm-4.7-Flash`，host `open.bigmodel.cn`；OS 加密凭据可见且未输出明文。连接探针只含“请仅回复：Trace 连通性测试成功。”；第二次使用用户指定的 7 项事项原文。
+- **连通性探针：** 恰好 1 次 fetch；在 `AGENT_REQUEST_TIMEOUT_MS=60,000` 超时，错误分类 `timeout`，没有收到 HTTP 状态或响应 Content-Type。它未证明该次请求是否到达服务端。
+- **完整对话：** 经 `AgentConversationService` 创建预览、校验冻结快照、`AgentRequestService.send` 与 `AgentProfileService.dispatchAuthorized`，预览精确匹配用户原文，0 历史、0 计划/日记上下文、0 工具。外发批准由 harness 回调在精确快照匹配后自动放行；本轮未验证隔离审批窗的视觉或鼠标交互。恰好 1 次 fetch，收到 HTTP 429；Trace 将助手消息持久化为 `error-interrupted`，正文长度 0。经应用脱敏后保存的服务摘要为“该模型当前访问量过大，请您稍后再试”。
+- **故障节点判断：** 本轮足以确认完整工作流已经到达 `open.bigmodel.cn` 上的服务端，并收到清晰的 HTTP 429 高访问量错误；这更符合上游模型繁忙/限流，不像本次的消息预览授权或响应格式解析失败。由于连通性探针先超时、完整请求又被 429 拒绝，本轮不能证明 API Key 已成功完成认证、不能验证模型能正常产出完整对话，也不排除服务端对额度/并发的其它策略。此前用户报告的 HTTP 200 响应格式中断并未在本轮复现，本轮也未证明其根因已解决。
+- **安全与清理：** 两项各发送 1 次，总计 2 次，未重试。密钥只由 `AgentProfileService` 在内存中取用；本地诊断报告脱敏。测试会话按既定溯源约定保留在 Trace 本机数据目录。临时 TypeScript harness、Electron bundle 与结果文件已清理；未改产品代码、服务配置、API Key、计划/日记或版本。
+- **下一步 / 等待 / 剩余：** 当前诊断步骤完成，暂无更多请求授权或自动重试。用户可稍后根据服务商状态决定是否另行安排一次新的测试；当前已知故障点是服务端 429 高访问量/限流，连通性请求本身的超时原因未知。真实模型成功完成对话仍未验证。
+
+## 历史所有权快照（2026-10-09 14:20 +08:00）
+
+- `/root` 当前负责用户授权的两项真实模型诊断：一次纯连通性文本请求，以及一次完整对话请求。只允许两次模型 HTTP 调用，不重试。默认配置已核验为 `智谱glm-4 / glm-4.7-Flash`、host `open.bigmodel.cn`，加密凭据存在；不读取/输出密钥明文。连接请求只含固定探针；对话请求使用用户本轮指定的 7 项事项原文，并走 `AgentConversationService` 预览冻结、`AgentRequestService.send`、`AgentProfileService.dispatchAuthorized`。不带历史、计划/日记上下文、`@` 目标或工具 schema；因使用正式会话服务，对话测试会保存在本机 Agent 会话库供溯源。临时 Electron harness 仅在 `scripts/trace-agent-model-test.tmp.ts` 与 `scripts/trace-agent-model-test-app.tmp/`；完成后清理。产品代码无所有权。
+
+## 历史执行状态快照（2026-10-09 14:20 +08:00，两步真实模型诊断开始前）
+
+- **目标：** 先用当前默认服务/模型完成一条最小连通性请求，再用用户给出的原文，通过 Trace 当前对话服务流程验证一次完整回复；两次最多各一条 HTTP 调用，不重试。
+- **配置复核：** 当前元数据为服务 `智谱glm-4`、模型 `glm-4.7-Flash`、host `open.bigmodel.cn`；能力状态 `passed`、OS 加密凭据文件存在。未读取或输出密钥明文。
+- **请求边界：** 连通性消息为“请仅回复：Trace 连通性测试成功。”。第二条使用当前用户本轮提供的原文。两者均不附带历史、计划/日记上下文或 `@` 目标；第二条只验证普通对话，不传工具 schema，避免本测试触发计划操作。完整对话通过正式 `AgentConversationService` 预览和 `AgentRequestService.send`，经主进程精确快照授权回调发送，并保存在本机 Agent 会话库。
+- **当前验证进度：** 尚未发出本轮两条请求。先验证 Electron 临时 app 入口能捕获无网络 dry-run 输出；dry-run 未通过则立即停止、不发送。成功后执行严格两次请求上限，分别记录 HTTP 状态、Content-Type、解析结果/安全诊断与第二次会话终态。临时文件完成后删除。
+- **下一步 / 等待 / 剩余：** 继续确认入口和服务装配，再依次运行两项请求。是否完整回复以第二次会话的终态和已保存助手消息判定；不得将 HTTP 200 单独当成成功。未修改产品逻辑或服务配置。
+
+## 当前所有权（2026-10-09 14:14 +08:00）
+
+- `/root` 的一次真实模型发送诊断尝试已结束，临时探针已清理。此前默认配置元数据核验为 `智谱glm-4 / glm-4.7-Flash`、host `open.bigmodel.cn`，加密密钥文件存在；没有读取或展示密钥明文。探针仅允许固定单条、无上下文、无工具请求，并在内存中经 `AgentProfileService.dispatchAuthorized` 获取密钥。实际请求结果未能确认：Electron 直接运行探针 CJS 与 `--dry-run` 均 exit 0，但 stdout 都没有诊断输出，故无法确认入口是否执行、是否发出请求、HTTP 状态或模型回复；不得据此称测试成功/失败，也不得在没有新授权时重试。本轮未修改产品逻辑、API Key、会话或用户计划库。
+
+## 当前执行状态（2026-10-09 14:14 +08:00，真实模型发送测试结果未能捕获）
+
+- **用户授权范围：** 使用已保存的默认智谱配置发送一条无历史、无计划/日记、无工具的固定测试提示：“请仅回复：Trace 连接测试成功。”本地核验的配置元数据为服务 `智谱glm-4`、模型 `glm-4.7-Flash`、host `open.bigmodel.cn`，加密密钥文件存在；密钥未读取到日志、未显示给用户。
+- **执行证据：** 临时探针以 Electron 打包为 `scripts/trace-agent-request-once.tmp.cjs`，esbuild 编译 exit 0。真实尝试命令 `electron.exe scripts/trace-agent-request-once.tmp.cjs` 返回 exit 0，但没有捕获探针 JSON 输出；为确认入口而运行的 `electron.exe ... --dry-run` 也返回 exit 0 且无输出。由于 dry-run 没有输出，不能证明探针入口确实执行；同样不能排除真实尝试曾发出最多一条请求。HTTP 状态、Content-Type、回复或结构化错误均未知。没有自动重试，也没有发第二条请求。
+- **安全与清理：** 临时 TypeScript 探针与 CJS bundle 已删除。未修改产品逻辑、API Key、会话内容、计划/日记数据；未暂存或提交。其他既有 dirty/untracked 文件保持原样。
+- **结论与下一步：** 此次外发测试未取得可验证结果，不能称模型配置可用或不可用，也不能确认此前的 HTTP 200 响应格式问题已复现/解决。等待用户决定是否重新授权一次可观测的测试；若继续，应先使用能可靠捕获 stdout/stderr 的正式应用入口，并在发送前再次展示唯一消息与目标配置。没有新授权前不重发。
+
+- `/root` 已完成“小沅 HTTP 200 / SSE 错误诊断”代码修改并释放实现所有权。当前只剩用户用实际模型重试并核对诊断的产品验收；本次请求实际 SSE payload 未取得，不能推断它与测试的结构化 error event 一致。实现范围与验证证据见下方最新执行状态。基线 HEAD：`aa8c99c70b5dcc28b1fa2bd87ac035172f615aed`。主工作树其余 dirty/untracked 内容均为既有工作，不覆盖、不回退、不暂存。
+
+## 当前执行状态（2026-10-09 07:26 +08:00，小沅 HTTP 200 错误诊断已实现，待用户复测）
+
+- **用户反馈：** 新诊断显示“响应格式”、HTTP 状态为空、无可识别摘要；截图中助手已输出部分文本后异常中断。
+- **已确认的代码缺口：** HTTP 非成功响应才提取结构化错误；HTTP 200 的 SSE 流若发送 `{error: ...}` 事件，`AgentSseAccumulator` 会因缺少 `choices` 将它归为通用 `protocol`，响应状态和错误消息均丢弃。其它协议错误也没有把已收到的 HTTP 状态带入诊断。
+- **根因边界：** 截图没有原始 SSE 事件，因此尚不能证明本次请求具体返回了哪种 payload。HTTP 200 的结构化 SSE 错误是与当前代码和症状相符的待验证假设，不作为已证实事实。
+- **实现：** HTTP 200 SSE 中明确的结构化 `error` 或顶层 `message`/`msg`/`detail` 事件，以及 HTTP 200 的结构化 JSON 错误响应，现在分类为 `provider`；只提取白名单消息、脱敏当前 API Key/Bearer/常见 token 后写入诊断，不保存/展示原始响应。非 JSON 的协议错误仍 fail-closed，同时保留已知 HTTP 状态。错误正文最多读取 8 KiB、总读取时间最多 200ms；非 2xx SSE 不等待服务关闭流才返回 HTTP 状态。中英文增加“服务端错误”分类。
+- **验证：** Provider loopback 在 RED 阶段重现 SSE 与 JSON 200 错误丢摘要；IPC 回归原先保存为 `protocol`。最终 `npm run test -- test/agent-provider-http.spec.ts test/agent-request-ipc.spec.ts test/agent-session-repository.spec.ts test/agent-view-preview.spec.tsx`：4 files / 100 tests passed。`npm run typecheck`、`npm run build`、所涉代码 `git diff --check` 通过。最终完整 `npm run test`：87 files / 1211 tests，1208 passed、3 failed：`test/style-boundaries.spec.ts` 期望的 `workspace.css` import 清单未包含既有未提交 `settings.css`；`test/plan-reference-ipc.spec.ts` 的 fixture setup `StorageService.savePlan → writeJsonAtomic` 间歇返回 `SAVE_FAILED`；`test/agent-target-picker.spec.tsx` 的多 `@` 目标 UI 等待超时。后三者未在本轮修复；SAVE_FAILED 与已登记的偶发保存现象相符，但本轮无底层 errno/根因证据。
+- **下一步 / 等待 / 剩余：** Electron 开发窗口已重启，`electron-vite dev` 的 main、preload 构建完成，main ready，renderer 地址为 `http://localhost:5174/`。由用户使用真实模型再发一次请求并复制新诊断。若类别为“服务端错误”、HTTP 200 且摘要出现，可确认它匹配本轮捕获的结构化错误路径；若仍是“响应格式”或摘要为空，请提供新诊断和请求时间再继续分析。当前不能称连续请求中断根因已修，也不能说已证明原截图对应 HTTP 200 SSE/JSON error。未提交、未升版、未构建安装包、未推送或发布。
+
+- `/root` 已完成并释放设置弹窗分类导航重构所有权。文件边界与结果见下方最新执行状态及 `.issues/2026-10-09-settings-dialog-overflow-api-key-discoverability.md`。基线 HEAD：`aa8c99c70b5dcc28b1fa2bd87ac035172f615aed`。
+
+## 当前执行状态（2026-10-09 05:52 +08:00，设置弹窗分类导航重构完成）
+
+- **用户目标：** 参照所附 ChatGPT 设置截图，设置弹窗采用固定侧栏分类、主区只显示当前分类，限制整体高度并只让主区滚动，避免多个设置内容纵向堆叠导致弹窗过高；保留小沅模型服务中的 API Key 配置引导。
+- **设计与实现：** 分类为「常规」「计划库」「命名模板」「小沅模型服务」「关于与快捷键」。弹窗宽度适配 viewport、最大高度 760px；桌面布局左侧固定分类栏，右侧当前分类独立纵向滚动；窄窗口下分类改为横向滚动栏，右侧主体仍独立滚动。使用 Trace 语义 token，保留键盘焦点态与 reduced-motion 处理。API Key 指引保留在小沅服务设置中；服务和密钥的保存边界未变。
+- **文件：** `src/renderer/src/App.tsx`、`src/renderer/src/components/SettingsNavigation.tsx`、`src/renderer/src/styles/settings.css`、`src/renderer/src/styles/workspace.css`、`src/renderer/src/i18n/locales/{zh-CN,en-US}.ts`、`test/app-shell.spec.tsx`、`test/settings-navigation.spec.tsx`、`test/agent-settings.spec.tsx`、`.issues/2026-10-09-settings-dialog-overflow-api-key-discoverability.md`、`docs/Plan/README.md` 与本文件。上一轮未提交的弹窗限高/API Key 引导改动与本轮合并保留。
+- **验证：** `npm run test -- test/app-shell.spec.tsx test/settings-navigation.spec.tsx test/agent-settings.spec.tsx`：3 files / 27 tests passed；其中测试用 loopback 返回的 401 是预期认证失败用例输出。`npm run typecheck` 通过；`npm run build` 通过；`git diff --check` exit 0。未启动 Electron 做实际视觉截图验证。
+- **边界：** 未运行全量测试、未运行 `build:win`、未升版本、未提交、未推送、未发布。主工作树其它既有 dirty/untracked 内容原样保留，未暂存、覆盖或清理；本轮所属源码/测试/文档改动也仍未提交。
+- **下一步 / 等待 / 剩余：** 等待用户在 Trace 中体验分类切换、低矮窗口与窄窗口布局。若用户满意，下一步再单独安排版本更新与 Windows 安装包构建；目前没有代码实现待办，仍缺实际 Electron 视觉与安装版验收。
+
+## 当前执行状态（2026-10-09 05:35 +08:00，设置弹窗与密钥引导修复完成）
+
+- **问题与修复：** 设置弹窗改为 viewport 自适应宽度；内容区限制最大高度并独立纵向滚动，设置描述表固定布局并约束标签列，移除两处最小宽度导致的挤压。新建服务面板增加中英文提示：先保存配置，API Key 输入框随后出现。API Key 继续使用原有密码输入、独立密钥 IPC/加密存储，不回读或显示已保存密钥。
+- **API Key 入口：** 顶栏「设置」→「小沅模型服务」→「新建服务」，填写服务名称、服务地址和模型并点「保存服务」；保存后服务会被选中，向下即可看到 API Key 密码框和「保存或替换密钥」。
+- **验证：** 先新增回归断言并确认旧实现失败（2 个目标用例失败）；修复后 `npm run test -- test/app-shell.spec.tsx test/agent-settings.spec.tsx` 为 2 files / 26 tests passed；`npm run typecheck` 通过；`npm run build` 通过；所涉 tracked diff `git diff --check` 通过。
+- **边界：** 未运行 Windows 安装包构建、未升版本、未提交或推送。主工作树其他既有 dirty/untracked 内容保留，未暂存、覆盖或清理。
+- **下一步 / 等待 / 剩余：** 等待用户在应用中体验弹窗内部滚动与 API Key 指引；若要让已安装版本获得修复，后续需单独安排版本更新、安装包构建与发布。本轮无代码所有权未释放项。
+
+## 当前执行状态（2026-10-09 05:26 +08:00，Trace v1.0.0 已正式发布）
+
+- **发布结果：** v1.0.0 已创建正式 tag 并发布到 GitHub 与 Gitee。发布提交 `7819ff6ad778456059f9232d69cd2c1c34986740`；最终发布记录提交 `aa8c99c70b5dcc28b1fa2bd87ac035172f615aed`。当前本地、GitHub `main`、Gitee `main` 均核验到 `aa8c99c`；两端 `v1.0.0` 均指向发布提交。
+- **安装包：** `builds/windows/Trace_1.0.0_stable_20261009_01.exe`，210,738,662 bytes，SHA-256 `76ED2D64F0313D0D9FDBE3333BDC306D6C10E839513BBE27D0328BDF1EA8157E`。GitHub Release asset 大小及 digest 与本地归档一致。Gitee Release 只发布说明与平台自动源码归档，不上传安装包。
+- **验证边界：** `npm run typecheck`、`npm run build`、`npm run build:win` 通过。集成后的全量测试为 85 files / 1190 tests，1187 passed、3 failed；用户批准跳过这 3 项继续发布，故不记为全量全绿。两个 DST 用例在 `TZ=America/New_York` 定向复验通过；SearchService 的一次 `SAVE_FAILED` 重跑未复现，根因未知。安装包未签名，NSIS 安装/卸载交互与用户侧键鼠、IME、DPI、窄窗口、屏幕阅读器验收未做。
+- **集成与工作树：** Task 8 代码已通过 merge commit `7f120722df604420fdf21dfc09a8c46ad47fd6e4` 合入，并包含在 v1.0.0。主 checkout 原有未提交修改与未跟踪资源仍保留，未暂存、未提交或清理；本次发布记录提交不包含这些文件。
+- **下一步 / 等待 / 剩余：** 等待用户安装并验收 v1.0.0（如安排）；剩余为 NSIS/真实用户环境验收、Task 8 的 CDP runner 运行证据与 8A 偶发保存失败根因（仍未知）。这些边界不改写为发布已验证。
+
+## 本地合入状态快照（2026-10-09 04:54 +08:00；后续进展见上方）
+
+- 本地正式合入完成：`main` 已 fast-forward 到 `7f120722df604420fdf21dfc09a8c46ad47fd6e4`（`feat(agent): integrate Xiaoyuan plan operations`）。提交父节点分别为原本地 `main` `369c5ff949d555e216c79e388637aeab35c13ba4` 与 Task 8 split `b4f52c1f34b775e7dbd6da054ea3afa25c7fa530`。冲突 `src/main/ipc/register.ts` 已解决，保留 `diary:year` 与 Agent IPC 注册。
+- 远端未动：`origin/main`、`gitee/main` 仍是 `369c5ff949d555e216c79e388637aeab35c13ba4`；本轮没有 push、PR、版本更新、Windows 安装包或 Release。主 checkout 原有 dirty/untracked 文件未暂存、未提交；合入前与 incoming 149 路径的精确/父子重叠为 0。
+- 验证证据：合并树 `git diff --cached --check`、`npm run typecheck`、`npm run build` 通过。串行全量测试 85 files / 1190 tests，1187 passed、3 failed（两个 DST 用例在 `TZ=Asia/Shanghai` 失败；SearchService 一次 `SAVE_FAILED`）；对应两个 spec 在 `TZ=America/New_York` 定向复跑 22/22 通过。`SAVE_FAILED` 原因未定位，因此全量测试如实记为未全绿。
+- **下一步 / 等待 / 剩余：** 本地合入已完成；等待用户决定是否继续远端 push/PR 或发布准备。人工键鼠/IME/DPI/窄窗口/读屏与真实安装包验收仍是独立验收边界；没有因为本地合入而宣称这些已完成。
+
+## 当前执行状态（2026-10-09 04:21 +08:00，三处测试稳定性修复已拆分并推送新分支）
+
+- 主 checkout `main`、`origin/main`、`gitee/main` 当前仍同在 `369c5ff949d555e216c79e388637aeab35c13ba4`。原实现 worktree 分支 `codex/xiaoyuan-plan-operations` 与 origin 仍同在 `9d3c4534fbdd1331ab803360a502e0e2c7a83703`；本轮未改写该分支或远端。
+- 在同一实现 worktree 新建本地分支 `codex/xiaoyuan-plan-operations-split`，重建提交序列：Task 8 实现基线 `280fcdc3c44cb457c157d739996f042acce1e76d`；三条独立修复为 `c9cba133f9f0af31f32dfa0cf4e8437c70c1ae5e`（仅 agent-operation 测试清理对 ENOTEMPTY 有界重试）、`c2a15069b6ad19b339246b0471474fa2a997e9bd`（仅 target-picker 超时配置）、`b4f52c1f34b775e7dbd6da054ea3afa25c7fa530`（仅 plan-reference 超时配置）。`agent-operation-ipc.spec.ts` 既有 20 秒 timeout 未登记为这三处之一，因此保留在 Task 8 基线。
+- 本地拆分分支工作树干净。新 HEAD 与原实现提交 `9d3c453` 的 tree SHA 均为 `ac5ea95f937c0f6590bff340189a4d1e54dfab70`，`git diff 9d3c453 HEAD` 无差异，故最终内容相同、仅提交边界重整。focused 命令 `npm run test -- test/agent-operation-ipc.spec.ts test/agent-target-picker.spec.tsx test/plan-reference-ipc.spec.ts` 实测 3 files / 99 tests passed（29.27s）；三条修复提交的 `git diff --cached --check` 均通过。本轮未跑全量测试、typecheck 或 build。
+- 用户回复“继续”后，按不改写既有历史的路径将新分支推送到 GitHub `origin`：`origin/codex/xiaoyuan-plan-operations-split` 已实测指向 `b4f52c1f34b775e7dbd6da054ea3afa25c7fa530`；原分支 `origin/codex/xiaoyuan-plan-operations` 仍指向 `9d3c4534fbdd1331ab803360a502e0e2c7a83703`。未创建 PR、未合并、未推送 Gitee，也未强推或改写原远端历史。文件编辑所有权已释放。
+- **下一步 / 等待 / 剩余：** 等待用户决定是否为新分支创建 PR / 合并；Task 8 最终交接中列出的用户侧原生键鼠/IME/DPI/窄窗口/读屏及真实安装包验收仍待用户安排。未升版、打包或发布。
+
 ## 当前执行状态（2026-10-09 02:48 +08:00，Task 1 CDP 问题交接给下一位智能体）
 
 - 用户要求把当前问题与整个执行流程整理成可交给另一智能体的工作流；本轮只写交接文档并同步计划，不再诊断、修改诊断代码或启动 Electron，不替用户派发智能体。

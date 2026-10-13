@@ -4,12 +4,16 @@
 // （修复：日记视图下 Ctrl+F 搜索 / Ctrl+N 新建计划 / 文件→设置 全部无效）
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { Badge, Button, Descriptions, Input, Modal, Radio, Spin, Switch, Tooltip } from 'antd'
+import { FileTextOutlined, FolderOpenOutlined, InfoCircleOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons'
+import { Badge, Button, Input, Modal, Radio, Spin, Switch, Tooltip } from 'antd'
 import OnboardingView from './views/OnboardingView'
 import NameDialogModal from './components/NameDialogModal'
 import PlanNameTemplateSettingsPanel from './components/PlanNameTemplateSettings'
+import PlanWorkflowSettings from './components/PlanWorkflowSettings'
+import SettingsNavigation, { type SettingsNavigationItem, type SettingsSectionId } from './components/SettingsNavigation'
 import SearchOverlay from './components/SearchOverlay'
 import { UndoNotice } from './components/ui/UndoNotice'
+import SettingHelp from './components/ui/SettingHelp'
 import AppShell from './components/AppShell'
 import { useAppStore, subscribeAppEvents } from './stores/app-store'
 import { subscribeTreeEvents, useTreeStore } from './stores/tree-store'
@@ -330,6 +334,7 @@ function TopBarSettingsHost(): React.JSX.Element {
   const [plantumlPortDraft, setPlantumlPortDraft] = useState(String(plantumlPort))
   const [plantumlStatus, setPlantumlStatus] = useState<PlantUmlStatusDto>({ state: 'stopped', port: null, errorCode: null })
   const [plantumlRetrying, setPlantumlRetrying] = useState(false)
+  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>('general')
   const plantumlStatusGenerationRef = useRef(0)
   const plantumlRetryGenerationRef = useRef(0)
 
@@ -398,10 +403,9 @@ function TopBarSettingsHost(): React.JSX.Element {
     ['Ctrl + Shift + I', t('settings.scDevtools')]
   ]
 
-  const prefLabel = (text: string): React.CSSProperties => ({ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 })
   const settingLabel = (label: string, description: string): React.JSX.Element => (
     <Tooltip title={description} mouseEnterDelay={2}>
-      <span tabIndex={0} style={prefLabel(label)}>
+      <span tabIndex={0} className="trace-settings-field-label">
         {label}
       </span>
     </Tooltip>
@@ -479,185 +483,262 @@ function TopBarSettingsHost(): React.JSX.Element {
     }
   }
 
+  const settingsSections: readonly SettingsNavigationItem[] = [
+    { id: 'general', label: t('settings.categoryGeneral'), icon: <SettingOutlined /> },
+    { id: 'library', label: t('settings.categoryLibrary'), icon: <FolderOpenOutlined /> },
+    { id: 'templates', label: t('settings.categoryTemplates'), icon: <FileTextOutlined /> },
+    { id: 'workflows', label: t('workflow.settingsTitle'), icon: <FileTextOutlined /> },
+    { id: 'xiaoyuan', label: t('settings.categoryAgent'), icon: <RobotOutlined /> },
+    { id: 'about', label: t('settings.categoryAbout'), icon: <InfoCircleOutlined /> }
+  ]
+
   return (
-    <Modal title={t('settings.title')} open={open} onCancel={() => setSettingsOpen(false)} footer={<Button onClick={() => setSettingsOpen(false)}>{t('common.close')}</Button>}>
-      <Descriptions column={1} size="small" bordered>
-        <Descriptions.Item label={t('settings.prefs')}>
-          <div style={{ display: 'grid', gap: 12, minWidth: 260 }}>
-            <div>
-              {settingLabel(t('settings.language'), t('settings.languageDesc'))}
-              <Radio.Group
-                optionType="button"
-                buttonStyle="solid"
-                size="small"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as Language)}
-              >
-                <Radio.Button value="zh-CN">{t('settings.langZh')}</Radio.Button>
-                <Radio.Button value="en-US">{t('settings.langEn')}</Radio.Button>
-              </Radio.Group>
-            </div>
-            <div>
-              {settingLabel(t('settings.dealDirection'), t('settings.dealDirectionDesc'))}
-              <Radio.Group
-                optionType="button"
-                buttonStyle="solid"
-                size="small"
-                value={dealDirection}
-                onChange={(e) => setDealDirection(e.target.value as DealDirection)}
-              >
-                <Radio.Button value="top">{t('settings.dealTop')}</Radio.Button>
-                <Radio.Button value="bottom">{t('settings.dealBottom')}</Radio.Button>
-              </Radio.Group>
-            </div>
-            <div>
-              {settingLabel(t('settings.scoreAnim'), t('settings.scoreAnimDesc'))}
-              <Radio.Group
-                optionType="button"
-                buttonStyle="solid"
-                size="small"
-                value={scoreAnim}
-                onChange={(e) => setScoreAnim(e.target.value as ScoreAnim)}
-              >
-                <Radio.Button value="roll">{t('settings.scoreAnimRoll')}</Radio.Button>
-                <Radio.Button value="none">{t('settings.scoreAnimNone')}</Radio.Button>
-              </Radio.Group>
-            </div>
-            <div>
-              {settingLabel(t('settings.theme'), t('settings.themeDesc'))}
-              <Radio.Group
-                optionType="button"
-                buttonStyle="solid"
-                size="small"
-                value={themeMode}
-                onChange={(e) => changeTheme(e.target.value as ThemeMode)}
-              >
-                <Radio.Button value="light">{t('settings.themeLight')}</Radio.Button>
-                <Radio.Button value="dark">{t('settings.themeDark')}</Radio.Button>
-                <Radio.Button value="system">{t('settings.themeSystem')}</Radio.Button>
-              </Radio.Group>
-            </div>
-            <div>
-              {settingLabel(t('settings.noteLiveRender'), t('settings.noteLiveRenderDesc'))}
-              <Switch size="small" checked={noteLiveRender} onChange={setNoteLiveRender} />
-            </div>
-            <div>
-              {settingLabel(t('settings.noteWrap'), t('settings.noteWrapDesc'))}
-              <Switch size="small" checked={noteWrap} onChange={setNoteWrap} />
-            </div>
-            <div>
-              {settingLabel(t('settings.plantumlMode'), t('settings.plantumlModeDesc'))}
-              <Radio.Group
-                aria-label={t('settings.plantumlMode')}
-                optionType="button"
-                buttonStyle="solid"
-                size="small"
-                value={plantumlMode}
-                onChange={(event) => setPlantumlMode(event.target.value as PlantUmlMode)}
-              >
-                <Radio.Button value="local">{t('settings.plantumlModeLocal')}</Radio.Button>
-                <Radio.Button value="custom">{t('settings.plantumlModeCustom')}</Radio.Button>
-                <Radio.Button value="off">{t('settings.plantumlModeOff')}</Radio.Button>
-              </Radio.Group>
-            </div>
-            {plantumlMode === 'local' && (
-              <>
-                <div>
-                  {settingLabel(t('settings.plantumlPort'), t('settings.plantumlPortDesc'))}
+    <Modal
+      title={t('settings.title')}
+      open={open}
+      centered
+      width="min(1120px, calc(100vw - 48px))"
+      className="trace-settings-modal"
+      onCancel={() => setSettingsOpen(false)}
+      footer={null}
+    >
+      <div className="trace-settings-layout">
+        <SettingsNavigation
+          activeSection={activeSettingsSection}
+          label={t('settings.navigationLabel')}
+          sections={settingsSections}
+          onSelect={setActiveSettingsSection}
+        />
+        <main className="trace-settings-main" aria-label={t('settings.title')}>
+          <section
+            id="trace-settings-panel-general"
+            className="trace-settings-panel"
+            aria-labelledby="trace-settings-nav-general"
+            hidden={activeSettingsSection !== 'general'}
+          >
+            <h2>{t('settings.categoryGeneral')}</h2>
+            <div className="trace-settings-card">
+              <div className="trace-settings-row">
+                <div className="trace-settings-field-copy">
+                  {settingLabel(t('settings.language'), t('settings.languageDesc'))}
+                  <span className="trace-settings-field-description">{t('settings.languageDesc')}</span>
+                </div>
+                <Radio.Group optionType="button" buttonStyle="solid" size="small" value={language} onChange={(event) => setLanguage(event.target.value as Language)}>
+                  <Radio.Button value="zh-CN">{t('settings.langZh')}</Radio.Button>
+                  <Radio.Button value="en-US">{t('settings.langEn')}</Radio.Button>
+                </Radio.Group>
+              </div>
+              <div className="trace-settings-row">
+                <div className="trace-settings-field-copy">
+                  {settingLabel(t('settings.dealDirection'), t('settings.dealDirectionDesc'))}
+                  <span className="trace-settings-field-description">{t('settings.dealDirectionDesc')}</span>
+                  <SettingHelp topic="treeAnimation" />
+                </div>
+                <Radio.Group optionType="button" buttonStyle="solid" size="small" value={dealDirection} onChange={(event) => setDealDirection(event.target.value as DealDirection)}>
+                  <Radio.Button value="top">{t('settings.dealTop')}</Radio.Button>
+                  <Radio.Button value="bottom">{t('settings.dealBottom')}</Radio.Button>
+                </Radio.Group>
+              </div>
+              <div className="trace-settings-row">
+                <div className="trace-settings-field-copy">
+                  {settingLabel(t('settings.scoreAnim'), t('settings.scoreAnimDesc'))}
+                  <span className="trace-settings-field-description">{t('settings.scoreAnimDesc')}</span>
+                  <SettingHelp topic="moodAnimation" />
+                </div>
+                <Radio.Group optionType="button" buttonStyle="solid" size="small" value={scoreAnim} onChange={(event) => setScoreAnim(event.target.value as ScoreAnim)}>
+                  <Radio.Button value="roll">{t('settings.scoreAnimRoll')}</Radio.Button>
+                  <Radio.Button value="none">{t('settings.scoreAnimNone')}</Radio.Button>
+                </Radio.Group>
+              </div>
+              <div className="trace-settings-row">
+                <div className="trace-settings-field-copy">
+                  {settingLabel(t('settings.theme'), t('settings.themeDesc'))}
+                  <span className="trace-settings-field-description">{t('settings.themeDesc')}</span>
+                </div>
+                <Radio.Group optionType="button" buttonStyle="solid" size="small" value={themeMode} onChange={(event) => changeTheme(event.target.value as ThemeMode)}>
+                  <Radio.Button value="light">{t('settings.themeLight')}</Radio.Button>
+                  <Radio.Button value="dark">{t('settings.themeDark')}</Radio.Button>
+                  <Radio.Button value="system">{t('settings.themeSystem')}</Radio.Button>
+                </Radio.Group>
+              </div>
+              <div className="trace-settings-row">
+                <div className="trace-settings-field-copy">
+                  {settingLabel(t('settings.noteLiveRender'), t('settings.noteLiveRenderDesc'))}
+                  <span className="trace-settings-field-description">{t('settings.noteLiveRenderDesc')}</span>
+                  <SettingHelp topic="liveMarkdown" />
+                </div>
+                <Switch size="small" checked={noteLiveRender} onChange={setNoteLiveRender} />
+              </div>
+              <div className="trace-settings-row">
+                <div className="trace-settings-field-copy">
+                  {settingLabel(t('settings.noteWrap'), t('settings.noteWrapDesc'))}
+                  <span className="trace-settings-field-description">{t('settings.noteWrapDesc')}</span>
+                  <SettingHelp topic="noteCodeWrap" />
+                </div>
+                <Switch size="small" checked={noteWrap} onChange={setNoteWrap} />
+              </div>
+              <div className="trace-settings-row trace-settings-row--stacked">
+                <div className="trace-settings-field-copy">
+                  {settingLabel(t('settings.plantumlMode'), t('settings.plantumlModeDesc'))}
+                  <span className="trace-settings-field-description">{t('settings.plantumlModeDesc')}</span>
+                  <SettingHelp topic="plantumlMode" />
+                </div>
+                <Radio.Group aria-label={t('settings.plantumlMode')} optionType="button" buttonStyle="solid" size="small" value={plantumlMode} onChange={(event) => setPlantumlMode(event.target.value as PlantUmlMode)}>
+                  <Radio.Button value="local">{t('settings.plantumlModeLocal')}</Radio.Button>
+                  <Radio.Button value="custom">{t('settings.plantumlModeCustom')}</Radio.Button>
+                  <Radio.Button value="off">{t('settings.plantumlModeOff')}</Radio.Button>
+                </Radio.Group>
+              </div>
+              {plantumlMode === 'local' && (
+                <div className="trace-settings-subsection">
+                  <div className="trace-settings-row">
+                    <div className="trace-settings-field-copy">
+                      {settingLabel(t('settings.plantumlPort'), t('settings.plantumlPortDesc'))}
+                      <span className="trace-settings-field-description">{t('settings.plantumlPortDesc')}</span>
+                      <SettingHelp topic="plantumlPort" />
+                    </div>
+                    <Input
+                      aria-label={t('settings.plantumlPort')}
+                      size="small"
+                      type="number"
+                      min={1024}
+                      max={65535}
+                      value={plantumlPortDraft}
+                      onChange={(event) => setPlantumlPortDraft(event.target.value)}
+                      onBlur={commitPlantumlPort}
+                      onPressEnter={commitPlantumlPort}
+                    />
+                  </div>
+                  <div role="status" aria-live="polite" className="trace-settings-status">
+                    <Badge status={PLANTUML_BADGE_STATUS[plantumlStatus.state]} text={plantumlStatusLabel()} />
+                    {plantumlStatus.port !== null && <span>{t('settings.plantumlPortValue', { port: plantumlStatus.port })}</span>}
+                    {(plantumlStatus.state === 'error' || plantumlStatus.state === 'stopped') && (
+                      <Button size="small" loading={plantumlRetrying} onClick={() => void retryPlantuml()}>{t('settings.plantumlRetry')}</Button>
+                    )}
+                  </div>
+                  {plantumlStatus.state === 'error' && <span role="alert" className="trace-settings-error-description">{plantumlErrorDescription()}</span>}
+                </div>
+              )}
+              {plantumlMode !== 'local' && plantumlStatus.state === 'error' && (
+                <div role="status" aria-live="polite" className="trace-settings-status">
+                  <Badge status="error" text={t('settings.plantumlStateError')} />
+                  <span>{plantumlErrorDescription()}</span>
+                  <Button size="small" loading={plantumlRetrying} onClick={() => void retryPlantuml()}>{t('settings.plantumlStopRetry')}</Button>
+                </div>
+              )}
+              {plantumlMode === 'custom' && (
+                <div className="trace-settings-subsection trace-settings-subsection--input">
+                  <div className="trace-settings-field-copy">
+                    {settingLabel(t('settings.plantumlServer'), t('settings.plantumlRemoteWarning'))}
+                    <span className="trace-settings-field-description">{t('settings.plantumlRemoteWarning')}</span>
+                    <SettingHelp topic="plantumlRemote" />
+                  </div>
                   <Input
-                    aria-label={t('settings.plantumlPort')}
+                    aria-label={t('settings.plantumlServer')}
                     size="small"
-                    type="number"
-                    min={1024}
-                    max={65535}
-                    value={plantumlPortDraft}
-                    onChange={(event) => setPlantumlPortDraft(event.target.value)}
-                    onBlur={commitPlantumlPort}
-                    onPressEnter={commitPlantumlPort}
+                    value={plantumlDraft}
+                    placeholder={t('settings.plantumlPlaceholder')}
+                    onChange={(event) => setPlantumlDraft(event.target.value)}
+                    onBlur={commitPlantumlServer}
+                    onPressEnter={commitPlantumlServer}
                   />
                 </div>
-                <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                  <Badge
-                    status={PLANTUML_BADGE_STATUS[plantumlStatus.state]}
-                    text={plantumlStatusLabel()}
-                  />
-                  {plantumlStatus.port !== null && (
-                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                      {t('settings.plantumlPortValue', { port: plantumlStatus.port })}
-                    </span>
-                  )}
-                  {(plantumlStatus.state === 'error' || plantumlStatus.state === 'stopped') && (
-                    <Button size="small" loading={plantumlRetrying} onClick={() => void retryPlantuml()}>
-                      {t('settings.plantumlRetry')}
-                    </Button>
-                  )}
+              )}
+            </div>
+          </section>
+
+          <section
+            id="trace-settings-panel-library"
+            className="trace-settings-panel"
+            aria-labelledby="trace-settings-nav-library"
+            hidden={activeSettingsSection !== 'library'}
+          >
+            <h2>{t('settings.categoryLibrary')}</h2>
+            <div className="trace-settings-card">
+              <div className="trace-settings-row trace-settings-row--library">
+                <div className="trace-settings-field-copy">
+                  {settingLabel(t('settings.rootDir'), t('settings.dataDesc'))}
+                  <span className="trace-settings-field-description">{t('settings.dataDesc')}</span>
                 </div>
-                {plantumlStatus.state === 'error' && (
-                  <span role="alert" style={{ display: 'block', fontSize: 12, color: 'var(--text-2)' }}>
-                    {plantumlErrorDescription()}
-                  </span>
-                )}
-              </>
-            )}
-            {plantumlMode !== 'local' && plantumlStatus.state === 'error' && (
-              <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                <Badge status="error" text={t('settings.plantumlStateError')} />
-                <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{plantumlErrorDescription()}</span>
-                <Button size="small" loading={plantumlRetrying} onClick={() => void retryPlantuml()}>
-                  {t('settings.plantumlStopRetry')}
-                </Button>
+                <div className="trace-settings-library-control">
+                  <span className="trace-settings-root-path">{rootDir ?? t('settings.notConfigured')}</span>
+                  <Button size="small" onClick={() => void switchRootDir()}>{t('settings.switchBtn')}</Button>
+                </div>
               </div>
-            )}
-            {plantumlMode === 'custom' && (
-              <div>
-                {settingLabel(t('settings.plantumlServer'), t('settings.plantumlRemoteWarning'))}
-                <Input
-                  aria-label={t('settings.plantumlServer')}
-                  size="small"
-                  value={plantumlDraft}
-                  placeholder={t('settings.plantumlPlaceholder')}
-                  onChange={(event) => setPlantumlDraft(event.target.value)}
-                  onBlur={commitPlantumlServer}
-                  onPressEnter={commitPlantumlServer}
-                />
-                <span style={{ display: 'block', marginTop: 4, fontSize: 12, color: 'var(--text-3)' }}>
-                  {t('settings.plantumlRemoteWarning')}
-                </span>
+            </div>
+          </section>
+
+          <section
+            id="trace-settings-panel-templates"
+            className="trace-settings-panel"
+            aria-labelledby="trace-settings-nav-templates"
+            hidden={activeSettingsSection !== 'templates'}
+          >
+            <h2>{t('settings.templateTitle')}</h2>
+            <SettingHelp topic="namingTemplates" />
+            <div className="trace-settings-card trace-settings-card--content">
+              <PlanNameTemplateSettingsPanel active={open} />
+            </div>
+          </section>
+
+          <section
+            id="trace-settings-panel-workflows"
+            className="trace-settings-panel"
+            aria-labelledby="trace-settings-nav-workflows"
+            hidden={activeSettingsSection !== 'workflows'}
+          >
+            <h2>{t('workflow.settingsTitle')}</h2>
+            <p className="trace-settings-panel-description">{t('workflow.settingsDescription')}</p>
+            <div className="trace-settings-card trace-settings-card--content">
+              <PlanWorkflowSettings active={open} />
+            </div>
+          </section>
+
+          <section
+            id="trace-settings-panel-xiaoyuan"
+            className="trace-settings-panel"
+            aria-labelledby="trace-settings-nav-xiaoyuan"
+            hidden={activeSettingsSection !== 'xiaoyuan'}
+          >
+            <h2>{t('agentSettings.title')}</h2>
+            <p className="trace-settings-panel-description">{t('agentSettings.description')}</p>
+            <SettingHelp topic="agentService" />
+            <div className="trace-settings-card trace-settings-card--content">
+              {open && <Suspense fallback={<span role="status">{t('common.loading')}</span>}><AgentSettingsSection active={open} /></Suspense>}
+            </div>
+          </section>
+
+          <section
+            id="trace-settings-panel-about"
+            className="trace-settings-panel"
+            aria-labelledby="trace-settings-nav-about"
+            hidden={activeSettingsSection !== 'about'}
+          >
+            <h2>{t('settings.categoryAbout')}</h2>
+            <div className="trace-settings-card">
+              <div className="trace-settings-row">
+                <span className="trace-settings-field-label">{t('settings.version')}</span>
+                <span>{version || '…'}</span>
               </div>
-            )}
-          </div>
-        </Descriptions.Item>
-        <Descriptions.Item label={t('settings.rootDir')}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 260 }}>
-            <span style={{ flex: 1, wordBreak: 'break-all', fontSize: 12 }}>{rootDir ?? t('settings.notConfigured')}</span>
-            <Button size="small" onClick={() => void switchRootDir()}>
-              {t('settings.switchBtn')}
-            </Button>
-          </div>
-        </Descriptions.Item>
-        <Descriptions.Item label={t('settings.templateTitle')}>
-          <PlanNameTemplateSettingsPanel active={open} />
-        </Descriptions.Item>
-        <Descriptions.Item label={t('agentSettings.title')}>
-          {open && <Suspense fallback={<span role="status">{t('common.loading')}</span>}>
-            <AgentSettingsSection active={open} />
-          </Suspense>}
-        </Descriptions.Item>
-        <Descriptions.Item label={t('settings.version')}>{version || '…'}</Descriptions.Item>
-        <Descriptions.Item label={t('settings.data')}>
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('settings.dataDesc')}</span>
-        </Descriptions.Item>
-        <Descriptions.Item label={t('settings.shortcuts')}>
-          <div style={{ fontSize: 12, lineHeight: 1.9 }}>
-            {shortcuts.map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-3)' }}>{v}</span>
-                <span style={{ fontFamily: 'Consolas, monospace' }}>{k}</span>
+              <div className="trace-settings-row trace-settings-row--description-only">
+                <div className="trace-settings-field-copy">
+                  <span className="trace-settings-field-label">{t('settings.data')}</span>
+                  <span className="trace-settings-field-description">{t('settings.dataDesc')}</span>
+                </div>
               </div>
-            ))}
-          </div>
-        </Descriptions.Item>
-      </Descriptions>
+            </div>
+            <h3>{t('settings.shortcuts')}</h3>
+            <div className="trace-settings-card trace-settings-shortcuts">
+              {shortcuts.map(([key, action]) => (
+                <div className="trace-settings-shortcut-row" key={key}>
+                  <span>{action}</span>
+                  <kbd>{key}</kbd>
+                </div>
+              ))}
+            </div>
+          </section>
+        </main>
+      </div>
     </Modal>
   )
 }

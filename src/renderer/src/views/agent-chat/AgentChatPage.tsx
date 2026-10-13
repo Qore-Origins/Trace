@@ -297,7 +297,29 @@ function TranscriptMessage({
   session: AgentSession
 }): React.JSX.Element {
   const { t } = useTranslation()
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const requests = session.requests.filter((request) => request.id === message.requestId)
+  const diagnostic = message.role === 'assistant' ? message.diagnostic : undefined
+
+  const copyDiagnostic = async (): Promise<void> => {
+    if (!diagnostic) return
+    const request = requests[0]
+    const copiedText = [
+      t('agentChat.diagnosticTitle'),
+      `${t('agentChat.profile')}: ${request?.profileName ?? '—'}`,
+      `${t('agentChat.model')}: ${request?.model ?? '—'}`,
+      `${t('agentChat.requestTime')}: ${request?.requestedAt ?? '—'}`,
+      `${t('agentChat.errorCategory')}: ${t(`agentChat.errorCategories.${diagnostic.category}`)}`,
+      `${t('agentChat.httpStatus')}: ${diagnostic.httpStatus ?? '—'}`,
+      `${t('agentChat.providerResponse')}: ${diagnostic.providerMessage ?? t('agentChat.providerMessageUnavailable')}`
+    ].join('\n')
+    try {
+      await navigator.clipboard.writeText(copiedText)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+  }
 
   return (
     <article className={`agent-message agent-message--${message.role}`}>
@@ -312,7 +334,26 @@ function TranscriptMessage({
         <p className="agent-interruption">【用户中断】</p>
       )}
       {message.status === 'error-interrupted' && (
-        <p className="agent-interruption">【异常中断】 {t('agentChat.exception')}</p>
+        <>
+          <p className="agent-interruption">【异常中断】 {t('agentChat.exception')}</p>
+          {diagnostic && <details className="agent-error-diagnostic">
+            <summary>{t('agentChat.errorDetails')}</summary>
+            <dl>
+              <div><dt>{t('agentChat.profile')}</dt><dd>{requests[0]?.profileName ?? '—'}</dd></div>
+              <div><dt>{t('agentChat.model')}</dt><dd>{requests[0]?.model ?? '—'}</dd></div>
+              <div><dt>{t('agentChat.requestTime')}</dt><dd>{requests[0]?.requestedAt ?? '—'}</dd></div>
+              <div><dt>{t('agentChat.errorCategory')}</dt><dd>{t(`agentChat.errorCategories.${diagnostic.category}`)}</dd></div>
+              <div><dt>{t('agentChat.httpStatus')}</dt><dd>{diagnostic.httpStatus ?? '—'}</dd></div>
+              <div><dt>{t('agentChat.providerResponse')}</dt><dd>{diagnostic.providerMessage ?? t('agentChat.providerMessageUnavailable')}</dd></div>
+            </dl>
+            <div className="agent-error-diagnostic__actions">
+              <Button size="small" onClick={() => void copyDiagnostic()}>{t('agentChat.copyDiagnostic')}</Button>
+              <span role="status" aria-live="polite">
+                {copyState === 'copied' ? t('agentChat.diagnosticCopied') : copyState === 'failed' ? t('agentChat.diagnosticCopyFailed') : ''}
+              </span>
+            </div>
+          </details>}
+        </>
       )}
       {message.role === 'assistant' && <RequestProvenance requests={requests} />}
     </article>

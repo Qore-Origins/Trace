@@ -5,7 +5,39 @@ import { expect, it, vi } from 'vitest'
 // 全量并发负载下 bootstrap/交互可能超默认 5s——放宽至 20s（负载型超时 flaky，2026-09-12 实证）
 vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 })
 import { i18n } from '../src/renderer/src/i18n'
-import { bridge, data, storage, host, bodies, electron, check, click, plan, profile, setProfileId, startConversation, previewDraft, until } from './agent-view-test-support'
+import { bridge, data, storage, host, bodies, electron, button, check, click, plan, profile, render, setProfileId, startConversation, previewDraft, until } from './agent-view-test-support'
+
+it('waits until a newly created conversation accepts target selection', async () => {
+  await i18n.changeLanguage('zh-CN')
+  setProfileId(await profile())
+  await render()
+  const originalList = electron.handlers.get('agent:session:list')!
+  let releaseList: () => void = () => {}
+  const listGate = new Promise<void>((resolve) => { releaseList = resolve })
+  electron.handlers.set('agent:session:list', async (event, payload) => {
+    if (electron.calls.some(({ name }) => name === 'agent:session:create')) await listGate
+    return originalList(event, payload)
+  })
+  let settled = false
+  const creating = startConversation().then(() => { settled = true })
+  try {
+    const listRequested = () => {
+      const createIndex = electron.calls.findIndex(({ name }) => name === 'agent:session:create')
+      return createIndex >= 0 && electron.calls.slice(createIndex + 1).some(({ name }) => name === 'agent:session:list')
+    }
+    const deadline = Date.now() + 5000
+    while (!listRequested() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(listRequested()).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(settled).toBe(false)
+  } finally {
+    releaseList()
+  }
+  await creating
+  expect(button(i18n.t('agentChat.targets')).disabled).toBe(false)
+  await click(i18n.t('agentChat.targets'))
+  await until(() => !!document.querySelector('.agent-target-picker'))
+})
 
 it.each(['zh-CN', 'en-US'])('keeps multiple @ targets separate from outbound body contexts in %s', async (language) => {
   await i18n.changeLanguage(language)

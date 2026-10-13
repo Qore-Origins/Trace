@@ -12,7 +12,7 @@ export function TaskDetailCard({ comp, index, total, today }: CardRenderProps): 
   const p = comp.payload as TaskDetailPayload
   const title = useReferenceAwareTitle(comp)
   const patch = (fn: (payload: TaskDetailPayload) => void): void => patchComponent(comp.id, (payload) => fn(payload as TaskDetailPayload))
-  const statusText = p.status === 'done' ? t('cards.statusDone') : p.status === 'in_progress' ? t('cards.statusInProgress') : t('cards.statusNotStarted')
+  const statusText = p.status === 'done' ? t('cards.statusDone') : p.status === 'moved' ? t('cards.statusMoved') : p.status === 'in_progress' ? t('cards.statusInProgress') : t('cards.statusNotStarted')
   const hasPastPlannedDate = isPastPlannedDate(p.planned_at, today)
   return (
     <CardShell
@@ -22,7 +22,7 @@ export function TaskDetailCard({ comp, index, total, today }: CardRenderProps): 
       total={total}
       head={
         <div className="head">
-          <Checkbox checked={p.status === 'done'} onChange={(e) => patch((pl) => (pl.status = e.target.checked ? 'done' : 'in_progress'))} />
+          <Checkbox checked={p.status === 'done'} disabled={p.status === 'moved'} onChange={(e) => patch((pl) => (pl.status = e.target.checked ? 'done' : 'in_progress'))} />
           <input
             className="single-title"
             style={{ fontSize: 14 }}
@@ -32,7 +32,7 @@ export function TaskDetailCard({ comp, index, total, today }: CardRenderProps): 
             onBlur={() => { void title.commit() }}
             onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
           />
-          {hasPastPlannedDate && <span className="tag-overdue" aria-hidden={p.status === 'done'}>{t('cards.overdue')}</span>}
+          {hasPastPlannedDate && p.status !== 'moved' && <span className="tag-overdue" aria-hidden={p.status === 'done'}>{t('cards.overdue')}</span>}
         </div>
       }
     >

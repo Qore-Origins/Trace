@@ -1180,6 +1180,7 @@ export class PlanReferenceService {
       parentPath: string
       name: string
       parentDirectoryIdentity?: string
+      initialComponents?: Component[]
     },
     rootSnapshot: AgentRootSnapshot,
     validateRootSnapshot: AgentRootSnapshotValidator
@@ -1187,7 +1188,8 @@ export class PlanReferenceService {
     if (!input || (input.kind !== 'plan' && input.kind !== 'folder') || typeof input.parentPath !== 'string' ||
       typeof input.name !== 'string' || (input.parentDirectoryIdentity !== undefined &&
         (typeof input.parentDirectoryIdentity !== 'string' || input.parentDirectoryIdentity.length === 0 || input.parentDirectoryIdentity.length > 128)) ||
-      (input.parentPath === '') !== (input.parentDirectoryIdentity === undefined)) {
+      (input.parentPath === '') !== (input.parentDirectoryIdentity === undefined) ||
+      (input.initialComponents !== undefined && (input.kind !== 'plan' || !Array.isArray(input.initialComponents) || input.initialComponents.length !== 1))) {
       throw new TraceError(ERR.VALIDATION, 'Agent 新建目标身份无效')
     }
     validatePlanName(input.name)
@@ -1211,7 +1213,12 @@ export class PlanReferenceService {
       await this.assertAgentRootSnapshot(storage, rootSnapshot, validateRootSnapshot)
       const mutationGuard = this.createAgentMutationGuard(storage, rootSnapshot, validateRootSnapshot, snapshot,
         () => this.assertAgentDirectoryIdentity(snapshot, input.parentPath, expectedParentDirectoryIdentity))
-      if (input.kind === 'plan') return storage.createPlan(input.parentPath, input.name, mutationGuard)
+      if (input.kind === 'plan') {
+        if (input.initialComponents) {
+          return storage.createPlanWithInitialComponents(input.parentPath, input.name, input.initialComponents, mutationGuard)
+        }
+        return storage.createPlan(input.parentPath, input.name, mutationGuard)
+      }
       return storage.createFolder(input.parentPath, input.name, mutationGuard)
     })
   }

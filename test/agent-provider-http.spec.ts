@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createAgentCapabilityRequest, runAgentToolCapabilityTest } from '../src/main/services/agent-capability-test'
 import { AGENT_REQUEST_BODY_LIMIT_BYTES, serializeAgentChatRequest, streamChatCompletion, type AgentChatMessage } from '../src/main/services/agent-provider'
 import { AgentSseAccumulator, AGENT_SSE_EVENT_LIMIT_BYTES } from '../src/main/services/agent-sse'
 
@@ -121,6 +122,152 @@ describe('OpenAI Chat Completions HTTP stream', () => {
     }
   })
 
+  it('accepts a duplicate empty tool-call terminal marker in the capability probe', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(
+        chunk({ id: 'chatcmpl-fixed-id-1234567890123', choices: [{
+          index: 0,
+          delta: { tool_calls: [{ index: 0, id: 'call_trace_fixed_123', type: 'function', function: {
+            name: 'trace_capability_probe', arguments: '{"value":"ready"}'
+          } }] },
+          finish_reason: 'tool_calls'
+        }] }) +
+        chunk({ id: 'chatcmpl-fixed-id-1234567890123', choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }) +
+        'data: [DONE]\n\n'
+      )
+    })
+
+    const result = await runAgentToolCapabilityTest(
+      { endpoint, model: 'synthetic-model', apiKey: 'test-only-key' },
+      createAgentCapabilityRequest(endpoint, 'synthetic-model')
+    )
+
+    expect(result).toMatchObject({ status: 'passed', errorCategory: null })
+  })
+
+  it('accepts the provider empty assistant terminal continuation after a tool-call finish', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(
+        chunk({ id: 'chatcmpl-fixed-id-1234567890123', choices: [{
+          index: 0,
+          delta: { tool_calls: [{ index: 0, id: 'call_trace_fixed_123', type: 'function', function: {
+            name: 'trace_capability_probe', arguments: '{"value":"ready"}'
+          } }] },
+          finish_reason: 'tool_calls'
+        }] }) +
+        chunk({ id: 'chatcmpl-fixed-id-1234567890123', choices: [{
+          index: 0,
+          delta: { role: 'assistant', content: '' },
+          finish_reason: 'tool_calls'
+        }] }) +
+        'data: [DONE]\n\n'
+      )
+    })
+
+    const result = await runAgentToolCapabilityTest(
+      { endpoint, model: 'synthetic-model', apiKey: 'test-only-key' },
+      createAgentCapabilityRequest(endpoint, 'synthetic-model')
+    )
+
+    expect(result).toMatchObject({ status: 'passed', errorCategory: null })
+  })
+
+  it('rejects non-empty content in a duplicate assistant terminal continuation', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(
+        chunk({ choices: [{
+          delta: { tool_calls: [{ index: 0, id: 'call_trace_fixed_123', type: 'function', function: {
+            name: 'trace_capability_probe', arguments: '{"value":"ready"}'
+          } }] },
+          finish_reason: 'tool_calls'
+        }] }) +
+        chunk({ choices: [{
+          delta: { role: 'assistant', content: 'unexpected trailing text' },
+          finish_reason: 'tool_calls'
+        }] }) +
+        'data: [DONE]\n\n'
+      )
+    })
+
+    const result = await runAgentToolCapabilityTest(
+      { endpoint, model: 'synthetic-model', apiKey: 'test-only-key' },
+      createAgentCapabilityRequest(endpoint, 'synthetic-model')
+    )
+
+    expect(result).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
+  })
+
+  it('rejects a duplicate empty terminal marker with a different finish reason', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(
+        chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_trace_fixed_123', type: 'function', function: {
+          name: 'trace_capability_probe', arguments: '{"value":"ready"}'
+        } }] }, finish_reason: 'tool_calls' }] }) +
+        chunk({ choices: [{ delta: {}, finish_reason: 'stop' }] }) +
+        'data: [DONE]\n\n'
+      )
+    })
+
+    const result = await runAgentToolCapabilityTest(
+      { endpoint, model: 'synthetic-model', apiKey: 'test-only-key' },
+      createAgentCapabilityRequest(endpoint, 'synthetic-model')
+    )
+
+    expect(result).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
+  })
+
+  it('rejects tool-call data after a terminal marker', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(
+        chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) +
+        chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_trace_fixed_123', type: 'function', function: {
+          name: 'trace_capability_probe', arguments: '{"value":"ready"}'
+        } }] }, finish_reason: 'tool_calls' }] }) +
+        'data: [DONE]\n\n'
+      )
+    })
+
+    const result = await runAgentToolCapabilityTest(
+      { endpoint, model: 'synthetic-model', apiKey: 'test-only-key' },
+      createAgentCapabilityRequest(endpoint, 'synthetic-model')
+    )
+
+    expect(result).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
+  })
+
+  it('emits sanitized capability diagnostics with the protocol failure stage', async () => {
+    const privateResponseMarker = 'PRIVATE_MODEL_RESPONSE_MARKER_7a91'
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream; charset=UTF-8' })
+      response.end(chunk({
+        raw_provider_field: privateResponseMarker,
+        choices: []
+      }) + 'data: [DONE]\n\n')
+    })
+    const diagnostics: unknown[] = []
+
+    const result = await runAgentToolCapabilityTest({
+      endpoint,
+      model: 'synthetic-model',
+      apiKey: 'diagnostic-test-key',
+      onDiagnostic: (diagnostic: unknown) => diagnostics.push(diagnostic)
+    }, createAgentCapabilityRequest(endpoint, 'synthetic-model'))
+    const safeDiagnostics = JSON.stringify(diagnostics)
+
+    expect(result).toMatchObject({ status: 'failed', errorCategory: 'protocol' })
+    expect(safeDiagnostics).toContain('response')
+    expect(safeDiagnostics).toContain('sse-event')
+    expect(safeDiagnostics).toContain('sse.choices_shape')
+    expect(safeDiagnostics).not.toContain('diagnostic-test-key')
+    expect(safeDiagnostics).not.toContain(privateResponseMarker)
+    expect(safeDiagnostics).not.toContain('raw_provider_field')
+  })
+
   it.each([
     [{ role: 'tool', content: 'result', tool_call_id: 'orphan' }],
     [{ role: 'assistant', content: null }],
@@ -198,6 +345,73 @@ describe('OpenAI Chat Completions HTTP stream', () => {
     })
     const tool = { type: 'function' as const, function: { name: 'plan.read', description: 'Read one plan.', parameters: { type: 'object', properties: { plan_ref: { type: 'string' } }, required: ['plan_ref'], additionalProperties: false } } }
     await expect(streamChatCompletion(input(endpoint), { tools: [tool], toolChoice: 'auto' })).rejects.toMatchObject({ category: 'protocol' })
+  })
+
+  it('reports only allowlisted schema mismatch shape and never argument values or unknown keys', async () => {
+    const privateValue = 'PRIVATE_ARGUMENT_VALUE_29f1'
+    const privateKey = 'private_model_field_29f1'
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call', type: 'function', function: {
+        name: 'plan.read', arguments: JSON.stringify({ plan_ref: 'safe-ref', [privateKey]: privateValue })
+      } }] } }] }) + chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + 'data: [DONE]\n\n')
+    })
+    const tool = { type: 'function' as const, function: { name: 'plan.read', description: 'Read one plan.', parameters: {
+      type: 'object', properties: { plan_ref: { type: 'string' } }, required: ['plan_ref'], additionalProperties: false
+    } } }
+    const diagnostics: unknown[] = []
+
+    await expect(streamChatCompletion({ ...input(endpoint), onDiagnostic: (diagnostic) => diagnostics.push(diagnostic) }, { tools: [tool], toolChoice: 'auto' }))
+      .rejects.toMatchObject({ category: 'protocol', diagnosticCode: 'completion.arguments_schema' })
+
+    const serializedDiagnostics = JSON.stringify(diagnostics)
+    expect(serializedDiagnostics).toContain('schema-mismatch')
+    expect(serializedDiagnostics).toContain('plan.read')
+    expect(serializedDiagnostics).toContain('unknown-properties')
+    expect(serializedDiagnostics).toContain('schemaUnknownFieldCount')
+    expect(serializedDiagnostics).not.toContain(privateValue)
+    expect(serializedDiagnostics).not.toContain(privateKey)
+    expect(serializedDiagnostics).not.toContain('safe-ref')
+  })
+
+  it('identifies a workflow tool in safe schema mismatch diagnostics', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call', type: 'function', function: {
+        name: 'plan.workflow.preview', arguments: '{"parent_ref":123}'
+      } }] } }] }) + chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + 'data: [DONE]\n\n')
+    })
+    const tool = { type: 'function' as const, function: { name: 'plan.workflow.preview', description: 'Preview workflow.',
+      parameters: { type: 'object', properties: { parent_ref: { type: 'string' } }, required: ['parent_ref'], additionalProperties: false } } }
+    const diagnostics: Array<{ schemaToolName?: string }> = []
+    await expect(streamChatCompletion({ ...input(endpoint), onDiagnostic: (diagnostic) => diagnostics.push(diagnostic) },
+      { tools: [tool], toolChoice: 'auto' })).rejects.toMatchObject({ category: 'protocol', diagnosticCode: 'completion.arguments_schema' })
+    expect(diagnostics).toContainEqual(expect.objectContaining({ schemaToolName: 'plan.workflow.preview' }))
+    expect(JSON.stringify(diagnostics)).not.toContain('123')
+  })
+
+  it('reports the safe schema path and JSON type without recording the mismatched value', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call', type: 'function', function: {
+        name: 'plan.read', arguments: '{"plan_ref":12345}'
+      } }] } }] }) + chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + 'data: [DONE]\n\n')
+    })
+    const tool = { type: 'function' as const, function: { name: 'plan.read', description: 'Read one plan.', parameters: {
+      type: 'object', properties: { plan_ref: { type: 'string' } }, required: ['plan_ref'], additionalProperties: false
+    } } }
+    const diagnostics: unknown[] = []
+
+    await expect(streamChatCompletion({ ...input(endpoint), onDiagnostic: (diagnostic) => diagnostics.push(diagnostic) }, { tools: [tool], toolChoice: 'auto' }))
+      .rejects.toMatchObject({ category: 'protocol', diagnosticCode: 'completion.arguments_schema' })
+
+    const serializedDiagnostics = JSON.stringify(diagnostics)
+    expect(serializedDiagnostics).toContain('schemaPath')
+    expect(serializedDiagnostics).toContain('$.plan_ref')
+    expect(serializedDiagnostics).toContain('type-mismatch')
+    expect(serializedDiagnostics).toContain('number')
+    expect(serializedDiagnostics).toContain('string')
+    expect(serializedDiagnostics).not.toContain('12345')
   })
 
   it.each([
@@ -312,9 +526,51 @@ describe('OpenAI Chat Completions HTTP stream', () => {
     const unauthorized = await serve((_request, response) => { response.writeHead(401); response.end('test-only-key private data') })
     await expect(streamChatCompletion(input(unauthorized))).rejects.toMatchObject({ category: 'authentication' })
     const malformed = await serve((_request, response) => { response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end('data: {bad}\n\n') })
-    await expect(streamChatCompletion(input(malformed))).rejects.toMatchObject({ category: 'protocol' })
+    await expect(streamChatCompletion(input(malformed))).rejects.toMatchObject({ category: 'protocol', httpStatus: 200 })
     const truncated = await serve((_request, response) => { response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(chunk({ choices: [{ delta: { content: 'partial' } }] })) })
-    await expect(streamChatCompletion(input(truncated))).rejects.toMatchObject({ category: 'protocol' })
+    await expect(streamChatCompletion(input(truncated))).rejects.toMatchObject({ category: 'protocol', httpStatus: 200 })
+  })
+
+  it('preserves a structured HTTP 200 SSE error without exposing its raw event or credentials', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(chunk({ choices: [{ delta: { content: 'partial reply' } }] }) +
+        `data: ${JSON.stringify({ error: { code: 'account_disabled', message: 'Rejected test-only-key; authorization Bearer private-token' }, raw: 'RAW_PROVIDER_EVENT_MUST_NOT_ESCAPE' })}\n\n`)
+    })
+    const pieces: string[] = []
+    let caught: unknown
+    try { await streamChatCompletion({ ...input(endpoint), onText: (text) => pieces.push(text) }) } catch (error) { caught = error }
+
+    expect(caught).toMatchObject({
+      category: 'provider', httpStatus: 200,
+      providerMessage: 'Rejected [已脱敏]; authorization Bearer [已脱敏]'
+    })
+    expect(pieces).toEqual(['partial reply'])
+    expect(String(caught)).not.toMatch(/test-only-key|private-token|RAW_PROVIDER_EVENT_MUST_NOT_ESCAPE/)
+    expect(JSON.stringify(caught)).not.toMatch(/test-only-key|private-token|RAW_PROVIDER_EVENT_MUST_NOT_ESCAPE/)
+  })
+
+  it('extracts a bounded, redacted error from a structured HTTP 200 JSON response', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: { code: 'account_disabled', message: 'Rejected test-only-key' }, raw: 'RAW_PROVIDER_JSON_MUST_NOT_ESCAPE' }))
+    })
+    let caught: unknown
+    try { await streamChatCompletion(input(endpoint)) } catch (error) { caught = error }
+
+    expect(caught).toMatchObject({ category: 'provider', httpStatus: 200, providerMessage: 'Rejected [已脱敏]' })
+    expect(String(caught)).not.toMatch(/test-only-key|RAW_PROVIDER_JSON_MUST_NOT_ESCAPE/)
+    expect(JSON.stringify(caught)).not.toMatch(/test-only-key|RAW_PROVIDER_JSON_MUST_NOT_ESCAPE/)
+  })
+
+  it('recognizes a structured message-field SSE error event without choices', async () => {
+    const endpoint = await serve((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(`data: ${JSON.stringify({ code: 'account_disabled', message: 'Rejected test-only-key', trace: 'RAW_PROVIDER_EVENT_MUST_NOT_ESCAPE' })}\n\n`)
+    })
+    await expect(streamChatCompletion(input(endpoint))).rejects.toMatchObject({
+      category: 'provider', httpStatus: 200, providerMessage: 'Rejected [已脱敏]'
+    })
   })
 
   it('bounds the SSE buffer and aborts a stalled request', async () => {

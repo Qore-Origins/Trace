@@ -68,6 +68,29 @@ describe('App composition', () => {
 })
 
 describe('Responsive shell layout', () => {
+  it('keeps Settings at a viewport-bounded height with category navigation and a separate content scroller', () => {
+    const app = readFileSync(resolve(rendererRoot, 'App.tsx'), 'utf8')
+    const settingsNavigation = readFileSync(resolve(rendererRoot, 'components/SettingsNavigation.tsx'), 'utf8')
+    const settingsCss = readFileSync(resolve(rendererRoot, 'styles/settings.css'), 'utf8')
+    const workspaceCss = readFileSync(resolve(rendererRoot, 'styles/workspace.css'), 'utf8')
+    const settingsModal = app.match(/<Modal\s+title=\{t\('settings\.title'\)\}[\s\S]*?>/)?.[0]
+
+    expect(settingsModal).toContain('className="trace-settings-modal"')
+    expect(settingsModal).toContain('calc(100vw - 48px)')
+    expect(app).toContain('onSelect={setActiveSettingsSection}')
+    expect(app).not.toContain('<Descriptions')
+    for (const section of ['general', 'library', 'templates', 'xiaoyuan', 'about']) {
+      expect(app).toContain(`id="trace-settings-panel-${section}"`)
+    }
+    expect(settingsNavigation).toContain('aria-current={active ? \'page\' : undefined}')
+    expect(settingsNavigation).toContain('aria-controls={`trace-settings-panel-${section.id}`}')
+    expect(settingsCss).toMatch(/\.trace-settings-modal \.ant-modal-content\s*\{[^}]*height:\s*min\(760px, calc\(100vh - 64px\)\)/)
+    expect(settingsCss).toMatch(/\.trace-settings-modal \.ant-modal-body\s*\{[^}]*overflow:\s*hidden/)
+    expect(settingsCss).toMatch(/\.trace-settings-main\s*\{[^}]*overflow-y:\s*auto/)
+    expect(settingsCss).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.trace-settings-nav\s*\{[^}]*overflow-x:\s*auto/)
+    expect(workspaceCss).toContain('@import "./settings.css";')
+  })
+
   it('stacks diary and memories secondary content below 960px', () => {
     const diary = readFileSync(resolve(rendererRoot, 'styles/diary.css'), 'utf8')
     const memories = readFileSync(resolve(rendererRoot, 'styles/memories.css'), 'utf8')

@@ -500,6 +500,27 @@ describe('rename EPERM/EBUSY 受控重试（8A 偶发原子保存失败韧性修
     }
   })
 
+  it('writePlanAtomic：超过 750ms 的四次临时拒绝后仍可完成原子覆盖', async () => {
+    const path = join(root, 'slow-lock')
+    await fs.mkdir(path)
+    await fs.writeFile(join(path, 'plan.json'), JSON.stringify(sampleDoc()))
+    let calls = 0
+    const rename = async (from: string, to: string): Promise<void> => {
+      calls += 1
+      if (calls <= 4) throw Object.assign(new Error('temporarily blocked'), { code: 'EPERM' })
+      await fs.rename(from, to)
+    }
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const repository = new PlanRepository({ renameFn: rename })
+      await repository.writePlanAtomic(root, 'slow-lock', sampleDoc())
+      expect(calls).toBe(5)
+      await expect(fs.access(join(path, 'plan.json'))).resolves.toBeUndefined()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
   it('连续超限的 EPERM 仍按既有语义转为 SAVE_FAILED（不无限重试）', async () => {
     const always = async (): Promise<void> => {
       const e = new Error('EPERM') as NodeJS.ErrnoException

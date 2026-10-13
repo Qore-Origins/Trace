@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 const expectedNames = [
-  'plan.list_children', 'plan.read', 'plan.create', 'folder.create',
+  'plan.list_children', 'plan.read', 'plan.create', 'plan.workflow.preview', 'plan.workflow.create', 'folder.create',
   'component.add', 'component.update', 'component.delete',
   'task.add', 'task.update', 'task.delete',
   'multi_option.add', 'multi_option.update', 'multi_option.delete',
@@ -22,7 +22,7 @@ async function registry() {
 }
 
 describe('agent built-in tool registry', () => {
-  it('exposes only the fixed V1 tools with closed top-level schemas', async () => {
+  it('exposes only the registered tools with closed top-level schemas', async () => {
     const { getAgentToolDefinitions } = await registry()
     const definitions = getAgentToolDefinitions()
 
@@ -33,12 +33,60 @@ describe('agent built-in tool registry', () => {
     }
   })
 
+  it('requires an explicit workflow date, destination grants, and a preview token before creation', async () => {
+    const { parseAgentToolCalls } = await registry()
+    const base = { parent_ref: authorizedRef, destination_refs: [authorizedRef],
+      title: '下周安排', period: { start_date: '2026-10-12', end_date: '2026-10-18' } }
+    expect(parseAgentToolCalls([toolCall('plan.workflow.preview', base)])[0].arguments).toEqual(base)
+    expect(() => parseAgentToolCalls([toolCall('plan.workflow.preview', {
+      parent_ref: authorizedRef, destination_refs: [authorizedRef], title: '缺日期'
+    })])).toThrow()
+    expect(() => parseAgentToolCalls([toolCall('plan.workflow.preview', {
+      ...base, destination_refs: []
+    })])).toThrow()
+    expect(() => parseAgentToolCalls([toolCall('plan.workflow.create', {
+      ...base, preview_token: 'bad'
+    })])).toThrow()
+    expect(parseAgentToolCalls([toolCall('plan.workflow.create', {
+      ...base, preview_token: 'a'.repeat(64)
+    })])[0].name).toBe('plan.workflow.create')
+  })
+
   it('serializes the registered schemas through the real provider request validator', async () => {
     const { getAgentToolDefinitions } = await registry()
     const { serializeAgentChatRequest } = await import('../src/main/services/agent-provider')
     expect(() => serializeAgentChatRequest('test-model', [{ role: 'user', content: 'test' }], {
       tools: getAgentToolDefinitions(), toolChoice: 'auto'
     })).not.toThrow()
+  })
+
+  it('accepts a complete initial task list only as part of plan creation', async () => {
+    const { getAgentToolDefinitions, parseAgentToolCalls } = await registry()
+    const createPlan = getAgentToolDefinitions().find((tool) => tool.function.name === 'plan.create')!
+    const properties = createPlan.function.parameters.properties as Record<string, Record<string, unknown>>
+    expect(properties.task_list).toMatchObject({
+      type: 'object', additionalProperties: false,
+      required: ['tasks'],
+      properties: {
+        title: { type: 'string' },
+        tasks: { type: 'array', minItems: 1, maxItems: 50, additionalItems: false }
+      }
+    })
+
+    const tasks = Array.from({ length: 7 }, (_, index) => ({ title: `Task ${index + 1}` }))
+    const parsed = parseAgentToolCalls([toolCall('plan.create', {
+      name_part: 'Today', task_list: { title: 'Today tasks', tasks }
+    })])
+    expect(parsed[0].arguments).toMatchObject({ task_list: { title: 'Today tasks', tasks } })
+    expect(() => parseAgentToolCalls([toolCall('plan.create', {
+      name_part: 'Today', task_list: { tasks: [{ title: 'Task', status: 'done' }] }
+    })])).toThrow()
+    expect(() => parseAgentToolCalls([toolCall('plan.create', {
+      name_part: 'Today', task_list: { tasks: [] }
+    })])).toThrow()
+    expect(() => parseAgentToolCalls([toolCall('plan.create', {
+      name_part: 'Today', task_list: { tasks: Array.from({ length: 51 }, (_, index) => ({ title: `Task ${index}` })) }
+    })])).toThrow()
   })
 
   it('declares mood scores with the exact nullable-number schema', async () => {
@@ -49,16 +97,15 @@ describe('agent built-in tool registry', () => {
     expect(payloadProperties.score.type).toEqual(['number', 'null'])
   })
 
-  it('requires an exact trash-entry grant for Agent trash listing', async () => {
+  it('lists trash without arguments and does not accept a write target reference', async () => {
     const { getAgentToolDefinitions, parseAgentToolCalls } = await registry()
     const trashList = getAgentToolDefinitions().find((tool) => tool.function.name === 'trash.list')!
     expect(trashList.function.parameters).toMatchObject({
-      required: ['trash_entry_ref'],
-      properties: { trash_entry_ref: { type: 'string' } }
+      required: [],
+      properties: {}
     })
-    expect(() => parseAgentToolCalls([toolCall('trash.list', {})])).toThrow()
-    expect(parseAgentToolCalls([toolCall('trash.list', { trash_entry_ref: authorizedRef })])[0].arguments)
-      .toEqual({ trash_entry_ref: authorizedRef })
+    expect(parseAgentToolCalls([toolCall('trash.list', {})])[0].arguments).toEqual({})
+    expect(() => parseAgentToolCalls([toolCall('trash.list', { trash_entry_ref: authorizedRef })])).toThrow()
   })
 
   it('accepts one valid call for every supported non-reference component type', async () => {

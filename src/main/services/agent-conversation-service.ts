@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentCompletedToolCall, type AgentHistoryItem, type AgentMessage, type AgentMessageStatus, type AgentOutboundPreview, type AgentPreviewInput, type AgentPreviewMessage, type AgentProfile, type AgentSession, type AgentSessionInput, type AgentSessionSummary, type AgentTarget, type AgentTargetGrant, type AgentRequestIdentity, type AgentCapabilityStatus } from '../../shared/agent-types'
+import { AGENT_MAX_TOOL_CALLS_PER_REQUEST, AGENT_MAX_TOOL_ROUNDS_PER_REQUEST, type AgentChatToolCall, type AgentCompletedToolCall, type AgentHistoryItem, type AgentMessage, type AgentMessageStatus, type AgentOutboundPreview, type AgentPreviewInput, type AgentPreviewMessage, type AgentProfile, type AgentSession, type AgentSessionInput, type AgentSessionSummary, type AgentTarget, type AgentTargetGrant, type AgentRequestIdentity, type AgentRequestDiagnostic, type AgentCapabilityStatus } from '../../shared/agent-types'
 import { ERR, TraceError } from '../../shared/errors'
 import { AgentContextService, parseContextSelection } from './agent-context-service'
 import { AGENT_MAX_MESSAGE_LENGTH, AgentSessionRepository, agentRecord, assertAgentMessageText, assertAgentSessionId, parseSessionInput } from './agent-session-repository'
@@ -168,7 +168,7 @@ export class AgentConversationService {
       const messages = [
         ...items.map(previewMessage),
         ...contexts.map((item) => ({ role: 'system' as const, content: `用户授权上下文（${item.kind}：${item.path}，版本 ${item.version}）：\n${item.content}` })),
-        ...(targets.length ? [{ role: 'system' as const, content: `用户本轮明确授权的计划操作目标（仅允许通过目标引用进行读取）：\n${targets.map((item) => `${item.kind} ref=${item.ref} 名称=${item.name}`).join('\n')}` }] : []),
+        ...(targets.length ? [{ role: 'system' as const, content: `用户本轮标注的计划操作目标：\n目标标注仅限定本轮的引用范围，不构成写入授权或外发授权。计划目标只提供本轮目标身份和只读理解；只有用户在本轮消息中明确要求具体写操作，且当前权限策略允许时，才可提出对应写工具调用，主进程仍须完成全部预检。文件夹目标只标识该文件夹本身，可用于列出直接子项或作为新建父目录，不得递归读取或修改子树；操作已有子计划前，必须由用户单独标注该计划。\n${targets.map((item) => `${item.kind} ref=${item.ref} 名称=${item.name}`).join('\n')}` }] : []),
         { role: 'user' as const, content: input.message }
       ]
       try { serializeAgentChatRequest(currentTarget.model, messages, toolChoice ? { tools, toolChoice } : undefined) } catch (error) {
@@ -374,7 +374,7 @@ export class AgentConversationService {
     })
   }
   // Incremental persistence and final status belong to main; no public mutation IPC exists.
-  settleAssistant(sessionId: string, messageId: string, content: string, status: AgentMessageStatus, toolCalls: readonly AgentCompletedToolCall[] = []): Promise<AgentSession> {
+  settleAssistant(sessionId: string, messageId: string, content: string, status: AgentMessageStatus, toolCalls: readonly AgentCompletedToolCall[] = [], diagnostic?: AgentRequestDiagnostic): Promise<AgentSession> {
     assertAgentSessionId(sessionId); assertAgentSessionId(messageId); assertAgentMessageText(content)
     if (!['complete', 'streaming', 'user-interrupted', 'error-interrupted'].includes(status)) throw new TraceError(ERR.VALIDATION, '消息状态无效')
     if (toolCalls.length > AGENT_MAX_TOOL_CALLS_PER_REQUEST || toolCalls.some((call) => !call || typeof call.id !== 'string' || typeof call.name !== 'string' || !agentRecord(call.arguments))) throw new TraceError(ERR.VALIDATION, '工具调用结果无效')
@@ -392,6 +392,8 @@ export class AgentConversationService {
         message.toolCalls = toolCalls.map(chatCall)
       }
       message.content = content; message.status = status
+      if (status === 'error-interrupted' && diagnostic) message.diagnostic = diagnostic
+      else delete message.diagnostic
     }))
   }
 

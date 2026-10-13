@@ -1,15 +1,16 @@
-// 任务三态状态机（LLD §6.3）：not_started ↔ in_progress ↔ done，允许回退
+// 任务状态机：未开始 / 进行中 / 完成；跨周交接的 moved 是终态。
 import type { TaskStatus } from './plan-types'
 import { ERR, TraceError } from './errors'
 
 const TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  not_started: ['in_progress'],
-  in_progress: ['not_started', 'done'],
-  done: ['in_progress']
+  not_started: ['in_progress', 'moved'],
+  in_progress: ['not_started', 'done', 'moved'],
+  done: ['in_progress'],
+  moved: []
 }
 
 export function canTransition(from: TaskStatus, to: TaskStatus): boolean {
-  return TRANSITIONS[from].includes(to)
+  return Array.isArray(TRANSITIONS[from]) && TRANSITIONS[from].includes(to)
 }
 
 export function assertTransition(from: TaskStatus, to: TaskStatus): void {
@@ -35,5 +36,5 @@ export function isPastPlannedDate(plannedAt?: string, todayLocal = new Date()): 
 
 // 逾期判定（展示层，不落盘）：计划时间早于今天且未完成
 export function isOverdue(status: TaskStatus, plannedAt?: string, todayLocal = new Date()): boolean {
-  return status !== 'done' && isPastPlannedDate(plannedAt, todayLocal)
+  return status !== 'done' && status !== 'moved' && isPastPlannedDate(plannedAt, todayLocal)
 }

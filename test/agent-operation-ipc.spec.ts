@@ -37,6 +37,8 @@ let bridge: TraceBridge
 let rawBridge: TraceBridge
 let storage: import('../src/main/services/storage-service').StorageService
 let planReferences: import('../src/main/services/plan-reference-service').PlanReferenceService
+let planWorkflows: import('../src/main/services/plan-workflow-service').PlanWorkflowService
+let workflowConfigs: import('../src/main/services/plan-workflow-config-service').PlanWorkflowConfigService
 let agentTargets: import('../src/main/services/agent-target-service').AgentTargetService
 let server: Server
 let dispose: (() => void) | undefined
@@ -47,6 +49,7 @@ let allowTrustedConfirmation: boolean
 let trustedConfirmationDisplayFails: boolean
 let trustedConfirmationSnapshots: unknown[]
 let trustedTrashConfirmationSnapshots: unknown[]
+let registerWithoutOperationConfirmation: (() => void) | undefined
 
 function data<T>(result: TraceResult<T>): T {
   if (!result.ok) throw new Error(result.message)
@@ -70,6 +73,24 @@ async function writePlan(): Promise<{ updatedAt: string; taskListId: string }> {
     components: [{ id: taskListId, type: 'task_list', payload: { title: 'Tasks', items: [] } }]
   }))
   return { updatedAt, taskListId }
+}
+
+async function configureWeeklyWorkflow(): Promise<void> {
+  await storage.createFolder('', 'Weekly_Plan')
+  await storage.createFolder('', 'Daily_Plan')
+  await workflowConfigs.save(root, { format_version: '1', name_rules: [],
+    content_templates: [
+      { id: 'week', name: '周', components: [{ type: 'heading', title: '目标' }] },
+      { id: 'day', name: '日', components: [{ type: 'task_list', title: '任务' }] }
+    ], presets: [{ id: 'weekly', name: '周日联动', scope: { kind: 'directory', path: 'Weekly_Plan' },
+      enabled: true, is_default: true, outputs: [
+        { id: 'week', destination: { kind: 'selected' }, name_template_mode: 'explicit',
+          name_template: '{this.folder_name}_{week_start}-{week_end}', content_template_id: 'week',
+          repeat: 'once', workflow_kind: 'week' },
+        { id: 'days', destination: { kind: 'fixed', path: 'Daily_Plan' }, name_template_mode: 'explicit',
+          name_template: '{this.folder_name}_{date}', content_template_id: 'day',
+          repeat: 'each_day', workflow_kind: 'day' }
+      ] }] })
 }
 
 async function startBatch(input: {
@@ -105,6 +126,27 @@ async function startBatch(input: {
   return { sessionId: session.id, requestId: identity.requestId, batchId: batch.id, getRequestCount: () => requestCount }
 }
 
+async function createRestartedOperationService(sessionId: string) {
+  const [
+    { AgentContextService }, { AgentConversationService }, { AgentOperationService }, { AgentPolicyService },
+    { AgentSessionRepository }, { AgentTargetService }, { PlanNameTemplateService }, { PlanRepository }
+  ] = await Promise.all([
+    import('../src/main/services/agent-context-service'), import('../src/main/services/agent-conversation-service'),
+    import('../src/main/services/agent-operation-service'), import('../src/main/services/agent-policy-service'),
+    import('../src/main/services/agent-session-repository'), import('../src/main/services/agent-target-service'),
+    import('../src/main/services/plan-name-template-service'), import('../src/main/services/plan-repository')
+  ])
+  const restartedDirectory = join(directory, `restart-${sessionId}`)
+  const restartedSessionsDirectory = join(restartedDirectory, 'agent-sessions')
+  await fs.mkdir(restartedSessionsDirectory, { recursive: true })
+  await fs.copyFile(join(directory, 'agent-sessions', `${sessionId}.json`),
+    join(restartedSessionsDirectory, `${sessionId}.json`))
+  const targets = new AgentTargetService(storage)
+  const conversations = new AgentConversationService(new AgentSessionRepository(restartedDirectory), new AgentContextService(storage), async () => null, { targets })
+  return new AgentOperationService(conversations, targets, new AgentPolicyService(restartedDirectory), storage, planReferences,
+    new PlanNameTemplateService(new PlanRepository()))
+}
+
 beforeEach(async () => {
   vi.resetModules()
   vi.clearAllMocks()
@@ -116,6 +158,7 @@ beforeEach(async () => {
   trustedConfirmationDisplayFails = false
   trustedConfirmationSnapshots = []
   trustedTrashConfirmationSnapshots = []
+  registerWithoutOperationConfirmation = undefined
   responses = []
   events = []
   server = createServer(async (_request, response) => {
@@ -146,6 +189,14 @@ beforeEach(async () => {
   ])
   planReferences = new PlanReferenceService(repository, () => root)
   planReferences.activateRoot(root)
+  const [{ PlanWorkflowConfigService }, { PlanWorkflowResolver }, { PlanWorkflowService }, { PlanWorkflowBatchService }] = await Promise.all([
+    import('../src/main/services/plan-workflow-config-service'), import('../src/main/services/plan-workflow-resolver'),
+    import('../src/main/services/plan-workflow-service'), import('../src/main/services/plan-workflow-batch-service')
+  ])
+  workflowConfigs = new PlanWorkflowConfigService(repository)
+  const workflowResolver = new PlanWorkflowResolver(repository, workflowConfigs, new PlanNameTemplateService(repository))
+  planWorkflows = new PlanWorkflowService(storage, repository, workflowConfigs, workflowResolver)
+  const planWorkflowBatches = new PlanWorkflowBatchService(storage, repository, workflowResolver)
   agentTargets = new AgentTargetService(storage)
   storage.setTrashReferenceImpactReader(async (targetLibraryId, planIds) => {
     const references = (await Promise.all(planIds.map(async (planId) =>
@@ -160,13 +211,15 @@ beforeEach(async () => {
       reference_count: references.length
     }
   })
-  dispose = registerIpc({
+  const dependencies = {
     storage,
     agentUserDataDir: directory,
     agentProfiles: profiles,
     agentTargetService: agentTargets,
     planReferences,
     planNameTemplates: new PlanNameTemplateService(repository),
+    planWorkflows,
+    planWorkflowBatches,
     agentToolDefinitions: getAgentToolDefinitions,
     requestAgentApproval: async (_snapshot: AgentApprovalRequestSnapshot) => true,
     requestTrustedOperationConfirmation: async (snapshot: unknown, accept: () => Promise<unknown>) => {
@@ -183,7 +236,14 @@ beforeEach(async () => {
       ? ({ isDestroyed: () => false, webContents: { isDestroyed: () => false, send: (name: string, payload: unknown) => electron.listeners.get(name)?.forEach((listener) => listener({}, payload)) } } as unknown as import('electron').BrowserWindow)
       : null,
     log: vi.fn()
-  } as unknown as Parameters<typeof registerIpc>[0])
+  }
+  dispose = registerIpc(dependencies as unknown as Parameters<typeof registerIpc>[0])
+  registerWithoutOperationConfirmation = () => {
+    dispose?.()
+    const productionDependencies = { ...dependencies }
+    Reflect.deleteProperty(productionDependencies, 'requestTrustedOperationConfirmation')
+    dispose = registerIpc(productionDependencies as unknown as Parameters<typeof registerIpc>[0])
+  }
   await import('../src/preload/index')
   bridge = window.trace
   rawBridge = window.trace
@@ -213,6 +273,114 @@ afterEach(async () => {
 })
 
 describe('agent operation batch typed IPC and loopback provider', () => {
+  it('returns the same read-only workflow preview as the UI service for an authorized folder', async () => {
+    await storage.createFolder('', 'Feature_Plan')
+    await workflowConfigs.save(root, { format_version: '1', name_rules: [],
+      content_templates: [{ id: 'feature', name: '功能计划', components: [{ type: 'heading', title: '目标' }] }],
+      presets: [{ id: 'feature', name: '功能工作流', scope: { kind: 'directory', path: 'Feature_Plan' },
+        enabled: true, is_default: true, outputs: [{ id: 'main', destination: { kind: 'selected' },
+          name_template_mode: 'explicit', name_template: '{this.folder_name}_{date}_{title}',
+          content_template_id: 'feature', repeat: 'once', workflow_kind: 'regular' }] }] })
+    const grant = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'folder', path: 'Feature_Plan' }] }))
+    const ref = grant.targets[0].ref
+    const expected = await planWorkflows.preview({ library_id: libraryId, draft: {
+      selected_path: 'Feature_Plan', title: '迭代计划', target_date: '2026-10-12', tasks: []
+    } })
+    const run = await startBatch({ title: 'Workflow preview', message: '预览功能计划',
+      targetSetId: grant.id, targetRefs: [ref], calls: [{ id: 'workflow_preview', name: 'plan.workflow.preview',
+        arguments: { parent_ref: ref, destination_refs: [ref], title: '迭代计划', target_date: '2026-10-12' } }] })
+    const audit = data(await bridge.invoke('agent:operation:read', { sessionId: run.sessionId, batchId: run.batchId }))
+    expect(audit.operations[0]).toMatchObject({ status: 'succeeded', operation: 'plan.workflow.preview' })
+    expect(JSON.stringify(audit.operations[0].changes)).toContain(expected.outputs[0].relative_path)
+    expect(await storage.treeGetChildren('Feature_Plan')).toEqual([])
+  }, 20000)
+
+  it('confirms the same single-plan output as the workflow resolver for a granted agent target', async () => {
+    await storage.createFolder('', 'Feature_Plan')
+    await workflowConfigs.save(root, { format_version: '1', name_rules: [],
+      content_templates: [{ id: 'feature', name: '功能计划', components: [{ type: 'task_list', title: '执行任务' }] }],
+      presets: [{ id: 'feature', name: '功能工作流', scope: { kind: 'directory', path: 'Feature_Plan' },
+        enabled: true, is_default: true, outputs: [{ id: 'main', destination: { kind: 'selected' },
+          name_template_mode: 'explicit', name_template: '{this.folder_name}_{date}_{title}',
+          content_template_id: 'feature', repeat: 'once', workflow_kind: 'regular' }] }] })
+    const grant = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'folder', path: 'Feature_Plan' }] }))
+    const ref = grant.targets[0].ref
+    const intent = { parent_ref: ref, destination_refs: [ref], title: '迭代计划', target_date: '2026-10-12',
+      tasks: [{ title: '检查入口', target_date: '2026-10-12' }] }
+    const expected = await planWorkflows.preview({ library_id: libraryId, draft: {
+      selected_path: 'Feature_Plan', title: intent.title, target_date: intent.target_date,
+      tasks: [{ id: 'agent-1', title: '检查入口', target_date: '2026-10-12' }]
+    } })
+    const createRun = await startBatch({ title: 'Workflow create', message: '创建功能计划',
+      targetSetId: grant.id, targetRefs: [ref], calls: [{ id: 'workflow_create', name: 'plan.workflow.create',
+        arguments: { ...intent, preview_token: expected.revision_token } }] })
+    const pending = data(await bridge.invoke('agent:operation:read', { sessionId: createRun.sessionId, batchId: createRun.batchId }))
+    expect(pending.status).toBe('pending-confirmation')
+    expect(JSON.stringify(pending.operations[0].changes)).toContain(expected.outputs[0].relative_path)
+    allowTrustedConfirmation = false
+    const cancelled = data(await bridge.invoke('agent:operation:confirm', { sessionId: createRun.sessionId, batchId: createRun.batchId }))
+    expect(cancelled.status).toBe('pending-confirmation')
+    expect(await storage.treeGetChildren('Feature_Plan')).toEqual([])
+    allowTrustedConfirmation = true
+    const accepted = data(await bridge.invoke('agent:operation:confirm', { sessionId: createRun.sessionId, batchId: createRun.batchId }))
+    expect(accepted.operations[0].status).toBe('succeeded')
+    const created = await storage.readPlan(expected.outputs[0].relative_path!)
+    expect(created.components.find((component) => component.type === 'task_list')?.payload)
+      .toMatchObject({ items: [{ title: '检查入口', planned_at: '2026-10-12' }] })
+  }, 20000)
+
+  it('requires grants for both week and day destinations', async () => {
+    await configureWeeklyWorkflow()
+    const partialGrant = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'folder', path: 'Weekly_Plan' }] }))
+    const period = { start_date: '2026-10-12', end_date: '2026-10-18' }
+    const unauthorized = await startBatch({ title: 'Missing grant', message: '安排下周',
+      targetSetId: partialGrant.id, targetRefs: [partialGrant.targets[0].ref], calls: [{
+        id: 'missing_day_grant', name: 'plan.workflow.preview', arguments: {
+          parent_ref: partialGrant.targets[0].ref, destination_refs: [partialGrant.targets[0].ref],
+          title: '下周', period
+        }
+      }] })
+    const failed = data(await bridge.invoke('agent:operation:read', { sessionId: unauthorized.sessionId, batchId: unauthorized.batchId }))
+    expect(failed.status).toBe('preflight-failed')
+    expect(await storage.treeGetChildren('Weekly_Plan')).toEqual([])
+    expect(await storage.treeGetChildren('Daily_Plan')).toEqual([])
+  }, 20000)
+
+  it('shows eight concrete outputs in confirmation and creates a linked week and seven days', async () => {
+    await configureWeeklyWorkflow()
+    const period = { start_date: '2026-10-12', end_date: '2026-10-18' }
+    const expected = await planWorkflows.preview({ library_id: libraryId, draft: {
+      selected_path: 'Weekly_Plan', title: '下周', period,
+      tasks: [{ id: 'agent-1', title: '整理资料', target_date: '2026-10-13' }]
+    } })
+    expect(expected.outputs).toHaveLength(8)
+    const grant = data(await bridge.invoke('agent:target:grant', { targets: [
+      { kind: 'folder', path: 'Weekly_Plan' }, { kind: 'folder', path: 'Daily_Plan' }
+    ] }))
+    const weeklyRef = grant.targets.find((item) => item.path === 'Weekly_Plan')!.ref
+    const dailyRef = grant.targets.find((item) => item.path === 'Daily_Plan')!.ref
+    const run = await startBatch({ title: 'Weekly workflow', message: '创建下周和七天计划',
+      targetSetId: grant.id, targetRefs: [weeklyRef, dailyRef], calls: [{
+        id: 'workflow_week_create', name: 'plan.workflow.create', arguments: {
+          parent_ref: weeklyRef, destination_refs: [weeklyRef, dailyRef], title: '下周', period,
+          tasks: [{ title: '整理资料', target_date: '2026-10-13' }], preview_token: expected.revision_token
+        }
+      }] })
+    const pending = data(await bridge.invoke('agent:operation:read', { sessionId: run.sessionId, batchId: run.batchId }))
+    expect(pending.status).toBe('pending-confirmation')
+    expect(pending.operations[0].changes).toHaveLength(8)
+    expect(JSON.stringify(pending.operations[0].changes)).toContain('Daily_Plan_20261013')
+    const accepted = data(await bridge.invoke('agent:operation:confirm', { sessionId: run.sessionId, batchId: run.batchId }))
+    expect(accepted.operations[0].status).toBe('succeeded')
+    expect(await storage.treeGetChildren('Weekly_Plan')).toHaveLength(1)
+    expect(await storage.treeGetChildren('Daily_Plan')).toHaveLength(7)
+    const weekOutput = expected.outputs.find((output) => output.workflow_kind === 'week')!
+    const week = await storage.readPlan(weekOutput.relative_path!)
+    expect(week.workflow?.kind).toBe('week')
+    if (week.workflow?.kind !== 'week') throw new Error('Week metadata missing')
+    expect(Object.keys(week.workflow.day_plan_ids)).toHaveLength(7)
+  }, 20000)
+
   it.each(['component.update', 'component.delete'] as const)(
     'rejects %s for an unknown legacy component without changing it', async (operation) => {
       const { updatedAt } = await writePlan()
@@ -302,11 +470,31 @@ describe('agent operation batch typed IPC and loopback provider', () => {
     expect(JSON.parse(await fs.readFile(join(root, 'one', 'plan.json'), 'utf8')).components[0].payload.title).toBe('Confirmed update')
   }, 20000)
 
-  it('forces writes through an @ read grant into pending confirmation under unrestricted policy', async () => {
+  it('uses the operation card confirmation as the only local confirmation in the production registration', async () => {
+    registerWithoutOperationConfirmation?.()
+    const { updatedAt, taskListId } = await writePlan()
+    const targetSet = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
+    const target = targetSet.targets[0]
+    const started = await startBatch({ title: 'In-card local confirmation', message: '@one update its task list',
+      targetSetId: targetSet.id, targetRefs: [target.ref], calls: [{
+        id: 'card_confirmation_only', name: 'component.update', arguments: {
+          plan_ref: target.ref, component_id: taskListId, expected_updated_at: updatedAt, patch: { title: 'Confirmed in card' }
+        }
+      }] })
+    const pending = data(await bridge.invoke('agent:operation:read', { sessionId: started.sessionId, batchId: started.batchId }))
+    expect(pending.status).toBe('pending-confirmation')
+
+    const confirmed = data(await bridge.invoke('agent:operation:confirm', { sessionId: started.sessionId, batchId: started.batchId }))
+    expect(confirmed.operations[0].status).toBe('succeeded')
+    expect(trustedConfirmationSnapshots).toEqual([])
+    expect(JSON.parse(await fs.readFile(join(root, 'one', 'plan.json'), 'utf8')).components[0].payload.title).toBe('Confirmed in card')
+  }, 20000)
+
+  it.each(['restricted', 'unrestricted'] as const)('applies %s policy to a small reversible write through an explicitly @-selected plan', async (mode) => {
     const { updatedAt, taskListId } = await writePlan()
     const targetSet = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
     const targetRef = targetSet.targets[0].ref
-    data(await bridge.invoke('agent:policy:set', { mode: 'unrestricted' }))
+    data(await bridge.invoke('agent:policy:set', { mode }))
 
     const started = await startBatch({ title: 'Read-only @ grant', message: '@one update its task list',
       targetSetId: targetSet.id, targetRefs: [targetRef], calls: [{
@@ -314,14 +502,69 @@ describe('agent operation batch typed IPC and loopback provider', () => {
           plan_ref: targetRef, component_id: taskListId, expected_updated_at: updatedAt, patch: { title: 'Trusted-only update' }
         }
       }] })
-    const pending = data(await bridge.invoke('agent:operation:read', { sessionId: started.sessionId, batchId: started.batchId }))
-    expect(pending).toMatchObject({ status: 'pending-confirmation', requiredConfirmation: true, policyMode: 'unrestricted' })
-    expect(pending.operations[0]).toMatchObject({ requiredConfirmation: true, status: 'ready' })
+    const completed = data(await bridge.invoke('agent:operation:read', { sessionId: started.sessionId, batchId: started.batchId }))
+    expect(completed).toMatchObject({ status: 'awaiting-outbound-preview', requiredConfirmation: false, policyMode: mode })
+    expect(completed.operations[0]).toMatchObject({ requiredConfirmation: false, status: 'succeeded', confirmationSource: 'policy' })
     expect(trustedConfirmationSnapshots).toEqual([])
-    expect(JSON.parse(await fs.readFile(join(root, 'one', 'plan.json'), 'utf8')).components[0].payload.title).toBe('Tasks')
+    expect(JSON.parse(await fs.readFile(join(root, 'one', 'plan.json'), 'utf8')).components[0].payload.title).toBe('Trusted-only update')
   }, 15000)
 
-  it('requires confirmation for creation under an @ folder while root creation stays policy-controlled', async () => {
+  it('creates one plan with its complete task list atomically and confirms the full task preview', async () => {
+    const taskTitles = [
+      '去社区进行志愿服务',
+      '华北五省比赛的项目今天收尾完工',
+      '华北五省比赛的视频录制',
+      '华北五省比赛的 PPT 制作',
+      '宣讲实录 PPT 重做',
+      '将已有的项目荣誉整理到一个 PPT 中',
+      '年度人物 PPT 加装荣誉图片'
+    ]
+    data(await bridge.invoke('agent:policy:set', { mode: 'unrestricted' }))
+    allowTrustedConfirmation = false
+    const started = await startBatch({ title: 'Create one plan with all tasks',
+      message: 'Create one plan containing all seven tasks.', targetRefs: [], calls: [{
+        id: 'create_plan_with_initial_tasks', name: 'plan.create', arguments: {
+          name_part: '今日工作计划',
+          task_list: { title: '今日任务', tasks: taskTitles.map((title) => ({ title })) }
+        }
+      }] })
+
+    const pending = data(await bridge.invoke('agent:operation:read', {
+      sessionId: started.sessionId, batchId: started.batchId
+    }))
+    expect(pending).toMatchObject({ status: 'pending-confirmation', requiredConfirmation: true,
+      operations: [{ operation: 'plan.create', requiredConfirmation: true, status: 'ready' }] })
+    await expect(fs.stat(join(root, '今日工作计划'))).rejects.toMatchObject({ code: 'ENOENT' })
+
+    const cancelled = data(await bridge.invoke('agent:operation:confirm', {
+      sessionId: started.sessionId, batchId: started.batchId
+    }))
+    expect(cancelled.status).toBe('pending-confirmation')
+    const confirmationSnapshot = JSON.stringify(trustedConfirmationSnapshots[0])
+    for (const taskTitle of taskTitles) expect(confirmationSnapshot).toContain(taskTitle)
+    await expect(fs.stat(join(root, '今日工作计划'))).rejects.toMatchObject({ code: 'ENOENT' })
+
+    allowTrustedConfirmation = true
+    const committed = data(await bridge.invoke('agent:operation:confirm', {
+      sessionId: started.sessionId, batchId: started.batchId
+    }))
+    expect(committed.operations[0]).toMatchObject({ status: 'succeeded', targetKind: 'plan' })
+    const created = await storage.readPlan('今日工作计划')
+    expect(created.components).toHaveLength(1)
+    const taskList = created.components[0]
+    expect(taskList.type).toBe('task_list')
+    if (taskList.type !== 'task_list') throw new Error('initial task list was not written')
+    expect(taskList.payload.title).toBe('今日任务')
+    expect(taskList.payload.items.map((task) => task.title)).toEqual(taskTitles)
+    expect(taskList.payload.items.map((task) => task.status)).toEqual(taskTitles.map(() => 'not_started'))
+    expect(new Set(taskList.payload.items.map((task) => task.id)).size).toBe(taskTitles.length)
+    expect(taskList.payload.items.every((task) => /^[0-9a-f]{32}$/.test(task.id))).toBe(true)
+    expect((await storage.treeGetChildren('')).filter((entry) => entry.kind === 'plan').map((entry) => entry.name))
+      .toEqual(['今日工作计划'])
+    await until(() => started.getRequestCount() === 2)
+  }, 20000)
+
+  it('applies unrestricted policy to creation under an @ folder and root creation', async () => {
     await fs.mkdir(join(root, 'authorized-parent'))
     data(await bridge.invoke('agent:policy:set', { mode: 'unrestricted' }))
     const targetSet = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'folder', path: 'authorized-parent' }] }))
@@ -331,9 +574,9 @@ describe('agent operation batch typed IPC and loopback provider', () => {
         id: 'scoped_create', name: 'plan.create', arguments: { parent_ref: parentRef, name_part: 'Scoped child' }
       }] })
     const scopedBatch = data(await bridge.invoke('agent:operation:read', { sessionId: scoped.sessionId, batchId: scoped.batchId }))
-    expect(scopedBatch).toMatchObject({ status: 'pending-confirmation', requiredConfirmation: true,
-      operations: [{ requiredConfirmation: true, status: 'ready' }] })
-    await expect(fs.stat(join(root, 'authorized-parent', 'Scoped child'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(scopedBatch).toMatchObject({ status: 'awaiting-outbound-preview', requiredConfirmation: false,
+      operations: [{ requiredConfirmation: false, status: 'succeeded' }] })
+    await expect(fs.stat(join(root, 'authorized-parent', 'Scoped child'))).resolves.toBeTruthy()
 
     const unscoped = await startBatch({ title: 'Root creation policy', message: 'Create a root plan', targetRefs: [], calls: [{
       id: 'unscoped_create', name: 'plan.create', arguments: { name_part: 'Unscoped root plan' }
@@ -370,30 +613,69 @@ describe('agent operation batch typed IPC and loopback provider', () => {
     expect((await storage.listTrashEntries()).some((item) => item.id === entry.id)).toBe(false)
   }, 15000)
 
-  it('returns only the exact message-bound trash entry named by trash.list', async () => {
+  it('lists the active library trash without issuing restore or purge grants', async () => {
     const firstPlan = await storage.createPlan('', 'Agent trash first')
     const secondPlan = await storage.createPlan('', 'Agent trash second')
     const firstEntry = await storage.trashPlan(firstPlan.path)
     const secondEntry = await storage.trashPlan(secondPlan.path)
-    const fullEnumeration = vi.spyOn(storage, 'listTrashEntries').mockRejectedValue(new Error('full trash enumeration must not run'))
+    const fullEnumeration = vi.spyOn(storage, 'listTrashEntries')
     const serializedRead = vi.spyOn(planReferences, 'readTrashEntry')
-    const grantSet = data(await bridge.invoke('agent:target:grant', { targets: [
-      { kind: 'trash', entryId: firstEntry.id }, { kind: 'trash', entryId: secondEntry.id }
-    ] }))
-    const firstGrant = grantSet.targets.find((item) => item.name === firstEntry.name)!
-    const started = await startBatch({ title: 'Exact trash read', message: '@Agent trash first show this one only',
-      targetSetId: grantSet.id, targetRefs: [firstGrant.ref], calls: [{
-        id: 'read_one_trash_entry', name: 'trash.list', arguments: { trash_entry_ref: firstGrant.ref }
+    const started = await startBatch({ title: 'Active library trash read', message: 'List the current plan library trash.', targetRefs: [], calls: [{
+        id: 'read_active_library_trash', name: 'trash.list', arguments: {}
       }] })
     const session = data(await bridge.invoke('agent:session:read', { id: started.sessionId }))
-    const toolResult = session.messages.find((message) => message.role === 'tool' && message.toolCallId === 'read_one_trash_entry')
+    const toolResult = session.messages.find((message) => message.role === 'tool' && message.toolCallId === 'read_active_library_trash')
     expect(toolResult).toBeDefined()
-    expect(JSON.parse(toolResult!.content)).toMatchObject({ ok: true, entries: [{ id: firstEntry.id, name: firstEntry.name }] })
-    expect(toolResult!.content).not.toContain(secondEntry.id)
-    expect(toolResult!.content).not.toContain(secondEntry.name)
-    expect(serializedRead).toHaveBeenCalledExactlyOnceWith(storage, firstEntry.id, firstEntry.manifest_revision)
-    expect(fullEnumeration).not.toHaveBeenCalled()
+    const result = JSON.parse(toolResult!.content) as { ok: boolean; entries: Array<Record<string, unknown> & { id: string }> }
+    expect(result.ok).toBe(true)
+    expect(new Set(result.entries.map((entry) => entry.id))).toEqual(new Set([firstEntry.id, secondEntry.id]))
+    expect(result.entries.every((entry) => !Object.hasOwn(entry, 'ref') && !Object.hasOwn(entry, 'target_ref'))).toBe(true)
+    expect(serializedRead).not.toHaveBeenCalled()
+    expect(fullEnumeration).toHaveBeenCalledExactlyOnceWith()
   }, 15000)
+
+  it('can undo an audited component update after the message grant service restarts', async () => {
+    const { updatedAt, taskListId } = await writePlan()
+    const targetSet = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
+    const target = targetSet.targets[0]
+    const started = await startBatch({ title: 'Restart-safe component undo', message: '@one rename its task list',
+      targetSetId: targetSet.id, targetRefs: [target.ref], calls: [{
+        id: 'restart_component_update', name: 'component.update', arguments: {
+          plan_ref: target.ref, component_id: taskListId, expected_updated_at: updatedAt, patch: { title: 'Changed before restart' }
+        }
+      }] })
+    data(await bridge.invoke('agent:operation:confirm', { sessionId: started.sessionId, batchId: started.batchId }))
+    expect(JSON.parse(await fs.readFile(join(root, 'one', 'plan.json'), 'utf8')).components[0].payload.title).toBe('Changed before restart')
+
+    const restarted = await createRestartedOperationService(started.sessionId)
+    const undo = await restarted.undoOperation({ sessionId: started.sessionId, batchId: started.batchId, callId: 'restart_component_update' })
+    expect(undo.status).toBe('pending-confirmation')
+    const undone = await restarted.confirmBatch({ sessionId: started.sessionId, batchId: undo.id }, async (_snapshot, accept) => accept())
+    expect(undone.operations[0].status).toBe('succeeded')
+    expect(JSON.parse(await fs.readFile(join(root, 'one', 'plan.json'), 'utf8')).components[0].payload.title).toBe('Tasks')
+  }, 20000)
+
+  it('can undo an audited plan rename after the message grant service restarts', async () => {
+    await writePlan()
+    const targetSet = data(await bridge.invoke('agent:target:grant', { targets: [{ kind: 'plan', path: 'one' }] }))
+    const target = targetSet.targets[0]
+    const started = await startBatch({ title: 'Restart-safe plan rename undo', message: '@one rename it',
+      targetSetId: targetSet.id, targetRefs: [target.ref], calls: [{
+        id: 'restart_plan_rename', name: 'plan.rename', arguments: {
+          target_ref: target.ref, expected_revision: target.revision, new_name: 'renamed-one'
+        }
+      }] })
+    data(await bridge.invoke('agent:operation:confirm', { sessionId: started.sessionId, batchId: started.batchId }))
+    await expect(fs.stat(join(root, 'renamed-one', 'plan.json'))).resolves.toBeTruthy()
+
+    const restarted = await createRestartedOperationService(started.sessionId)
+    const undo = await restarted.undoOperation({ sessionId: started.sessionId, batchId: started.batchId, callId: 'restart_plan_rename' })
+    expect(undo.status).toBe('pending-confirmation')
+    const undone = await restarted.confirmBatch({ sessionId: started.sessionId, batchId: undo.id }, async (_snapshot, accept) => accept())
+    expect(undone.operations[0].status).toBe('succeeded')
+    await expect(fs.stat(join(root, 'one', 'plan.json'))).resolves.toBeTruthy()
+    await expect(fs.stat(join(root, 'renamed-one'))).rejects.toMatchObject({ code: 'ENOENT' })
+  }, 20000)
 
   it('shows frozen folder subtree metadata only in transient confirmation preview', async () => {
     const planId = 'b'.repeat(32)
@@ -2286,13 +2568,11 @@ describe('agent operation batch typed IPC and loopback provider', () => {
       { id: 'retry_one', name: 'component.update', arguments: { plan_ref: targetRef, component_id: taskListId, expected_updated_at: updatedAt, patch: { title: 'Retried title' } } }
     ] })
     const original = data(await bridge.invoke('agent:operation:read', { sessionId: started.sessionId, batchId: started.batchId }))
-    expect(original.status).toBe('pending-confirmation')
-    const initialFailure = data(await bridge.invoke('agent:operation:confirm', {
-      sessionId: started.sessionId, batchId: started.batchId
-    }))
-    expect(initialFailure.status).toBe('execution-failed')
+    expect(original).toMatchObject({ status: 'execution-failed', requiredConfirmation: false })
+    expect(trustedConfirmationSnapshots).toEqual([])
     const failedOriginal = data(await bridge.invoke('agent:operation:read', { sessionId: started.sessionId, batchId: started.batchId }))
     expect(failedOriginal.operations[0].status).toBe('failed')
+    expect(saveCount).toBe(1)
 
     const oversizedRetry = await bridge.invoke('agent:operation:retry', {
       sessionId: started.sessionId,

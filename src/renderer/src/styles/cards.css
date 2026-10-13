@@ -73,6 +73,9 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .task-row.done .state-ring::after { opacity: 1; scale: 1; }
 .task-row.done .task-title input { text-decoration: line-through; color: var(--text-3); }
 .task-row.done { opacity: 1; }
+.task-row.moved { opacity: 0.7; }
+.task-row.moved .state-ring { border-style: dashed; cursor: default; }
+.task-moved-label { font-size: 11px; color: var(--text-3); white-space: nowrap; }
 .task-title { flex: 1; min-width: 0; }
 .task-title input { border: none; outline: none; width: 100%; font-size: 14px; background: transparent; color: var(--text-1); transition: color var(--t-ui) var(--ease-out); }
 .task-date { font-size: 12px; color: var(--text-3); border: 1px solid transparent; border-radius: 4px; padding: 2px; background: transparent; transition: border-color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out); }
@@ -181,3 +184,28 @@ html.theme-dark .card .actions .lite-btn + .lite-btn { margin-left: 2px; }
 .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .folder-item { display: flex; align-items: center; gap: 8px; cursor: pointer; transition: color var(--t-ui) var(--ease-out), background-color var(--t-ui) var(--ease-out), border-color var(--t-ui) var(--ease-out), box-shadow var(--t-ui) var(--ease-out); }
 .folder-item:hover { border-color: var(--link); }
+
+.week-plan-overview {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--paper-dim);
+}
+.week-plan-overview header,
+.week-plan-overview__day {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.week-plan-overview h2 { margin: 0; font-size: 15px; }
+.week-plan-overview__days { display: grid; gap: 6px; }
+.week-plan-overview__day { justify-content: space-between; padding: 7px 9px; border-radius: 6px; background: var(--paper); }
+.week-plan-overview__handoff { display: grid; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
+.week-plan-overview__handoff h3,
+.week-plan-overview__handoff p { margin: 0; }
+.week-plan-overview__handoff-task { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.week-plan-overview__handoff-task > span { flex: 1 1 180px; }

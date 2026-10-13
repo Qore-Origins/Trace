@@ -1,9 +1,18 @@
-import { AgentSseAccumulator, AgentStreamError, type AgentStreamResult } from './agent-sse'
+import {
+  AgentSseAccumulator,
+  AgentStreamError,
+  emitAgentStreamDiagnostic,
+  type AgentStreamDiagnosticObserver,
+  type AgentStreamResult
+} from './agent-sse'
 import type { AgentChatToolCall } from '../../shared/agent-types'
 
 export const AGENT_REQUEST_TIMEOUT_MS = 60_000
 export const AGENT_REQUEST_TIMEOUT_MAX_MS = 180_000
 export const AGENT_REQUEST_BODY_LIMIT_BYTES = 256 * 1024
+const PROVIDER_ERROR_BODY_LIMIT_BYTES = 8 * 1024
+const PROVIDER_ERROR_BODY_READ_TIMEOUT_MS = 200
+const PROVIDER_ERROR_MESSAGE_MAX_LENGTH = 512
 
 export type AgentChatMessage =
   | { role: 'system' | 'user'; content: string }
@@ -16,6 +25,7 @@ export interface AgentProviderInput {
   messages: readonly AgentChatMessage[]
   signal?: AbortSignal
   onText?: (text: string) => void
+  onDiagnostic?: AgentStreamDiagnosticObserver
   timeoutMs?: number
 }
 
@@ -27,6 +37,81 @@ export interface AgentProviderTool {
 export interface AgentProviderToolOptions {
   tools: readonly AgentProviderTool[]
   toolChoice: 'auto' | string
+}
+
+function diagnosticMediaType(contentType: string | null): 'event-stream' | 'json' | 'other' | 'missing' {
+  if (!contentType) return 'missing'
+  const mediaType = contentType.split(';', 1)[0].trim().toLowerCase()
+  if (mediaType === 'text/event-stream') return 'event-stream'
+  if (mediaType === 'application/json' || mediaType.endsWith('+json')) return 'json'
+  return 'other'
+}
+
+function safeProviderMessage(value: unknown, apiKey: string): string | null {
+  if (typeof value !== 'string') return null
+  let message = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!message) return null
+  if (apiKey) message = message.split(apiKey).join('[已脱敏]')
+  message = message.replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [已脱敏]')
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[已脱敏]')
+    .slice(0, PROVIDER_ERROR_MESSAGE_MAX_LENGTH)
+  return message || null
+}
+
+function structuredProviderMessage(text: string, apiKey: string): string | null {
+  let parsed: unknown
+  try { parsed = JSON.parse(text) } catch { return null }
+  return structuredProviderMessageValue(parsed, apiKey)
+}
+
+function structuredProviderMessageValue(parsed: unknown, apiKey: string): string | null {
+  if (!plainRecord(parsed)) return null
+  const error = parsed.error
+  const candidate = plainRecord(error) ? error.message : typeof error === 'string' ? error : parsed.message ?? parsed.msg ?? parsed.detail
+  return safeProviderMessage(candidate, apiKey)
+}
+
+function isJsonMediaType(contentType: string): boolean {
+  const mediaType = contentType.split(';', 1)[0].trim().toLowerCase()
+  return mediaType === 'application/json' || mediaType.endsWith('+json')
+}
+
+async function providerErrorDetails(response: Response, apiKey: string): Promise<{ httpStatus: number; providerMessage: string | null }> {
+  if (response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) {
+    return { httpStatus: response.status, providerMessage: null }
+  }
+  if (!response.body) return { httpStatus: response.status, providerMessage: null }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const readTimeout = new Promise<null>((resolve) => {
+    timeout = setTimeout(() => resolve(null), PROVIDER_ERROR_BODY_READ_TIMEOUT_MS)
+  })
+  try {
+    while (size < PROVIDER_ERROR_BODY_LIMIT_BYTES) {
+      const result = await Promise.race([reader.read(), readTimeout])
+      if (result === null) return { httpStatus: response.status, providerMessage: null }
+      const { done, value } = result
+      if (done) break
+      const remaining = PROVIDER_ERROR_BODY_LIMIT_BYTES - size
+      const bounded = Uint8Array.from(value.subarray(0, remaining))
+      chunks.push(bounded)
+      size += bounded.byteLength
+      if (bounded.byteLength < value.byteLength) break
+    }
+  } finally {
+    if (timeout) clearTimeout(timeout)
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+  return {
+    httpStatus: response.status,
+    providerMessage: structuredProviderMessage(new TextDecoder().decode(bytes), apiKey)
+  }
 }
 
 function plainRecord(value: unknown): value is Record<string, unknown> {
@@ -217,24 +302,57 @@ export async function streamChatCompletion(input: AgentProviderInput, options?: 
     })
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     try {
-      if (response.status === 401 || response.status === 403) throw new AgentStreamError('authentication')
-      if (!response.ok) throw new AgentStreamError('http')
-      if (!response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) throw new AgentStreamError('protocol')
-      if (!response.body) throw new AgentStreamError('protocol')
-      const accumulator = new AgentSseAccumulator(input.onText, toolArgumentSchemas(options), options !== undefined && options.toolChoice !== 'auto')
-      reader = response.body.getReader()
-      const decoder = new TextDecoder('utf-8', { fatal: true })
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        let fragment: string
-        try { fragment = decoder.decode(value, { stream: true }) } catch { throw new AgentStreamError('protocol') }
-        accumulator.push(fragment, value.byteLength)
+      try {
+        const contentTypeHeader = response.headers.get('content-type')
+        const mediaType = diagnosticMediaType(contentTypeHeader)
+        emitAgentStreamDiagnostic(input.onDiagnostic, { phase: 'response', httpStatus: response.status, mediaType })
+        if (!response.ok) {
+          const details = await providerErrorDetails(response, input.apiKey)
+          throw new AgentStreamError(response.status === 401 || response.status === 403 ? 'authentication' : 'http', details.httpStatus, details.providerMessage, 'response.http_status')
+        }
+        const contentType = contentTypeHeader?.toLowerCase() ?? ''
+        if (!contentType.startsWith('text/event-stream')) {
+          if (isJsonMediaType(contentType)) {
+            const details = await providerErrorDetails(response, input.apiKey)
+            if (details.providerMessage) throw new AgentStreamError('provider', details.httpStatus, details.providerMessage, 'response.json_error')
+          }
+          throw new AgentStreamError('protocol', response.status, null, 'response.content_type')
+        }
+        if (!response.body) throw new AgentStreamError('protocol', response.status, null, 'response.body_missing')
+        const accumulator = new AgentSseAccumulator(
+          input.onText,
+          toolArgumentSchemas(options),
+          options !== undefined && options.toolChoice !== 'auto',
+          (payload) => new AgentStreamError('provider', response.status, structuredProviderMessageValue(payload, input.apiKey), 'sse.provider_error'),
+          input.onDiagnostic
+        )
+        reader = response.body.getReader()
+        const decoder = new TextDecoder('utf-8', { fatal: true })
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          let fragment: string
+          try { fragment = decoder.decode(value, { stream: true }) }
+          catch { throw new AgentStreamError('protocol', response.status, null, 'response.invalid_utf8') }
+          accumulator.push(fragment, value.byteLength)
+        }
+        let finalFragment: string
+        try { finalFragment = decoder.decode() }
+        catch { throw new AgentStreamError('protocol', response.status, null, 'response.invalid_utf8') }
+        accumulator.push(finalFragment, 0)
+        return accumulator.complete(Boolean(options))
+      } catch (error) {
+        if (error instanceof AgentStreamError) {
+          emitAgentStreamDiagnostic(input.onDiagnostic, {
+            phase: 'failure', httpStatus: error.httpStatus ?? response.status,
+            category: error.category, code: error.diagnosticCode ?? 'response.unclassified'
+          })
+        }
+        if (error instanceof AgentStreamError && error.httpStatus === undefined) {
+          throw new AgentStreamError(error.category, response.status, error.providerMessage, error.diagnosticCode)
+        }
+        throw error
       }
-      let finalFragment: string
-      try { finalFragment = decoder.decode() } catch { throw new AgentStreamError('protocol') }
-      accumulator.push(finalFragment, 0)
-      return accumulator.complete(Boolean(options))
     } finally {
       if (reader) {
         try { await reader.cancel().catch(() => undefined) } finally { reader.releaseLock() }
@@ -243,9 +361,16 @@ export async function streamChatCompletion(input: AgentProviderInput, options?: 
       }
     }
   } catch (error) {
-    if (controller.signal.aborted) throw new AgentStreamError(input.signal?.aborted ? 'cancelled' : 'timeout')
+    if (controller.signal.aborted) {
+      const aborted = input.signal?.aborted
+      const streamError = new AgentStreamError(aborted ? 'cancelled' : 'timeout', undefined, null, aborted ? 'request.cancelled' : 'request.timeout')
+      emitAgentStreamDiagnostic(input.onDiagnostic, { phase: 'failure', category: streamError.category, code: streamError.diagnosticCode })
+      throw streamError
+    }
     if (error instanceof AgentStreamError) throw error
-    throw new AgentStreamError('network')
+    const streamError = new AgentStreamError('network', undefined, null, 'request.network')
+    emitAgentStreamDiagnostic(input.onDiagnostic, { phase: 'failure', category: streamError.category, code: streamError.diagnosticCode })
+    throw streamError
   } finally {
     clearTimeout(timer)
     input.signal?.removeEventListener('abort', cancel)

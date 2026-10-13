@@ -1,0 +1,32 @@
+{
+  "format_version": "1",
+  "created_at": "2026-09-30T19:21:18+08:00",
+  "updated_at": "2026-09-30T19:21:18+08:00",
+  "components": [
+    {
+      "id": "26093003000000000000000000000001",
+      "type": "heading",
+      "payload": { "title": "组件 Markdown 备注", "size": 25 }
+    },
+    {
+      "id": "26093003000000000000000000000002",
+      "type": "note",
+      "payload": {
+        "content": "Approved scope: optional component-level Markdown remarks with the existing renderer and on-demand Muya editing. Execute after workspace tabs and cross-plan references. No source code has been changed.",
+        "created_at": "2026-09-30T19:21:18+08:00"
+      }
+    },
+    {
+      "id": "26093003000000000000000000000003",
+      "type": "task_list",
+      "payload": {
+        "title": "实施与验收",
+        "items": [
+          { "id": "26093003000000000000000000000011", "title": "建立按需挂载的统一 Markdown 备注编辑器", "status": "not_started" },
+          { "id": "26093003000000000000000000000012", "title": "将备注能力接入全部组件卡片", "status": "not_started" },
+          { "id": "26093003000000000000000000000013", "title": "验证 CAS、标签切换与 Muya 延迟加载", "status": "not_started" }
+        ]
+      }
+    }
+  ]
+}

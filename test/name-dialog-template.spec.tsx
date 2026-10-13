@@ -85,6 +85,8 @@ async function renderDialog(): Promise<void> {
 
 function defaultHandler(channel: string, payload: unknown): unknown {
   if (channel === 'app:getAppInfo') return { rootDir: ROOT_A }
+  if (channel === 'plan-workflow:list') return { library_id: '11111111111111111111111111111111', config: { format_version: '1', name_rules: [], content_templates: [], presets: [] }, suggestions: { format_version: '1', name_rules: [], content_templates: [], presets: [] } }
+  if (channel === 'plan-workflow:preview') return { state: 'none', library_id: '11111111111111111111111111111111', outputs: [], revision_token: '0'.repeat(64) }
   if (channel === 'plan-template:get') return TEMPLATE_SETTINGS
   if (channel === 'storage:createPlan') {
     const request = payload as { parent_path: string; name: string }

@@ -1,6 +1,6 @@
 import type { AgentApprovalRequestSnapshot, AgentCapability } from '../../shared/agent-types'
 import { ERR, TraceError } from '../../shared/errors'
-import { AgentStreamError } from './agent-sse'
+import { AgentStreamError, emitAgentStreamDiagnostic, type AgentStreamDiagnosticObserver } from './agent-sse'
 import { streamChatCompletion, type AgentChatMessage, type AgentProviderTool, type AgentProviderToolOptions } from './agent-provider'
 import { createAgentApprovalRequestSnapshot } from './agent-approval-window-service'
 
@@ -15,7 +15,7 @@ const PROBE_TOOL: AgentProviderTool = {
   }
 }
 
-export interface AgentCapabilityInput { endpoint: string; model: string; apiKey: string; signal?: AbortSignal; timeoutMs?: number }
+export interface AgentCapabilityInput { endpoint: string; model: string; apiKey: string; signal?: AbortSignal; timeoutMs?: number; onDiagnostic?: AgentStreamDiagnosticObserver }
 
 export interface AgentCapabilityRequest {
   snapshot: AgentApprovalRequestSnapshot
@@ -37,12 +37,24 @@ export async function runAgentToolCapabilityTest(input: AgentCapabilityInput, re
     const result = await streamChatCompletion({
       ...input, messages: request.messages
     }, request.options)
-    if (result.toolCalls.length !== 1 || result.toolCalls[0].name !== PROBE_NAME) return { status: 'failed', testedAt, errorCategory: 'unsupported' }
+    if (result.toolCalls.length !== 1 || result.toolCalls[0].name !== PROBE_NAME) {
+      emitAgentStreamDiagnostic(input.onDiagnostic, { phase: 'capability', result: 'failed', category: 'unsupported', code: 'capability.expected_tool_call', callCount: result.toolCalls.length })
+      return { status: 'failed', testedAt, errorCategory: 'unsupported' }
+    }
     const args = result.toolCalls[0].arguments
-    if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length !== 1 || (args as Record<string, unknown>).value !== PROBE_VALUE) return { status: 'failed', testedAt, errorCategory: 'unsupported' }
+    if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length !== 1 || (args as Record<string, unknown>).value !== PROBE_VALUE) {
+      emitAgentStreamDiagnostic(input.onDiagnostic, { phase: 'capability', result: 'failed', category: 'unsupported', code: 'capability.expected_probe_value', callCount: result.toolCalls.length })
+      return { status: 'failed', testedAt, errorCategory: 'unsupported' }
+    }
+    emitAgentStreamDiagnostic(input.onDiagnostic, { phase: 'capability', result: 'passed', callCount: result.toolCalls.length })
     return { status: 'passed', testedAt, errorCategory: null }
   } catch (error) {
-    return { status: 'failed', testedAt, errorCategory: error instanceof AgentStreamError ? error.category : 'internal' }
+    const category = error instanceof AgentStreamError ? error.category : 'internal'
+    emitAgentStreamDiagnostic(input.onDiagnostic, {
+      phase: 'capability', result: 'failed', category,
+      code: error instanceof AgentStreamError ? error.diagnosticCode : 'capability.internal'
+    })
+    return { status: 'failed', testedAt, errorCategory: category }
   }
 }
 

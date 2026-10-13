@@ -43,11 +43,12 @@ function stringValue(value: unknown): string | null {
 }
 
 function taskStatus(value: unknown): TaskStatus | null {
-  return value === 'done' || value === 'in_progress' || value === 'not_started' ? value : null
+  return value === 'done' || value === 'in_progress' || value === 'not_started' || value === 'moved' ? value : null
 }
 
 function statusLabel(status: TaskStatus, t: ReturnType<typeof useTranslation>['t']): string {
   if (status === 'done') return t('cards.statusDone')
+  if (status === 'moved') return t('cards.statusMoved')
   if (status === 'in_progress') return t('cards.statusInProgress')
   return t('cards.statusNotStarted')
 }

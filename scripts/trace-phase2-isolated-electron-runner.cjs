@@ -8,6 +8,12 @@ const net = require('node:net')
 const os = require('node:os')
 const path = require('node:path')
 const { randomBytes } = require('node:crypto')
+const {
+  RendererExceptionMonitor,
+  enableRuntimeExceptionEvents,
+  waitForWebSocketClose,
+  closeRendererClientAfterTargetCloses: closeRendererClientAfterTargetClosesWhenReady
+} = require('./renderer-exception-monitor.cjs')
 
 const runnerArguments = process.argv.slice(2)
 const supportedRunnerArguments = ['--d1-close-diagnostic', '--d3-delete-reference-diagnostic']
@@ -22,10 +28,10 @@ if (d1CloseDiagnostic && d3DeleteReferenceDiagnostic) {
   process.exit(2)
 }
 
-const worktree = path.resolve(__dirname, '..', '.worktrees', 'codex', 'xiaoyuan-plan-operations')
+const workspaceRoot = path.resolve(__dirname, '..')
 const helperPath = path.resolve(__dirname, 'trace-phase2-isolated-electron-bootstrap.cjs')
-const mainBundlePath = path.join(worktree, 'out', 'main', 'index.js')
-const electronPath = path.join(worktree, 'node_modules', 'electron', 'dist', 'electron.exe')
+const mainBundlePath = path.join(workspaceRoot, 'out', 'main', 'index.js')
+const electronPath = path.join(workspaceRoot, 'node_modules', 'electron', 'dist', 'electron.exe')
 const fakeKey = `qa-only-${randomBytes(12).toString('hex')}`
 const runId = randomBytes(16).toString('hex')
 const runRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-agent-phase2-isolated-e2e-'))
@@ -48,6 +54,8 @@ const debugEventUrl = (() => {
 })()
 const CDP_UNANSWERED_WATCH_MS = 5_000
 const CDP_COMMAND_TIMEOUT_MS = 30_000
+const RENDERER_TARGET_CLOSE_TIMEOUT_MS = 15_000
+const RENDERER_WEBSOCKET_CLOSE_TIMEOUT_MS = 5_000
 const MAX_D3_DIAGNOSTIC_VIEW_COUNT = 6
 const MAX_D3_DIAGNOSTIC_VIEW_LABEL_LENGTH = 24
 
@@ -60,6 +68,7 @@ let requestCount = 0
 let queuedSyntheticToolCall
 let activeStartedInvokeChannel
 const providerRequests = []
+const rendererExceptionMonitor = new RendererExceptionMonitor()
 
 function reportDebug(hypothesisId, location, message, data = {}) {
   if (!debugEventUrl) return
@@ -183,11 +192,14 @@ class CdpClient {
   constructor(webSocketUrl, clientName = 'unknown') {
     this.clientName = clientName
     this.runtimeExceptionCount = 0
-    this.expectedBusinessRejections = 0
+    this.webSocketClosed = false
     this.webSocket = new WebSocket(webSocketUrl)
     this.nextId = 0
     this.pending = new Map()
-    this.webSocket.addEventListener('close', () => this.rejectPending('websocket closed'))
+    this.webSocket.addEventListener('close', () => {
+      this.webSocketClosed = true
+      this.rejectPending('websocket closed')
+    })
     this.webSocket.addEventListener('error', () => this.rejectPending('websocket failed'))
     this.webSocket.addEventListener('message', (event) => {
       let message
@@ -198,15 +210,10 @@ class CdpClient {
           // 保留最近一次未捕获异常文本（脱敏同 reportDebug）——末尾断言失败时随消息输出供定位
           this.lastRendererException = String(details?.exception?.description ?? details?.text ?? 'unknown')
             .replaceAll(fakeKey, '[redacted]').replace(/file:\/\/\/[^\s)]+/gi, '[file-url]').replace(/[A-Z]:\\[^\s)]+/gi, '[local-path]').slice(0, 300)
-          // Context 入口的「不完整选择」业务拒绝（Codex worktree 产品代码故意 throw 阻止关闭）：
-          // 预期副产物，单独计数并正向断言其发生过——不计入未捕获异常（2026-09-12 D3 运行定性）
-          if (this.lastRendererException.includes('incomplete reference choices')) {
-            this.expectedBusinessRejections = (this.expectedBusinessRejections ?? 0) + 1
-            reportDebug('A', 'renderer-runtime', 'expected-business-rejection', { count: this.expectedBusinessRejections })
-          } else {
-            this.runtimeExceptionCount += 1
-          }
+          this.runtimeExceptionCount += 1
+          rendererExceptionMonitor.recordProtocolEvent(this.clientName, message)
           reportDebug('A', 'renderer-runtime', 'exception-thrown', {
+            client: this.clientName,
             exceptionClass: details?.exception?.className ?? 'unknown',
             lineNumber: Number.isInteger(details?.lineNumber) ? details.lineNumber : null,
             columnNumber: Number.isInteger(details?.columnNumber) ? details.columnNumber : null,
@@ -246,13 +253,19 @@ class CdpClient {
     }
   }
 
+  waitForClose(timeoutMs) {
+    return waitForWebSocketClose(this.webSocket, () => this.webSocketClosed, timeoutMs)
+  }
+
   async connect() {
-    if (this.webSocket.readyState === WebSocket.OPEN) return
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('CDP websocket open timed out')), 10_000)
-      this.webSocket.addEventListener('open', () => { clearTimeout(timer); resolve() }, { once: true })
-      this.webSocket.addEventListener('error', () => { clearTimeout(timer); reject(new Error('CDP websocket failed')) }, { once: true })
-    })
+    if (this.webSocket.readyState !== WebSocket.OPEN) {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('CDP websocket open timed out')), 10_000)
+        this.webSocket.addEventListener('open', () => { clearTimeout(timer); resolve() }, { once: true })
+        this.webSocket.addEventListener('error', () => { clearTimeout(timer); reject(new Error('CDP websocket failed')) }, { once: true })
+      })
+    }
+    await enableRuntimeExceptionEvents(this)
   }
 
   send(method, params = {}) {
@@ -298,6 +311,14 @@ async function targets(port) {
   return response.json()
 }
 
+async function closeRendererClientAfterTargetCloses(client, port, targetId, description) {
+  await closeRendererClientAfterTargetClosesWhenReady(
+    client,
+    () => waitFor(async () => !(await targets(port)).some((target) => target.id === targetId), `${description} to close`, RENDERER_TARGET_CLOSE_TIMEOUT_MS),
+    () => client.waitForClose(RENDERER_WEBSOCKET_CLOSE_TIMEOUT_MS)
+  )
+}
+
 async function mainPage(port) {
   const target = await waitFor(async () => {
     const pages = await targets(port)
@@ -305,7 +326,11 @@ async function mainPage(port) {
   }, 'main renderer target')
   cdp = new CdpClient(target.webSocketDebuggerUrl, 'main-renderer')
   await cdp.connect()
-  await cdp.send('Runtime.enable')
+  await cdp.send('Page.bringToFront')
+  await waitFor(async () => await cdp.evaluate(`new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(false), 500)
+    requestAnimationFrame(() => { clearTimeout(timeout); resolve(true) })
+  })`), 'main renderer animation frames to advance', 10_000)
   await cdp.send('Log.enable')
   await waitFor(async () => await cdp.evaluate('Boolean(window.trace && typeof window.trace.invoke === "function")'), 'preload bridge')
   if (debugEventUrl) {
@@ -426,7 +451,7 @@ async function waitForApproval(port, expectedEndpoint, expectedModel, action = '
   })()`)
   reportDebug('C', 'runner-waitForApproval', 'approval-action-click-scheduled', { action, scheduled })
   assert.equal(scheduled, true)
-  approval.close()
+  await closeRendererClientAfterTargetCloses(approval, port, target.id, 'isolated external approval window')
   reportDebug('C', 'runner-waitForApproval', 'approval-cdp-closed', { action })
 }
 
@@ -481,7 +506,7 @@ async function waitForTrustedConfirmation(port, { action, kind, expectedName, ex
     return true
   })()`)
   assert.equal(clicked, true, `trusted confirmation ${action} action must be available`)
-  confirmation.close()
+  await closeRendererClientAfterTargetCloses(confirmation, port, target.id, 'main-process local operation confirmation window')
   return details
 }
 
@@ -533,15 +558,12 @@ async function startAgentToolOperation(port, providerEndpoint, sessionId, grantS
 }
 
 async function confirmAgentOperation(port, sessionId, batch, expectedName, action = 'accept', providerEndpoint) {
-  await startInvoke('agent:operation:confirm', { sessionId, batchId: batch.id })
-  await waitForTrustedConfirmation(port, {
-    action, kind: 'agent-operation', expectedName, expectedBatchId: batch.id
-  })
+  const result = await confirmOperationThroughReact(port, sessionId, batch, expectedName, action)
   if (action === 'accept') {
     assert.equal(typeof providerEndpoint, 'string', 'accepting an Agent tool operation must account for its follow-up outbound preview')
     await waitForApproval(port, `${providerEndpoint}/chat/completions`, 'synthetic-model', 'cancel')
   }
-  return assertOk(await waitForStartedInvoke(), `Complete trusted confirmation for ${batch.id}`)
+  return result
 }
 
 async function continueAgentOperation(port, providerEndpoint, sessionId, batchId) {
@@ -586,28 +608,23 @@ async function trashPlanThroughAgent(port, providerEndpoint, profileId, name) {
 }
 
 async function readTrashEntryThroughAgent(port, providerEndpoint, profileId, entry, otherEntry) {
-  const grantSet = assertOk(await invoke('agent:target:grant', {
-    targets: [{ kind: 'trash', entryId: entry.id }]
-  }), 'Grant @ access to one exact trash entry')
   const session = assertOk(await invoke('agent:session:create', {
     title: 'Isolated @ trash read', profileId
   }), 'Create isolated read-only trash session')
   const preview = assertOk(await invoke('agent:preview:create', {
     sessionId: session.id,
-    message: `@${entry.name} 只读取这一个回收站条目`,
+    message: 'List the current plan library trash entries.',
     selections: [],
-    includeHistory: false,
-    targetGrantSetId: grantSet.id,
-    targetRefs: [grantSet.targets[0].ref]
-  }), 'Preview explicitly authorized trash read')
+    includeHistory: false
+  }), 'Preview read-only active-library trash enumeration')
   queuedSyntheticToolCall = {
     id: 'qa-read-one-trash-entry',
     name: 'trash.list',
-    arguments: JSON.stringify({ trash_entry_ref: grantSet.targets[0].ref })
+    arguments: JSON.stringify({})
   }
   await startInvoke('agent:request:send', { token: preview.token, sessionId: session.id })
   await waitForApproval(port, `${providerEndpoint}/chat/completions`, 'synthetic-model')
-  const identity = assertOk(await waitForStartedInvoke(), 'Dispatch explicitly authorized trash.list tool request')
+  const identity = assertOk(await waitForStartedInvoke(), 'Dispatch read-only trash.list tool request')
 
   await waitForApproval(port, `${providerEndpoint}/chat/completions`, 'synthetic-model')
   const completeSession = await waitFor(async () => {
@@ -621,10 +638,10 @@ async function readTrashEntryThroughAgent(port, providerEndpoint, profileId, ent
   }, 'authorized trash.list result and follow-up to be persisted')
   const toolData = JSON.parse(completeSession.toolResult.content)
   assert.equal(toolData.ok, true)
-  assert.deepEqual(toolData.entries.map((item) => item.id), [entry.id])
-  assert.equal(toolData.entries.some((item) => item.id === otherEntry.id || item.name === otherEntry.name), false,
-    'Agent trash.list must not reveal a second, ungranted entry')
-  return { session: completeSession.current, grantSet, entry: toolData.entries[0] }
+  assert.deepEqual(new Set(toolData.entries.map((item) => item.id)), new Set([entry.id, otherEntry.id]))
+  assert.equal(toolData.entries.every((item) => !Object.hasOwn(item, 'ref') && !Object.hasOwn(item, 'target_ref')), true,
+    'read-only trash enumeration must not issue restore/purge grants')
+  return { session: completeSession.current, entry: toolData.entries.find((item) => item.id === entry.id) }
 }
 
 async function trashDialogState() {
@@ -646,7 +663,7 @@ async function trashDialogState() {
 
 async function recordTrashDialogCloseStructure(stage) {
   try {
-    const structure = await cdp.evaluate(`(() => {
+    const structure = await cdp.evaluate(`(async () => {
       const describeElement = (element) => {
         const style = getComputedStyle(element)
         return {
@@ -659,12 +676,22 @@ async function recordTrashDialogCloseStructure(stage) {
           ariaHidden: element.getAttribute('aria-hidden'),
           role: element.getAttribute('role'),
           ariaModal: element.getAttribute('aria-modal'),
+          animationName: style.animationName,
+          animationDuration: style.animationDuration,
+          animationDelay: style.animationDelay,
+          transitionProperty: style.transitionProperty,
+          transitionDuration: style.transitionDuration,
+          transitionDelay: style.transitionDelay,
           motionClasses: Array.from(element.classList).filter((name) => /motion|zoom|fade|slide|appear|enter|leave/.test(name))
         }
       }
       const dialogs = Array.from(document.querySelectorAll('.trash-dialog'))
       const wraps = Array.from(document.querySelectorAll('.ant-modal-wrap'))
       const active = document.activeElement
+      const rafProbe = await new Promise((resolve) => {
+        const timeout = setTimeout(() => resolve('timeout'), 500)
+        requestAnimationFrame(() => { clearTimeout(timeout); resolve('frame') })
+      })
       return {
         dialogMatchCount: dialogs.length,
         modalWrapMatchCount: wraps.length,
@@ -686,18 +713,22 @@ async function recordTrashDialogCloseStructure(stage) {
           }
         }),
         modalWraps: wraps.map(describeElement),
+        reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        visibilityState: document.visibilityState,
+        hasFocus: document.hasFocus(),
+        rafProbe,
         activeElement: active ? { tag: active.tagName, classes: Array.from(active.classList) } : null
       }
     })()`)
     console.log(JSON.stringify({
       diagnostic: 'd1-trash-dialog-close-structure', stage,
-      rendererRuntimeExceptionCount: cdp.runtimeExceptionCount, structure
+      rendererRuntimeExceptionCount: rendererExceptionMonitor.snapshot().total, structure
     }))
   } catch (error) {
     console.error(JSON.stringify({
       diagnostic: 'd1-trash-dialog-close-structure', stage,
       snapshotAvailable: false, errorName: error?.name ?? 'unknown',
-      rendererRuntimeExceptionCount: cdp.runtimeExceptionCount
+      rendererRuntimeExceptionCount: rendererExceptionMonitor.snapshot().total
     }))
   }
 }
@@ -729,6 +760,12 @@ async function fillRendererInput(selector, value) {
 }
 
 async function openTrashDialog(entryId, action) {
+  const workspaceActive = await cdp.evaluate("document.querySelector('.view-nav button:nth-child(1)')?.classList.contains('active') ?? false")
+  if (!workspaceActive) {
+    await clickRendererControl('.view-nav button:nth-child(1)', 'React navigation to plan workspace for trash UI')
+    await waitFor(async () => cdp.evaluate("document.querySelector('.view-nav button:nth-child(1)')?.classList.contains('active') ?? false"),
+      'plan workspace to become active before opening trash')
+  }
   if (!(await trashDialogState()).open) {
     await clickRendererControl('.tree-trash-entry button', 'React tree trash entry button')
   }
@@ -1048,8 +1085,30 @@ async function refreshPlanTreeThroughViewMenu() {
   )
 }
 
-async function confirmOperationThroughReact(port, batch, expectedName, action) {
+async function confirmOperationThroughReact(port, sessionId, batch, expectedName, action) {
   const scope = `[data-agent-batch="${batch.id}"]`
+  const session = assertOk(await invoke('agent:session:read', { id: sessionId }), `Read operation-card session ${sessionId}`)
+  const hasVisibleAgentSession = await cdp.evaluate(`(() => {
+    const page = document.querySelector('.agent-view')
+    const session = Array.from(document.querySelectorAll('.agent-session')).find((item) => item.textContent?.trim() === ${JSON.stringify(session.title)})
+    return Boolean(page && session?.getClientRects().length)
+  })()`)
+  if (!hasVisibleAgentSession) {
+    const agentPageMounted = await cdp.evaluate("Boolean(document.querySelector('.agent-view'))")
+    if (agentPageMounted) {
+      await clickRendererControl('.view-nav button:nth-child(1)', 'React leave Agent workbench to refresh persisted sessions')
+      await waitFor(async () => cdp.evaluate("!document.querySelector('.agent-view')"), 'Agent workbench to unmount before refresh')
+    }
+    await clickRendererControl('.view-nav button:nth-child(4)', 'React navigation to Agent workbench')
+    await waitFor(async () => cdp.evaluate(`Boolean(Array.from(document.querySelectorAll('.agent-session')).find((item) =>
+      item.textContent?.trim() === ${JSON.stringify(session.title)} && item.getClientRects().length))`),
+    `React persisted session ${session.title} to appear`)
+  }
+  await clickRendererLabel('.agent-session', [session.title], `React select operation-card session ${session.title}`)
+  await waitFor(async () => cdp.evaluate(`Boolean(document.querySelector(${JSON.stringify(scope)}))`),
+    `React exact operation batch ${batch.id} to render`)
+  const cardText = await cdp.evaluate(`document.querySelector(${JSON.stringify(scope)})?.textContent ?? ''`)
+  assert.ok(cardText.includes(expectedName), `React operation card must display ${expectedName}`)
   await clickRendererLabel('.agent-stage-nav button', ['02执行', '02Execute'], 'React execute stage')
   await waitFor(async () => cdp.evaluate(`(() => {
     const checkbox = document.querySelector(${JSON.stringify(`${scope} > .agent-operation-actions input[type="checkbox"]`)})
@@ -1057,8 +1116,18 @@ async function confirmOperationThroughReact(port, batch, expectedName, action) {
     if (!checkbox.checked) checkbox.click()
     return true
   })()`), 'React exact-batch write approval checkbox')
-  await clickRendererLabel(`${scope} > .agent-operation-actions button`, ['确认本地执行', 'Confirm local execution'], 'React exact-batch local execution button')
-  await waitForTrustedConfirmation(port, { action, kind: 'agent-operation', expectedName, expectedBatchId: batch.id })
+  const actionLabels = action === 'accept'
+    ? ['确认本地执行', 'Confirm local execution']
+    : ['不同意本地执行', 'Decline local execution']
+  await clickRendererLabel(`${scope} > .agent-operation-actions button`, actionLabels, `React exact-batch ${action} action`)
+  const terminalStatuses = action === 'accept'
+    ? new Set(['awaiting-outbound-preview', 'execution-failed', 'cancelled', 'reconciliation-required'])
+    : new Set(['cancelled'])
+  return await waitFor(async () => {
+    const latest = assertOk(await invoke('agent:operation:read', { sessionId, batchId: batch.id }),
+      `Read exact operation batch after ${action}`)
+    return terminalStatuses.has(latest.status) ? latest : null
+  }, `React operation card ${action} receipt for ${batch.id}`)
 }
 
 async function verifyReactFailedBatchRecovery(port, providerEndpoint, profileId, libraryId) {
@@ -1089,7 +1158,7 @@ async function verifyReactFailedBatchRecovery(port, providerEndpoint, profileId,
   await clickRendererControl('.view-nav button:nth-child(4)', 'React navigation to Agent workbench')
   await clickRendererLabel('.agent-session', [session.title], 'React select exact failed-batch session')
   await waitFor(async () => cdp.evaluate(`Boolean(document.querySelector(${JSON.stringify(`[data-agent-batch="${batch.id}"]`)}))`), 'React exact ordered batch to render')
-  await confirmOperationThroughReact(port, batch, fixture.plan.name, 'accept')
+  await confirmOperationThroughReact(port, session.id, batch, fixture.plan.name, 'accept')
   await waitForApproval(port, `${providerEndpoint}/chat/completions`, 'synthetic-model', 'cancel')
   const failedBatch = await waitFor(async () => {
     const value = assertOk(await invoke('agent:operation:read', { sessionId: session.id, batchId: batch.id }), 'Read actual React batch outcome')
@@ -1116,15 +1185,24 @@ async function verifyReactFailedBatchRecovery(port, providerEndpoint, profileId,
   assert.deepEqual(attempt.operations.map((item) => [item.callId, item.status]), [['qa_batch_a2', 'ready']])
   assert.equal(attempt.operations[0].beforeUpdatedAt, prefixDocument.updated_at)
   assert.deepEqual(assertOk(await invoke('storage:readPlan', { path: fixture.plan.path }), 'Verify continue preview caused no write'), prefixDocument)
-  await confirmOperationThroughReact(port, attempt, fixture.plan.name, 'cancel')
-  await waitFor(async () => !(await targets(port)).some((item) => item.title === 'Trace Local Operation Confirmation'), 'cancelled continuation main confirmation to close')
-  assert.equal(assertOk(await invoke('agent:operation:read', { sessionId: session.id, batchId: attempt.id }), 'Verify cancelled attempt stays pending').status, 'pending-confirmation')
-  assert.deepEqual(assertOk(await invoke('storage:readPlan', { path: fixture.plan.path }), 'Verify main-cancel preserved complete prefix and revision'), prefixDocument)
+  const cancelledAttempt = await confirmOperationThroughReact(port, session.id, attempt, fixture.plan.name, 'cancel')
+  assert.equal(cancelledAttempt.status, 'cancelled', 'declining in the operation card must permanently cancel that attempt')
+  assert.deepEqual(assertOk(await invoke('storage:readPlan', { path: fixture.plan.path }), 'Verify card-cancel preserved complete prefix and revision'), prefixDocument)
   assert.equal(requestCount, beforeRequests + 1)
-  await confirmOperationThroughReact(port, attempt, fixture.plan.name, 'accept')
+  await clickRendererLabel('.agent-stage-nav button', ['03恢复', '03Recovery'], 'React return to recovery stage after cancellation')
+  await clickRendererLabel(`[data-agent-batch="${batch.id}"] > .agent-operation-actions button`,
+    ['继续未执行项', 'Continue unexecuted items'], 'React create a fresh continuation after cancellation')
+  const retryAttempt = await waitFor(async () => {
+    const current = assertOk(await invoke('agent:session:read', { id: session.id }), 'Read fresh continuation after card cancellation')
+    return current.operationBatches.find((item) => item.attemptOf === batch.id && item.attemptKind === 'continue' &&
+      item.status === 'pending-confirmation' && item.id !== attempt.id) ?? null
+  }, 'fresh A2 continuation preflight after card cancellation')
+  assert.deepEqual(retryAttempt.operations.map((item) => [item.callId, item.status]), [['qa_batch_a2', 'ready']])
+  assert.equal(retryAttempt.operations[0].beforeUpdatedAt, prefixDocument.updated_at)
+  await confirmOperationThroughReact(port, session.id, retryAttempt, fixture.plan.name, 'accept')
   const finished = await waitFor(async () => {
     const current = assertOk(await invoke('agent:session:read', { id: session.id }), 'Read final attempt and receipt ledger')
-    const value = current.operationBatches.find((item) => item.id === attempt.id)
+    const value = current.operationBatches.find((item) => item.id === retryAttempt.id)
     return value?.operations[0]?.status === 'succeeded' ? { current, value } : null
   }, 'explicitly reconfirmed A2 success')
   const finalDocument = assertOk(await invoke('storage:readPlan', { path: fixture.plan.path }), 'Read exact continued A2 document')
@@ -1138,8 +1216,8 @@ async function verifyReactFailedBatchRecovery(port, providerEndpoint, profileId,
   assert.deepEqual(source.operations.map((item) => item.status), ['succeeded', 'failed', 'not-executed'])
   assert.deepEqual(source.operations[0], failedBatch.operations[0], 'successful A1 prefix audit must not be replayed or rewritten')
   assert.deepEqual(source.operations[1], failedBatch.operations[1], 'B1 failed receipt must remain unchanged')
-  assert.equal(source.operations[2].resolvedByAttempt, attempt.id)
-  assert.equal(finished.current.operationBatches.length, 2, 'recovery adds exactly one A2 attempt and cancel/reconfirm does not replay the source')
+  assert.equal(source.operations[2].resolvedByAttempt, retryAttempt.id)
+  assert.equal(finished.current.operationBatches.length, 3, 'recovery keeps one cancelled A2 attempt and one fresh confirmed attempt without replaying the source')
   assert.deepEqual(finished.current.messages.filter((item) => item.role === 'tool').map((item) => item.toolCallId), calls.map((item) => item.id), 'tool receipt IDs must remain unique and ordered')
   assert.equal(finished.current.requests.length, 1)
   assert.deepEqual(assertOk(await invoke('storage:readPlan', { path: occupied.path }), 'Verify final recovery still preserved complete B1 occupant'), occupiedDocument)
@@ -1249,7 +1327,7 @@ async function reportD3TreeSelectionFailure(targetPath, stage, diagnosticContext
     diagnostic: 'd3-tree-selection-failure',
     stage,
     targetPath,
-    rendererRuntimeExceptionCount: cdp.runtimeExceptionCount,
+    rendererRuntimeExceptionCount: rendererExceptionMonitor.snapshot().total,
     initialRootTree: summarizeTreeTarget(diagnosticContext.initialRootTree, targetPath)
   }
 
@@ -1389,7 +1467,10 @@ async function chooseReferenceReplacement(sourcePath, replacement) {
 // 通过真实树 UI 点击根 switcher 展开库根，并等待精确目标行可见后再进入删除/引用交互
 async function expandLibraryRootThroughTreeUi(targetPath, diagnosticContext) {
   const targetSelector = `.tree-row[data-path="${targetPath}"]`
-  const alreadyVisible = await cdp.evaluate(`!!document.querySelector(${JSON.stringify(targetSelector)})`)
+  const alreadyVisible = await cdp.evaluate(`(() => {
+    const target = document.querySelector(${JSON.stringify(targetSelector)})
+    return Boolean(target && target.getClientRects().length)
+  })()`)
   if (alreadyVisible) return
   let stage = 'root-switcher-click'
   try {
@@ -1429,6 +1510,7 @@ async function verifyPlanDeleteReferenceEntry(libraryId, entry, exerciseIncomple
   await assertDeleteFixtureUnchanged(libraryId, fixture, beforeTree, beforeTrash, `${entry} initial cancellation zero writes`)
   console.log(`PASS: CDP programmed ${entry} ordinary-plan delete cancelled the exact recoverable soft-delete confirmation; complete fixture/tree/trash/inbound remained unchanged.`)
 
+  await expandLibraryRootThroughTreeUi(fixture.Target.plan.path, selectionDiagnosticContext)
   await triggerPlanDeleteEntry(entry, fixture.Target.plan.path, selectionDiagnosticContext)
   await clickReactConfirmation(firstTitle, '删除')
   const impact = await waitFor(async () => {
@@ -1530,7 +1612,7 @@ function spawnElectron(debugPort) {
     `--remote-debugging-port=${debugPort}`,
     '--no-first-run',
     helperPath
-  ], { cwd: worktree, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  ], { cwd: workspaceRoot, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const collect = (chunk) => { output = (output + chunk.toString()).slice(-16_000) }
   child.stdout.on('data', collect)
   child.stderr.on('data', collect)
@@ -1573,6 +1655,9 @@ async function main() {
   const cdpPort = await spawnElectron(await reserveLoopbackPort())
   if (child) child.__qaCdpPort = cdpPort
   await mainPage(cdpPort)
+  const initialRendererExceptions = rendererExceptionMonitor.snapshot()
+  assert.equal(initialRendererExceptions.total, 0,
+    `all renderer targets must start without uncaught JavaScript exceptions; lastClient=${initialRendererExceptions.lastClientName ?? 'none'}`)
 
   const bootstrap = assertOk(await invoke('app:bootstrap'), 'Read-only app bootstrap')
   assert.equal(bootstrap.rootConfigured, true, 'isolated root must be configured')
@@ -1584,10 +1669,13 @@ async function main() {
     { kind: 'folder', name: 'Diary', path: 'Diary' }
   ], 'startup may create the automatic Diary root, but no other fixture content should exist')
   if (d1CloseDiagnostic) {
+    assert.equal(initialRendererExceptions.total, 0, 'D1-only renderer targets must start without uncaught JavaScript exceptions')
     const workspaceState = assertOk(await invoke('workspace-tabs:get'), 'Read disposable D1 library identity')
     assert.equal(typeof workspaceState.library_id, 'string')
     assert.notEqual(workspaceState.library_id, '')
     await verifyTrashDialogConflictRestore(workspaceState.library_id)
+    assert.deepEqual(rendererExceptionMonitor.snapshot(), initialRendererExceptions,
+      `D1-only scenario must not introduce an uncaught renderer JavaScript exception; lastClient=${rendererExceptionMonitor.snapshot().lastClientName ?? 'none'}`)
     assert.equal(provider, undefined, 'D1-only diagnostic must not start a provider server')
     assert.equal(requestCount, 0, 'D1-only diagnostic must produce no provider requests')
     succeeded = true
@@ -1596,7 +1684,8 @@ async function main() {
       renderer: 'Electron production renderer and preload bridge',
       provider: 'not started', providerRequestCount: requestCount,
       isolatedUserData: true, isolatedLibrary: true,
-      rendererRuntimeExceptionCount: cdp.runtimeExceptionCount,
+      rendererRuntimeExceptionCount: rendererExceptionMonitor.snapshot().total,
+      rendererRuntimeExceptionCountsByClient: rendererExceptionMonitor.snapshot().byClient,
       exercised: ['react-trash-conflict-rename-resolve-close'], runId
     }, null, 2))
     return
@@ -1607,20 +1696,21 @@ async function main() {
     assert.notEqual(workspaceState.library_id, '')
     assert.equal(provider, undefined, 'D3-only diagnostic must not start a provider server')
     assert.equal(requestCount, 0, 'D3-only diagnostic must begin with no provider requests')
-    const beforeRuntimeExceptions = cdp.runtimeExceptionCount
-    assert.equal(beforeRuntimeExceptions, 0, 'D3-only renderer must start without uncaught JavaScript exceptions')
+    const beforeRuntimeExceptions = rendererExceptionMonitor.snapshot()
+    assert.equal(beforeRuntimeExceptions.total, 0, 'D3-only renderer targets must start without uncaught JavaScript exceptions')
     await verifyOrdinaryPlanDeleteReferenceUi(workspaceState.library_id, 'f5')
     assert.equal(provider, undefined, 'D3-only diagnostic must not start a provider server')
     assert.equal(requestCount, 0, 'ordinary-plan deletion and reference UI decisions must produce no provider requests')
-    assert.equal(cdp.runtimeExceptionCount, beforeRuntimeExceptions, `D3-only scenario must not introduce an uncaught renderer JavaScript exception; last=${cdp.lastRendererException ?? 'none'}`)
-    assert.ok((cdp.expectedBusinessRejections ?? 0) >= 1, 'Context incomplete-choice business rejection must be observed exactly as designed')
+    assert.deepEqual(rendererExceptionMonitor.snapshot(), beforeRuntimeExceptions,
+      `D3-only scenario must not introduce an uncaught renderer JavaScript exception; lastClient=${rendererExceptionMonitor.snapshot().lastClientName ?? 'none'}, mainLast=${cdp.lastRendererException ?? 'none'}`)
     succeeded = true
     console.log(JSON.stringify({
       result: 'PASS', mode: 'd3-delete-reference-diagnostic',
       renderer: 'Electron production renderer and preload bridge',
       provider: 'not started', providerRequestCount: requestCount,
       isolatedUserData: true, isolatedLibrary: true,
-      rendererRuntimeExceptionCount: cdp.runtimeExceptionCount,
+      rendererRuntimeExceptionCount: rendererExceptionMonitor.snapshot().total,
+      rendererRuntimeExceptionCountsByClient: rendererExceptionMonitor.snapshot().byClient,
       exercised: ['react-ordinary-plan-context-edit-menu-delete-key-link-keep-replace', 'missing-replacement-zero-write', 'ipc-only-reference-restore'], runId
     }, null, 2))
     return
@@ -1689,13 +1779,6 @@ async function main() {
   assert.equal(batchRead.operations[0].status, 'ready')
   assert.equal(batchRead.operations[0].changes.some((change) => change.after?.includes('QA Generated Plan')), true)
   assert.equal(Object.hasOwn(batchRead, 'confirmationToken'), false, 'renderer must not receive the local confirmation capability')
-  const cancelledConfirmation = await confirmAgentOperation(cdpPort, session.id, batchRead, 'QA Generated Plan', 'cancel')
-  assert.equal(cancelledConfirmation.status, 'pending-confirmation', 'closing the trusted confirmation must leave the operation pending')
-  const stillPending = assertOk(await invoke('agent:operation:read', { sessionId: session.id, batchId: batch.id }), 'Verify operation remained pending after closing confirmation')
-  assert.equal(stillPending.status, 'pending-confirmation')
-  const afterCancelTree = assertOk(await invoke('storage:treeGetChildren', { parent_path: 'QA Folder' }), 'Verify cancelled confirmation caused no write')
-  assert.equal(afterCancelTree.some((node) => node.name === 'QA Generated Plan'), false, 'local cancellation must be fail-closed')
-
   const confirmedBatch = await confirmAgentOperation(cdpPort, session.id, batchRead, 'QA Generated Plan', 'accept', providerEndpoint)
   assert.equal(confirmedBatch.operations[0].status, 'succeeded')
   assertOk(await invoke('agent:operation:read', { sessionId: session.id, batchId: batch.id }), 'Verify completed operation receipt')
@@ -1706,7 +1789,7 @@ async function main() {
   assert.equal(savedSession.requests[0].model, 'synthetic-model')
   assert.equal(savedSession.requests[0].sources.length, 0)
   assert.equal(savedSession.operationBatches[0].operations[0].undoStatus, 'available')
-  console.log('PASS: approved synthetic SSE plan.create tool call was previewed, cancelled without writing, then confirmed into the disposable library and locally traced.')
+  console.log('PASS: approved synthetic SSE plan.create tool call was previewed, confirmed in the operation card, written only to the disposable library and locally traced.')
 
   await continueAgentOperation(cdpPort, providerEndpoint, session.id, batch.id)
   assert.equal(requestCount, 3, 'accepted create operation must send exactly one approved continuation')
@@ -1727,7 +1810,7 @@ async function main() {
   const agentTrashRead = await readTrashEntryThroughAgent(cdpPort, providerEndpoint, profile.id, trashEntryA, trashEntryB)
   assert.equal(requestCount, 9, 'single-entry Agent read must separately approve its initial and continuation request')
   assert.equal(agentTrashRead.entry.name, 'QA Trash Read A')
-  console.log('PASS: Agent trash.list read only the explicitly granted single entry and did not expose its sibling.')
+  console.log('PASS: Agent trash.list enumerated the active library without arguments and issued no restore/purge grants.')
 
   const workspaceState = assertOk(await invoke('workspace-tabs:get'), 'Read current disposable library identity')
   assert.equal(typeof workspaceState.library_id, 'string')
@@ -1775,7 +1858,7 @@ async function main() {
   assert.equal(finalDisposableTree.some((item) => item.name === 'QA Trash Purge B'), false)
   console.log('PASS: trusted purge cancellation preserved the entry; accepting the frozen exact-entry confirmation permanently removed it.')
 
-  const beforeExtendedRuntimeExceptions = cdp.runtimeExceptionCount
+  const beforeExtendedRuntimeExceptions = rendererExceptionMonitor.snapshot()
   await verifyMovedAndDeletedTarget(workspaceState.library_id, profile.id)
   assert.equal(requestCount, 9, 'move/delete invalidation must leave the original nine-request baseline intact')
   await verifyPlanReadOutboundCancellation(cdpPort, providerEndpoint, profile.id, workspaceState.library_id)
@@ -1784,8 +1867,11 @@ async function main() {
   assert.equal(requestCount, 11, 'failed batch and local recovery must add only the initial ordered-tool request')
   await verifyOrdinaryPlanDeleteReferenceUi(workspaceState.library_id)
   assert.equal(requestCount, 11, 'ordinary-plan deletion and link keep/replace UI must add no provider request')
-  assert.equal(cdp.runtimeExceptionCount, beforeExtendedRuntimeExceptions, 'extended scenarios must not introduce an uncaught renderer JavaScript exception')
-  console.log('PASS: extended target/read/batch scenarios did not increase main renderer Runtime.exceptionThrown count.')
+  assert.deepEqual(rendererExceptionMonitor.snapshot(), beforeExtendedRuntimeExceptions,
+    `extended scenarios must not introduce an uncaught renderer JavaScript exception; lastClient=${rendererExceptionMonitor.snapshot().lastClientName ?? 'none'}`)
+  assert.deepEqual(rendererExceptionMonitor.snapshot(), initialRendererExceptions,
+    `complete runner must not introduce an uncaught renderer JavaScript exception in any window; lastClient=${rendererExceptionMonitor.snapshot().lastClientName ?? 'none'}, mainLast=${cdp.lastRendererException ?? 'none'}`)
+  console.log('PASS: extended target/read/batch scenarios did not increase any renderer window Runtime.exceptionThrown count.')
 
   succeeded = true
   console.log(JSON.stringify({
@@ -1797,8 +1883,9 @@ async function main() {
     isolatedUserData: true,
     isolatedLibrary: true,
     interaction: 'CDP programmed renderer interaction; native IME/DPI/screen-reader experience not exercised',
-    rendererRuntimeExceptionCount: cdp.runtimeExceptionCount,
-    exercised: ['preview-cancel-accept', 'agent-trash-list-scope', 'react-trash-conflict-rename-resolve', 'react-purge-name-gate-main-cancel', 'trash-restore', 'trusted-purge-cancel-accept', 'target-move-delete-grant-invalidation-resolver', 'plan-read-exact-result-outbound-cancel', 'react-ordered-name-conflict-a2-only-recovery', 'react-ordinary-plan-context-edit-delete-key-link-keep-replace', 'react-reference-missing-replacement-zero-write', 'ipc-only-reference-restore'],
+    rendererRuntimeExceptionCount: rendererExceptionMonitor.snapshot().total,
+    rendererRuntimeExceptionCountsByClient: rendererExceptionMonitor.snapshot().byClient,
+    exercised: ['preview-cancel-accept', 'agent-operation-card-confirm-cancel', 'agent-trash-list-read-only-enumeration', 'react-trash-conflict-rename-resolve', 'react-purge-name-gate-main-cancel', 'trash-restore', 'trusted-purge-cancel-accept', 'target-move-delete-grant-invalidation-resolver', 'plan-read-exact-result-outbound-cancel', 'react-ordered-name-conflict-a2-only-recovery', 'react-ordinary-plan-context-edit-delete-key-link-keep-replace', 'react-reference-missing-replacement-zero-write', 'ipc-only-reference-restore'],
     runId
   }, null, 2))
 }
@@ -1822,17 +1909,25 @@ async function cleanup() {
 
 main()
   .catch((error) => {
+    const rendererExceptions = rendererExceptionMonitor.snapshot()
+    console.error(JSON.stringify({
+      diagnostic: 'renderer-exception-summary',
+      rendererRuntimeExceptionCount: rendererExceptions.total,
+      rendererRuntimeExceptionCountsByClient: rendererExceptions.byClient
+    }))
     if (d1CloseDiagnostic) {
       console.error(JSON.stringify({
         result: 'FAIL', mode: 'd1-close-diagnostic',
         providerStarted: Boolean(provider), providerRequestCount: requestCount,
-        rendererRuntimeExceptionCount: cdp?.runtimeExceptionCount ?? null, runId
+        rendererRuntimeExceptionCount: rendererExceptionMonitor.snapshot().total,
+        rendererRuntimeExceptionCountsByClient: rendererExceptionMonitor.snapshot().byClient, runId
       }))
     } else if (d3DeleteReferenceDiagnostic) {
       console.error(JSON.stringify({
         result: 'FAIL', mode: 'd3-delete-reference-diagnostic',
         providerStarted: Boolean(provider), providerRequestCount: requestCount,
-        rendererRuntimeExceptionCount: cdp?.runtimeExceptionCount ?? null, runId
+        rendererRuntimeExceptionCount: rendererExceptionMonitor.snapshot().total,
+        rendererRuntimeExceptionCountsByClient: rendererExceptionMonitor.snapshot().byClient, runId
       }))
     }
     console.error(`Isolated Electron acceptance failed: ${error.stack || error.message}`.replaceAll(fakeKey, '[redacted]'))

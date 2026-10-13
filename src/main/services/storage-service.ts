@@ -4,8 +4,9 @@ import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type { PlanDocument, Component, TaskItem } from '../../shared/plan-types'
 import { ERR, TraceError } from '../../shared/errors'
-import { isUuid32, validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
+import { isUuid32, validateDueDate, validatePlanName, validateTitle, validateNoteText, uuid32 } from '../../shared/validation'
 import { applyStatusChange } from '../../shared/task-state'
+import { validateWorkflowDocumentForCreation } from '../../shared/plan-workflow-validation'
 import type { PlanTreeNode } from '../../shared/ipc-contract'
 import type {
   TrashEntry, TrashEntryTargetGrant, TrashOperationCommitResult, TrashOperationPreview,
@@ -17,6 +18,47 @@ import { TreeCache } from './tree-cache'
 import { assertRealPathWithinRoot, resolveWithin, isSelfOrDescendant, parentRel } from './path-safety'
 import { bus } from './event-bus'
 import { TrashService, type TrashChange, type TrashLibraryContext, type TrashPurgeConfirmationSnapshot } from './trash-service'
+
+const MAX_INITIAL_PLAN_TASKS = 50
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
+}
+
+function hasExactKeys(value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = []): boolean {
+  const allowed = new Set([...required, ...optional])
+  const keys = Reflect.ownKeys(value)
+  return keys.length >= required.length && keys.length <= required.length + optional.length &&
+    keys.every((key) => typeof key === 'string' && allowed.has(key)) && required.every((key) => Object.hasOwn(value, key))
+}
+
+function assertInitialTaskListComponent(value: unknown): asserts value is Component {
+  if (!isPlainRecord(value) || !hasExactKeys(value, ['id', 'type', 'payload']) ||
+    typeof value.id !== 'string' || !isUuid32(value.id) || value.type !== 'task_list' || !isPlainRecord(value.payload)) {
+    throw new TraceError(ERR.VALIDATION, '新计划的初始任务列表无效')
+  }
+  const payload = value.payload
+  if (!hasExactKeys(payload, ['title', 'items']) || typeof payload.title !== 'string' || !Array.isArray(payload.items) ||
+    payload.items.length < 1 || payload.items.length > MAX_INITIAL_PLAN_TASKS) {
+    throw new TraceError(ERR.VALIDATION, '新计划的初始任务列表无效')
+  }
+  validateTitle(payload.title)
+  const seenIds = new Set<string>([value.id])
+  for (const item of payload.items) {
+    if (!isPlainRecord(item) || !hasExactKeys(item, ['id', 'title', 'status'], ['planned_at', 'note']) ||
+      typeof item.id !== 'string' || !isUuid32(item.id) || seenIds.has(item.id) ||
+      typeof item.title !== 'string' || item.status !== 'not_started') {
+      throw new TraceError(ERR.VALIDATION, '新计划的初始任务列表无效')
+    }
+    validateTitle(item.title)
+    if (Object.hasOwn(item, 'planned_at')) validateDueDate(item.planned_at)
+    if (Object.hasOwn(item, 'note')) {
+      if (typeof item.note !== 'string') throw new TraceError(ERR.VALIDATION, '新计划的初始任务列表无效')
+      validateNoteText(item.note)
+    }
+    seenIds.add(item.id)
+  }
+}
 
 export class StorageService {
   private rootAbs: string | null = null
@@ -164,7 +206,32 @@ export class StorageService {
   // ---------- 计划 CRUD ----------
 
   async createPlan(parentPathRel: string, name: string, agentGuard?: AgentLibraryMutationGuard): Promise<PlanTreeNode> {
+    return this.createPlanWithInitialComponents(parentPathRel, name, [], agentGuard)
+  }
+
+  /** Creates the plan and its main-process-validated initial task list in one atomic plan.json write. */
+  async createPlanWithInitialComponents(parentPathRel: string, name: string, initialComponents: Component[],
+    agentGuard?: AgentLibraryMutationGuard): Promise<PlanTreeNode> {
     validatePlanName(name)
+    if (!Array.isArray(initialComponents) || initialComponents.length > 1) {
+      throw new TraceError(ERR.VALIDATION, '新计划的初始组件无效')
+    }
+    for (const component of initialComponents) assertInitialTaskListComponent(component)
+    const now = new Date().toISOString()
+    const document: PlanDocument = {
+      format_version: '1',
+      created_at: now,
+      updated_at: now,
+      components: structuredClone(initialComponents)
+    }
+    return this.createPlanDocument(parentPathRel, name, document, agentGuard)
+  }
+
+  /** Main-process-only complete plan creation; retains the existing create-only atomic write boundary. */
+  async createPlanDocument(parentPathRel: string, name: string, document: PlanDocument,
+    agentGuard?: AgentLibraryMutationGuard): Promise<PlanTreeNode> {
+    validatePlanName(name)
+    validateWorkflowDocumentForCreation(document)
     const parent = this.safe(parentPathRel)
     const root = this.root()
     const mutationGuard = this.bindMutationGuard(root, agentGuard)
@@ -186,7 +253,11 @@ export class StorageService {
     await mutationGuard?.assertCurrent()
 
     const now = new Date().toISOString()
-    const doc: PlanDocument = { format_version: '1', created_at: now, updated_at: now, components: [] }
+    const doc: PlanDocument = {
+      ...structuredClone(document),
+      created_at: now,
+      updated_at: now
+    }
     const planFile = join(dirAbs, 'plan.json')
     const planMutationGuard = mutationGuard && createdDirIdentity ? {
       ...mutationGuard,

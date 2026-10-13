@@ -20,6 +20,12 @@ describe('状态机转换', () => {
   it('非法：done → not_started（跨态回退）', () => {
     expect(canTransition('done', 'not_started')).toBe(false)
   })
+  it('允许未完成任务标记已转移，且已转移任务不能继续切换', () => {
+    expect(canTransition('not_started', 'moved')).toBe(true)
+    expect(canTransition('in_progress', 'moved')).toBe(true)
+    expect(canTransition('done', 'moved')).toBe(false)
+    expect(canTransition('moved', 'in_progress')).toBe(false)
+  })
 })
 
 describe('applyStatusChange', () => {
@@ -53,6 +59,9 @@ describe('isOverdue（展示层）', () => {
   })
   it('已完成 → 不逾期', () => {
     expect(isOverdue('done', '2026-09-01', today)).toBe(false)
+  })
+  it('已转移 → 不逾期', () => {
+    expect(isOverdue('moved', '2026-09-01', today)).toBe(false)
   })
   it('无计划时间 → 不逾期', () => {
     expect(isOverdue('not_started', undefined, today)).toBe(false)
